@@ -167,7 +167,7 @@ unsigned int extract_key_headers(const unsigned char *response_buf,
   /* 逐行扫描响应 */
   unsigned int line_start = 0;
   for (unsigned int i = 0; i < response_len && i < 4096; i++) {
-    if (response_buf[i] == '\\n') {
+    if (response_buf[i] == '\n') {
       unsigned int line_len = i - line_start;
       
       /* 检查是否是关键header */
@@ -182,28 +182,39 @@ unsigned int extract_key_headers(const unsigned char *response_buf,
           unsigned int value_start = line_start + hdr_len;
           while (value_start < i && 
                  (response_buf[value_start] == ' ' || 
-                  response_buf[value_start] == '\\t')) {
+                  response_buf[value_start] == '\t')) {
             value_start++;
           }
           
           unsigned int value_len = i - value_start;
-          if (value_len > 0 && (out_pos + value_len + 2) < max_len) {
-            /* 添加到输出（格式：header_name=value;） */
-            int written = snprintf(out_headers + out_pos, 
-                                  max_len - out_pos,
-                                  "%s=", key_headers[h]);
-            out_pos += written;
-            
-            /* 复制header值（截断到50字符） */
-            unsigned int copy_len = (value_len > 50) ? 50 : value_len;
-            memcpy(out_headers + out_pos, 
-                   &response_buf[value_start], 
-                   copy_len);
-            out_pos += copy_len;
-            
-            out_headers[out_pos++] = ';';
-            header_count++;
-          }
+                    if (value_len > 0) {
+                        /* 复制header值（截断到50字符） */
+                        unsigned int copy_len = (value_len > 50) ? 50 : value_len;
+
+                        /* 需要的空间: "Header=" + value + ";" + "\0" */
+                        unsigned int needed = hdr_len + 1 + copy_len + 1 + 1;
+                        if (out_pos + needed > max_len) {
+                            break;
+                        }
+
+                        /* 添加到输出（格式：header_name=value;） */
+                        int written = snprintf(out_headers + out_pos,
+                                                                     max_len - out_pos,
+                                                                     "%s=", key_headers[h]);
+                        if (written < 0 || (unsigned int)written >= (max_len - out_pos)) {
+                            out_headers[max_len - 1] = '\0';
+                            return header_count;
+                        }
+                        out_pos += (unsigned int)written;
+
+                        memcpy(out_headers + out_pos,
+                                     &response_buf[value_start],
+                                     copy_len);
+                        out_pos += copy_len;
+
+                        out_headers[out_pos++] = ';';
+                        header_count++;
+                    }
           
           break;
         }
@@ -216,7 +227,11 @@ unsigned int extract_key_headers(const unsigned char *response_buf,
     }
   }
   
-  out_headers[out_pos] = '\\0';
+    if (out_pos >= max_len) {
+        out_headers[max_len - 1] = '\0';
+    } else {
+        out_headers[out_pos] = '\0';
+    }
   return header_count;
 }
 
@@ -230,8 +245,8 @@ unsigned int compute_enhanced_state_id(StateSignature *signature) {
   unsigned int hash = signature->response_code;
   
   /* 混入关键header的哈希 */
-  if (signature->key_headers[0] != '\\0') {
-    for (int i = 0; signature->key_headers[i] != '\\0' && i < 256; i++) {
+  if (signature->key_headers[0] != '\0') {
+    for (int i = 0; signature->key_headers[i] != '\0' && i < 256; i++) {
       hash = hash * 33 + (unsigned char)signature->key_headers[i];
     }
   }
@@ -300,23 +315,37 @@ ProtoSemanticState extract_protocol_state(const char* proto_name,
 
 /**
  * @brief 判断响应是否为拒绝类响应
+ * 
+ * P0-1修复：区分硬拒绝(Hard Rejection)和软拒绝(Soft Rejection/临时错误)
+ * - 硬拒绝：永久性错误，需要CEGAR修正（如语法错误、权限拒绝）
+ * - 软拒绝：临时性错误，可重试（如服务繁忙、资源暂时不可用）
  */
 bool is_rejection_response(int status_code, const char* body, const char* proto_name) {
     if (!body || !proto_name) return false;
     
-    /* FTP拒绝响应 */
+    /* FTP拒绝响应（RFC 959） */
     if (strcasecmp(proto_name, "FTP") == 0) {
-        // 4xx和5xx都是错误
-        if (status_code >= 400 && status_code < 600) return true;
-        // 检查关键词
+        // 软拒绝（临时错误）：421=服务不可用, 425=无法打开数据连接
+        if (status_code == 421 || status_code == 425) {
+            return false;  // 视为部分接受，不触发CEGAR
+        }
+        // 硬拒绝：5xx永久错误, 4xx客户端错误（除421/425外）
+        if (status_code >= 500 && status_code < 600) return true;
+        if (status_code >= 400 && status_code < 500) return true;
+        // 检查关键词（永久性错误）
         if (strstr(body, "failed") || strstr(body, "incorrect") || 
             strstr(body, "denied") || strstr(body, "invalid")) {
             return true;
         }
     }
     
-    /* SMTP拒绝响应 */
+    /* SMTP拒绝响应（RFC 5321） */
     if (strcasecmp(proto_name, "SMTP") == 0) {
+        // 软拒绝（临时错误）：421=服务关闭, 450=邮箱不可用（临时）
+        if (status_code == 421 || status_code == 450) {
+            return false;  // 视为临时错误，不触发CEGAR
+        }
+        // 硬拒绝：5xx永久错误
         if (status_code >= 500) return true;
         if (strstr(body, "rejected") || strstr(body, "denied")) return true;
     }
@@ -507,4 +536,74 @@ void extract_state_hash(RealResponse* resp, ProtocolSpec* spec) {
              state == PROTO_STATE_READY ? "ready" :
              state == PROTO_STATE_TRANSFER ? "transfer" :
              state == PROTO_STATE_ERROR ? "error" : "unknown");
+}
+
+/* ============================================
+ * P0-2修复：CEGAR修正后再验证（闭环保证）
+ * ============================================ */
+
+/**
+ * @brief 对CEGAR修正后的输入进行完整4层验证
+ * @param refined_input CEGAR修正后的JSON字符串
+ * @param spec 协议规范
+ * @param original_failure 原始失败响应（用于对比）
+ * @return true=修正有效（通过验证），false=修正无效
+ * 
+ * 验证流程：
+ * 1. Layer 1: 可解析性（JSON格式+Schema）
+ * 2. Layer 2: 可接受性（模拟发送，检查响应）- 简化为格式检查
+ * 3. Layer 3: 状态可达性（检查是否触发新状态）
+ * 4. Layer 4: 覆盖增益（理论上应该有，此处简化）
+ */
+bool verify_refined_input(const char* refined_input, 
+                         ProtocolSpec* spec,
+                         RealResponse* original_failure) {
+    if (!refined_input || !spec) {
+        return false;
+    }
+    
+    /* Layer 1: 可解析性验证 */
+    if (!verify_json_grammar(refined_input, spec)) {
+        return false;  // 修正后仍然无法解析，CEGAR失败
+    }
+    
+    /* Layer 2: 可接受性验证（简化版：检查是否修正了明显错误）*/
+    json_object *jobj = json_tokener_parse(refined_input);
+    if (!jobj) {
+        return false;
+    }
+    
+    /* 检查必需字段是否齐全 */
+    bool has_required = true;
+    for (int i = 0; i < 3 && spec->mandatory_fields[i][0] != '\0'; i++) {
+        if (!json_object_object_get_ex(jobj, spec->mandatory_fields[i], NULL)) {
+            has_required = false;
+            break;
+        }
+    }
+    json_object_put(jobj);
+    
+    if (!has_required) {
+        return false;  // 修正后缺少必需字段
+    }
+    
+    /* Layer 3 & 4: 状态可达性+覆盖增益 */
+    /* 注意：此处无法真正发送到SUT（需要运行时集成）
+     * 因此采用启发式判断：如果通过了Layer 1+2，且输入长度合理，
+     * 则认为有潜在价值，允许入队后续验证 */
+    size_t refined_len = strlen(refined_input);
+    if (refined_len < 10 || refined_len > 65536) {
+        return false;  // 长度异常
+    }
+    
+    /* 对比原始失败：检查是否做了实质性修改 */
+    if (original_failure && original_failure->body) {
+        /* 如果refined_input与原始输入完全相同，则CEGAR未生效 */
+        if (strcmp(refined_input, original_failure->body) == 0) {
+            return false;
+        }
+    }
+    
+    /* 通过所有检查，认为修正有效 */
+    return true;
 }

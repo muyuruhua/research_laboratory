@@ -96,6 +96,7 @@ void increment_state_count(const char* state) {
     if (state_count_entries < MAX_STATES) {
         strncpy(state_table[state_count_entries].state, state, 
                 sizeof(state_table[0].state) - 1);
+        state_table[state_count_entries].state[sizeof(state_table[0].state) - 1] = '\0';
         state_table[state_count_entries].count = 1;
         state_count_entries++;
         total_unique_states++;
@@ -134,6 +135,7 @@ int pick_least_visited_state(char* out, size_t out_len) {
     }
     
     strncpy(out, state_table[min_index].state, out_len - 1);
+    out[out_len - 1] = '\0';  /* 确保字符串终止 */
     out[out_len - 1] = '\0';
     
     return 1;
@@ -150,7 +152,7 @@ int get_all_states(char* out, size_t out_len) {
     
     out[0] = '\0';
     for (int i = 0; i < state_count_entries && i < 20; i++) {  // 限制输出数量
-        char entry[128];
+        char entry[256];  /* 扩大缓冲区避免截断警告 */
         snprintf(entry, sizeof(entry), "%s (visited: %d), ", 
                  state_table[i].state, state_table[i].count);
         strncat(out, entry, out_len - strlen(out) - 1);
@@ -249,6 +251,7 @@ bool save_to_corpus(const char* json,
     /* 添加新条目 */
     strncpy(corpus[corpus_entries].json, json, sizeof(corpus[0].json) - 1);
     corpus[corpus_entries].json[sizeof(corpus[0].json) - 1] = '\0';
+    corpus[corpus_entries].json[sizeof(corpus[0].json) - 1] = '\0';
     
     if (edge_info) {
         char enhanced_edge_info[256];
@@ -257,6 +260,7 @@ bool save_to_corpus(const char* json,
                  edge_info, edge_gain, state_gain);
         
         strncpy(corpus[corpus_entries].edge, enhanced_edge_info, sizeof(corpus[0].edge) - 1);
+        corpus[corpus_entries].edge[sizeof(corpus[0].edge) - 1] = '\0';
         corpus[corpus_entries].edge[sizeof(corpus[0].edge) - 1] = '\0';
     }
     
@@ -276,6 +280,7 @@ int pick_corpus_for_low_coverage(char* out, size_t out_len) {
     int index = rand() % corpus_entries;
     
     strncpy(out, corpus[index].json, out_len - 1);
+    out[out_len - 1] = '\0';  /* 确保字符串终止 */
     out[out_len - 1] = '\0';
     
     return 1;
@@ -292,6 +297,7 @@ int pick_corpus_by_target_state(const char* target_state, char* out, size_t out_
         if (strlen(corpus[i].target_state) > 0 && 
             strcmp(corpus[i].target_state, target_state) == 0) {
             strncpy(out, corpus[i].json, out_len - 1);
+            out[out_len - 1] = '\0';  /* 确保字符串终止 */
             out[out_len - 1] = '\0';
             return 1;
         }
@@ -500,6 +506,7 @@ int load_state_table_from_file(const char* filename) {
         if (sscanf(line, "%255[^,],%d", state, &count) == 2) {
             strncpy(state_table[state_count_entries].state, state, 
                     sizeof(state_table[0].state) - 1);
+            state_table[state_count_entries].state[sizeof(state_table[0].state) - 1] = '\0';
             state_table[state_count_entries].count = count;
             state_count_entries++;
         }
@@ -532,6 +539,7 @@ char* request_llm_for_state_sequence(const char* target_state,
     /* 调用LLM */
     char* llm_response = chat_with_llm(prompt, "gpt-3.5-turbo", 3, 0.7);
     
-    /* prompt由asprintf分配，不需要手动free */
+    /* 释放prompt内存，由asprintf分配 */
+    free(prompt);
     return llm_response;  // 调用者负责free
 }

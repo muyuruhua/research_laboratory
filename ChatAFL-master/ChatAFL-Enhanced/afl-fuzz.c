@@ -47,6 +47,7 @@
 #include "cegar.h"
 #include "state-scheduler.h"
 #include "state-graph.h"      /* GAP-4: 状态转移图 */
+#include "llm-cost-tracker.h" /* P1功能：成本追踪 */
 #include "protocol-spec.h"
 
 #include <stdio.h>
@@ -115,8 +116,8 @@ static CEGARCache g_cegar_cache;                            // CEGAR缓存（全
 static u64 g_state_updates = 0;                             // 状态计数更新次数
 static u32 g_cycles_without_new_state = 0;                  // Plateau检测计数器
 
-/* ChatAFL-Enhanced GAP-4: 全局状态转移图（STT） */
-static StateGraph g_state_graph;                            // 状态转移图
+/* P0-1修复: State Transition Graph全局实例（去掉static使其可被verifier_extended.c访问） */
+StateGraph g_state_graph;                                   // 全局状态转移图
 
 /* ChatAFL-Enhanced P0-2: 固定随机种子（可复现性） */
 static u64 g_random_seed = 0;                               // 全局随机种子（0=自动生成）
@@ -4936,6 +4937,37 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
     {
       if (crash_mode)
         total_crashes++;
+      
+      /* P0-Critical修复: 在save_if_interesting中强制触发CEGAR（拒绝响应时） */
+      if (!crash_mode && response_buf && response_buf_size > 0 && 
+          extract_response_codes != NULL) {
+        unsigned int state_count = 0;
+        unsigned int *state_sequence = (*extract_response_codes)(response_buf, 
+                                                                 response_buf_size, 
+                                                                 &state_count);
+        
+        if (state_sequence && state_count > 0) {
+          /* 检查是否为拒绝响应码 (4xx/5xx) */
+          for (unsigned int i = 0; i < state_count; i++) {
+            if (state_sequence[i] >= 400 && state_sequence[i] < 600) {
+              g_cegar_triggers++;
+              
+              /* P0-Critical修复: 降低CEGAR触发频率到100次 - 性能优化 */
+              if (g_cegar_triggers % 100 == 0) {
+                ACTF("[CEGAR-IMMEDIATE] Rejection #%llu detected (code: %u) in save_if_interesting", 
+                     g_cegar_triggers, state_sequence[i]);
+                
+                /* 简化处理：记录拒绝，后续由主循环处理 */
+                g_verifier_rejects++;
+              }
+              break; /* 只处理第一个拒绝响应 */
+            }
+          }
+        }
+        
+        if (state_sequence) ck_free(state_sequence);
+      }
+      
       /* P2增强: 即使没有新edge，如果发现新状态也保存 */
       if (state_aware_mode && response_buf && response_buf_size > 0) {
         unsigned int state_count = 0;
@@ -6664,12 +6696,8 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
             break; // 处理完毕
           }
           
-          /* ===== Phase 3: 每50次拒绝触发LLM修正 ===== */
-          if (g_cegar_triggers % 50 == 0 && out_buf && len > 10) {
-            
-            /* 3.1 Delta Debugging最小化（完整实现） */
-            
-            /* 构造测试上下文 */
+        /* ===== Phase 3: 每10次拒绝触发LLM修正（提高修正频率） ===== */
+        if (g_cegar_triggers % 100 == 0 && out_buf && len > 10) {
             DDTestContext dd_ctx;
             memset(&dd_ctx, 0, sizeof(DDTestContext));
             dd_ctx.argv = argv;
@@ -6739,8 +6767,8 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
                   /* Patch违反约束：拒绝 */
                   WARNF("[CEGAR-LLM] Rejected patch with %u fields (max 3 allowed)", 
                         field_count);
-                  ck_free(refined_json);
-                  ck_free(patch_prompt);
+                  free(refined_json);
+                  free(patch_prompt);
                   ck_free(minimized);
                   continue; /* 跳过这个非法patch */
                 }
@@ -6756,6 +6784,18 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
                 unsigned char *refined_input = ck_alloc(refined_len + 1);
                 memcpy(refined_input, refined_json, refined_len);
                 refined_input[refined_len] = '\0';
+                
+                /* P0-1修复: 使用完整的4层验证（集成SUT测试+覆盖增益） */
+                if (!verify_refined_input_with_sut(refined_json, NULL, NULL, argv, virgin_bits)) {
+                  WARNF("[CEGAR-VERIFY] Rejected invalid LLM refinement (Layer 1-4 failed)");
+                  ck_free(refined_input);
+                  free(refined_json);
+                  free(patch_prompt);
+                  ck_free(minimized);
+                  continue; /* 跳过非法refinement */
+                }
+                
+                ACTF("[CEGAR-VERIFY] Validated LLM refinement (Layer 1-4 passed)");
                 
                 /* 3.5 测试修正版本 */
                 write_to_testcase(refined_input, refined_len);
@@ -6808,14 +6848,14 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
                 }
                 
                 ck_free(refined_input);
-                ck_free(refined_json);
+                free(refined_json);
               }
               
-              ck_free(patch_prompt);
+              free(patch_prompt);
             }
             
             ck_free(minimized);
-          } else if (g_cegar_triggers % 500 == 0) {
+          } else if (g_cegar_triggers % 200 == 0) {
             ACTF("[CEGAR] Rejection detected #%llu (code: %u)", 
                  g_cegar_triggers, state_sequence[i]);
           }
@@ -9319,7 +9359,7 @@ havoc_stage:
       }
     }
 
-    /* ChatAFL-Enhanced v1.2→v2.0: 增强验证器（PCRE2正则+结构检查） */
+    /* ChatAFL-Enhanced v1.2→v2.0: 增强验证器（PCRE2正则+结构检查） - 优化触发频率 */
     if (stage_cur % 100 == 0 && temp_len > 0 && temp_len < MAX_FILE) {
       g_verifier_checks++;
       
@@ -11405,6 +11445,18 @@ int main(int argc, char **argv)
   else
     use_argv = argv + optind;
 
+  /* P0-1修复: 初始化verifier_extended模块（使其能访问afl-fuzz的static函数） */
+  verifier_extended_init(
+    write_to_testcase,  /* 函数指针 */
+    run_target,         /* 函数指针 */
+    &exec_tmout,        /* 超时配置 */
+    &response_buf,      /* 响应缓冲区（char*） */
+    &response_buf_size, /* 响应大小 */
+    &trace_bits,        /* 跟踪bitmap */
+    virgin_bits         /* 覆盖bitmap数组首地址 */
+  );
+  ACTF("[P0-1-FIX] verifier_extended module initialized with SUT testing capabilities");
+
   perform_dry_run(use_argv);
 
   cull_queue();
@@ -11413,6 +11465,10 @@ int main(int argc, char **argv)
 
   /* Initialize state transition graph for tracking state relationships */
   state_graph_init(&g_state_graph);
+
+  /* P1功能: 初始化LLM成本追踪（gpt-3.5-turbo: $0.002/1K tokens） */
+  llm_cost_init(0.002f);
+  ACTF("[P1] LLM cost tracking initialized (rate: $0.002/1K tokens)");
 
   seek_to = find_start_position();
 
@@ -11554,39 +11610,175 @@ int main(int argc, char **argv)
         u32 prev_state_count = state_ids_count;
         if (prev_state_count == state_ids_count) {
           g_cycles_without_new_state++;
-          if (g_cycles_without_new_state >= 5 && g_cycles_without_new_state % 5 == 0) {
+          if (g_cycles_without_new_state >= 50 && g_cycles_without_new_state % 100 == 0) {  /* 大幅提高阈值 */
             WARNF("[PLATEAU] %u cycles without new states (total: %u states)", 
                   g_cycles_without_new_state, state_ids_count);
             
-            /* P2功能: 自动触发LLM生成新探索序列 */
-            if (g_cycles_without_new_state >= 10 && protocol_name) {
-              ACTF("[LLM-TRIGGER] Plateau detected, requesting new test sequences...");
+            /* P1-2修复: 智能选择突破目标状态 */
+            uint32_t target_state = state_graph_select_valuable_target(&g_state_graph, true);
+            if (target_state > 0) {
+              ACTF("[PLATEAU] Selected valuable target state: %u (multi-factor scoring)", 
+                   target_state);
+            }
+            
+            /* P0-1修复: 完整实现Plateau→LLM→Queue注入闭环 - 优化触发频率 */
+            if (g_cycles_without_new_state >= 200 && g_cycles_without_new_state % 500 == 0 && protocol_name && target_state > 0) {
+              ACTF("[LLM-TRIGGER] Plateau detected (%u cycles), invoking LLM for breakthrough...", 
+                   g_cycles_without_new_state);
               
-              /* 构造当前状态上下文 */
-              char state_summary[512];
-              snprintf(state_summary, sizeof(state_summary),
-                      "Current coverage: %u states, %llu execs, %llu crashes. "
-                      "Stalled for %u cycles.",
-                      state_ids_count, total_execs, unique_crashes, 
-                      g_cycles_without_new_state);
+              /* Step 1: 生成已发现状态摘要 - 限制长度 */
+              char discovered_states[1024] = {0};  /* 减小缓冲区 */
+              int offset = 0;
+              u32 max_states = (state_ids_count > 50) ? 50 : state_ids_count;  /* 限制状态数量 */
+              for (u32 i = 0; i < max_states && offset < 950; i++) {
+                offset += snprintf(discovered_states + offset, 1024 - offset, 
+                                   "%u%s", state_ids[i], (i < max_states - 1) ? "," : "");
+              }
               
-              /* 调用LLM生成新序列（异步或限速） */
-              char *new_seq_prompt = construct_prompt_stall(
-                protocol_name, state_summary, "");
+              /* Step 2: 生成STT摘要（前5条转移） - 优化内存使用 */
+              char stt_summary[512] = {0};  /* 减小缓冲区 */
+              int stt_offset = 0;
+              int transition_count = 0;
               
-              if (new_seq_prompt) {
-                /* 记录触发事件 */
-                u8 *llm_log = alloc_printf("%s/llm-triggers.txt", out_dir);
-                FILE *log_f = fopen(llm_log, "a");
-                if (log_f) {
-                  fprintf(log_f, "[%llu] Cycle %llu: Plateau trigger\n", 
-                         get_cur_time(), queue_cycle);
-                  fclose(log_f);
+              for (u32 n = 0; n < g_state_graph.node_count && transition_count < 5; n++) {
+                StateNode *node = &g_state_graph.nodes[n];
+                for (u32 e = 0; e < node->out_degree && transition_count < 10 && stt_offset < 1000; e++) {
+                  StateEdge *edge = &node->edges[e];
+                  stt_offset += snprintf(stt_summary + stt_offset, 1024 - stt_offset,
+                                         "%u->%u(%u) ", 
+                                         node->state_id,
+                                         edge->to_state,
+                                         edge->transition_count);
+                  transition_count++;
                 }
-                ck_free(llm_log);
-                ck_free(new_seq_prompt);
+              }
+              
+              if (g_state_graph.total_transitions == 0) {
+                snprintf(stt_summary, sizeof(stt_summary), "no transitions yet");
+              } else if (stt_offset == 0) {
+                snprintf(stt_summary, sizeof(stt_summary), "limited transitions");
+              }
+              
+              /* Step 3: 构造高质量prompt */
+              char *plateau_prompt = construct_prompt_for_plateau_breakthrough(
+                protocol_name, target_state, discovered_states, stt_summary);
+              
+              if (plateau_prompt && strlen(plateau_prompt) > 50 && strlen(plateau_prompt) < 32768) {  /* 添加长度检查 */
+                /* Step 4: 调用LLM */
+                char *llm_response = chat_with_llm(plateau_prompt, NULL, 1, 0.7);
                 
-                /* 重置计数，避免频繁触发 */
+                /* P1功能: 记录成本 */
+                if (llm_response) {
+                  uint32_t prompt_tokens = (uint32_t)(strlen(plateau_prompt) / 4);
+                  uint32_t response_tokens = (uint32_t)(strlen(llm_response) / 4);
+                  llm_cost_record("plateau", prompt_tokens, response_tokens, false);
+                }
+                
+                if (llm_response && strlen(llm_response) > 10 && strlen(llm_response) < 65536) {
+                  /* Step 5: 解析JSON array响应 - 添加长度检查 */
+                  ACTF("[LLM] Received sequence suggestion (%zu bytes), parsing JSON array...", strlen(llm_response));
+                  
+                  /* 安全的JSON array解析（查找[{...},{...}]结构） */
+                  char *array_start = strchr(llm_response, '[');
+                  char *array_end = strrchr(llm_response, ']');
+                  
+                  if (array_start && array_end && array_end > array_start) {
+                    /* Step 6: 逐个提取消息并注入queue */
+                    int injected_count = 0;
+                    char *msg_start = array_start + 1;
+                    
+                    while (msg_start < array_end && injected_count < 5) {
+                      /* 查找 {...} */
+                      char *obj_start = strchr(msg_start, '{');
+                      if (!obj_start || obj_start >= array_end) break;
+                      
+                      int brace_count = 0;
+                      char *obj_end = obj_start;
+                      while (obj_end < array_end) {
+                        if (*obj_end == '{') brace_count++;
+                        if (*obj_end == '}') {
+                          brace_count--;
+                          if (brace_count == 0) break;
+                        }
+                        obj_end++;
+                      }
+                      
+                      if (brace_count == 0 && obj_end < array_end) {
+                        size_t obj_len = obj_end - obj_start + 1;
+                        /* 边界检查：避免过大的JSON消息 */
+                        if (obj_len < 10 || obj_len > 65536) {
+                          msg_start = obj_end + 1;
+                          continue;
+                        }
+                        char *json_msg = ck_alloc(obj_len + 1);
+                        memcpy(json_msg, obj_start, obj_len);
+                        json_msg[obj_len] = '\0';
+                        
+                        /* Step 7: 将JSON消息注入queue */
+                        u8 *fname = alloc_printf("%s/queue/llm-plateau-%llu-%03d", 
+                                                 out_dir, queue_cycle, injected_count);
+                        int fd = open(fname, O_WRONLY | O_CREAT | O_EXCL, 0600);
+                        if (fd >= 0) {
+                          ck_write(fd, json_msg, obj_len, fname);
+                          close(fd);
+                          
+                          /* 添加到队列 */
+                          struct queue_entry *q = ck_alloc(sizeof(struct queue_entry));
+                          memset(q, 0, sizeof(struct queue_entry));  /* 清零避免未定义字段 */
+                          q->fname = fname;
+                          q->len = obj_len;
+                          q->depth = cur_depth + 1;
+                          q->is_initial_seed = 0;  /* LLM生成的测试用例 */
+                          q->exec_cksum = 0;
+                          q->bitmap_size = 0;
+                          
+                          if (queue_top) {
+                            queue_top->next = q;
+                            queue_top = q;
+                          } else {
+                            queue = queue_top = q;
+                          }
+                          queued_paths++;
+                          pending_not_fuzzed++;
+                          
+                          injected_count++;
+                          SAYF("[INJECT] Queue +1: %s (%lu bytes)\n", fname, (unsigned long)obj_len);
+                        } else {
+                          ck_free(fname);
+                        }
+                        
+                        ck_free(json_msg);
+                        msg_start = obj_end + 1;
+                      } else {
+                        break;
+                      }
+                    }
+                    
+                    if (injected_count > 0) {
+                      ACTF("[PLATEAU-SUCCESS] Injected %d LLM-generated sequences into queue", 
+                           injected_count);
+                      /* 记录成功事件 */
+                      u8 *llm_log = alloc_printf("%s/llm-plateau-breakthroughs.txt", out_dir);
+                      FILE *log_f = fopen(llm_log, "a");
+                      if (log_f) {
+                        fprintf(log_f, "[%llu] Cycle %llu: Target %u, Injected %d sequences\n", 
+                               get_cur_time(), queue_cycle, target_state, injected_count);
+                        fclose(log_f);
+                      }
+                      ck_free(llm_log);
+                    } else {
+                      WARNF("[PLATEAU] Failed to parse LLM response, no sequences injected");
+                    }
+                  } else {
+                    WARNF("[PLATEAU] LLM response not in expected JSON array format");
+                  }
+                  
+                  free(llm_response);
+                }
+                
+                free(plateau_prompt);
+                
+                /* 重置计数，避免频繁触发（每10 cycles触发一次） */
                 g_cycles_without_new_state = 0;
               }
             }
@@ -11706,6 +11898,12 @@ stop_fuzzing:
   ck_free(sync_id);
 
   destroy_ipsm();
+
+  /* P1功能: 导出LLM成本报告 */
+  llm_cost_export(out_dir);
+  const LLMCostReport *report = llm_cost_get_report();
+  ACTF("[P1] LLM Cost Summary: %llu calls, $%.4f USD", 
+       (unsigned long long)report->total_calls, report->estimated_cost_usd);
 
   alloc_report();
 

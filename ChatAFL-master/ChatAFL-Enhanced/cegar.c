@@ -587,21 +587,21 @@ char* refine_hypothesis_with_cegar(const char* failed_json,
     }
     
     /* 4. 应用patch */
-    char* refined = (char*)malloc(4096);
+    char* refined = (char*)ck_alloc(4096);
     if (!refined) {
         fprintf(stderr, "[CEGAR] Failed to allocate memory for refined input\n");
-        free(llm_response);
+      free(llm_response);
         return NULL;
     }
     
     if (!apply_json_patch(minimized, llm_response, refined, 4096)) {
-        free(refined);
-        free(llm_response);
+        ck_free(refined);
+      free(llm_response);
         return NULL;
     }
     
     free(llm_response);
-    return refined;  // 调用者负责free
+    return refined;  // 调用者负责ck_free
 }
 
 /* ============================================

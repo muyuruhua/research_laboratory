@@ -8,6 +8,66 @@
 #include <stdlib.h>
 #include <limits.h>
 #include "chat-llm.h"
+#include <time.h>
+#include <json-c/json.h>
+#include <pcre2.h>
+#include "types.h"      /* 添加types.h以获得u32, u64等类型定义 */
+#include "alloc-inl.h"  /* 添加alloc-inl.h以获得ck_alloc, ck_free等函数 */
+
+/* ChatAFL-Enhanced: LLM Response Cache */
+typedef struct {
+    char prompt_hash[64];
+    char *response;
+    time_t timestamp;
+} llm_cache_entry_t;
+
+#define LLM_CACHE_SIZE 32
+static llm_cache_entry_t g_llm_cache[LLM_CACHE_SIZE];
+static int g_cache_count = 0;
+static u64 g_cache_hits = 0;
+static u64 g_cache_misses = 0;
+
+/* 简单的哈希函数 */
+static void compute_prompt_hash(const char *prompt, char *hash_out) {
+    u32 hash = 5381;
+    for (const char *p = prompt; *p; p++) {
+        hash = ((hash << 5) + hash) + *p;
+    }
+    snprintf(hash_out, 64, "%08x", hash);
+}
+
+/* 查找缓存 */
+static char* lookup_llm_cache(const char *prompt) {
+    char prompt_hash[64];
+    compute_prompt_hash(prompt, prompt_hash);
+    
+    time_t now = time(NULL);
+    for (int i = 0; i < g_cache_count; i++) {
+        if (strcmp(g_llm_cache[i].prompt_hash, prompt_hash) == 0 &&
+            (now - g_llm_cache[i].timestamp) < 300) { /* 5分钟有效期 */
+            g_cache_hits++;
+            return g_llm_cache[i].response;
+        }
+    }
+    g_cache_misses++;
+    return NULL;
+}
+
+/* 添加到缓存 */
+static void add_to_llm_cache(const char *prompt, const char *response) {
+    if (g_cache_count >= LLM_CACHE_SIZE) {
+        /* 简单LRU：删除最旧的 */
+        ck_free(g_llm_cache[0].response);
+        memmove(&g_llm_cache[0], &g_llm_cache[1], 
+               (LLM_CACHE_SIZE - 1) * sizeof(llm_cache_entry_t));
+        g_cache_count--;
+    }
+    
+    compute_prompt_hash(prompt, g_llm_cache[g_cache_count].prompt_hash);
+    g_llm_cache[g_cache_count].response = ck_strdup((u8*)response);
+    g_llm_cache[g_cache_count].timestamp = time(NULL);
+    g_cache_count++;
+}
 #include "alloc-inl.h"
 #include "hash.h"
 #include "types.h"
@@ -204,6 +264,12 @@ char* chat_with_llm(char* prompt, char* model, int tries, float temperature) {
 
 char *chat_with_llm1(char *prompt, char *model, int tries, float temperature)
 {
+    /* ChatAFL-Enhanced: 首先检查缓存 */
+    char *cached_response = lookup_llm_cache(prompt);
+    if (cached_response) {
+        return ck_strdup(cached_response);  /* 返回缓存的副本 */
+    }
+    
     CURL *curl;
     CURLcode res = CURLE_OK;
     char *answer = NULL;
@@ -304,6 +370,12 @@ char *chat_with_llm1(char *prompt, char *model, int tries, float temperature)
     }
 
     curl_global_cleanup();
+    
+    /* ChatAFL-Enhanced: 将成功的响应添加到缓存 */
+    if (answer) {
+        add_to_llm_cache(prompt, answer);
+    }
+    
     return answer;
 }
 
@@ -384,6 +456,7 @@ char *construct_prompt_for_remaining_templates(char *protocol_name, char *first_
 
 char *extract_stalled_message(char *message, size_t message_len)
 {
+    if (!message || message_len == 0) return NULL;  /* 添加NULL检查 */
 
     int errornumber;
     size_t erroroffset;
@@ -395,7 +468,9 @@ char *extract_stalled_message(char *message, size_t message_len)
     if (rc >= 0)
     {
         size_t *ovector = pcre2_get_ovector_pointer(match_data);
-        res = strdup(message + ovector[1]);
+        size_t len = strlen(message + ovector[1]);
+        res = ck_alloc(len + 1);
+        strcpy(res, message + ovector[1]);
     }
 
     pcre2_match_data_free(match_data);
@@ -406,6 +481,7 @@ char *extract_stalled_message(char *message, size_t message_len)
 
 char *format_request_message(char *message)
 {
+    if (!message) return NULL;  /* 添加NULL检查 */
 
     int message_len = strlen(message);
     int max_len = message_len;
@@ -1410,8 +1486,8 @@ char *construct_prompt_for_patch(const char* minimized_json,
 }
 
 /**
- * @brief 构造状态探索的prompt（Plateau突破）
- * @param target_state 目标状态哈希（如"S_230_authenticated"）
+ * @brief P0-1修复: 构造状态探索prompt（增强版，支持Plateau突破）
+ * @param target_state 目标状态
  * @param current_state 当前状态
  * @param schema JSON Schema约束
  * @return 动态分配的prompt字符串
@@ -1436,6 +1512,42 @@ char *construct_prompt_for_state_exploration(const char* target_state,
         current_state ? current_state : "unknown",
         target_state ? target_state : "unknown",
         schema ? schema : "{}"
+    );
+    
+    return prompt;
+}
+
+/**
+ * @brief P0-1修复: 构造Plateau突破prompt（高级版）
+ * @param protocol_name 协议名称（FTP/SMTP/HTTP等）
+ * @param target_state_id 目标状态码
+ * @param discovered_states 已发现状态摘要
+ * @param stt_summary State Transition Tree的摘要
+ * @return 动态分配的prompt字符串
+ */
+char *construct_prompt_for_plateau_breakthrough(const char* protocol_name,
+                                                unsigned int target_state_id,
+                                                const char* discovered_states,
+                                                const char* stt_summary) {
+    char *prompt = NULL;
+    
+    asprintf(&prompt,
+        "You are a %s protocol expert. The fuzzer has STALLED (plateau detected).\n\n"
+        "Discovered states: %s\n"
+        "State transitions (STT): %s\n\n"
+        "Target: Generate 2-5 messages to reach state %u (underexplored).\n\n"
+        "Output JSON array: [{\"cmd\":\"COMMAND\",\"args\":\"...\"}, ...]\n"
+        "Rules:\n"
+        "1. Valid %s commands only\n"
+        "2. Consider: auth sequences, edge cases, error triggers\n"
+        "3. If target is 4xx/5xx, try malformed inputs\n"
+        "4. 2-5 messages in sequence\n\n"
+        "JSON array only:",
+        protocol_name ? protocol_name : "unknown",
+        discovered_states ? discovered_states : "unknown",
+        stt_summary ? stt_summary : "no transitions",
+        target_state_id,
+        protocol_name ? protocol_name : "unknown"
     );
     
     return prompt;

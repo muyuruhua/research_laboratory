@@ -69,8 +69,8 @@ afl-as: afl-as.c afl-as.h $(COMM_HDR) | test_x86
 	$(CC) $(CFLAGS) $@.c -o $@ $(LDFLAGS)
 	ln -sf afl-as as
 
-afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet.o aflnet.h chat-llm.o chat-llm.h verifier.o verifier.h cegar.o cegar.h state-scheduler.o state-scheduler.h state-graph.o state-graph.h protocol-spec.h | test_x86
-	$(CC) $(CFLAGS) $@.c aflnet.o chat-llm.o verifier.o cegar.o state-scheduler.o state-graph.o -o $@ $(LDFLAGS) -lcurl -ljson-c -lpcre2-8
+afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet.o aflnet.h chat-llm.o chat-llm.h verifier.o verifier.h verifier_extended.o cegar.o cegar.h state-scheduler.o state-scheduler.h state-graph.o state-graph.h llm-cost-tracker.o llm-cost-tracker.h protocol-spec.h | test_x86
+	$(CC) $(CFLAGS) $@.c aflnet.o chat-llm.o verifier.o verifier_extended.o cegar.o state-scheduler.o state-graph.o llm-cost-tracker.o -o $@ $(LDFLAGS) -lpthread -lcurl -ljson-c -lpcre2-8
 
 afl-replay: afl-replay.c $(COMM_HDR) aflnet.o aflnet.h | test_x86
 	$(CC) $(CFLAGS) $@.c aflnet.o -o $@ $(LDFLAGS)
@@ -94,11 +94,20 @@ afl-gotcpu: afl-gotcpu.c $(COMM_HDR) | test_x86
 	$(CC) $(CFLAGS) $@.c -o $@ $(LDFLAGS)
 
 # ChatAFL-Enhanced新增模块
+aflnet.o: aflnet.c aflnet.h
+	$(CC) $(CFLAGS) -c aflnet.c -o aflnet.o
+
+chat-llm.o: chat-llm.c chat-llm.h
+	$(CC) $(CFLAGS) -c chat-llm.c -o chat-llm.o -lcurl -ljson-c -lpcre2-8
+
 verifier.o: verifier.c verifier.h protocol-spec.h
 	$(CC) $(CFLAGS) -c verifier.c -o verifier.o
 
+verifier_extended.o: verifier_extended.c verifier.h state-graph.h
+	$(CC) $(CFLAGS) -c verifier_extended.c -o $@
+
 cegar.o: cegar.c cegar.h verifier.h protocol-spec.h chat-llm.h
-	$(CC) $(CFLAGS) -c cegar.c -o cegar.o
+	$(CC) $(CFLAGS) -c cegar.c -o cegar.o -ljson-c
 
 state-scheduler.o: state-scheduler.c state-scheduler.h protocol-spec.h
 	$(CC) $(CFLAGS) -c state-scheduler.c -o state-scheduler.o

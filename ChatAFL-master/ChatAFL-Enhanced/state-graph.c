@@ -181,11 +181,15 @@ uint32_t state_graph_find_least_visited(const StateGraph *graph,
 
 /**
  * @brief 查找稀有转移边
+ * P1-1修复: 使用自适应阈值，只返回transition_count低于阈值的边
  */
 int state_graph_find_rare_transition(const StateGraph *graph,
                                      uint32_t *out_from,
                                      uint32_t *out_to) {
   if (!graph || !out_from || !out_to) return 0;
+  
+  /* P1-1: 计算自适应阈值（基于全局平均+plateau调整） */
+  uint32_t rare_threshold = state_graph_adaptive_rare_threshold(graph, 0);
   
   uint32_t min_count = UINT32_MAX;
   int found = 0;
@@ -196,7 +200,8 @@ int state_graph_find_rare_transition(const StateGraph *graph,
     for (uint32_t j = 0; j < node->out_degree; j++) {
       const StateEdge *edge = &node->edges[j];
       
-      if (edge->transition_count < min_count) {
+      /* 只考虑低于阈值的边（真正的稀有转移） */
+      if (edge->transition_count <= rare_threshold && edge->transition_count < min_count) {
         min_count = edge->transition_count;
         *out_from = node->state_id;
         *out_to = edge->to_state;
@@ -385,4 +390,141 @@ int state_graph_find_path(const StateGraph *graph,
   
   *out_path_len = path_len;
   return 1;
+}
+
+/* ============================================
+ * P1修复：自适应稀有转移阈值 + 状态价值估计
+ * ============================================ */
+
+/**
+ * @brief 计算自适应稀有转移阈值
+ * @param graph 图结构指针
+ * @param plateau_cycles 当前plateau持续的cycles数
+ * @return 自适应阈值（转移次数低于此值视为稀有）
+ * 
+ * 策略：
+ * - 正常探索期：阈值=平均转移次数的50%
+ * - Plateau期：阈值随plateau_cycles线性提升（提高探索激进度）
+ */
+uint32_t state_graph_adaptive_rare_threshold(const StateGraph *graph,
+                                            uint32_t plateau_cycles) {
+    if (!graph || graph->node_count == 0) {
+        return 5;  // 默认阈值
+    }
+    
+    /* 计算所有转移的平均次数 */
+    uint64_t total_transitions = 0;
+    uint32_t edge_count = 0;
+    
+    for (uint32_t i = 0; i < graph->node_count; i++) {
+        const StateNode *node = &graph->nodes[i];
+        for (uint32_t j = 0; j < node->out_degree; j++) {
+            total_transitions += node->edges[j].transition_count;
+            edge_count++;
+        }
+    }
+    
+    if (edge_count == 0) {
+        return 5;
+    }
+    
+    uint32_t avg_transitions = (uint32_t)(total_transitions / edge_count);
+    
+    /* 基础阈值：平均值的50% */
+    uint32_t base_threshold = (avg_transitions / 2);
+    if (base_threshold < 3) base_threshold = 3;
+    
+    /* Plateau调整：每50 cycles提升10% */
+    if (plateau_cycles > 50) {
+        uint32_t boost = (plateau_cycles / 50) * (base_threshold / 10);
+        base_threshold += boost;
+    }
+    
+    /* 上限：平均值的150%（避免过度激进） */
+    uint32_t max_threshold = (avg_transitions * 3) / 2;
+    if (base_threshold > max_threshold) {
+        base_threshold = max_threshold;
+    }
+    
+    return base_threshold;
+}
+
+/**
+ * @brief 计算状态的探索价值（用于Plateau时智能选择target_state）
+ * @param graph 图结构指针
+ * @param state_id 状态ID
+ * @return 价值分数（越高越有探索价值）
+ * 
+ * 价值计算因子：
+ * 1. 低访问次数（未充分探索）
+ * 2. 高出度（潜在有更多后继状态）
+ * 3. 新近发现（时间衰减）
+ * 4. 非错误状态（错误状态价值降低）
+ */
+double state_graph_compute_state_value(const StateGraph *graph,
+                                      uint32_t state_id) {
+    if (!graph) return 0.0;
+    
+    int node_idx = find_node_index(graph, state_id);
+    if (node_idx == -1) return 0.0;
+    
+    const StateNode *node = &graph->nodes[node_idx];
+    
+    /* 因子1：访问稀缺性（越少越好） */
+    double visit_factor = 1.0;
+    if (node->visit_count > 0) {
+        visit_factor = 100.0 / (double)(node->visit_count + 1);
+    }
+    
+    /* 因子2：潜在扩展性（出度越高越好） */
+    double expansion_factor = 1.0 + (double)node->out_degree * 0.5;
+    
+    /* 因子3：新鲜度（最近发现的状态更有价值） */
+    double freshness_factor = 1.0;
+    if (node->first_discovered > 0) {
+        time_t current_time = time(NULL);
+        time_t age = current_time - (time_t)(node->first_discovered / 1000);  // 转换为秒
+        if (age < 300) {  // 5分钟内发现的状态
+            freshness_factor = 2.0;
+        } else if (age < 1800) {  // 30分钟内
+            freshness_factor = 1.5;
+        }
+    }
+    
+    /* 因子4：状态类型（错误状态价值折半） */
+    double type_factor = node->is_error_state ? 0.5 : 1.0;
+    
+    /* 综合价值 */
+    double value = visit_factor * expansion_factor * freshness_factor * type_factor;
+    
+    return value;
+}
+
+/**
+ * @brief 选择最有价值的target_state（用于Plateau时LLM指导）
+ * @param graph 图结构指针
+ * @param exclude_initial 是否排除初始状态
+ * @return 最有价值的状态ID，0=图为空
+ */
+uint32_t state_graph_select_valuable_target(const StateGraph *graph,
+                                           bool exclude_initial) {
+    if (!graph || graph->node_count == 0) return 0;
+    
+    double max_value = 0.0;
+    uint32_t best_state = 0;
+    
+    for (uint32_t i = 0; i < graph->node_count; i++) {
+        const StateNode *node = &graph->nodes[i];
+        
+        /* 跳过初始状态 */
+        if (exclude_initial && node->is_initial_state) continue;
+        
+        double value = state_graph_compute_state_value(graph, node->state_id);
+        if (value > max_value) {
+            max_value = value;
+            best_state = node->state_id;
+        }
+    }
+    
+    return best_state;
 }

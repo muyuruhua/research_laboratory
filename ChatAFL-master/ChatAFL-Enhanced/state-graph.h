@@ -118,6 +118,41 @@ int state_graph_find_rare_transition(const StateGraph *graph,
                                      uint32_t *out_from,
                                      uint32_t *out_to);
 
+/* ============================================
+ * P1修复：自适应阈值 + 状态价值估计 API
+ * ============================================ */
+
+/**
+ * @brief 计算自适应稀有转移阈值
+ * @param graph 图结构指针
+ * @param plateau_cycles 当前plateau持续的cycles数
+ * @return 自适应阈值
+ * 
+ * 策略：正常期=平均转移数50%，Plateau期线性提升
+ */
+uint32_t state_graph_adaptive_rare_threshold(const StateGraph *graph,
+                                            uint32_t plateau_cycles);
+
+/**
+ * @brief 计算状态的探索价值分数
+ * @param graph 图结构指针
+ * @param state_id 状态ID
+ * @return 价值分数（综合访问稀缺性+扩展性+新鲜度+类型）
+ */
+double state_graph_compute_state_value(const StateGraph *graph,
+                                      uint32_t state_id);
+
+/**
+ * @brief 选择最有价值的target_state（Plateau时智能选择）
+ * @param graph 图结构指针
+ * @param exclude_initial 是否排除初始状态
+ * @return 最有价值的状态ID
+ * 
+ * 替代原有的state_graph_find_least_visited，使用多因子价值估计
+ */
+uint32_t state_graph_select_valuable_target(const StateGraph *graph,
+                                           bool exclude_initial);
+
 /**
  * @brief 检查状态转移是否存在
  * 

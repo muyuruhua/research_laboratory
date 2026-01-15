@@ -97,6 +97,11 @@ char *construct_prompt_for_patch(const char* minimized_json,
 char *construct_prompt_for_state_exploration(const char* target_state,
                                              const char* current_state,
                                              const char* schema);
+/* P0-1修复: Plateau突破新增函数 */
+char *construct_prompt_for_plateau_breakthrough(const char* protocol_name,
+                                                unsigned int target_state_id,
+                                                const char* discovered_states,
+                                                const char* stt_summary);
 
 void extract_message_grammars(char *answers, klist_t(gram) * grammar_set);
 char *extract_message_pattern(const char *header_str,

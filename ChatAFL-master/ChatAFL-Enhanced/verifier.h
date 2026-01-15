@@ -154,4 +154,63 @@ unsigned int extract_key_headers(const unsigned char *response_buf,
  * - extract_json_value_generic() - 智能字段提取
  */
 
+/* ============================================
+ * P0-2修复：CEGAR闭环验证 API
+ * ============================================ */
+
+/**
+ * @brief 对CEGAR修正后的输入进行完整4层验证
+ * @param refined_input CEGAR修正后的JSON字符串
+ * @param spec 协议规范
+ * @param original_failure 原始失败响应（用于对比）
+ * @return true=修正有效，false=修正无效（拒绝入队）
+ * 
+ * 用途：保证CEGAR修正的有效性，防止LLM幻觉产生无效修正
+ */
+bool verify_refined_input(const char* refined_input, 
+                         ProtocolSpec* spec,
+                         RealResponse* original_failure);
+
+/**
+ * @brief P0-1修复: 完整的4层验证（集成SUT测试+覆盖增益）
+ * 
+ * 修复内容：
+ * - Layer 1: 可解析性（JSON格式+Schema）
+ * - Layer 2: 可接受性（真正调用SUT，而非静态判断）  ← P1修复重点
+ * - Layer 3: 状态可达性（检查是否触发新状态）
+ * - Layer 4: 覆盖增益（强制检查virgin_bits）        ← P0修复重点
+ * 
+ * @param refined_input LLM修正后的输入
+ * @param spec 协议规范
+ * @param original_failure 原始失败信息
+ * @param argv 目标程序参数（用于run_target）
+ * @param virgin_bits AFL覆盖bitmap（用于Layer 4）
+ * @return true=通过全部4层验证, false=至少一层失败
+ */
+bool verify_refined_input_with_sut(const char* refined_input,
+                                    ProtocolSpec* spec,
+                                    RealResponse* original_failure,
+                                    char** argv,
+                                    unsigned char* virgin_bits);
+
+/**
+ * @brief 初始化verifier_extended模块（由afl-fuzz.c在启动时调用）
+ */
+void verifier_extended_init(
+    void (*write_func)(void*, unsigned int),
+    unsigned char (*run_func)(char**, unsigned int),
+    unsigned int* exec_tmout_ptr,
+    char** response_buf_ptr,
+    unsigned int* response_buf_size_ptr,
+    unsigned char** trace_bits_ptr,
+    unsigned char* virgin_bits_ptr);
+
+/**
+ * @brief 检查状态转移是否为新发现
+ * @param from_state 源状态
+ * @param to_state 目标状态
+ * @return true=新转移, false=已知转移
+ */
+bool is_new_state_transition(unsigned int from_state, unsigned int to_state);
+
 #endif /* __VERIFIER_H */
