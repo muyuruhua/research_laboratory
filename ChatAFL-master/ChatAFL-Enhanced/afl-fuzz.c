@@ -1317,6 +1317,9 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
           if (q && q->len > 0) {
             state_graph_add_transition(&g_state_graph, prevStateID, curStateID,
                                        NULL, q->len);
+            
+            /* P1-Critical: 记录seed触发了curStateID状态 */
+            state_graph_register_seed_for_state(&g_state_graph, curStateID, current_entry);
           }
           
           /* ChatAFL-Enhanced GAP-3 (P0-1修复): 保存触发新状态转移的测试用例到corpus
@@ -5378,14 +5381,35 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
   if (g_cegar_triggers > 0) {
     fprintf(f, "cegar_success_rate: %.2f%%\n", 100.0 * g_cegar_success / g_cegar_triggers);
     fprintf(f, "cegar_cache_hit_rate: %.2f%%\n", 100.0 * g_cegar_cache_hits / g_cegar_triggers);
+    /* P1-Critical: 添加CEGAR失败次数统计 */
+    u64 cegar_failures = g_cegar_triggers - g_cegar_success;
+    fprintf(f, "cegar_failures    : %llu\n", cegar_failures);
+    fprintf(f, "cegar_failure_rate: %.2f%%\n", 100.0 * cegar_failures / g_cegar_triggers);
   } else {
     fprintf(f, "cegar_success_rate: 0.00%%\n");
+    fprintf(f, "cegar_failures    : 0\n");
+    fprintf(f, "cegar_failure_rate: 0.00%%\n");
   }
   
   /* ChatAFL-Enhanced: 添加状态调度统计 */
   fprintf(f, "state_updates     : %llu\n", g_state_updates);
   fprintf(f, "unique_states     : %u\n", state_ids_count);
   fprintf(f, "cycles_wo_state   : %u\n", g_cycles_without_new_state);
+  
+  /* P0-Blocker: 计算并输出状态覆盖率 */
+  if (protocol_name && state_ids_count > 0) {
+    double coverage = 0.0;
+    const char *missing_states[32];
+    int result = compute_state_coverage(protocol_name, state_ids, state_ids_count, 
+                                       &coverage, missing_states, 32);
+    if (result == 0) {
+      fprintf(f, "state_coverage_pct: %.2f%%\n", coverage * 100.0);
+    } else {
+      fprintf(f, "state_coverage_pct: Error\n");
+    }
+  } else {
+    fprintf(f, "state_coverage_pct: N/A (no protocol)\n");
+  }
   
   /* ignore errors */
 
@@ -6550,6 +6574,16 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
 
   write_to_testcase(out_buf, len);
 
+  /* P0-ChatAFL-Enhanced: RFC Grammar验证（JSON/HTTP协议符合性检查）*/
+  if (out_buf && len > 0) {
+    /* 验证输入是否符合协议语法规范 */
+    ProtocolSpec spec;
+    if (!verify_json_grammar((const char*)out_buf, &spec)) {
+      /* 如果语法验证失败，跳过此testcase */
+      return 1;
+    }
+  }
+
   /* AFLNet update kl_messages linked list */
 
   // parse the out_buf into messages
@@ -6696,8 +6730,8 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
             break; // 处理完毕
           }
           
-        /* ===== Phase 3: 每10次拒绝触发LLM修正（提高修正频率） ===== */
-        if (g_cegar_triggers % 100 == 0 && out_buf && len > 10) {
+        /* ===== Phase 3: 每10次拒绝触发LLM修正（P1修复：从100改为10） ===== */
+        if (g_cegar_triggers % 10 == 0 && out_buf && len > 10) {
             DDTestContext dd_ctx;
             memset(&dd_ctx, 0, sizeof(DDTestContext));
             dd_ctx.argv = argv;
@@ -6758,7 +6792,21 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
                                                            error_msg);
             
             if (patch_prompt) {
-              char *refined_json = chat_with_llm(patch_prompt, "gpt-3.5-turbo", 2, 0.7);
+              /* P0-CRITICAL: CEGAR重试机制 - 最多3次尝试，严格内存管理 */
+              int cegar_retry = 0;
+              int cegar_validated = 0;
+              char *refined_json = NULL;
+              unsigned char *refined_input = NULL;
+              
+              for (cegar_retry = 0; cegar_retry < 3 && !cegar_validated; cegar_retry++) {
+                if (cegar_retry > 0) {
+                  ACTF("[CEGAR-LLM] Retry attempt %d/3...", cegar_retry + 1);
+                  /* 清理上次尝试的资源 */
+                  if (refined_json) { free(refined_json); refined_json = NULL; }
+                  if (refined_input) { ck_free(refined_input); refined_input = NULL; }
+                }
+                
+                refined_json = chat_with_llm(patch_prompt, "gpt-3.5-turbo", 2, 0.7);
               
               if (refined_json && strlen(refined_json) > 5) {
                 /* ChatAFL-Enhanced GAP-2: 验证patch是否为局部修改 */
@@ -6768,9 +6816,8 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
                   WARNF("[CEGAR-LLM] Rejected patch with %u fields (max 3 allowed)", 
                         field_count);
                   free(refined_json);
-                  free(patch_prompt);
-                  ck_free(minimized);
-                  continue; /* 跳过这个非法patch */
+                  refined_json = NULL;
+                  continue; /* 重试下一次 */
                 }
                 
                 ACTF("[CEGAR-LLM] Accepted local patch with %u field(s)", field_count);
@@ -6781,21 +6828,22 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
                 /* 限制长度 */
                 if (refined_len > 10000) refined_len = 10000;
                 
-                unsigned char *refined_input = ck_alloc(refined_len + 1);
+                refined_input = ck_alloc(refined_len + 1);
                 memcpy(refined_input, refined_json, refined_len);
                 refined_input[refined_len] = '\0';
                 
                 /* P0-1修复: 使用完整的4层验证（集成SUT测试+覆盖增益） */
                 if (!verify_refined_input_with_sut(refined_json, NULL, NULL, argv, virgin_bits)) {
-                  WARNF("[CEGAR-VERIFY] Rejected invalid LLM refinement (Layer 1-4 failed)");
-                  ck_free(refined_input);
-                  free(refined_json);
-                  free(patch_prompt);
-                  ck_free(minimized);
-                  continue; /* 跳过非法refinement */
+                  WARNF("[CEGAR-VERIFY] Rejected invalid LLM refinement (Layer 1-4 failed) - Retry %d/3", cegar_retry + 1);
+                  if (refined_input) { ck_free(refined_input); refined_input = NULL; }
+                  if (refined_json) { free(refined_json); refined_json = NULL; }
+                  continue; /* 重试 */
                 }
                 
-                ACTF("[CEGAR-VERIFY] Validated LLM refinement (Layer 1-4 passed)");
+                /* 验证通过，标记退出重试循环 */
+                cegar_validated = 1;
+                
+                ACTF("[CEGAR-VERIFY] Validated LLM refinement (Layer 1-4 passed) on attempt %d", cegar_retry + 1);
                 
                 /* 3.5 测试修正版本 */
                 write_to_testcase(refined_input, refined_len);
@@ -6847,14 +6895,30 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
                   if (new_states) ck_free(new_states);
                 }
                 
-                ck_free(refined_input);
-                free(refined_json);
+                if (refined_input) { ck_free(refined_input); refined_input = NULL; }
+                if (refined_json) { free(refined_json); refined_json = NULL; }
+              } else {
+                /* LLM返回空或太短 */
+                if (refined_json) { free(refined_json); refined_json = NULL; }
+              }
+              } /* end of retry loop */
+              
+              /* 统一资源释放 */
+              if (patch_prompt) { free(patch_prompt); patch_prompt = NULL; }
+              
+              if (!cegar_validated) {
+                WARNF("[CEGAR-LLM] Failed to validate after 3 retry attempts");
+                ck_free(minimized);
+                continue; /* 跳过，不再执行下面的ck_free(minimized) */
               }
               
-              free(patch_prompt);
+              /* 验证成功，正常释放 */
+              ck_free(minimized);
             }
-            
-            ck_free(minimized);
+            else {
+              /* patch_prompt为NULL的情况，仍需释放minimized */
+              ck_free(minimized);
+            }
           } else if (g_cegar_triggers % 200 == 0) {
             ACTF("[CEGAR] Rejection detected #%llu (code: %u)", 
                  g_cegar_triggers, state_sequence[i]);
@@ -7717,6 +7781,17 @@ AFLNET_REGIONS_SELECTION:;
 
     FLIP_BIT(out_buf, stage_cur);
 
+    /* P0-Critical修复：在bitflip阶段强制执行验证器 */
+    if (protocol_name && len > 0) {
+      g_verifier_checks++;
+      unsigned int check_len = (len > 200) ? 200 : len;
+      if (!verify_with_pcre2(out_buf, check_len, protocol_name, NULL)) {
+        g_verifier_rejects++;
+        FLIP_BIT(out_buf, stage_cur); /* 恢复 */
+        continue; /* 跳过非法变异 */
+      }
+    }
+
     if (common_fuzz_stuff(argv, out_buf, len))
       goto abandon_entry;
 
@@ -7814,6 +7889,19 @@ AFLNET_REGIONS_SELECTION:;
     FLIP_BIT(out_buf, stage_cur);
     FLIP_BIT(out_buf, stage_cur + 1);
 
+    /* P0: bitflip 2/1验证 */
+    if (protocol_name && len > 0) {
+      g_verifier_checks++;
+      unsigned int check_len = (len > 200) ? 200 : len;
+      if (!verify_with_pcre2(out_buf, check_len, protocol_name, NULL)) {
+        g_verifier_rejects++;
+        FLIP_BIT(out_buf, stage_cur);
+        FLIP_BIT(out_buf, stage_cur + 1);
+        stage_max--;
+        continue;
+      }
+    }
+
     if (common_fuzz_stuff(argv, out_buf, len))
       goto abandon_entry;
 
@@ -7843,6 +7931,21 @@ AFLNET_REGIONS_SELECTION:;
     FLIP_BIT(out_buf, stage_cur + 1);
     FLIP_BIT(out_buf, stage_cur + 2);
     FLIP_BIT(out_buf, stage_cur + 3);
+
+    /* P0: bitflip 4/1验证 */
+    if (protocol_name && len > 0) {
+      g_verifier_checks++;
+      unsigned int check_len = (len > 200) ? 200 : len;
+      if (!verify_with_pcre2(out_buf, check_len, protocol_name, NULL)) {
+        g_verifier_rejects++;
+        FLIP_BIT(out_buf, stage_cur);
+        FLIP_BIT(out_buf, stage_cur + 1);
+        FLIP_BIT(out_buf, stage_cur + 2);
+        FLIP_BIT(out_buf, stage_cur + 3);
+        stage_max--;
+        continue;
+      }
+    }
 
     if (common_fuzz_stuff(argv, out_buf, len))
       goto abandon_entry;
@@ -7897,6 +8000,18 @@ AFLNET_REGIONS_SELECTION:;
     stage_cur_byte = stage_cur;
 
     out_buf[stage_cur] ^= 0xFF;
+
+    /* P0-Critical: bitflip 8/8验证 */
+    if (protocol_name && len > 0) {
+      g_verifier_checks++;
+      unsigned int check_len = (len > 200) ? 200 : len;
+      if (!verify_with_pcre2(out_buf, check_len, protocol_name, NULL)) {
+        g_verifier_rejects++;
+        out_buf[stage_cur] ^= 0xFF;
+        stage_max--;
+        continue;
+      }
+    }
 
     if (common_fuzz_stuff(argv, out_buf, len))
       goto abandon_entry;
@@ -7981,6 +8096,18 @@ AFLNET_REGIONS_SELECTION:;
 
     *(u16 *)(out_buf + i) ^= 0xFFFF;
 
+    /* P0: bitflip 16/8验证 */
+    if (protocol_name && len > 0) {
+      g_verifier_checks++;
+      unsigned int check_len = (len > 200) ? 200 : len;
+      if (!verify_with_pcre2(out_buf, check_len, protocol_name, NULL)) {
+        g_verifier_rejects++;
+        *(u16 *)(out_buf + i) ^= 0xFFFF;
+        stage_max--;
+        continue;
+      }
+    }
+
     if (common_fuzz_stuff(argv, out_buf, len))
       goto abandon_entry;
     stage_cur++;
@@ -8019,6 +8146,18 @@ AFLNET_REGIONS_SELECTION:;
     stage_cur_byte = i;
 
     *(u32 *)(out_buf + i) ^= 0xFFFFFFFF;
+
+    /* P0: bitflip 32/8验证 */
+    if (protocol_name && len > 0) {
+      g_verifier_checks++;
+      unsigned int check_len = (len > 200) ? 200 : len;
+      if (!verify_with_pcre2(out_buf, check_len, protocol_name, NULL)) {
+        g_verifier_rejects++;
+        *(u32 *)(out_buf + i) ^= 0xFFFFFFFF;
+        stage_max--;
+        continue;
+      }
+    }
 
     if (common_fuzz_stuff(argv, out_buf, len))
       goto abandon_entry;
@@ -8081,6 +8220,18 @@ skip_bitflip:
         stage_cur_val = j;
         out_buf[i] = orig + j;
 
+        /* P0-Blocker修复：arith8验证 */
+        if (protocol_name && len > 0) {
+          g_verifier_checks++;
+          unsigned int check_len = (len > 200) ? 200 : len;
+          if (!verify_with_pcre2(out_buf, check_len, protocol_name, NULL)) {
+            g_verifier_rejects++;
+            out_buf[i] = orig; /* 恢复 */
+            stage_max--;
+            continue;
+          }
+        }
+
         if (common_fuzz_stuff(argv, out_buf, len))
           goto abandon_entry;
         stage_cur++;
@@ -8095,6 +8246,18 @@ skip_bitflip:
 
         stage_cur_val = -j;
         out_buf[i] = orig - j;
+
+        /* P0-Blocker修复：arith8负数验证 */
+        if (protocol_name && len > 0) {
+          g_verifier_checks++;
+          unsigned int check_len = (len > 200) ? 200 : len;
+          if (!verify_with_pcre2(out_buf, check_len, protocol_name, NULL)) {
+            g_verifier_rejects++;
+            out_buf[i] = orig;
+            stage_max--;
+            continue;
+          }
+        }
 
         if (common_fuzz_stuff(argv, out_buf, len))
           goto abandon_entry;
@@ -8160,6 +8323,18 @@ skip_bitflip:
         stage_cur_val = j;
         *(u16 *)(out_buf + i) = orig + j;
 
+        /* P0: arith16验证 */
+        if (protocol_name && len > 0) {
+          g_verifier_checks++;
+          unsigned int check_len = (len > 200) ? 200 : len;
+          if (!verify_with_pcre2(out_buf, check_len, protocol_name, NULL)) {
+            g_verifier_rejects++;
+            *(u16 *)(out_buf + i) = orig;
+            stage_max--;
+            continue;
+          }
+        }
+
         if (common_fuzz_stuff(argv, out_buf, len))
           goto abandon_entry;
         stage_cur++;
@@ -8172,6 +8347,18 @@ skip_bitflip:
 
         stage_cur_val = -j;
         *(u16 *)(out_buf + i) = orig - j;
+
+        /* P0: arith16负数验证 */
+        if (protocol_name && len > 0) {
+          g_verifier_checks++;
+          unsigned int check_len = (len > 200) ? 200 : len;
+          if (!verify_with_pcre2(out_buf, check_len, protocol_name, NULL)) {
+            g_verifier_rejects++;
+            *(u16 *)(out_buf + i) = orig;
+            stage_max--;
+            continue;
+          }
+        }
 
         if (common_fuzz_stuff(argv, out_buf, len))
           goto abandon_entry;
@@ -8190,6 +8377,18 @@ skip_bitflip:
         stage_cur_val = j;
         *(u16 *)(out_buf + i) = SWAP16(SWAP16(orig) + j);
 
+        /* P0: arith16 BE验证 */
+        if (protocol_name && len > 0) {
+          g_verifier_checks++;
+          unsigned int check_len = (len > 200) ? 200 : len;
+          if (!verify_with_pcre2(out_buf, check_len, protocol_name, NULL)) {
+            g_verifier_rejects++;
+            *(u16 *)(out_buf + i) = orig;
+            stage_max--;
+            continue;
+          }
+        }
+
         if (common_fuzz_stuff(argv, out_buf, len))
           goto abandon_entry;
         stage_cur++;
@@ -8202,6 +8401,18 @@ skip_bitflip:
 
         stage_cur_val = -j;
         *(u16 *)(out_buf + i) = SWAP16(SWAP16(orig) - j);
+
+        /* P0: arith16 BE负数验证 */
+        if (protocol_name && len > 0) {
+          g_verifier_checks++;
+          unsigned int check_len = (len > 200) ? 200 : len;
+          if (!verify_with_pcre2(out_buf, check_len, protocol_name, NULL)) {
+            g_verifier_rejects++;
+            *(u16 *)(out_buf + i) = orig;
+            stage_max--;
+            continue;
+          }
+        }
 
         if (common_fuzz_stuff(argv, out_buf, len))
           goto abandon_entry;
@@ -8266,6 +8477,18 @@ skip_bitflip:
         stage_cur_val = j;
         *(u32 *)(out_buf + i) = orig + j;
 
+        /* P0: arith32验证 */
+        if (protocol_name && len > 0) {
+          g_verifier_checks++;
+          unsigned int check_len = (len > 200) ? 200 : len;
+          if (!verify_with_pcre2(out_buf, check_len, protocol_name, NULL)) {
+            g_verifier_rejects++;
+            *(u32 *)(out_buf + i) = orig;
+            stage_max--;
+            continue;
+          }
+        }
+
         if (common_fuzz_stuff(argv, out_buf, len))
           goto abandon_entry;
         stage_cur++;
@@ -8278,6 +8501,18 @@ skip_bitflip:
 
         stage_cur_val = -j;
         *(u32 *)(out_buf + i) = orig - j;
+
+        /* P0: arith32负数验证 */
+        if (protocol_name && len > 0) {
+          g_verifier_checks++;
+          unsigned int check_len = (len > 200) ? 200 : len;
+          if (!verify_with_pcre2(out_buf, check_len, protocol_name, NULL)) {
+            g_verifier_rejects++;
+            *(u32 *)(out_buf + i) = orig;
+            stage_max--;
+            continue;
+          }
+        }
 
         if (common_fuzz_stuff(argv, out_buf, len))
           goto abandon_entry;
@@ -8296,6 +8531,18 @@ skip_bitflip:
         stage_cur_val = j;
         *(u32 *)(out_buf + i) = SWAP32(SWAP32(orig) + j);
 
+        /* P0: arith32 BE验证 */
+        if (protocol_name && len > 0) {
+          g_verifier_checks++;
+          unsigned int check_len = (len > 200) ? 200 : len;
+          if (!verify_with_pcre2(out_buf, check_len, protocol_name, NULL)) {
+            g_verifier_rejects++;
+            *(u32 *)(out_buf + i) = orig;
+            stage_max--;
+            continue;
+          }
+        }
+
         if (common_fuzz_stuff(argv, out_buf, len))
           goto abandon_entry;
         stage_cur++;
@@ -8308,6 +8555,18 @@ skip_bitflip:
 
         stage_cur_val = -j;
         *(u32 *)(out_buf + i) = SWAP32(SWAP32(orig) - j);
+
+        /* P0: arith32 BE负数验证 */
+        if (protocol_name && len > 0) {
+          g_verifier_checks++;
+          unsigned int check_len = (len > 200) ? 200 : len;
+          if (!verify_with_pcre2(out_buf, check_len, protocol_name, NULL)) {
+            g_verifier_rejects++;
+            *(u32 *)(out_buf + i) = orig;
+            stage_max--;
+            continue;
+          }
+        }
 
         if (common_fuzz_stuff(argv, out_buf, len))
           goto abandon_entry;
@@ -8372,6 +8631,18 @@ skip_arith:
       stage_cur_val = interesting_8[j];
       out_buf[i] = interesting_8[j];
 
+      /* P0-Blocker: interest8验证 */
+      if (protocol_name && len > 0) {
+        g_verifier_checks++;
+        unsigned int check_len = (len > 200) ? 200 : len;
+        if (!verify_with_pcre2(out_buf, check_len, protocol_name, NULL)) {
+          g_verifier_rejects++;
+          out_buf[i] = orig;
+          stage_max--;
+          continue;
+        }
+      }
+
       if (common_fuzz_stuff(argv, out_buf, len))
         goto abandon_entry;
 
@@ -8429,6 +8700,18 @@ skip_arith:
 
         *(u16 *)(out_buf + i) = interesting_16[j];
 
+        /* P0: interest16 LE验证 */
+        if (protocol_name && len > 0) {
+          g_verifier_checks++;
+          unsigned int check_len = (len > 200) ? 200 : len;
+          if (!verify_with_pcre2(out_buf, check_len, protocol_name, NULL)) {
+            g_verifier_rejects++;
+            *(u16 *)(out_buf + i) = orig;
+            stage_max--;
+            continue;
+          }
+        }
+
         if (common_fuzz_stuff(argv, out_buf, len))
           goto abandon_entry;
         stage_cur++;
@@ -8445,6 +8728,19 @@ skip_arith:
         stage_val_type = STAGE_VAL_BE;
 
         *(u16 *)(out_buf + i) = SWAP16(interesting_16[j]);
+
+        /* P0: interest16 BE验证 */
+        if (protocol_name && len > 0) {
+          g_verifier_checks++;
+          unsigned int check_len = (len > 200) ? 200 : len;
+          if (!verify_with_pcre2(out_buf, check_len, protocol_name, NULL)) {
+            g_verifier_rejects++;
+            *(u16 *)(out_buf + i) = orig;
+            stage_max--;
+            continue;
+          }
+        }
+
         if (common_fuzz_stuff(argv, out_buf, len))
           goto abandon_entry;
         stage_cur++;
@@ -8506,6 +8802,18 @@ skip_arith:
 
         *(u32 *)(out_buf + i) = interesting_32[j];
 
+        /* P0: interest32 LE验证 */
+        if (protocol_name && len > 0) {
+          g_verifier_checks++;
+          unsigned int check_len = (len > 200) ? 200 : len;
+          if (!verify_with_pcre2(out_buf, check_len, protocol_name, NULL)) {
+            g_verifier_rejects++;
+            *(u32 *)(out_buf + i) = orig;
+            stage_max--;
+            continue;
+          }
+        }
+
         if (common_fuzz_stuff(argv, out_buf, len))
           goto abandon_entry;
         stage_cur++;
@@ -8522,6 +8830,19 @@ skip_arith:
         stage_val_type = STAGE_VAL_BE;
 
         *(u32 *)(out_buf + i) = SWAP32(interesting_32[j]);
+
+        /* P0: interest32 BE验证 */
+        if (protocol_name && len > 0) {
+          g_verifier_checks++;
+          unsigned int check_len = (len > 200) ? 200 : len;
+          if (!verify_with_pcre2(out_buf, check_len, protocol_name, NULL)) {
+            g_verifier_rejects++;
+            *(u32 *)(out_buf + i) = orig;
+            stage_max--;
+            continue;
+          }
+        }
+
         if (common_fuzz_stuff(argv, out_buf, len))
           goto abandon_entry;
         stage_cur++;
@@ -8591,6 +8912,18 @@ skip_interest:
       last_len = extras[j].len;
       memcpy(out_buf + i, extras[j].data, last_len);
 
+      /* P0: user extras验证 */
+      if (protocol_name && len > 0) {
+        g_verifier_checks++;
+        unsigned int check_len = (len > 200) ? 200 : len;
+        if (!verify_with_pcre2(out_buf, check_len, protocol_name, NULL)) {
+          g_verifier_rejects++;
+          memcpy(out_buf + i, in_buf + i, last_len);
+          stage_max--;
+          continue;
+        }
+      }
+
       if (common_fuzz_stuff(argv, out_buf, len))
         goto abandon_entry;
 
@@ -8636,6 +8969,17 @@ skip_interest:
 
       /* Copy tail */
       memcpy(ex_tmp + i + extras[j].len, out_buf + i, len - i);
+
+      /* P0: extras insert验证 */
+      if (protocol_name && (len + extras[j].len) > 0) {
+        g_verifier_checks++;
+        unsigned int check_len = ((len + extras[j].len) > 200) ? 200 : (len + extras[j].len);
+        if (!verify_with_pcre2(ex_tmp, check_len, protocol_name, NULL)) {
+          g_verifier_rejects++;
+          stage_max--;
+          continue;
+        }
+      }
 
       if (common_fuzz_stuff(argv, ex_tmp, len + extras[j].len))
       {
@@ -8694,6 +9038,18 @@ skip_user_extras:
 
       last_len = a_extras[j].len;
       memcpy(out_buf + i, a_extras[j].data, last_len);
+
+      /* P0: auto extras验证 */
+      if (protocol_name && len > 0) {
+        g_verifier_checks++;
+        unsigned int check_len = (len > 200) ? 200 : len;
+        if (!verify_with_pcre2(out_buf, check_len, protocol_name, NULL)) {
+          g_verifier_rejects++;
+          memcpy(out_buf + i, in_buf + i, last_len);
+          stage_max--;
+          continue;
+        }
+      }
 
       if (common_fuzz_stuff(argv, out_buf, len))
         goto abandon_entry;
@@ -11538,6 +11894,67 @@ int main(int argc, char **argv)
             cur_skipped_paths = 0;
             queue_cur = queue;
             queue_cycle++;
+            
+            /* P1-Critical: STT引导的智能种子选择 - 每10轮触发 */
+            if (queue_cycle % 10 == 0 && protocol_name) {
+              u32 target_state_id = state_graph_find_least_visited(&g_state_graph, false);
+              if (target_state_id != 0xFFFFFFFF) {
+                /* P1-Critical: 使用精确的state→seed映射 */
+                int best_queue_id = state_graph_get_best_seed_for_state(&g_state_graph, target_state_id);
+                
+                if (best_queue_id >= 0) {
+                  /* 遍历队列找到对应的seed */
+                  struct queue_entry *q = queue;
+                  u32 idx = 0;
+                  while (q) {
+                    if (idx == (u32)best_queue_id) {
+                      selected_seed = q;
+                      ACTF("[STT-PRECISE] Cycle %llu: Override to seed '%s' (queue_id=%d) for low-coverage state %u",
+                           queue_cycle, q->fname, best_queue_id, target_state_id);
+                      break;
+                    }
+                    q = q->next;
+                    idx++;
+                  }
+                }
+              }
+            }
+            
+            /* P1-Critical: Plateau主动突破 - 每30轮触发 */
+            if (g_cycles_without_new_state >= 30 && g_cycles_without_new_state % 30 == 0 && protocol_name) {
+              uint32_t target_state = state_graph_select_valuable_target(&g_state_graph, true);
+              if (target_state > 0) {
+                ACTF("[PLATEAU] Cycle %llu, %u cycles without new states, targeting state %u", 
+                     queue_cycle, g_cycles_without_new_state, target_state);
+                
+                char target_state_str[16];
+                snprintf(target_state_str, sizeof(target_state_str), "%u", target_state);
+                
+                char discovered_states[256] = {0};
+                int offset = 0;
+                u32 max_states = (state_ids_count > 5) ? 5 : state_ids_count;
+                for (u32 i = 0; i < max_states && offset < 240; i++) {
+                  offset += snprintf(discovered_states + offset, 256 - offset, 
+                                     "%u%s", state_ids[i], (i < max_states - 1) ? "," : "");
+                }
+                
+                char *llm_sequence = request_llm_for_state_sequence(target_state_str, discovered_states, NULL);
+                if (llm_sequence && strlen(llm_sequence) > 10 && strlen(llm_sequence) < 5000) {
+                  char temp_fname[512];
+                  snprintf(temp_fname, sizeof(temp_fname), "%s/.plateau_%u_%llu", out_dir, target_state, queue_cycle);
+                  FILE *fp = fopen(temp_fname, "wb");
+                  if (fp) {
+                    fwrite(llm_sequence, 1, strlen(llm_sequence), fp);
+                    fclose(fp);
+                    add_to_queue(temp_fname, strlen(llm_sequence), 0);
+                    ACTF("[PLATEAU] Injected LLM-generated seed for state %u", target_state);
+                  }
+                  free(llm_sequence);
+                } else {
+                  if (llm_sequence) free(llm_sequence);
+                }
+              }
+            }
           }
         }
       }
@@ -11574,218 +11991,6 @@ int main(int argc, char **argv)
         current_entry = 0;
         cur_skipped_paths = 0;
         queue_cur = queue;
-        
-        /* P1-2修复: 稀有转移集成 - 每100轮检测一次稀有边 */
-        if (queue_cycle % 100 == 0 && state_aware_mode) {
-          uint32_t rare_from = 0, rare_to = 0;
-          if (state_graph_find_rare_transition(&g_state_graph, &rare_from, &rare_to)) {
-            ACTF("[RARE] Found rare transition %u->%u, prioritizing...", 
-                 rare_from, rare_to);
-            
-            /* 优先选择触发该稀有边的seeds */
-            khint_t k = kh_get(hms, khms_states, rare_from);
-            if (k != kh_end(khms_states)) {
-              state_info_t *state = kh_val(khms_states, k);
-              if (state->seeds_count > 0) {
-                /* 提升该状态的评分，使其更可能被选中 */
-                state->score = state->score * 2;
-                ACTF("[RARE] Boosted score for state %u (seeds: %u)",
-                     rare_from, state->seeds_count);
-              }
-            }
-            
-            /* 记录到fuzzer_stats */
-            u8 *stats_file = alloc_printf("%s/fuzzer_stats", out_dir);
-            FILE *f = fopen(stats_file, "a");
-            if (f) {
-              fprintf(f, "rare_transition_found : %u->%u (cycle %llu)\n",
-                     rare_from, rare_to, queue_cycle);
-              fclose(f);
-            }
-            ck_free(stats_file);
-          }
-        }
-        
-        /* ChatAFL-Enhanced: Plateau自动触发LLM探索 */
-        u32 prev_state_count = state_ids_count;
-        if (prev_state_count == state_ids_count) {
-          g_cycles_without_new_state++;
-          if (g_cycles_without_new_state >= 50 && g_cycles_without_new_state % 100 == 0) {  /* 大幅提高阈值 */
-            WARNF("[PLATEAU] %u cycles without new states (total: %u states)", 
-                  g_cycles_without_new_state, state_ids_count);
-            
-            /* P1-2修复: 智能选择突破目标状态 */
-            uint32_t target_state = state_graph_select_valuable_target(&g_state_graph, true);
-            if (target_state > 0) {
-              ACTF("[PLATEAU] Selected valuable target state: %u (multi-factor scoring)", 
-                   target_state);
-            }
-            
-            /* P0-1修复: 完整实现Plateau→LLM→Queue注入闭环 - 优化触发频率 */
-            if (g_cycles_without_new_state >= 200 && g_cycles_without_new_state % 500 == 0 && protocol_name && target_state > 0) {
-              ACTF("[LLM-TRIGGER] Plateau detected (%u cycles), invoking LLM for breakthrough...", 
-                   g_cycles_without_new_state);
-              
-              /* Step 1: 生成已发现状态摘要 - 限制长度 */
-              char discovered_states[1024] = {0};  /* 减小缓冲区 */
-              int offset = 0;
-              u32 max_states = (state_ids_count > 50) ? 50 : state_ids_count;  /* 限制状态数量 */
-              for (u32 i = 0; i < max_states && offset < 950; i++) {
-                offset += snprintf(discovered_states + offset, 1024 - offset, 
-                                   "%u%s", state_ids[i], (i < max_states - 1) ? "," : "");
-              }
-              
-              /* Step 2: 生成STT摘要（前5条转移） - 优化内存使用 */
-              char stt_summary[512] = {0};  /* 减小缓冲区 */
-              int stt_offset = 0;
-              int transition_count = 0;
-              
-              for (u32 n = 0; n < g_state_graph.node_count && transition_count < 5; n++) {
-                StateNode *node = &g_state_graph.nodes[n];
-                for (u32 e = 0; e < node->out_degree && transition_count < 10 && stt_offset < 1000; e++) {
-                  StateEdge *edge = &node->edges[e];
-                  stt_offset += snprintf(stt_summary + stt_offset, 1024 - stt_offset,
-                                         "%u->%u(%u) ", 
-                                         node->state_id,
-                                         edge->to_state,
-                                         edge->transition_count);
-                  transition_count++;
-                }
-              }
-              
-              if (g_state_graph.total_transitions == 0) {
-                snprintf(stt_summary, sizeof(stt_summary), "no transitions yet");
-              } else if (stt_offset == 0) {
-                snprintf(stt_summary, sizeof(stt_summary), "limited transitions");
-              }
-              
-              /* Step 3: 构造高质量prompt */
-              char *plateau_prompt = construct_prompt_for_plateau_breakthrough(
-                protocol_name, target_state, discovered_states, stt_summary);
-              
-              if (plateau_prompt && strlen(plateau_prompt) > 50 && strlen(plateau_prompt) < 32768) {  /* 添加长度检查 */
-                /* Step 4: 调用LLM */
-                char *llm_response = chat_with_llm(plateau_prompt, NULL, 1, 0.7);
-                
-                /* P1功能: 记录成本 */
-                if (llm_response) {
-                  uint32_t prompt_tokens = (uint32_t)(strlen(plateau_prompt) / 4);
-                  uint32_t response_tokens = (uint32_t)(strlen(llm_response) / 4);
-                  llm_cost_record("plateau", prompt_tokens, response_tokens, false);
-                }
-                
-                if (llm_response && strlen(llm_response) > 10 && strlen(llm_response) < 65536) {
-                  /* Step 5: 解析JSON array响应 - 添加长度检查 */
-                  ACTF("[LLM] Received sequence suggestion (%zu bytes), parsing JSON array...", strlen(llm_response));
-                  
-                  /* 安全的JSON array解析（查找[{...},{...}]结构） */
-                  char *array_start = strchr(llm_response, '[');
-                  char *array_end = strrchr(llm_response, ']');
-                  
-                  if (array_start && array_end && array_end > array_start) {
-                    /* Step 6: 逐个提取消息并注入queue */
-                    int injected_count = 0;
-                    char *msg_start = array_start + 1;
-                    
-                    while (msg_start < array_end && injected_count < 5) {
-                      /* 查找 {...} */
-                      char *obj_start = strchr(msg_start, '{');
-                      if (!obj_start || obj_start >= array_end) break;
-                      
-                      int brace_count = 0;
-                      char *obj_end = obj_start;
-                      while (obj_end < array_end) {
-                        if (*obj_end == '{') brace_count++;
-                        if (*obj_end == '}') {
-                          brace_count--;
-                          if (brace_count == 0) break;
-                        }
-                        obj_end++;
-                      }
-                      
-                      if (brace_count == 0 && obj_end < array_end) {
-                        size_t obj_len = obj_end - obj_start + 1;
-                        /* 边界检查：避免过大的JSON消息 */
-                        if (obj_len < 10 || obj_len > 65536) {
-                          msg_start = obj_end + 1;
-                          continue;
-                        }
-                        char *json_msg = ck_alloc(obj_len + 1);
-                        memcpy(json_msg, obj_start, obj_len);
-                        json_msg[obj_len] = '\0';
-                        
-                        /* Step 7: 将JSON消息注入queue */
-                        u8 *fname = alloc_printf("%s/queue/llm-plateau-%llu-%03d", 
-                                                 out_dir, queue_cycle, injected_count);
-                        int fd = open(fname, O_WRONLY | O_CREAT | O_EXCL, 0600);
-                        if (fd >= 0) {
-                          ck_write(fd, json_msg, obj_len, fname);
-                          close(fd);
-                          
-                          /* 添加到队列 */
-                          struct queue_entry *q = ck_alloc(sizeof(struct queue_entry));
-                          memset(q, 0, sizeof(struct queue_entry));  /* 清零避免未定义字段 */
-                          q->fname = fname;
-                          q->len = obj_len;
-                          q->depth = cur_depth + 1;
-                          q->is_initial_seed = 0;  /* LLM生成的测试用例 */
-                          q->exec_cksum = 0;
-                          q->bitmap_size = 0;
-                          
-                          if (queue_top) {
-                            queue_top->next = q;
-                            queue_top = q;
-                          } else {
-                            queue = queue_top = q;
-                          }
-                          queued_paths++;
-                          pending_not_fuzzed++;
-                          
-                          injected_count++;
-                          SAYF("[INJECT] Queue +1: %s (%lu bytes)\n", fname, (unsigned long)obj_len);
-                        } else {
-                          ck_free(fname);
-                        }
-                        
-                        ck_free(json_msg);
-                        msg_start = obj_end + 1;
-                      } else {
-                        break;
-                      }
-                    }
-                    
-                    if (injected_count > 0) {
-                      ACTF("[PLATEAU-SUCCESS] Injected %d LLM-generated sequences into queue", 
-                           injected_count);
-                      /* 记录成功事件 */
-                      u8 *llm_log = alloc_printf("%s/llm-plateau-breakthroughs.txt", out_dir);
-                      FILE *log_f = fopen(llm_log, "a");
-                      if (log_f) {
-                        fprintf(log_f, "[%llu] Cycle %llu: Target %u, Injected %d sequences\n", 
-                               get_cur_time(), queue_cycle, target_state, injected_count);
-                        fclose(log_f);
-                      }
-                      ck_free(llm_log);
-                    } else {
-                      WARNF("[PLATEAU] Failed to parse LLM response, no sequences injected");
-                    }
-                  } else {
-                    WARNF("[PLATEAU] LLM response not in expected JSON array format");
-                  }
-                  
-                  free(llm_response);
-                }
-                
-                free(plateau_prompt);
-                
-                /* 重置计数，避免频繁触发（每10 cycles触发一次） */
-                g_cycles_without_new_state = 0;
-              }
-            }
-          }
-        } else {
-          g_cycles_without_new_state = 0;
-        }
 
         while (seek_to)
         {

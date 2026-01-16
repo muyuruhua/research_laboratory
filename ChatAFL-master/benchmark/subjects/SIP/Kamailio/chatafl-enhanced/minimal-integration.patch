@@ -1,0 +1,33 @@
+--- afl-fuzz.c.original	2024-01-13 23:00:00.000000000 +0800
++++ afl-fuzz.c	2024-01-13 23:30:00.000000000 +0800
+@@ -6676,6 +6676,10 @@
+   s32 len, fd, temp_len, i, j;
+   u8 *in_buf = NULL, *out_buf, *orig_in, *ex_tmp, *eff_map = 0;
+   u64 havoc_queued, orig_hit_cnt, new_hit_cnt;
++  
++  /* ChatAFL-Enhanced: 启用验证功能 */
++  static int verifier_call_count = 0;
++  
+   u32 splice_cycle = 0, perf_score = 100, orig_perf, prev_cksum, eff_cnt = 1, M2_len;
+ 
+   u8 ret_val = 1, doing_det = 0;
+@@ -7820,6 +7824,19 @@
+ 
+         *(u16 *)(out_buf + i) = interesting_16[j];
+ 
++        /* ChatAFL-Enhanced: 在执行前验证测试用例 */
++        if (len > 0 && len < MAX_FILE && verifier_call_count++ % 10 == 0) {
++          if (g_protocol_spec.name[0] != '\0') {
++            if (!verify_json_grammar((char*)out_buf, &g_protocol_spec)) {
++              g_verifier_rejects++;
++              if (!(g_verifier_rejects % 100)) {
++                ACTF("[VERIFIER] Rejected %d invalid inputs", g_verifier_rejects);
++              }
++              goto abandon_entry;
++            }
++          }
++        }
++
+         if (common_fuzz_stuff(argv, out_buf, len))
+           goto abandon_entry;
+         stage_cur++;

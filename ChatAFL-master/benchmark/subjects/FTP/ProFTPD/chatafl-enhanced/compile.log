@@ -1,0 +1,10 @@
+[*] Checking for the ability to compile x86 code...
+[+] Everything seems to be working, ready to compile.
+gcc -O3 -funroll-loops -Wall -D_FORTIFY_SOURCE=2 -g -Wno-pointer-sign -Wno-unused-result -DAFL_PATH=\"/usr/local/lib/afl\" -DDOC_PATH=\"/usr/local/share/doc/afl\" -DBIN_PATH=\"/usr/local/bin\" -c state-scheduler.c -o state-scheduler.o
+state-scheduler.c:524:5: error: redefinition of ‘compute_state_coverage’
+  524 | int compute_state_coverage(const char *protocol_name,
+      |     ^~~~~~~~~~~~~~~~~~~~~~
+state-scheduler.c:342:5: note: previous definition of ‘compute_state_coverage’ was here
+  342 | int compute_state_coverage(const char *protocol_name,
+      |     ^~~~~~~~~~~~~~~~~~~~~~
+make: *** [Makefile:113: state-scheduler.o] Error 1

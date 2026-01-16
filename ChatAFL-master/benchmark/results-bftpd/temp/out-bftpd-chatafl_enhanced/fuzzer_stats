@@ -1,0 +1,45 @@
+start_time        : 1768521723
+last_update       : 1768521868
+fuzzer_pid        : 8
+cycles_done       : 0
+execs_done        : 893
+execs_per_sec     : 8.62
+paths_total       : 21
+paths_favored     : 4
+paths_found       : 17
+paths_imported    : 0
+max_depth         : 2
+cur_path          : 0
+pending_favs      : 4
+pending_total     : 21
+variable_paths    : 14
+stability         : 98.65%
+bitmap_cvg        : 1.02%
+unique_crashes    : 0
+unique_hangs      : 2
+last_path         : 1768521858
+last_crash        : 0
+last_hang         : 1768521799
+execs_since_crash : 893
+exec_timeout      : 5000
+afl_banner        : bftpd
+afl_version       : 2.56b
+target_mode       : default
+command_line      : /home/ubuntu/chatafl-enhanced/afl-fuzz -d -i /home/ubuntu/experiments/in-ftp -o out-bftpd-chatafl_enhanced -x /home/ubuntu/experiments/ftp.dict -N tcp://127.0.0.1/21 -m none -P FTP -D 10000 -q 3 -s 3 -E -K -t 5000+ -c /home/ubuntu/experiments/clean ./bftpd -D -c /home/ubuntu/experiments/basic.conf
+slowest_exec_ms   : 156
+verifier_checks   : 3
+verifier_rejects  : 2
+verifier_rate     : 66.67%
+random_seed       : 1768491492
+cegar_triggers    : 452
+cegar_success     : 0
+cegar_cache_hits  : 0
+cegar_success_rate: 0.00%
+cegar_cache_hit_rate: 0.00%
+cegar_failures    : 452
+cegar_failure_rate: 100.00%
+state_updates     : 32
+unique_states     : 15
+cycles_wo_state   : 0
+state_coverage_pct: Error
+peak_rss_mb       : 18

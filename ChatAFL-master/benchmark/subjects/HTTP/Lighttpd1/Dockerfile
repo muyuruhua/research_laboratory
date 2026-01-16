@@ -67,6 +67,11 @@ RUN cd chatafl-cl2 && \
     make clean all $MAKE_OPT && \
     cd llvm_mode && make $MAKE_OPT
 
+COPY --chown=ubuntu:ubuntu chatafl-enhanced chatafl-enhanced
+RUN cd chatafl-enhanced && \
+    make clean all $MAKE_OPT && \
+    cd llvm_mode && make $MAKE_OPT
+
 # Set up environment variables for AFLNet
 ENV WORKDIR="/home/ubuntu/experiments"
 ENV AFLNET="/home/ubuntu/aflnet"

@@ -1,7 +1,8 @@
 #!/bin/bash
 
-PFBENCH="$PWD/benchmark"
-cd $PFBENCH
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PFBENCH="$SCRIPT_DIR/benchmark"
+cd "$PFBENCH"
 
 PATH=$PATH:$PFBENCH/scripts/execution:$PFBENCH/scripts/analysis
 NUM_CONTAINERS=$1

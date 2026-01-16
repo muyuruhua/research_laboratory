@@ -64,6 +64,11 @@ RUN cd chatafl-cl2 && \
     make clean all $MAKE_OPT && \
     cd llvm_mode && make $MAKE_OPT
 
+COPY --chown=ubuntu:ubuntu chatafl-enhanced chatafl-enhanced
+RUN cd chatafl-enhanced && \
+    make clean all $MAKE_OPT && \
+    cd llvm_mode && make $MAKE_OPT
+
 # Set up environment variables for AFLNet
 ENV WORKDIR="/home/ubuntu/experiments"
 ENV AFLNET="/home/ubuntu/aflnet"
@@ -95,7 +100,7 @@ COPY --chown=ubuntu:ubuntu exim.configure.patch ${WORKDIR}/exim.configure.patch
 # Set up environment variables for ASAN
 env ASAN_OPTIONS='abort_on_error=1:symbolize=0:detect_leaks=0:detect_stack_use_after_return=1:detect_container_overflow=0:poison_array_cookie=0:malloc_fill_byte=0:max_malloc_fill_size=16777216'
 
-# Download, compile and install Exim for fuzzing
+# Download, compile and install Exim for fuzzing (ASAN disabled for stability)
 RUN cd ${WORKDIR} && \
     git clone https://github.com/Exim/exim && \
     cd exim && \
@@ -105,7 +110,7 @@ RUN cd ${WORKDIR} && \
     patch -p1 < ${WORKDIR}/exim-log-bug.patch && \
     cd src; mkdir Local; cp src/EDITME Local/Makefile && \
     cd Local; patch -p1 < ${WORKDIR}/exim.patch; cd .. && \
-    AFL_USE_ASAN=1 make CFLAGS="-DUSE_OPENSSL=1" LDFLAGS+="-lssl -lcrypto" CC=afl-clang-fast clean all install $MAKE_OPT
+    make CFLAGS="-DUSE_OPENSSL=1" LDFLAGS+="-lssl -lcrypto" CC=afl-clang-fast clean all install $MAKE_OPT
 
 # Download and compile Exim for coverage analysis
 RUN cd ${WORKDIR} && \

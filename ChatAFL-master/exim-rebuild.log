@@ -1,0 +1,24 @@
+DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
+            Install the buildx component to build images with BuildKit:
+            https://docs.docker.com/go/buildx/
+
+Sending build context to Docker daemon  35.67MB
+Step 1/43 : FROM ubuntu:20.04
+ ---> b7bab04fd9aa
+Step 2/43 : ENV DEBIAN_FRONTEND=noninteractive
+ ---> Running in 69252e919c91
+ ---> Removed intermediate container 69252e919c91
+ ---> 0f7b2e57eeeb
+Step 3/43 : RUN apt-get -y update &&     apt-get -y install sudo     apt-utils     build-essential     openssl     clang     graphviz-dev     git     autoconf     libgnutls28-dev     libssl-dev     llvm     python3-pip     nano     net-tools     vim     gdb     netcat     strace     libcap-dev     libpcre2-dev     libpcre2-8-0     libcurl4-openssl-dev     libjson-c-dev     wget
+ ---> Running in 7dc9e7b69d15
+Get:1 http://security.ubuntu.com/ubuntu focal-security InRelease [128 kB]
+Get:2 http://archive.ubuntu.com/ubuntu focal InRelease [265 kB]
+Get:3 http://security.ubuntu.com/ubuntu focal-security/multiverse amd64 Packages [33.1 kB]
+Get:4 http://security.ubuntu.com/ubuntu focal-security/restricted amd64 Packages [4801 kB]
+Get:5 http://archive.ubuntu.com/ubuntu focal-updates InRelease [128 kB]
+Get:6 http://archive.ubuntu.com/ubuntu focal-backports InRelease [128 kB]
+Get:7 http://archive.ubuntu.com/ubuntu focal/main amd64 Packages [1275 kB]
+Get:8 http://archive.ubuntu.com/ubuntu focal/multiverse amd64 Packages [177 kB]
+Get:9 http://archive.ubuntu.com/ubuntu focal/universe amd64 Packages [11.3 MB]
+Get:10 http://security.ubuntu.com/ubuntu focal-security/universe amd64 Packages [1308 kB]
+Get:11 http://security.ubuntu.com/ubuntu focal-security/main amd64 Packages [4432 kB]
