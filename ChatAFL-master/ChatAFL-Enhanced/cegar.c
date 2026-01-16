@@ -241,12 +241,22 @@ unsigned char *cegar_cache_lookup(CEGARCache *cache,
   unsigned int cmp_len = (prefix_len > 32) ? 32 : prefix_len;
   time_t current_time = time(NULL);
   
+  /* P1-5修复：缓存过期统计（全局变量） */
+  static unsigned long long g_cache_expired_count = 0;
+  
   for (unsigned int i = 0; i < cache->count; i++) {
     CEGARCacheEntry *entry = &cache->entries[i];
     
     /* P1-3修复：5分钟缓存过期检查 */
     if (entry->timestamp > 0 && (current_time - entry->timestamp) > 300) {
       /* 缓存已过期，跳过此条目 */
+      g_cache_expired_count++;
+      if (g_cache_expired_count % 10 == 0) {
+        /* 每10次过期输出日志，帮助调优过期阈值 */
+        ACTF("[CEGAR-CACHE] Expired entry #%llu (age: %ld sec, code: %u)",
+             g_cache_expired_count, (long)(current_time - entry->timestamp), 
+             entry->error_code);
+      }
       continue;
     }
     

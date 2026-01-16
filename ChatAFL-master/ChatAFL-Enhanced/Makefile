@@ -30,10 +30,15 @@ SH_PROGS    = afl-plot afl-cmin afl-whatsup
 CFLAGS     ?= -O3 -funroll-loops
 CFLAGS     += -Wall -D_FORTIFY_SOURCE=2 -g -Wno-pointer-sign -Wno-unused-result \
 	      -DAFL_PATH=\"$(HELPER_PATH)\" -DDOC_PATH=\"$(DOC_PATH)\" \
-	      -DBIN_PATH=\"$(BIN_PATH)\"
+	      -DBIN_PATH=\"$(BIN_PATH)\" \
+	      -I/opt/homebrew/include -I/opt/homebrew/opt/json-c/include
 
 ifneq "$(filter Linux GNU%,$(shell uname))" ""
   LDFLAGS  += -ldl -lgvc -lcgraph -lm -lcap
+endif
+
+ifeq "$(shell uname)" "Darwin"
+  LDFLAGS  += -L/opt/homebrew/lib -L/opt/homebrew/opt/json-c/lib
 endif
 
 ifeq "$(findstring clang, $(shell $(CC) --version 2>/dev/null))" ""
@@ -140,6 +145,11 @@ all_done: test_build
 	@! tty <&1 >/dev/null || printf "\033[0;30mNOTE: If you can read this, your terminal probably uses white background.\nThis will make the UI hard to read. See docs/status_screen.txt for advice.\033[0m\n" 2>/dev/null
 
 .NOTPARALLEL: clean
+
+# P0+P1完整验证测试（验证所有关键修复）
+test_p0_p1_verification: test_p0_p1_complete_verification.c verifier.o cegar.o state-scheduler.o state-graph.o chat-llm.o
+	$(CC) $(CFLAGS) $< verifier.o cegar.o state-scheduler.o state-graph.o chat-llm.o -o $@ $(LDFLAGS) -ljson-c -lpcre2-8 -lcurl
+	@echo "[+] P0+P1验证测试编译完成，运行 ./test_p0_p1_verification 执行测试"
 
 clean:
 	rm -f $(PROGS) afl-as as afl-g++ afl-clang afl-clang++ *.o *~ a.out core core.[1-9][0-9]* *.stackdump test .test test-instr .test-instr0 .test-instr1 qemu_mode/qemu-2.10.0.tar.bz2 afl-qemu-trace

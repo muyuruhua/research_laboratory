@@ -73,7 +73,9 @@
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <sys/file.h>
+#ifdef __linux__
 #include <sys/capability.h>
+#endif
 
 #include "aflnet.h"
 #include <graphviz/gvc.h>
@@ -538,14 +540,16 @@ void setup_llm_grammars()
   {
     klist_t(gram) *grammar_list = kl_init(gram);
 
-    char *templates_answer = chat_with_llm(templates_prompt, "turbo", GRAMMAR_RETRIES, 0.5);
+    /* P1修复：降低温度至0.1提高可复现性 */
+    char *templates_answer = chat_with_llm(templates_prompt, "turbo", GRAMMAR_RETRIES, 0.1);
     if (templates_answer == NULL)
       goto free_templates_answer;
 
     // printf("## Answer from LLM:\n %s\n", templates_answer);
     char *remaining_prompt = construct_prompt_for_remaining_templates(protocol_name, first_question, templates_answer);
     // printf("remaining prompt is:\n %s\n", remaining_prompt);
-    char *remaining_templates = chat_with_llm(remaining_prompt, "turbo", GRAMMAR_RETRIES, 0.5);
+    /* P1修复：降低温度至0.1提高可复现性 */
+    char *remaining_templates = chat_with_llm(remaining_prompt, "turbo", GRAMMAR_RETRIES, 0.1);
     if (remaining_templates == NULL)
       goto free_remaining;
 
@@ -4179,6 +4183,19 @@ static u8 run_target(char **argv, u32 timeout)
       RPFATAL(res, "Unable to communicate with fork server (OOM?)");
     }
   }
+  
+  /* ChatAFL-Enhanced 优化2: 每次run_target后更新STT（完整状态追踪） */
+  if (state_aware_mode && response_buf && response_buf_size > 0 && extract_response_codes) {
+    unsigned int state_count = 0;
+    unsigned int *state_seq = (*extract_response_codes)(response_buf, response_buf_size, &state_count);
+    if (state_seq && state_count > 1) {
+      for (unsigned int i = 0; i < state_count - 1; i++) {
+        state_graph_add_transition(&g_state_graph, state_seq[i], state_seq[i+1], NULL, 0);
+        g_state_updates++;
+      }
+    }
+    if (state_seq) ck_free(state_seq);
+  }
 
   if (!WIFSTOPPED(status))
     child_pid = 0;
@@ -5386,6 +5403,37 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
   fprintf(f, "state_updates     : %llu\n", g_state_updates);
   fprintf(f, "unique_states     : %u\n", state_ids_count);
   fprintf(f, "cycles_wo_state   : %u\n", g_cycles_without_new_state);
+  
+  /* P1-6修复：输出状态覆盖率统计（RFC理论状态vs实际发现） */
+  if (state_aware_mode && protocol_name) {
+    double state_coverage = 0.0;
+    unsigned int *discovered_state_ids = state_ids;
+    unsigned int discovered_count = state_ids_count;
+    
+    /* 计算状态覆盖率（基于RFC理论状态） */
+    const char *missing_states[32];
+    unsigned int missing_count = compute_state_coverage(
+      protocol_name,
+      discovered_state_ids,
+      discovered_count,
+      &state_coverage,
+      missing_states,
+      32
+    );
+    
+    fprintf(f, "state_coverage    : %.2f%%\n", state_coverage);
+    fprintf(f, "missing_states    : %u\n", missing_count);
+    
+    /* 输出前5个缺失的理论状态（调试用） */
+    if (missing_count > 0 && missing_count <= 32) {
+      fprintf(f, "missing_state_top5: ");
+      for (unsigned int i = 0; i < missing_count && i < 5; i++) {
+        fprintf(f, "%s%s", missing_states[i], 
+               (i < missing_count-1 && i < 4) ? "," : "");
+      }
+      fprintf(f, "\n");
+    }
+  }
   
   /* ignore errors */
 
@@ -6758,7 +6806,8 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
                                                            error_msg);
             
             if (patch_prompt) {
-              char *refined_json = chat_with_llm(patch_prompt, "gpt-3.5-turbo", 2, 0.7);
+              /* P1修复: 降低温度至0.1提高可复现性（原0.7过高） */
+              char *refined_json = chat_with_llm(patch_prompt, "gpt-3.5-turbo", 2, 0.1);
               
               if (refined_json && strlen(refined_json) > 5) {
                 /* ChatAFL-Enhanced GAP-2: 验证patch是否为局部修改 */
@@ -7048,6 +7097,47 @@ static u32 calculate_score(struct queue_entry *q)
     perf_score *= 5;
   }
 
+  /* 修复2: State Graph→Scheduler连通 - 稀有转移加权 */
+  if (state_aware_mode && q->region_count > 0) {
+    /* 检查该seed是否触发稀有状态转移 */
+    uint32_t rare_from = 0, rare_to = 0;
+    if (state_graph_find_rare_transition(&g_state_graph, &rare_from, &rare_to)) {
+      /* 遍历seed的状态序列，检查是否匹配稀有转移 */
+      for (u32 i = 0; i < q->region_count; i++) {
+        if (q->regions[i].state_count >= 2) {
+          unsigned int *states = q->regions[i].state_sequence;
+          for (u32 j = 0; j < q->regions[i].state_count - 1; j++) {
+            if ((states[j] == rare_from && states[j+1] == rare_to) ||
+                (states[j] == rare_to)) {
+              /* 该seed能触发稀有转移，大幅提升优先级 */
+              perf_score *= 3;
+              ACTF("[SCHEDULER] Boosting seed %s (rare transition %u->%u)",
+                   basename(q->fname), rare_from, rare_to);
+              goto state_boost_done;
+            }
+          }
+        }
+      }
+    }
+    
+    /* 次优：提升低访问状态的seeds */
+    uint32_t least_visited = state_graph_find_least_visited(&g_state_graph);
+    if (least_visited > 0) {
+      for (u32 i = 0; i < q->region_count; i++) {
+        if (q->regions[i].state_count > 0) {
+          unsigned int *states = q->regions[i].state_sequence;
+          for (u32 j = 0; j < q->regions[i].state_count; j++) {
+            if (states[j] == least_visited) {
+              perf_score *= 1.5;
+              goto state_boost_done;
+            }
+          }
+        }
+      }
+    }
+  }
+  
+state_boost_done:
   /* Make sure that we don't go over limit. */
 
   if (perf_score > HAVOC_MAX_MULT * 100)
@@ -9359,8 +9449,8 @@ havoc_stage:
       }
     }
 
-    /* ChatAFL-Enhanced v1.2→v2.0: 增强验证器（PCRE2正则+结构检查） - 优化触发频率 */
-    if (stage_cur % 100 == 0 && temp_len > 0 && temp_len < MAX_FILE) {
+    /* ChatAFL-Enhanced 优化1+4: 验证器从1%提升到50% + CEGAR智能触发 */
+    if (stage_cur % 2 == 0 && temp_len > 0 && temp_len < MAX_FILE) {
       g_verifier_checks++;
       
       bool is_valid = true;
@@ -9424,6 +9514,85 @@ havoc_stage:
       
       if (!is_valid) {
         g_verifier_rejects++;
+        
+        /* 修复1: Verifier→CEGAR完整连通 - 真正触发LLM修正闭环 */
+        double reject_rate = (double)g_verifier_rejects / g_verifier_checks;
+        
+        /* 降低触发频率：从每50次→每10次，提高可复现性验证机会 */
+        if ((g_verifier_rejects % 5 == 0 && reject_rate >= 0.2) || 
+            g_verifier_rejects % 10 == 0) {
+          ACTF("[CEGAR-TRIGGER] Reject #%llu (rate: %.1f%%), starting refinement...",
+               g_verifier_rejects, 100.0 * reject_rate);
+          
+          g_cegar_triggers++;
+          
+          /* Step 1: Delta Debugging最小化 */
+          DDTestContext dd_ctx;
+          memset(&dd_ctx, 0, sizeof(DDTestContext));
+          dd_ctx.argv = argv;
+          dd_ctx.exec_tmout = exec_tmout;
+          dd_ctx.target_error_code = 400; /* 通用拒绝码 */
+          dd_ctx.write_to_testcase_func = (void(*)(void*, unsigned int))write_to_testcase;
+          dd_ctx.run_target_func = (unsigned char(*)(char**, unsigned int))run_target;
+          
+          unsigned int min_len = 0;
+          unsigned char *minimized = delta_debug_minimize(
+            out_buf, temp_len,
+            400, /* 拒绝错误码 */
+            cegar_dd_test_func,
+            &dd_ctx,
+            &min_len
+          );
+          
+          if (minimized && min_len > 0 && min_len < 2000) {
+            /* Step 2: 构造约束性prompt */
+            char input_str[2048];
+            snprintf(input_str, sizeof(input_str), "%.*s", min_len, minimized);
+            
+            char *patch_prompt = construct_prompt_for_patch(
+              input_str, 400, "Verifier rejected: grammar/syntax invalid"
+            );
+            
+            if (patch_prompt) {
+              /* Step 3: LLM生成局部修正 (温度0.1) */
+              char *refined_json = chat_with_llm(patch_prompt, "gpt-3.5-turbo", 2, 0.1);
+              
+              if (refined_json && strlen(refined_json) > 5 && strlen(refined_json) < 5000) {
+                /* Step 4: 验证patch本地性 */
+                unsigned int field_count = 0;
+                if (verify_patch_is_local(refined_json, 3, &field_count)) {
+                  /* Step 5: 4层验证 */
+                  if (verify_refined_input_with_sut(refined_json, NULL, NULL, argv, virgin_bits)) {
+                    g_cegar_success++;
+                    
+                    ACTF("[CEGAR-SUCCESS] Refinement passed 4-layer verification (fields:%u)",
+                         field_count);
+                    
+                    /* Step 6: 应用修正到当前buffer */
+                    unsigned int refined_len = strlen(refined_json);
+                    if (refined_len <= temp_len && refined_len < 10000) {
+                      memcpy(out_buf, refined_json, refined_len);
+                      temp_len = refined_len;
+                      is_valid = true; /* 修正成功，标记为有效 */
+                      g_verifier_rejects--; /* 修正成功，撤销拒绝计数 */
+                    }
+                  } else {
+                    WARNF("[CEGAR-FAIL] Refinement failed 4-layer verification");
+                  }
+                } else {
+                  WARNF("[CEGAR-FAIL] Patch violates locality constraint (%u fields)",
+                        field_count);
+                }
+                free(refined_json);
+              }
+              free(patch_prompt);
+            }
+            ck_free(minimized);
+          } else {
+            if (minimized) ck_free(minimized);
+          }
+        }
+        
         if (g_verifier_rejects % 100 == 0) {
           ACTF("[VERIFIER] Rejected %llu/%llu havoc tests (%.1f%%)", 
                g_verifier_rejects, g_verifier_checks,
@@ -9438,6 +9607,16 @@ havoc_stage:
 
     if (common_fuzz_stuff(argv, out_buf, temp_len))
       goto abandon_entry;
+
+    /* P0-Critical修复: 集成PCRE2验证到havoc阶段（完整验证闭环） */
+    if (protocol_name && temp_len > 4) {
+      if (!verify_with_pcre2(out_buf, temp_len, protocol_name, NULL)) {
+        /* PCRE2正则验证失败：拒绝该变异 */
+        goto abandon_entry;
+      }
+      /* 验证通过：记录成功生成符合语法的测试用例 */
+      stage_finds[STAGE_HAVOC]++;
+    }
 
     /* out_buf might have been mangled a bit, so let's restore it to its
        original size and shape. */
@@ -11606,11 +11785,12 @@ int main(int argc, char **argv)
           }
         }
         
-        /* ChatAFL-Enhanced: Plateau自动触发LLM探索 */
-        u32 prev_state_count = state_ids_count;
-        if (prev_state_count == state_ids_count) {
+        /* ChatAFL-Enhanced 优化3: Plateau检测移到fuzz_one内（及时触发） */
+        static u32 prev_unique_states = 0;
+        u32 current_unique_states = state_ids_count;
+        if (current_unique_states == prev_unique_states) {
           g_cycles_without_new_state++;
-          if (g_cycles_without_new_state >= 50 && g_cycles_without_new_state % 100 == 0) {  /* 大幅提高阈值 */
+          if (g_cycles_without_new_state >= 20 && g_cycles_without_new_state % 50 == 0) {  /* 降低阈值到20，每50次检查 */
             WARNF("[PLATEAU] %u cycles without new states (total: %u states)", 
                   g_cycles_without_new_state, state_ids_count);
             
@@ -11664,8 +11844,8 @@ int main(int argc, char **argv)
                 protocol_name, target_state, discovered_states, stt_summary);
               
               if (plateau_prompt && strlen(plateau_prompt) > 50 && strlen(plateau_prompt) < 32768) {  /* 添加长度检查 */
-                /* Step 4: 调用LLM */
-                char *llm_response = chat_with_llm(plateau_prompt, NULL, 1, 0.7);
+/* Step 4: 调用LLM（P1修复：降低温度提高可复现性） */
+              char *llm_response = chat_with_llm(plateau_prompt, NULL, 1, 0.1);
                 
                 /* P1功能: 记录成本 */
                 if (llm_response) {

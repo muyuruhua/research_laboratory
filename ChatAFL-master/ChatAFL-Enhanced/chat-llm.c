@@ -1015,7 +1015,7 @@ void get_protocol_message_types(char *state_prompt, khash_t(strSet) * states_set
 
     for (int i = 0; i < CONFIDENT_TIMES; i++)
     {
-        char *state_answer = chat_with_llm(state_prompt, "gpt-4o-mini", MESSAGE_TYPE_RETRIES, 0.5);
+        char *state_answer = chat_with_llm(state_prompt, "gpt-4o-mini", MESSAGE_TYPE_RETRIES, 0.1);
         if (state_answer == NULL)
             continue;
         // printf("## Answer from LLM:\n %s\n", state_answer);
@@ -1201,7 +1201,7 @@ char *enrich_sequence(char *sequence, khash_t(strSet) * missing_message_types)
     ck_free(missing_fields_seq);
     json_object_put(sequence_escaped);
 
-    char *response = chat_with_llm(prompt, "gpt-4o-mini", ENRICHMENT_RETRIES, 0.5);
+    char *response = chat_with_llm(prompt, "gpt-4o-mini", ENRICHMENT_RETRIES, 0.1);
 
     free(prompt);
 
@@ -1474,9 +1474,14 @@ char *construct_prompt_for_patch(const char* minimized_json,
         "You are a protocol fuzzing assistant. Fix this minimal failing test case.\n\n"
         "Minimal failing JSON:\n%s\n\n"
         "Error: %d - %s\n\n"
-        "Task: Suggest ONE FIELD to modify and its new value.\n"
-        "Output format: {\"field_name\": \"new_value\"}\n"
-        "Output only JSON (no text):",
+        "CRITICAL CONSTRAINTS (MUST FOLLOW):\n"
+        "1. Modify EXACTLY 1-3 fields ONLY (no more than 3)\n"
+        "2. DO NOT add new fields that don't exist in the original\n"
+        "3. DO NOT remove existing mandatory fields\n"
+        "4. Only change values, not field names\n\n"
+        "Task: Suggest 1-3 fields to modify with new values.\n"
+        "Output format: {\"field1\": \"new_value1\", \"field2\": \"new_value2\"}\n"
+        "Output ONLY valid JSON (no explanatory text, no markdown):\n",
         minimized_json ? minimized_json : "{}",
         error_code,
         error_body ? error_body : "Unknown"
