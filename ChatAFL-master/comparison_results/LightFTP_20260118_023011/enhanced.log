@@ -1,0 +1,639 @@
+[0;36mafl-fuzz [1;97m2.56b[0m by <lcamtuf@google.com>
+[1;92m[+] [0mLooks like we're not running on a tty, so I'll be a bit less verbose.[0m
+[1;92m[+] [0mYou have 32 CPU cores and 5 runnable tasks (utilization: 16%).[0m
+[1;92m[+] [0mTry parallel jobs - see docs/parallel_fuzzing.txt.[0m
+[1;93m[!] [1;97mWARNING: [0mNot binding to a CPU core (AFL_NO_AFFINITY set).[0m
+[1;94m[*] [0mChecking core_pattern...[0m
+
+[1;91m[-] [0mHmm, your system is configured to send core dump notifications to an
+    external utility. This will cause issues: there will be an extended delay
+    between stumbling upon a crash and having this information relayed to the
+    fuzzer via the standard waitpid() API.
+
+    To avoid having crashes misinterpreted as timeouts, please log in as root
+    and temporarily modify /proc/sys/kernel/core_pattern, like so:
+
+    echo core >/proc/sys/kernel/core_pattern
+[*] Verifier: Lightweight validation mode (v1.2)
+[1;92m[+] [0mAuto-generated random seed: 1768257725[0m
+[1;94m[*] [0mSetting up output directories...[0m
+[1;92m[+] [0mOutput directory exists but deemed OK to reuse.[0m
+[1;94m[*] [0mDeleting old session data...[0m
+[1;92m[+] [0mOutput dir cleanup successful.[0m
+[1;94m[*] [0mGetting grammars from LLM...[0m
+[1;94m[*] [0mEnriching test cases from LLM...[0m
+[1;93m[!] [1;97mWARNING: [0mMessage ftp_requests_full_anonymous.raw already has all message types. Skipping enrichment[0m
+[1;93m[!] [1;97mWARNING: [0mMessage ftp_requests_full_normal.raw already has all message types. Skipping enrichment[0m
+[1;94m[*] [0mScanning '/home/ubuntu/experiments/in-ftp'...[0m
+[1;92m[+] [0mNo auto-generated dictionary tokens to reuse.[0m
+[1;94m[*] [0mCreating hard links for all input files...[0m
+[1;94m[*] [0mValidating target binary...[0m
+[1;94m[*] [0m[P0-1-FIX] verifier_extended module initialized with SUT testing capabilities[0m
+[1;94m[*] [0mAttempting dry run with 'id:000000,orig:ftp_requests_full_anonymous.raw'...[0m
+[1;94m[*] [0mSpinning up the fork server...[0m
+[1;92m[+] [0mAll right - fork server is up.[0m
+[1;90m    len = 76, map size = 348, exec speed = 68014 us
+[0m[1;93m[!] [1;97mWARNING: [0mInstrumentation output varies across runs.[0m
+[1;94m[*] [0mAttempting dry run with 'id:000001,orig:ftp_requests_full_normal.raw'...[0m
+[1;90m    len = 83, map size = 356, exec speed = 75886 us
+[0m[1;93m[!] [1;97mWARNING: [0mInstrumentation output varies across runs.[0m
+[1;92m[+] [0mAll test cases processed.[0m
+
+[1;93m[!] [1;97mWARNING: [0m[1;91mThe target binary is pretty slow! See docs/perf_tips.txt.[0m
+[1;92m[+] [0mHere are some useful stats:
+
+[1;90m    Test case count : [0m2 favored, 2 variable, 2 total
+[1;90m       Bitmap range : [0m348 to 356 bits (average: 352.00 bits)
+[1;90m        Exec timing : [0m68.0k to 75.9k us (average: 69.3k us)
+[0m
+[1;92m[+] [0mAll set and ready to roll![0m
+[1;94m[*] [0m[P1] LLM cost tracking initialized (rate: $0.002/1K tokens)[0m
+[1;94m[*] [0m[CEGAR] DD success: 34 → 34 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 54 → 54 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #200 detected (code: 530) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 16 → 16 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #300 detected (code: 530) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 11 → 11 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #500 detected (code: 501) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #600 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 16 → 16 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #700 detected (code: 501) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #800 detected (code: 530) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 18 → 18 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 34 → 34 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 16 → 16 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #900 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 16 → 16 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #1000 detected (code: 530) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #1100 detected (code: 530) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 11 → 11 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #1200 detected (code: 530) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #1300 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #1400 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #1500 detected (code: 501) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 92 → 92 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 65 → 65 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 92 → 92 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 88 → 88 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 74 → 74 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 92 → 92 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #1700 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 92 → 92 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 112 → 112 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 103 → 103 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #1900 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 34 → 34 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 119 → 119 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 98 → 98 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 67 → 67 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #2000 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 98 → 98 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #2100 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #2200 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 121 → 121 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #2300 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #2400 detected (code: 501) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 36 → 36 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #2500 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 74 → 74 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 171 → 171 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 156 → 156 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 41 → 41 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #2700 detected (code: 501) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #2800 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 121 → 121 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #2900 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 132 → 132 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #3000 detected (code: 501) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #3100 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 129 → 129 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 132 → 132 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #3200 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 44 → 44 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 132 → 132 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #3300 detected (code: 530) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #3400 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 106 → 106 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 54 → 54 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #3500 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #3600 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 79 → 79 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 39 → 39 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 85 → 85 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 74 → 74 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #3700 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 59 → 59 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 85 → 85 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #3900 detected (code: 530) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 14 → 14 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #4000 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 94 → 94 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 84 → 84 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #4100 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 85 → 85 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #4200 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 85 → 85 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #4300 detected (code: 501) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #4400 detected (code: 530) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #4500 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 57 → 57 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #4600 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #4700 detected (code: 530) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #4800 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #4900 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 127 → 127 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #5000 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 13 → 13 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 12 → 12 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #5100 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #5200 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #5300 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 100 → 100 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #5400 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #5500 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #5600 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #5700 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 60 → 60 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #5900 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 151 → 151 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 151 → 151 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 151 → 151 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 151 → 151 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 208 → 208 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 151 → 151 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #6100 detected (code: 501) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 107 → 107 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 145 → 145 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 151 → 151 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #6200 detected (code: 501) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 151 → 151 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 151 → 151 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #6300 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 109 → 109 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 75 → 75 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #6400 detected (code: 451) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 151 → 151 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 92 → 92 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #6500 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[VERIFIER] Rejected 100/68 havoc tests (147.1%)[0m
+[1;94m[*] [0m[CEGAR] DD success: 104 → 104 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 133 → 133 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #6600 detected (code: 501) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 104 → 104 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 145 → 145 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 15 → 15 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 104 → 104 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #6800 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 128 → 128 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #6900 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 167 → 167 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 167 → 167 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 393 → 393 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 61 → 61 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 167 → 167 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 68 → 68 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 118 → 118 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 100 → 100 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #7200 detected (code: 530) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 163 → 163 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 63 → 63 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 167 → 167 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #7400 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #7500 detected (code: 530) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #7600 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 226 → 226 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #7700 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 120 → 120 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #7800 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 336 → 336 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 157 → 157 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #7900 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 44 → 44 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #8000 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 21 → 21 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #8100 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #8200 detected (code: 501) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #8300 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 118 → 118 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #8400 detected (code: 501) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 143 → 143 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 184 → 184 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 163 → 163 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #8600 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 118 → 118 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 235 → 235 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #8700 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 163 → 163 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #8800 detected (code: 501) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 239 → 239 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 393 → 393 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #8900 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #9000 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 155 → 155 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #9100 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 201 → 201 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #9200 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 105 → 105 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 152 → 152 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 152 → 152 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 153 → 153 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #9400 detected (code: 501) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #9500 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #9600 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 306 → 306 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 300 → 300 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #9700 detected (code: 550) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 85 → 85 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 111 → 111 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #9800 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 99 → 99 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #9900 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #10000 detected (code: 500) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #10100 detected (code: 451) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 13 → 13 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 141 → 141 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #10200 detected (code: 451) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #10300 detected (code: 451) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #10400 detected (code: 451) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 28 → 28 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 145 → 145 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #10600 detected (code: 451) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #10700 detected (code: 451) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #10800 detected (code: 451) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 120 → 120 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #10900 detected (code: 451) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #11000 detected (code: 451) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 29 → 29 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 165 → 165 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR] DD success: 49 → 49 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNING: [0m[CEGAR-LLM] Failed to validate after 3 retry attempts[0m
+[1;94m[*] [0m[CEGAR-IMMEDIATE] Rejection #11100 detected (code: 451) in save_if_interesting[0m
+[1;94m[*] [0m[CEGAR] DD success: 151 → 151 bytes (0.0% reduction)[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 2/3...[0m
+[1;94m[*] [0m[CEGAR-LLM] Retry attempt 3/3...[0m
+[1;93m[!] [1;97mWARNIN

@@ -6,10 +6,21 @@ if [ -z $KEY ]; then
 fi
 
 # Update the openAI key
-for x in ChatAFL ChatAFL-CL1 ChatAFL-CL2;
+for x in ChatAFL ChatAFL-CL1 ChatAFL-CL2 ChatAFL-Enhanced;
 do
   sed -i "s/#define OPENAI_TOKEN \".*\"/#define OPENAI_TOKEN \"$KEY\"/" $x/chat-llm.h
 done
+
+# Build ChatAFL-Enhanced modules
+echo "Building ChatAFL-Enhanced modules..."
+cd ChatAFL-Enhanced
+make clean && make integrated
+if [ $? -ne 0 ]; then
+    echo "ERROR: ChatAFL-Enhanced build failed!"
+    exit 1
+fi
+cd ..
+echo "ChatAFL-Enhanced modules built successfully"
 
 # Copy the different versions of ChatAFL to the benchmark directories
 for subject in ./benchmark/subjects/*/*; do
@@ -24,7 +35,12 @@ for subject in ./benchmark/subjects/*/*; do
   
   rm -r $subject/chatafl-cl2 2>&1 >/dev/null
   cp -r ChatAFL-CL2 $subject/chatafl-cl2
+  
+  rm -r $subject/chatafl-enhanced 2>&1 >/dev/null
+  cp -r ChatAFL-Enhanced $subject/chatafl-enhanced
 done;
+
+echo "All ChatAFL versions (including Enhanced) copied to benchmark subjects"
 
 # Build the docker images
 

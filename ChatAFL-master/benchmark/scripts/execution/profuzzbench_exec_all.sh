@@ -61,6 +61,11 @@ do
                 profuzzbench_exec_common.sh lightftp $NUM_CONTAINERS results-lightftp chatafl-cl2 out-lightftp-chatafl_cl2 "-P FTP -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
+            if [[ $FUZZER == "chatafl-enhanced" ]] || [[ $FUZZER == "all" ]]
+            then
+                profuzzbench_exec_common.sh lightftp $NUM_CONTAINERS results-lightftp chatafl-enhanced out-lightftp-chatafl-enhanced "-P FTP -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+            fi
+
         fi
 
 
@@ -88,6 +93,11 @@ do
             if [[ $FUZZER == "chatafl-cl2" ]] || [[ $FUZZER == "all" ]]
             then
                 profuzzbench_exec_common.sh bftpd $NUM_CONTAINERS results-bftpd chatafl-cl2 out-bftpd-chatafl_cl2 "-m none -P FTP -D 10000 -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+            fi
+
+            if [[ $FUZZER == "chatafl-enhanced" ]] || [[ $FUZZER == "all" ]]
+            then
+                profuzzbench_exec_common.sh bftpd $NUM_CONTAINERS results-bftpd chatafl-enhanced out-bftpd-chatafl-enhanced "-m none -P FTP -D 10000 -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
         fi
@@ -119,6 +129,11 @@ do
                 profuzzbench_exec_common.sh proftpd $NUM_CONTAINERS results-proftpd chatafl-cl2 out-proftpd-chatafl_cl2 "-m none -P FTP -D 10000 -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
+            if [[ $FUZZER == "chatafl-enhanced" ]] || [[ $FUZZER == "all" ]]
+            then
+                profuzzbench_exec_common.sh proftpd $NUM_CONTAINERS results-proftpd chatafl-enhanced out-proftpd-chatafl-enhanced "-m none -P FTP -D 10000 -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+            fi
+
         fi
 
         if [[ $TARGET == "pure-ftpd" ]] || [[ $TARGET == "all" ]]
@@ -145,6 +160,11 @@ do
             if [[ $FUZZER == "chatafl-cl2" ]] || [[ $FUZZER == "all" ]]
             then
                 profuzzbench_exec_common.sh pure-ftpd $NUM_CONTAINERS results-pure-ftpd chatafl-cl2 out-pure-ftpd-chatafl_cl2 "-m none -P FTP -D 10000 -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+            fi
+
+            if [[ $FUZZER == "chatafl-enhanced" ]] || [[ $FUZZER == "all" ]]
+            then
+                profuzzbench_exec_common.sh pure-ftpd $NUM_CONTAINERS results-pure-ftpd chatafl-enhanced out-pure-ftpd-chatafl-enhanced "-m none -P FTP -D 10000 -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
         fi
@@ -178,6 +198,11 @@ do
                 profuzzbench_exec_common.sh exim $NUM_CONTAINERS results-exim chatafl-cl2 out-exim-chatafl_cl2 "-P SMTP -D 10000 -q 3 -s 3 -E -K -W 100 -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
+            if [[ $FUZZER == "chatafl-enhanced" ]] || [[ $FUZZER == "all" ]]
+            then
+                profuzzbench_exec_common.sh exim $NUM_CONTAINERS results-exim chatafl-enhanced out-exim-chatafl-enhanced "-P SMTP -D 10000 -q 3 -s 3 -E -K -W 100 -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+            fi
+
         fi
 
 
@@ -207,6 +232,11 @@ do
             if [[ $FUZZER == "chatafl-cl2" ]] || [[ $FUZZER == "all" ]]
             then
                 profuzzbench_exec_common.sh live555 $NUM_CONTAINERS results-live555 chatafl-cl2 out-live555-chatafl_cl2 "-P RTSP -D 10000 -q 3 -s 3 -E -K -R -m none" $TIMEOUT $SKIPCOUNT &
+            fi
+
+            if [[ $FUZZER == "chatafl-enhanced" ]] || [[ $FUZZER == "all" ]]
+            then
+                profuzzbench_exec_common.sh live555 $NUM_CONTAINERS results-live555 chatafl-enhanced out-live555-chatafl-enhanced "-P RTSP -D 10000 -q 3 -s 3 -E -K -R -m none" $TIMEOUT $SKIPCOUNT &
             fi
 
         fi
@@ -240,6 +270,11 @@ do
                 profuzzbench_exec_common.sh kamailio $NUM_CONTAINERS results-kamailio chatafl-cl2 out-kamailio-chatafl_cl2 "-m none -P SIP -l 5061 -D 50000 -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
+            if [[ $FUZZER == "chatafl-enhanced" ]] || [[ $FUZZER == "all" ]]
+            then
+                profuzzbench_exec_common.sh kamailio $NUM_CONTAINERS results-kamailio chatafl-enhanced out-kamailio-chatafl-enhanced "-m none -P SIP -l 5061 -D 50000 -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+            fi
+
         fi
 
 ##### DAAPD #####
@@ -270,6 +305,11 @@ do
                 profuzzbench_exec_common.sh forked-daapd $NUM_CONTAINERS results-forked-daapd chatafl-cl2 out-forked-daapd-chatafl_cl2 "-P HTTP -D 200000 -m none -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
+            if [[ $FUZZER == "chatafl-enhanced" ]] || [[ $FUZZER == "all" ]]
+            then
+                profuzzbench_exec_common.sh forked-daapd $NUM_CONTAINERS results-forked-daapd chatafl-enhanced out-forked-daapd-chatafl-enhanced "-P HTTP -D 200000 -m none -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+            fi
+
         fi
 
 ##### HTTP #####
@@ -298,6 +338,11 @@ do
             if [[ $FUZZER == "chatafl-cl2" ]] || [[ $FUZZER == "all" ]]
             then
                 profuzzbench_exec_common.sh lighttpd1 $NUM_CONTAINERS results-lighttpd1 chatafl-cl2 out-lighttpd1-chatafl_cl2 "-P HTTP -D 200000 -m none -q 3 -s 3 -E -K -R -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+            fi
+
+            if [[ $FUZZER == "chatafl-enhanced" ]] || [[ $FUZZER == "all" ]]
+            then
+                profuzzbench_exec_common.sh lighttpd1 $NUM_CONTAINERS results-lighttpd1 chatafl-enhanced out-lighttpd1-chatafl-enhanced "-P HTTP -D 200000 -m none -q 3 -s 3 -E -K -R -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
         fi
