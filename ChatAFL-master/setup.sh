@@ -11,16 +11,31 @@ do
   sed -i "s/#define OPENAI_TOKEN \".*\"/#define OPENAI_TOKEN \"$KEY\"/" $x/chat-llm.h
 done
 
-# Build ChatAFL-Enhanced modules
+# Build ChatAFL-Enhanced modules with optimized flags
 echo "Building ChatAFL-Enhanced modules..."
 cd ChatAFL-Enhanced
-make clean && make integrated
+
+# First build Enhanced modules with -O3 optimization
+echo "  → Building Enhanced modules (verifier, CEGAR, scheduler)..."
+make -f Makefile.enhanced clean
+make -f Makefile.enhanced integrated
 if [ $? -ne 0 ]; then
-    echo "ERROR: ChatAFL-Enhanced build failed!"
+    echo "ERROR: ChatAFL-Enhanced modules build failed!"
     exit 1
 fi
+
+# Then build main afl-fuzz binary with -O3 optimization
+echo "  → Building main afl-fuzz binary with -O3..."
+make clean all
+if [ $? -ne 0 ]; then
+    echo "ERROR: ChatAFL-Enhanced afl-fuzz build failed!"
+    exit 1
+fi
+
 cd ..
-echo "ChatAFL-Enhanced modules built successfully"
+echo "ChatAFL-Enhanced built successfully (with -O3 optimization)"
+echo "  Binary: $(ls -lh ChatAFL-Enhanced/afl-fuzz | awk '{print $5, $9}')"
+echo "  Modules: ChatAFL-Enhanced/libchatafl-enhanced.a"
 
 # Copy the different versions of ChatAFL to the benchmark directories
 for subject in ./benchmark/subjects/*/*; do

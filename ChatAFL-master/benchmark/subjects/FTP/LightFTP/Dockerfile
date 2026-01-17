@@ -60,6 +60,11 @@ RUN cd chatafl-cl1 && \
     cd llvm_mode && make $MAKE_OPT
 
 COPY --chown=ubuntu:ubuntu chatafl-cl2 chatafl-cl2
+
+COPY --chown=ubuntu:ubuntu ChatAFL-Enhanced chatafl-enhanced
+RUN cd chatafl-enhanced && \
+    make clean all $MAKE_OPT && \
+    cd llvm_mode && make $MAKE_OPT
 RUN cd chatafl-cl2 && \
     make clean all $MAKE_OPT && \
     cd llvm_mode && make $MAKE_OPT

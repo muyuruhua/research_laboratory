@@ -25,6 +25,15 @@ usage() {
 TARGET=$1
 PROTOCOL=$2
 TIMEOUT_MINUTES=$3
+
+# 验证时间参数是否为正整数
+if ! [[ "$TIMEOUT_MINUTES" =~ ^[0-9]+$ ]]; then
+    echo "错误: 时间参数必须是正整数（分钟）"
+    echo "用法: $0 <TARGET> <PROTOCOL> <TIMEOUT_MINUTES>"
+    echo "示例: $0 LightFTP FTP 60"
+    exit 1
+fi
+
 TIMEOUT_SECONDS=$((TIMEOUT_MINUTES * 60))
 
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"

@@ -1,0 +1,45 @@
+start_time        : 1768679926
+last_update       : 1768679989
+fuzzer_pid        : 7
+cycles_done       : 0
+execs_done        : 1015
+execs_per_sec     : 16.30
+paths_total       : 21
+paths_favored     : 2
+paths_found       : 19
+paths_imported    : 0
+max_depth         : 2
+cur_path          : 0
+pending_favs      : 2
+pending_total     : 21
+variable_paths    : 18
+stability         : 93.89%
+bitmap_cvg        : 0.62%
+unique_crashes    : 0
+unique_hangs      : 0
+last_path         : 1768679982
+last_crash        : 0
+last_hang         : 0
+execs_since_crash : 1015
+exec_timeout      : 5000
+afl_banner        : fftp
+afl_version       : 2.56b
+target_mode       : default
+command_line      : /home/ubuntu/chatafl-enhanced/afl-fuzz -i /home/ubuntu/experiments/in-ftp -o /home/ubuntu/output -d -P FTP -D 10000 -q 3 -s 3 -E -K -m none -t 5000+ -N tcp://127.0.0.1/2200 -c /home/ubuntu/experiments/ftpclean -- ./fftp fftp.conf 2200
+slowest_exec_ms   : 0
+verifier_checks   : 4
+verifier_rejects  : 10
+verifier_rate     : 250.00%
+random_seed       : 1768559202
+cegar_triggers    : 748
+cegar_success     : 0
+cegar_cache_hits  : 0
+cegar_success_rate: 0.00%
+cegar_cache_hit_rate: 0.00%
+cegar_failures    : 748
+cegar_failure_rate: 100.00%
+state_updates     : 23
+unique_states     : 13
+cycles_wo_state   : 0
+state_coverage_pct: Error
+peak_rss_mb       : 16

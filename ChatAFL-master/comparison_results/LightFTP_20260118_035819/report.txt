@@ -1,0 +1,29 @@
+===== ChatAFL vs ChatAFL-Enhanced 对比报告 =====
+目标: LightFTP (FTP), 时长: 2分钟
+时间: 2026年 01月 18日 星期日 04:00:57 CST
+
+========== ChatAFL 统计 ==========
+execs_done        : 1019
+execs_per_sec     : 16.99
+paths_total       : 27
+bitmap_cvg        : 0.64%
+unique_crashes    : 0
+unique_hangs      : 0
+last_path         : 1768679984
+
+
+========== ChatAFL-Enhanced 统计 ==========
+execs_done        : 1015
+execs_per_sec     : 16.30
+paths_total       : 21
+bitmap_cvg        : 0.62%
+unique_crashes    : 0
+unique_hangs      : 0
+last_path         : 1768679982
+
+
+========== Enhanced特有功能 ==========
+
+========== 对比分析 ==========
+执行数对比: ChatAFL=1019, Enhanced=1015
+路径数对比: ChatAFL=27, Enhanced=21
