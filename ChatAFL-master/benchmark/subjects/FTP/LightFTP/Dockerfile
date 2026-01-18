@@ -61,9 +61,9 @@ RUN cd chatafl-cl1 && \
 
 COPY --chown=ubuntu:ubuntu chatafl-cl2 chatafl-cl2
 
-COPY --chown=ubuntu:ubuntu ChatAFL-Enhanced chatafl-enhanced
+COPY --chown=ubuntu:ubuntu chatafl-enhanced chatafl-enhanced
 RUN cd chatafl-enhanced && \
-    make clean all $MAKE_OPT && \
+    make clean all CHATAFL_ENHANCED=1 $MAKE_OPT && \
     cd llvm_mode && make $MAKE_OPT
 RUN cd chatafl-cl2 && \
     make clean all $MAKE_OPT && \

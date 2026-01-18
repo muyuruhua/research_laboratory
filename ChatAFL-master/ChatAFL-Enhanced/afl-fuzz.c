@@ -44,6 +44,12 @@
 #include "hash.h"
 #include "chat-llm.h"
 
+#ifdef CHATAFL_ENHANCED
+#include "cegar-optimized.h"
+#include "state-graph.h"
+#include "verifier.h"
+#endif
+
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -106,6 +112,13 @@ EXP_ST u8 *in_dir, /* Input directory with test cases  */
     *doc_path,     /* Path to documentation dir        */
     *target_path,  /* Path to target binary            */
     *orig_cmdline; /* Original command line            */
+
+#ifdef CHATAFL_ENHANCED
+/* ChatAFL-Enhanced: Global variables for CEGAR/Verifier (only when enabled) */
+static u64 g_verifier_checks = 0;
+static u64 g_verifier_rejects = 0;
+StateGraph g_state_graph = {0};  /* State transition graph */
+#endif
 
 EXP_ST u32 exec_tmout = EXEC_TIMEOUT; /* Configurable exec timeout (ms)   */
 static u32 hang_tmout = EXEC_TIMEOUT; /* Timeout used for hang det (ms)   */
@@ -4634,6 +4647,39 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
   u8 hnb;
   // s32 fd;
   u8 keeping = 0, res;
+
+#ifdef CHATAFL_ENHANCED
+  /* Optimized CEGAR: 轻量级检查，不阻塞主流程 */
+  if (response_buf && response_buf_size > 0 && g_cegar_config.enabled) {
+    unsigned int state_count = 0;
+    unsigned int *state_sequence = (*extract_response_codes)(response_buf, 
+                                                             response_buf_size, 
+                                                             &state_count);
+    if (state_sequence && state_count > 0) {
+      /* 检查拒绝响应码 (4xx/5xx) */
+      for (unsigned int i = 0; i < state_count; i++) {
+        if (state_sequence[i] >= 400 && state_sequence[i] < 600) {
+          g_verifier_rejects++;
+          
+          /* 使用优化的触发策略 */
+          if (should_trigger_cegar(g_verifier_rejects)) {
+            /* TODO: 异步调用 CEGAR refinement，不阻塞 */
+            /* 当前版本：仅记录，主循环稍后处理 */
+            static bool warned_once = false;
+            if (!warned_once) {
+              ACTF("[CEGAR-OPTIMIZED] Rejection #%llu detected (code: %u)", 
+                   g_verifier_rejects, state_sequence[i]);
+              ACTF("[CEGAR-OPTIMIZED] CEGAR trigger would happen here (async mode TBD)");
+              warned_once = true;
+            }
+          }
+          break;
+        }
+      }
+    }
+    if (state_sequence) ck_free(state_sequence);
+  }
+#endif
 
   if (fault == crash_mode)
   {
@@ -10713,6 +10759,17 @@ int main(int argc, char **argv)
 
   perform_dry_run(use_argv);
 
+#ifdef CHATAFL_ENHANCED
+  /* Initialize ChatAFL-Enhanced modules (if enabled via environment variable) */
+  cegar_config_init();
+  if (g_cegar_config.enabled) {
+    ACTF("ChatAFL-Enhanced: CEGAR initialized with optimized settings");
+    ACTF("  Trigger interval: %u rejections", g_cegar_config.trigger_interval);
+    ACTF("  LLM budget: %u calls/hour", g_cegar_config.max_llm_calls_per_hour);
+    ACTF("  Fast-fail: %s", g_cegar_config.fast_fail_enabled ? "enabled" : "disabled");
+  }
+#endif
+
   cull_queue();
 
   show_init_stats();
@@ -10900,6 +10957,25 @@ int main(int argc, char **argv)
   save_auto();
 
 stop_fuzzing:
+
+#ifdef CHATAFL_ENHANCED
+  /* Print CEGAR statistics before exit */
+  if (g_cegar_config.enabled) {
+    ACTF("");
+    print_cegar_stats();
+    
+    /* Check time budget usage */
+    uint64_t total_time_ms = (get_cur_time() - start_time);
+    float cegar_ratio = get_cegar_time_ratio(total_time_ms);
+    if (cegar_ratio > 0.0f) {
+      ACTF("CEGAR time usage: %.1f%% of total fuzzing time", cegar_ratio * 100.0f);
+      if (cegar_ratio > (CEGAR_TIME_BUDGET_PERCENT / 100.0f)) {
+        WARNF("CEGAR exceeded time budget (%.1f%% > %d%%)", 
+              cegar_ratio * 100.0f, CEGAR_TIME_BUDGET_PERCENT);
+      }
+    }
+  }
+#endif
 
   SAYF(CURSOR_SHOW cLRD "\n\n+++ Testing aborted %s +++\n" cRST,
        stop_soon == 2 ? "programmatically" : "by user");

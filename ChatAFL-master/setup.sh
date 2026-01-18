@@ -12,30 +12,22 @@ do
 done
 
 # Build ChatAFL-Enhanced modules with optimized flags
-echo "Building ChatAFL-Enhanced modules..."
+echo "Building ChatAFL-Enhanced..."
 cd ChatAFL-Enhanced
 
-# First build Enhanced modules with -O3 optimization
-echo "  → Building Enhanced modules (verifier, CEGAR, scheduler)..."
-make -f Makefile.enhanced clean
-make -f Makefile.enhanced integrated
+# Build WITH optimized Enhanced modules (CEGAR default disabled, can enable via env var)
+echo "  → Building ChatAFL-Enhanced with CHATAFL_ENHANCED=1"
+echo "     Features: Optimized CEGAR control, verifier, state scheduler"
+echo "     CEGAR: Disabled by default (enable with CHATAFL_CEGAR_ENABLE=1)"
+make clean all CHATAFL_ENHANCED=1
 if [ $? -ne 0 ]; then
-    echo "ERROR: ChatAFL-Enhanced modules build failed!"
-    exit 1
-fi
-
-# Then build main afl-fuzz binary with -O3 optimization
-echo "  → Building main afl-fuzz binary with -O3..."
-make clean all
-if [ $? -ne 0 ]; then
-    echo "ERROR: ChatAFL-Enhanced afl-fuzz build failed!"
+    echo "ERROR: ChatAFL-Enhanced build failed!"
     exit 1
 fi
 
 cd ..
-echo "ChatAFL-Enhanced built successfully (with -O3 optimization)"
+echo "ChatAFL-Enhanced built successfully (Enhanced mode with optimized control)"
 echo "  Binary: $(ls -lh ChatAFL-Enhanced/afl-fuzz | awk '{print $5, $9}')"
-echo "  Modules: ChatAFL-Enhanced/libchatafl-enhanced.a"
 
 # Copy the different versions of ChatAFL to the benchmark directories
 for subject in ./benchmark/subjects/*/*; do

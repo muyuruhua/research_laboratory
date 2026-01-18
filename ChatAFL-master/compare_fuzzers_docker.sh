@@ -94,11 +94,11 @@ case "$TARGET" in
         AFL_OPTS="-d -P FTP -D 10000 -q 3 -s 3 -E -K -m none -t 5000+ -N tcp://127.0.0.1/2200 -c $CLEAN_SCRIPT"
         ;;
     Live555|live555)
-        CONTAINER_WORKDIR="/home/ubuntu/experiments/Live555"
+        CONTAINER_WORKDIR="/home/ubuntu/experiments/live/mediaServer"
         CONTAINER_TARGET="./live555MediaServer"
         TARGET_ARGS="8554"
         SEED_DIR="/home/ubuntu/experiments/in-rtsp"
-        AFL_OPTS="-d -P RTSP -D 10000 -q 3 -s 3 -E -K -R -m none -N tcp://127.0.0.1/8554"
+        AFL_OPTS="-d -P RTSP -D 10000 -q 3 -s 3 -E -K -R -m none -t 5000+ -N tcp://127.0.0.1/8554"
         ;;
     Exim|exim)
         CONTAINER_WORKDIR="/home/ubuntu/experiments/Exim"
