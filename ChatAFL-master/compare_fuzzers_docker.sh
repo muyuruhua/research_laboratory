@@ -215,16 +215,14 @@ while true; do
     sleep 10
 done
 
-# 获取日志
-print_header "收集日志"
+print_header "Collecting logs"
 docker logs "$CHATAFL_CONTAINER" > "$CHATAFL_LOG" 2>&1
 docker logs "$ENHANCED_CONTAINER" > "$ENHANCED_LOG" 2>&1
-print_success "日志已保存"
+print_success "Logs saved"
 
-# 清理容器
-print_info "清理容器..."
+print_info "Cleaning up containers..."
 docker rm "$CHATAFL_CONTAINER" "$ENHANCED_CONTAINER" 2>/dev/null
-print_success "容器已清理"
+print_success "Containers cleaned up"
 
 print_header "生成对比报告"
 
@@ -299,7 +297,7 @@ COMPARISON_LOG="${COMPARISON_DIR}/report.txt"
 
 cat "$COMPARISON_LOG"
 
-print_success "完成! 结果保存在: $COMPARISON_DIR"
+print_success "Complete! Results saved to: $COMPARISON_DIR"
 echo ""
 echo "查看完整报告: cat $COMPARISON_LOG"
 echo "查看ChatAFL日志: cat $CHATAFL_LOG"

@@ -123,6 +123,8 @@ digraph g {
 	211	[color=red];
 	200 -> 211	[key=new_edge,
 		color=red];
+	150 -> 257	[key=new_edge,
+		color=red];
 	451	[color=blue];
 	150 -> 451	[key=new_edge,
 		color=blue];
@@ -269,11 +271,15 @@ digraph g {
 		color=red];
 	250 -> 230	[key=new_edge,
 		color=red];
+	250 -> 500	[key=new_edge,
+		color=red];
 	250 -> 250	[key=new_edge,
 		color=red];
 	226 -> 215	[key=new_edge,
 		color=red];
 	226 -> 500	[key=new_edge,
+		color=red];
+	226 -> 501	[key=new_edge,
 		color=red];
 	226 -> 226	[key=new_edge,
 		color=red];
@@ -282,6 +288,8 @@ digraph g {
 	229 -> 500	[key=new_edge,
 		color=red];
 	229 -> 501	[key=new_edge,
+		color=red];
+	229 -> 229	[key=new_edge,
 		color=red];
 	229 -> 214	[key=new_edge,
 		color=red];
