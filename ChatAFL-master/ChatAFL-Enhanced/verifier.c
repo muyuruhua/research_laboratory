@@ -11,6 +11,7 @@
  */
 
 #include "verifier.h"
+#include "cfg-parser.h"
 #include "alloc-inl.h"
 #include "hash.h"
 #include <stdio.h>
@@ -76,7 +77,7 @@ int verify_parseability(
     json_object *grammar,
     parsed_fields_t **fields_out) {
     
-    if (!message || msg_len == 0 || !grammar) {
+    if (!message || msg_len == 0) {
         return 0;
     }
     
@@ -123,6 +124,59 @@ int verify_parseability(
     
     // v0: Simple heuristic - if has at least 1 field, consider it parseable
     return fields->field_count > 0 ? 1 : 0;
+}
+
+/**
+ * CFG-based parseability check (FULL IMPLEMENTATION)
+ * Uses recursive descent parser with structured grammar
+ */
+int verify_parseability_with_cfg(
+    const unsigned char *message,
+    size_t msg_len,
+    cfg_grammar_t *grammar,
+    parsed_fields_t **fields_out) {
+    
+    if (!message || msg_len == 0 || !grammar) {
+        return 0;
+    }
+    
+    // Attempt to parse message with CFG
+    parse_node_t *parse_tree = NULL;
+    int parse_result = cfg_parse_message(grammar, message, msg_len, &parse_tree);
+    
+    if (!parse_result) {
+        // Parse failed
+        if (g_verification_log) {
+            fprintf(g_verification_log, \"[PARSEABILITY] CFG parse FAILED (len=%zu)\\n\", msg_len);
+            fflush(g_verification_log);
+        }
+        return 0;
+    }
+    
+    // Extract fields from parse tree
+    if (fields_out && parse_tree) {
+        parsed_fields_t *fields = (parsed_fields_t *)calloc(1, sizeof(parsed_fields_t));
+        parsed_field_t *field_array = NULL;
+        int field_count = 0;
+        
+        cfg_extract_fields(parse_tree, &field_array, &field_count);
+        
+        fields->fields = field_array;
+        fields->field_count = field_count;
+        *fields_out = fields;
+    }
+    
+    // Cleanup
+    if (parse_tree) {
+        cfg_free_parse_tree(parse_tree);
+    }
+    
+    if (g_verification_log) {
+        fprintf(g_verification_log, \"[PARSEABILITY] CFG parse SUCCESS (len=%zu)\\n\", msg_len);
+        fflush(g_verification_log);
+    }
+    
+    return 1;
 }
 
 // Helper: curl write callback
@@ -335,6 +389,46 @@ float calculate_coverage_gain(
     return gain;
 }
 
+/**
+ * Calculate coverage gain from AFL bitmap (MODULARIZED VERSION)
+ * 
+ * @param bitmap AFL coverage bitmap (trace_bits)
+ * @param bitmap_size Size of bitmap (MAP_SIZE)
+ * @param previous_total Previous total edge count
+ * @param current_total Current total edge count
+ * @param stt State transition tree (for state-aware coverage)
+ * @return Coverage gain as percentage (0.0 to 1.0)
+ */
+float calculate_coverage_gain_from_bitmap(
+    const unsigned char *bitmap,
+    size_t bitmap_size,
+    u32 previous_total,
+    u32 current_total,
+    const state_transition_tree_t *stt) {
+    
+    if (!bitmap || bitmap_size == 0) return 0.0f;
+    
+    // Basic coverage gain: new edges / total possible edges
+    float basic_gain = (float)(current_total - previous_total) / (float)bitmap_size;
+    
+    // State-aware adjustment: if discovered new state, boost gain
+    float state_bonus = 0.0f;
+    if (stt) {
+        for (int i = 0; i < stt->node_count; i++) {
+            if (stt->nodes[i].is_new) {
+                state_bonus += 0.05f;  // +5% per new state
+            }
+        }
+    }
+    
+    // Combined gain with cap at 1.0
+    float total_gain = basic_gain + state_bonus;
+    if (total_gain > 1.0f) total_gain = 1.0f;
+    if (total_gain < 0.0f) total_gain = 0.0f;
+    
+    return total_gain;
+}
+
 void update_state_transition_tree(
     state_transition_tree_t *stt,
     const unsigned int *response_codes,
@@ -412,31 +506,93 @@ unsigned char *minimize_counterexample(
         return NULL;
     }
     
-    // v0: Simple delta-debugging by removing lines
-    unsigned char *minimal = (unsigned char *)calloc(msg_len + 1, 1);
-    memcpy(minimal, message, msg_len);
+    // Allocate working buffer
+    unsigned char *current = (unsigned char *)calloc(msg_len, 1);
+    memcpy(current, message, msg_len);
+    size_t current_len = msg_len;
     
-    // Try removing each line one by one
-    const char *line_start = (const char *)minimal;
-    const char *msg_end = (const char *)minimal + msg_len;
-    int line_count = 0;
+    // Delta-debugging: start with coarse granularity, refine to 1-byte
+    int granularity = 8;  // Start with 8 chunks
+    int improvements = 1;
     
-    while (line_start < msg_end) {
-        const char *line_end = strchr(line_start, '\r');
-        if (!line_end) line_end = strchr(line_start, '\n');
-        if (!line_end) line_end = msg_end;
+    if (g_verification_log) {
+        fprintf(g_verification_log, "[DELTA-DEBUG] Starting minimization (len=%zu)\n", msg_len);
+        fflush(g_verification_log);
+    }
+    
+    while (granularity > 0 && improvements > 0) {
+        improvements = 0;
+        size_t chunk_size = (current_len + granularity - 1) / granularity;
+        if (chunk_size == 0) chunk_size = 1;
         
-        line_count++;
-        line_start = line_end;
-        while (line_start < msg_end && (*line_start == '\r' || *line_start == '\n')) {
-            line_start++;
+        // Try removing each chunk
+        for (int chunk_idx = 0; chunk_idx < granularity; chunk_idx++) {
+            size_t remove_start = chunk_idx * chunk_size;
+            if (remove_start >= current_len) break;
+            
+            size_t remove_end = remove_start + chunk_size;
+            if (remove_end > current_len) remove_end = current_len;
+            
+            // Create candidate with chunk removed
+            size_t candidate_len = current_len - (remove_end - remove_start);
+            if (candidate_len == 0) continue;  // Don't remove everything
+            
+            unsigned char *candidate = (unsigned char *)calloc(candidate_len, 1);
+            memcpy(candidate, current, remove_start);
+            memcpy(candidate + remove_start, current + remove_end, 
+                   current_len - remove_end);
+            
+            // Test if candidate still triggers failure
+            // For now, use parseability as proxy (fails if unparseable)
+            parsed_fields_t *test_fields = NULL;
+            int still_parseable = verify_parseability(candidate, candidate_len, 
+                                                      grammar, &test_fields);
+            
+            if (test_fields) {
+                for (int i = 0; i < test_fields->field_count; i++) {
+                    if (test_fields->fields[i].name) free(test_fields->fields[i].name);
+                    if (test_fields->fields[i].type) free(test_fields->fields[i].type);
+                }
+                free(test_fields->fields);
+                free(test_fields);
+            }
+            
+            // If still behaves same (parseable or not), keep reduction
+            if (still_parseable == 0) {  // Still fails → good candidate
+                free(current);
+                current = candidate;
+                current_len = candidate_len;
+                improvements++;
+                
+                if (g_verification_log) {
+                    fprintf(g_verification_log, 
+                            "[DELTA-DEBUG] Reduced to %zu bytes (chunk %d/%d)\n",
+                            current_len, chunk_idx, granularity);
+                    fflush(g_verification_log);
+                }
+                break;  // Restart with new current
+            } else {
+                free(candidate);
+            }
+        }
+        
+        // Increase granularity (smaller chunks) if no improvements
+        if (improvements == 0) {
+            granularity *= 2;
+            if (granularity > (int)current_len) break;
         }
     }
     
-    // For now, just return a copy
-    // Full delta-debugging would be more sophisticated
-    if (minimized_len_out) *minimized_len_out = msg_len;
-    return minimal;
+    if (minimized_len_out) *minimized_len_out = current_len;
+    
+    if (g_verification_log) {
+        fprintf(g_verification_log, 
+                "[DELTA-DEBUG] Final size: %zu bytes (%.1f%% of original)\n",
+                current_len, 100.0 * current_len / msg_len);
+        fflush(g_verification_log);
+    }
+    
+    return current;
 }
 
 void log_verification_result(

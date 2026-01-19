@@ -71,12 +71,12 @@ char *construct_cegar_prompt(
  * Expects JSON or structured format from LLM
  * 
  * @param llm_response       raw LLM output
- * @param patched_grammar_out  parsed grammar patch
- * @return 0 on success, -1 on parse error
+ * @param unused_param       unused parameter for backward compatibility
+ * @return Allocated patch structure or NULL on parse error
  */
-int parse_cegar_patch(
+cegar_patch_t *parse_cegar_patch(
     const char *llm_response,
-    cegar_patch_t **patched_out
+    cegar_patch_t **unused_param
 );
 
 /**
@@ -137,6 +137,28 @@ void log_cegar_attempt(
     const cegar_patch_t *patch,
     int success
 );
+
+/**
+ * @brief Cache CEGAR result for reproducibility
+ * Stores: hash(counterexample) → successful patch
+ */
+void cache_cegar_result(
+    cegar_failure_t *counterexample,
+    cegar_patch_t *successful_patch
+);
+
+/**
+ * @brief Lookup cached CEGAR result
+ * @return cached patch if found, NULL if not cached
+ */
+cegar_patch_t *lookup_cached_cegar_result(
+    cegar_failure_t *counterexample
+);
+
+/**
+ * @brief Free CEGAR patch structure
+ */
+void free_cegar_patch(cegar_patch_t *patch);
 
 /**
  * @brief Free CEGAR structures

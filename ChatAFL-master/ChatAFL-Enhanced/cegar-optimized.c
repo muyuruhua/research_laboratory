@@ -9,8 +9,8 @@
 #include <string.h>
 #include <sys/time.h>
 
-/* 全局配置实例 */
-CEGARConfig g_cegar_config = {0};
+/* 外部全局配置（在 afl-fuzz.c 中定义）*/
+extern CEGARConfig g_cegar_config;
 
 /* 辅助函数：获取当前时间（毫秒）*/
 static uint64_t get_time_ms(void) {

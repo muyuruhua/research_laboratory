@@ -14,6 +14,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 #include <json-c/json.h>
 #include <dirent.h>
 
@@ -61,9 +64,10 @@ char *construct_cegar_prompt(
     
     char *prompt = (char *)calloc(4096, 1);
     char *ptr = prompt;
+    size_t remaining = 4096;
     
     // Build constraint-based prompt
-    ptr += sprintf(ptr, 
+    int written = snprintf(ptr, remaining,
         "You are a protocol expert for %s.\n\n"
         "A message was REJECTED by the server with response:\n"
         "  Status: %d\n"
@@ -112,38 +116,45 @@ char *construct_cegar_prompt(
 /**
  * Parse LLM's response into structured patch
  * Expects JSON format from construct_cegar_prompt
+ * Returns pointer to allocated patch or NULL on failure
  */
-int parse_cegar_patch(
+cegar_patch_t *parse_cegar_patch(
     const char *llm_response,
-    cegar_patch_t **patched_out) {
+    cegar_patch_t **unused_param) {
     
-    if (!llm_response || !patched_out) {
-        return -1;
+    if (!llm_response) {
+        return NULL;
     }
     
     // Try to parse as JSON
     json_object *obj = json_tokener_parse(llm_response);
     if (!obj) {
         fprintf(stderr, "[CEGAR] Failed to parse LLM response as JSON\n");
-        return -1;
+        return NULL;
+    }
+    
+    // Look for nested patch object
+    json_object *patch_obj = json_object_object_get(obj, "patch");
+    if (!patch_obj) {
+        patch_obj = obj; // Assume whole response is the patch
     }
     
     cegar_patch_t *patch = (cegar_patch_t *)calloc(1, sizeof(cegar_patch_t));
     
     // Extract fields from JSON
-    json_object *field_idx_obj = json_object_object_get(obj, "field_index");
-    json_object *field_name_obj = json_object_object_get(obj, "field_name");
-    json_object *new_val_obj = json_object_object_get(obj, "new_value");
-    json_object *reason_obj = json_object_object_get(obj, "reason");
+    json_object *field_idx_obj = json_object_object_get(patch_obj, "field_index");
+    json_object *patch_type_obj = json_object_object_get(patch_obj, "patch_type");
+    json_object *new_val_obj = json_object_object_get(patch_obj, "new_value");
+    json_object *explanation_obj = json_object_object_get(patch_obj, "explanation");
     
     if (field_idx_obj) {
         patch->field_idx_patched = json_object_get_int(field_idx_obj);
     }
     
-    if (field_name_obj) {
-        const char *name = json_object_get_string(field_name_obj);
+    if (patch_type_obj) {
+        const char *type = json_object_get_string(patch_type_obj);
         patch->patched_grammar = json_object_new_object();
-        json_object_object_add(patch->patched_grammar, "field_name", json_object_new_string(name));
+        json_object_object_add(patch->patched_grammar, "patch_type", json_object_new_string(type));
     }
     
     if (new_val_obj) {
@@ -153,16 +164,17 @@ int parse_cegar_patch(
         }
     }
     
-    if (reason_obj) {
-        patch->patch_description = strdup(json_object_get_string(reason_obj));
+    if (explanation_obj) {
+        patch->patch_description = strdup(json_object_get_string(explanation_obj));
+    } else {
+        patch->patch_description = strdup("LLM-generated patch");
     }
     
     patch->patch_confidence = 3;  // Default medium confidence
     
     json_object_put(obj);
-    *patched_out = patch;
     
-    return 0;
+    return patch;
 }
 
 /**
@@ -372,4 +384,152 @@ void cegar_cleanup(void) {
         free(g_cegar_ctx);
         g_cegar_ctx = NULL;
     }
+}
+
+/**
+ * Cache successful CEGAR result for reproducibility
+ * Uses hash(counterexample) as key
+ */
+void cache_cegar_result(
+    cegar_failure_t *counterexample,
+    cegar_patch_t *successful_patch) {
+    
+    if (!counterexample || !successful_patch || !g_cegar_ctx) {
+        return;
+    }
+    
+    // Generate cache key from counterexample
+    char cache_key[64];
+    unsigned int msg_hash = 0;
+    if (counterexample->original_message && counterexample->original_len > 0) {
+        // Simple hash of message content
+        for (size_t i = 0; i < counterexample->original_len && i < 256; i++) {
+            msg_hash = msg_hash * 31 + counterexample->original_message[i];
+        }
+    }
+    msg_hash ^= counterexample->failure_response.status_code;
+    
+    snprintf(cache_key, sizeof(cache_key), "%08x", msg_hash);
+    
+    // Create cache file
+    char cache_file_path[512];
+    snprintf(cache_file_path, sizeof(cache_file_path), "%s/%s.json", 
+             g_cegar_ctx->cache_file, cache_key);
+    
+    FILE *cache_file = fopen(cache_file_path, "w");
+    if (!cache_file) {
+        fprintf(stderr, "[CEGAR] Failed to create cache file: %s\n", cache_file_path);
+        return;
+    }
+    
+    // Write cache entry
+    fprintf(cache_file, "{\n");
+    fprintf(cache_file, "  \"counterexample_hash\": \"%s\",\n", cache_key);
+    fprintf(cache_file, "  \"status_code\": %d,\n", counterexample->failure_response.status_code);
+    fprintf(cache_file, "  \"field_patched\": %d,\n", successful_patch->field_idx_patched);
+    if (successful_patch->patch_description) {
+        fprintf(cache_file, "  \"description\": \"%s\",\n", successful_patch->patch_description);
+    }
+    fprintf(cache_file, "  \"confidence\": %d,\n", successful_patch->patch_confidence);
+    fprintf(cache_file, "  \"timestamp\": %ld\n", time(NULL));
+    fprintf(cache_file, "}\n");
+    
+    fclose(cache_file);
+    
+    if (g_cegar_log) {
+        fprintf(g_cegar_log, "[CACHE] Stored successful patch: %s\n", cache_key);
+        fflush(g_cegar_log);
+    }
+}
+
+/**
+ * Lookup cached CEGAR result 
+ * Returns cached patch if found, NULL otherwise
+ */
+cegar_patch_t *lookup_cached_cegar_result(
+    cegar_failure_t *counterexample) {
+    
+    if (!counterexample || !g_cegar_ctx) {
+        return NULL;
+    }
+    
+    // Generate same cache key
+    char cache_key[64];
+    unsigned int msg_hash = 0;
+    if (counterexample->original_message && counterexample->original_len > 0) {
+        for (size_t i = 0; i < counterexample->original_len && i < 256; i++) {
+            msg_hash = msg_hash * 31 + counterexample->original_message[i];
+        }
+    }
+    msg_hash ^= counterexample->failure_response.status_code;
+    
+    snprintf(cache_key, sizeof(cache_key), "%08x", msg_hash);
+    
+    // Try to open cache file
+    char cache_file_path[512];
+    snprintf(cache_file_path, sizeof(cache_file_path), "%s/%s.json", 
+             g_cegar_ctx->cache_file, cache_key);
+    
+    FILE *cache_file = fopen(cache_file_path, "r");
+    if (!cache_file) {
+        return NULL;  // Not cached
+    }
+    
+    // Read and parse cache entry (simplified)
+    char buffer[1024];
+    size_t bytes_read = fread(buffer, 1, sizeof(buffer)-1, cache_file);
+    buffer[bytes_read] = '\0';
+    fclose(cache_file);
+    
+    // Simple JSON parsing for cache (production would use proper parser)
+    cegar_patch_t *patch = (cegar_patch_t *)calloc(1, sizeof(cegar_patch_t));
+    
+    // Extract field_patched
+    char *field_start = strstr(buffer, "\"field_patched\": ");
+    if (field_start) {
+        patch->field_idx_patched = atoi(field_start + 17);
+    }
+    
+    // Extract confidence
+    char *conf_start = strstr(buffer, "\"confidence\": ");
+    if (conf_start) {
+        patch->patch_confidence = atoi(conf_start + 14);
+    }
+    
+    // Extract description
+    char *desc_start = strstr(buffer, "\"description\": \"");
+    if (desc_start) {
+        char *desc_end = strchr(desc_start + 16, '\"');
+        if (desc_end) {
+            size_t desc_len = desc_end - (desc_start + 16);
+            patch->patch_description = (char *)calloc(desc_len + 1, 1);
+            memcpy(patch->patch_description, desc_start + 16, desc_len);
+        }
+    }
+    
+    patch->patched_grammar = json_object_new_object();
+    json_object_object_add(patch->patched_grammar, "cached", json_object_new_boolean(1));
+    
+    if (g_cegar_log) {
+        fprintf(g_cegar_log, "[CACHE] Found cached patch: %s\n", cache_key);
+        fflush(g_cegar_log);
+    }
+    
+    return patch;
+}
+
+/**
+ * Free CEGAR patch structure
+ */
+void free_cegar_patch(cegar_patch_t *patch) {
+    if (!patch) return;
+    
+    if (patch->patched_grammar) {
+        json_object_put(patch->patched_grammar);
+    }
+    if (patch->patch_description) {
+        free(patch->patch_description);
+    }
+    
+    free(patch);
 }

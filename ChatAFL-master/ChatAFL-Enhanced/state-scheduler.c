@@ -32,6 +32,8 @@ void state_scheduler_init(
     scheduler->stt = (state_transition_tree_t *)calloc(1, sizeof(state_transition_tree_t));
     scheduler->stt->nodes = (state_node_t *)calloc(4096, sizeof(state_node_t));
     scheduler->stt->node_count = 0;
+    scheduler->stt->transitions = (state_transition_t *)calloc(4096 * 4, sizeof(state_transition_t));
+    scheduler->stt->transition_count = 0;
     
     scheduler->state_stats = (state_stats_t *)calloc(4096, sizeof(state_stats_t));
     scheduler->state_stats_count = 0;

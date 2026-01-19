@@ -25,8 +25,9 @@ CFLAGS     += -Wall -D_FORTIFY_SOURCE=2 -g -Wno-pointer-sign -Wno-unused-result 
 
 # Enable Enhanced modules if CHATAFL_ENHANCED=1
 ifdef CHATAFL_ENHANCED
-  CFLAGS += -DCHATAFL_ENHANCED=1
-  ENHANCED_OBJS = verifier.o cegar-refinement.o state-scheduler.o verifier_extended.o cegar-optimized.o
+  CFLAGS += -DCHATAFL_ENHANCED=1 -I/opt/homebrew/opt/json-c/include -I/opt/homebrew/opt/pcre2/include
+  LDFLAGS += -L/opt/homebrew/opt/json-c/lib -L/opt/homebrew/opt/pcre2/lib
+  ENHANCED_OBJS = verifier.o cegar-refinement.o state-scheduler.o cegar-optimized.o state-graph.o cfg-parser.o module-interface.o
 else
   ENHANCED_OBJS =
 endif
@@ -106,6 +107,15 @@ verifier_extended.o: verifier_extended.c verifier.h state-graph.h
 
 cegar-optimized.o: cegar-optimized.c cegar-optimized.h
 	$(CC) $(CFLAGS) -c cegar-optimized.c -o cegar-optimized.o
+
+state-graph.o: state-graph.c state-graph.h
+	$(CC) $(CFLAGS) -c state-graph.c -o state-graph.o
+
+cfg-parser.o: cfg-parser.c cfg-parser.h verifier.h
+	$(CC) $(CFLAGS) -c cfg-parser.c -o cfg-parser.o
+
+module-interface.o: module-interface.c module-interface.h verifier.h cegar-refinement.h state-scheduler.h
+	$(CC) $(CFLAGS) -c module-interface.c -o module-interface.o
 
 afl-as: afl-as.c afl-as.h $(COMM_HDR) | test_x86
 	$(CC) $(CFLAGS) $@.c -o $@ $(LDFLAGS)

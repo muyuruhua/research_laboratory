@@ -5,6 +5,9 @@
 #include <stdint.h>
 #include <time.h>
 
+/* Forward declarations */
+typedef struct cfg_grammar cfg_grammar_t;
+
 /* ============ Constants ============ */
 #define MAX_FIELDS 64
 #define STATE_CACHE_SIZE 4096
@@ -151,6 +154,29 @@ int verify_state_reachability(
 float calculate_coverage_gain(
     const state_transition_tree_t *stt,
     const response_t *response
+);
+
+/**
+ * @brief Calculate coverage gain from AFL bitmap (MODULARIZED)
+ * Used by afl-fuzz.c to delegate coverage calculation to verifier module
+ */
+float calculate_coverage_gain_from_bitmap(
+    const unsigned char *bitmap,
+    size_t bitmap_size,
+    u32 previous_total,
+    u32 current_total,
+    const state_transition_tree_t *stt
+);
+
+/**
+ * @brief CFG-based parseability check (uses recursive descent parser)
+ * @return 1 if message matches CFG grammar, 0 otherwise
+ */
+int verify_parseability_with_cfg(
+    const unsigned char *message,
+    size_t msg_len,
+    cfg_grammar_t *grammar,
+    parsed_fields_t **fields_out
 );
 
 /**

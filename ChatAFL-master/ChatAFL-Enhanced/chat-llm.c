@@ -564,6 +564,8 @@ void extract_message_grammars(char *answers, klist_t(gram) * grammar_list)
 
 int parse_pattern(pcre2_code *replacer, pcre2_match_data *match_data, const char *str, size_t len, char *pattern)
 {
+    size_t pattern_len = strlen(pattern);
+    if (pattern_len + 4 >= 128) return 0; /* Buffer overflow protection */
     strcat(pattern, "(?:");
     // offset == 3;
     int rc = pcre2_match(replacer, str, len, 0, 0, match_data, NULL);
@@ -591,13 +593,17 @@ int parse_pattern(pcre2_code *replacer, pcre2_match_data *match_data, const char
 
     if (rc == 4)
     { // matched the first option - there is a special value
-        strncat(pattern, str + ovector[2], ovector[3] - ovector[2]);
+        size_t current_len = strlen(pattern);
+        size_t add_len1 = ovector[3] - ovector[2];
+        size_t add_len2 = ovector[7] - ovector[6];
+        if (current_len + add_len1 + 5 + add_len2 + 2 >= 128) return 0; /* Buffer overflow protection */
+        strncat(pattern, str + ovector[2], add_len1);
         // offset += ovector[3] - ovector[2];
 
         strcat(pattern, "(.*)");
         // offset += 3;
 
-        strncat(pattern, str + ovector[6], ovector[7] - ovector[6]);
+        strncat(pattern, str + ovector[6], add_len2);
         // offset += ovector[7] - ovector[6];
     }
     else if (rc == 5)
