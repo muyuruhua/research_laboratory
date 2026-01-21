@@ -111,7 +111,7 @@ case "$TARGET" in
         ;;
     Exim|exim)
         CONTAINER_WORKDIR="/home/ubuntu/experiments/exim"
-        CONTAINER_TARGET="./exim"
+        CONTAINER_TARGET="/usr/exim/bin/exim"
         TARGET_ARGS="-bdf -q15m"
         SEED_DIR="/home/ubuntu/experiments/in-smtp"
         CLEAN_SCRIPT="/home/ubuntu/experiments/clean"
