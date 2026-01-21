@@ -152,9 +152,7 @@ echo "目标: $TARGET ($PROTOCOL), 时长: $TIMEOUT_MINUTES 分钟"
 echo "Docker镜像: $DOCKER_IMAGE"
 echo "ChatAFL输出: $CHATAFL_OUTPUT"
 echo "Enhanced输出: $ENHANCED_OUTPUT"
-read -p "开始测试? (y/n) " -n 1 -r
-echo
-[[ ! $REPLY =~ ^[Yy]$ ]] && exit 0
+echo ""
 
 print_header "启动ChatAFL容器测试${TARGET}"
 
@@ -189,12 +187,22 @@ print_header "启动ChatAFL-Enhanced容器测试${TARGET}"
 # Enhanced版本使用相同的AFL选项（FTP协议已经使用15秒超时）
 ENHANCED_AFL_OPTS="$AFL_OPTS"
 
-# 运行ChatAFL-Enhanced容器
+# 运行ChatAFL-Enhanced容器（启用完整的Enhanced功能）
 docker run -d \
     --name "enhanced_${TARGET}_${TIMESTAMP}" \
     -v "${ENHANCED_OUTPUT}:/home/ubuntu/output" \
     $ENV_VARS \
     -e CHATAFL_ENHANCED=1 \
+    -e CHATAFL_CEGAR_ENABLE=1 \
+    -e CHATAFL_CEGAR_INTERVAL=1000 \
+    -e CHATAFL_LLM_BUDGET_HOURLY=100 \
+    -e CHATAFL_CEGAR_MAX_RETRIES=3 \
+    -e CHATAFL_CEGAR_FAST_FAIL=1 \
+    -e CHATAFL_CEGAR_MONITOR=1 \
+    -e CHATAFL_VERIFIER_LOG=1 \
+    -e CHATAFL_VERIFIER_DEBUG=1 \
+    -e CHATAFL_PLATEAU_THRESHOLD=100 \
+    -e CHATAFL_USE_EVENT_BUS=1 \
     "$DOCKER_IMAGE" \
     bash -c "cd $CONTAINER_WORKDIR && timeout ${TIMEOUT_SECONDS}s /home/ubuntu/chatafl-enhanced/afl-fuzz -i $SEED_DIR -o /home/ubuntu/output $ENHANCED_AFL_OPTS -- $CONTAINER_TARGET $TARGET_ARGS" \
     > /dev/null 2>&1
