@@ -96,7 +96,7 @@ case "$TARGET" in
     PureFTPD|pureftpd)
         CONTAINER_WORKDIR="/home/ubuntu/experiments/pure-ftpd"
         CONTAINER_TARGET="src/pure-ftpd"
-        TARGET_ARGS="-A -B"
+        TARGET_ARGS="-A"
         SEED_DIR="/home/ubuntu/experiments/in-ftp"
         CLEAN_SCRIPT="/home/ubuntu/experiments/clean"
         AFL_OPTS="-d -P FTP -D 10000 -q 3 -s 3 -E -K -m none -t 15000+ -N tcp://127.0.0.1/21 -c $CLEAN_SCRIPT"
