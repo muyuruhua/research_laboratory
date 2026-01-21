@@ -117,6 +117,14 @@ case "$TARGET" in
         CLEAN_SCRIPT="/home/ubuntu/experiments/clean"
         AFL_OPTS="-d -P SMTP -D 10000 -q 3 -s 3 -E -K -W 100 -m none -t 30000+ -N tcp://127.0.0.1/25 -c $CLEAN_SCRIPT"
         ;;
+    Kamailio|kamailio)
+        CONTAINER_WORKDIR="/home/ubuntu/experiments/kamailio"
+        CONTAINER_TARGET="./kamailio"
+        TARGET_ARGS="-f /home/ubuntu/experiments/basic.conf -D"
+        SEED_DIR="/home/ubuntu/experiments/in-sip"
+        CLEAN_SCRIPT="/home/ubuntu/experiments/clean"
+        AFL_OPTS="-d -P SIP -D 10000 -q 3 -s 3 -E -K -m none -t 15000+ -N udp://127.0.0.1/5060 -c $CLEAN_SCRIPT"
+        ;;
     *)
         print_error "不支持的目标: $TARGET"
         usage
