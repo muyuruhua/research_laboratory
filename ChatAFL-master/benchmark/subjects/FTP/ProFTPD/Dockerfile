@@ -93,7 +93,7 @@ RUN cd ${WORKDIR} && \
     cd proftpd && \
     git checkout 61e621e743346 && \
     CC="afl-clang-fast" CXX="afl-clang-fast++" ./configure --enable-devel=nodaemon:nofork && \
-    AFL_USE_ASAN=1 make $MAKE_OPT
+    make $MAKE_OPT
 
 # Set up ProFTPD for coverage analysis
 RUN cd ${WORKDIR} && \

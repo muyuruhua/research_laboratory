@@ -88,22 +88,28 @@ case "$TARGET" in
     ProFTPD|proftpd)
         CONTAINER_WORKDIR="/home/ubuntu/experiments/proftpd"
         CONTAINER_TARGET="./proftpd"
-        TARGET_ARGS="-n -c proftpd.conf"
+        TARGET_ARGS="-n -c /home/ubuntu/experiments/basic.conf"
         SEED_DIR="/home/ubuntu/experiments/in-ftp"
         CLEAN_SCRIPT="/home/ubuntu/experiments/clean"
-        AFL_OPTS="-d -P FTP -D 10000 -q 3 -s 3 -E -K -m none -t 5000+ -N tcp://127.0.0.1/2200 -c $CLEAN_SCRIPT"
+        AFL_OPTS="-d -P FTP -D 10000 -q 3 -s 3 -E -K -m none -t 5000+ -N tcp://127.0.0.1/21 -c $CLEAN_SCRIPT"
+        ;;
+    PureFTPD|pureftpd)
         CONTAINER_WORKDIR="/home/ubuntu/experiments/pure-ftpd"
         CONTAINER_TARGET="./pure-ftpd"
         TARGET_ARGS="-A -B"
         SEED_DIR="/home/ubuntu/experiments/in-ftp"
         CLEAN_SCRIPT="/home/ubuntu/experiments/clean"
-        AFL_OPTS="-d -P FTP -D 10000 -q 3 -s 3 -E -K -m none -t 5000+ -N tcp://127.0.0.1/2200 -c $CLEAN_SCRIPT"
+        AFL_OPTS="-d -P FTP -D 10000 -q 3 -s 3 -E -K -m none -t 5000+ -N tcp://127.0.0.1/21 -c $CLEAN_SCRIPT"
+        ;;
+    Live555|live555)
         CONTAINER_WORKDIR="/home/ubuntu/experiments/live/testProgs"
         CONTAINER_TARGET="./testOnDemandRTSPServer"
         TARGET_ARGS="8554"
         SEED_DIR="/home/ubuntu/experiments/in-rtsp"
         CLEAN_SCRIPT="/home/ubuntu/experiments/kill-server"
         AFL_OPTS="-d -P RTSP -D 10000 -q 3 -s 3 -E -K -R -m none -t 5000+ -N tcp://127.0.0.1/8554 -c $CLEAN_SCRIPT"
+        ;;
+    Exim|exim)
         CONTAINER_WORKDIR="/home/ubuntu/experiments/exim"
         CONTAINER_TARGET="./exim"
         TARGET_ARGS="-bdf -q15m"
@@ -150,10 +156,10 @@ print_header "启动ChatAFL-Enhanced容器测试${TARGET}"
 
 # Enhanced版本需要更大的超时值
 ENHANCED_AFL_OPTS="$AFL_OPTS"
-if [[ "$TARGET" == "BFTPD" || "$TARGET" == "bftpd" ]]; then
-    # BFTPD的Enhanced版本需要更长超时 (5秒 -> 15秒)
+if [[ "$TARGET" == "BFTPD" || "$TARGET" == "bftpd" || "$TARGET" == "ProFTPD" || "$TARGET" == "proftpd" || "$TARGET" == "PureFTPD" || "$TARGET" == "pureftpd" ]]; then
+    # FTP协议的Enhanced版本需要更长超时 (5秒 -> 15秒)
     ENHANCED_AFL_OPTS="${AFL_OPTS//t 5000+/t 15000+}"
-    echo "[INFO] BFTPD Enhanced: 使用增加的超时值 (15秒)"
+    echo "[INFO] FTP协议 Enhanced: 使用增加的超时值 (15秒)"
 fi
 
 # 运行ChatAFL-Enhanced容器
