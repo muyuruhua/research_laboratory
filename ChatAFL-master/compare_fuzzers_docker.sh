@@ -83,7 +83,7 @@ case "$TARGET" in
         TARGET_ARGS="-c /home/ubuntu/experiments/basic.conf -D"
         SEED_DIR="/home/ubuntu/experiments/in-ftp"
         CLEAN_SCRIPT="/home/ubuntu/experiments/clean"
-        AFL_OPTS="-d -P FTP -D 10000 -q 3 -s 3 -E -K -m none -t 5000+ -N tcp://127.0.0.1/21 -c $CLEAN_SCRIPT"
+        AFL_OPTS="-d -P FTP -D 10000 -q 3 -s 3 -E -K -m none -t 15000+ -N tcp://127.0.0.1/21 -c $CLEAN_SCRIPT"
         ;;
     ProFTPD|proftpd)
         CONTAINER_WORKDIR="/home/ubuntu/experiments/proftpd"
@@ -91,7 +91,7 @@ case "$TARGET" in
         TARGET_ARGS="-n -c /home/ubuntu/experiments/basic.conf"
         SEED_DIR="/home/ubuntu/experiments/in-ftp"
         CLEAN_SCRIPT="/home/ubuntu/experiments/clean"
-        AFL_OPTS="-d -P FTP -D 10000 -q 3 -s 3 -E -K -m none -t 5000+ -N tcp://127.0.0.1/21 -c $CLEAN_SCRIPT"
+        AFL_OPTS="-d -P FTP -D 10000 -q 3 -s 3 -E -K -m none -t 15000+ -N tcp://127.0.0.1/21 -c $CLEAN_SCRIPT"
         ;;
     PureFTPD|pureftpd)
         CONTAINER_WORKDIR="/home/ubuntu/experiments/pure-ftpd"
@@ -99,7 +99,7 @@ case "$TARGET" in
         TARGET_ARGS="-A -B"
         SEED_DIR="/home/ubuntu/experiments/in-ftp"
         CLEAN_SCRIPT="/home/ubuntu/experiments/clean"
-        AFL_OPTS="-d -P FTP -D 10000 -q 3 -s 3 -E -K -m none -t 5000+ -N tcp://127.0.0.1/21 -c $CLEAN_SCRIPT"
+        AFL_OPTS="-d -P FTP -D 10000 -q 3 -s 3 -E -K -m none -t 15000+ -N tcp://127.0.0.1/21 -c $CLEAN_SCRIPT"
         ;;
     Live555|live555)
         CONTAINER_WORKDIR="/home/ubuntu/experiments/live/testProgs"
@@ -154,13 +154,8 @@ sleep 5
 
 print_header "启动ChatAFL-Enhanced容器测试${TARGET}"
 
-# Enhanced版本需要更大的超时值
+# Enhanced版本使用相同的AFL选项（FTP协议已经使用15秒超时）
 ENHANCED_AFL_OPTS="$AFL_OPTS"
-if [[ "$TARGET" == "BFTPD" || "$TARGET" == "bftpd" || "$TARGET" == "ProFTPD" || "$TARGET" == "proftpd" || "$TARGET" == "PureFTPD" || "$TARGET" == "pureftpd" ]]; then
-    # FTP协议的Enhanced版本需要更长超时 (5秒 -> 15秒)
-    ENHANCED_AFL_OPTS="${AFL_OPTS//t 5000+/t 15000+}"
-    echo "[INFO] FTP协议 Enhanced: 使用增加的超时值 (15秒)"
-fi
 
 # 运行ChatAFL-Enhanced容器
 docker run -d \
