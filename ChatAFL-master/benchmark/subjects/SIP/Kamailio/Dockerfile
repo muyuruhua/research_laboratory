@@ -100,7 +100,7 @@ RUN cd $WORKDIR && \
     git checkout a2209018fb03d && \
     patch -p1 < $WORKDIR/kamailio.patch && \
     CC=afl-clang-fast make MEMPKG=sys cfg && \
-    AFL_USE_ASAN=1 CC=afl-clang-fast make all $MAKE_OPT
+    CC=afl-clang-fast make all $MAKE_OPT
 
 # Build SIP client to simulate the callee
 RUN cd $WORKDIR && \

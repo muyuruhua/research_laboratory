@@ -119,11 +119,27 @@ case "$TARGET" in
         ;;
     Kamailio|kamailio)
         CONTAINER_WORKDIR="/home/ubuntu/experiments/kamailio"
-        CONTAINER_TARGET="./kamailio"
-        TARGET_ARGS="-f /home/ubuntu/experiments/basic.conf -D"
+        CONTAINER_TARGET="./src/kamailio"
+        TARGET_ARGS="-f /home/ubuntu/experiments/kamailio-basic.cfg -L src/modules -Y runtime_dir -n 1 -D -E"
         SEED_DIR="/home/ubuntu/experiments/in-sip"
-        CLEAN_SCRIPT="/home/ubuntu/experiments/clean"
+        CLEAN_SCRIPT="/home/ubuntu/experiments/run_pjsip"
         AFL_OPTS="-d -P SIP -D 10000 -q 3 -s 3 -E -K -m none -t 15000+ -N udp://127.0.0.1/5060 -c $CLEAN_SCRIPT"
+        ;;
+    forked-daapd|Forked-daapd)
+        CONTAINER_WORKDIR="/home/ubuntu/experiments/forked-daapd"
+        CONTAINER_TARGET="./forked-daapd"
+        TARGET_ARGS="-f /home/ubuntu/experiments/basic.conf"
+        SEED_DIR="/home/ubuntu/experiments/in-daap"
+        CLEAN_SCRIPT="/home/ubuntu/experiments/clean"
+        AFL_OPTS="-d -P DAAP -D 10000 -q 3 -s 3 -E -K -m none -t 15000+ -N tcp://127.0.0.1/3689 -c $CLEAN_SCRIPT"
+        ;;
+    Lighttpd1|lighttpd1)
+        CONTAINER_WORKDIR="/home/ubuntu/experiments/lighttpd1.4"
+        CONTAINER_TARGET="./src/lighttpd"
+        TARGET_ARGS="-f /home/ubuntu/experiments/basic.conf -D"
+        SEED_DIR="/home/ubuntu/experiments/in-http"
+        CLEAN_SCRIPT="/home/ubuntu/experiments/clean"
+        AFL_OPTS="-d -P HTTP -D 10000 -q 3 -s 3 -E -K -m none -t 15000+ -N tcp://127.0.0.1/8888 -c $CLEAN_SCRIPT"
         ;;
     *)
         print_error "不支持的目标: $TARGET"
@@ -142,10 +158,18 @@ echo
 
 print_header "启动ChatAFL容器测试${TARGET}"
 
+# Kamailio需要特殊的环境变量
+if [[ "$TARGET" == "Kamailio" || "$TARGET" == "kamailio" ]]; then
+    ENV_VARS="-e KAMAILIO_MODULES=src/modules -e KAMAILIO_RUNTIME_DIR=runtime_dir"
+else
+    ENV_VARS=""
+fi
+
 # 运行ChatAFL容器
 docker run -d \
     --name "chatafl_${TARGET}_${TIMESTAMP}" \
     -v "${CHATAFL_OUTPUT}:/home/ubuntu/output" \
+    $ENV_VARS \
     "$DOCKER_IMAGE" \
     bash -c "cd $CONTAINER_WORKDIR && timeout ${TIMEOUT_SECONDS}s /home/ubuntu/chatafl/afl-fuzz -i $SEED_DIR -o /home/ubuntu/output $AFL_OPTS -- $CONTAINER_TARGET $TARGET_ARGS" \
     > /dev/null 2>&1
@@ -169,6 +193,7 @@ ENHANCED_AFL_OPTS="$AFL_OPTS"
 docker run -d \
     --name "enhanced_${TARGET}_${TIMESTAMP}" \
     -v "${ENHANCED_OUTPUT}:/home/ubuntu/output" \
+    $ENV_VARS \
     -e CHATAFL_ENHANCED=1 \
     "$DOCKER_IMAGE" \
     bash -c "cd $CONTAINER_WORKDIR && timeout ${TIMEOUT_SECONDS}s /home/ubuntu/chatafl-enhanced/afl-fuzz -i $SEED_DIR -o /home/ubuntu/output $ENHANCED_AFL_OPTS -- $CONTAINER_TARGET $TARGET_ARGS" \
