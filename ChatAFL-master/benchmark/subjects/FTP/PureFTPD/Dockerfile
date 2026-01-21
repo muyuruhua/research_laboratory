@@ -98,7 +98,7 @@ RUN cd ${WORKDIR} && \
     git checkout 10122d9f && \
     patch -p1 < ${WORKDIR}/fuzzing.patch && \
     ./autogen.sh && \
-    CC="afl-clang-fast" CXX="afl-clang-fast++" CFLAGS="-fsanitize=address -g -O0" CXXFLAGS="-fsanitize=address -g -O0" LDFLAGS="-fsanitize=address" ./configure --without-privsep -without-capabilities && \
+    CC="afl-clang-fast" CXX="afl-clang-fast++" ./configure --without-privsep -without-capabilities && \
     make $MAKE_OPT
 
 # Set up PureFTPD for coverage analysis
