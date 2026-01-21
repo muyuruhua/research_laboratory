@@ -21,16 +21,19 @@
 #include <dirent.h>
 
 #define CEGAR_CACHE_DIR ".cegar_cache"
-#define MAX_PATCH_ATTEMPTS 5
+// Use constants from header instead of magic numbers here
 
 // Global context
 static cegar_context_t *g_cegar_ctx = NULL;
 static FILE *g_cegar_log = NULL;
 
 void cegar_init(const char *cache_dir) {
-    g_cegar_ctx = (cegar_context_t *)calloc(1, sizeof(cegar_context_t));
-    g_cegar_ctx->failures = (cegar_failure_t *)calloc(256, sizeof(cegar_failure_t));
-    g_cegar_ctx->successful_patches = (cegar_patch_t *)calloc(256, sizeof(cegar_patch_t));
+    g_cegar_ctx = (cegar_context_t *)ck_alloc(sizeof(cegar_context_t));
+    memset(g_cegar_ctx, 0, sizeof(cegar_context_t));
+    g_cegar_ctx->failures = (cegar_failure_t *)ck_alloc(CEGAR_FAILURE_CACHE_SIZE * sizeof(cegar_failure_t));
+    memset(g_cegar_ctx->failures, 0, CEGAR_FAILURE_CACHE_SIZE * sizeof(cegar_failure_t));
+    g_cegar_ctx->successful_patches = (cegar_patch_t *)ck_alloc(CEGAR_PATCH_CACHE_SIZE * sizeof(cegar_patch_t));
+    memset(g_cegar_ctx->successful_patches, 0, CEGAR_PATCH_CACHE_SIZE * sizeof(cegar_patch_t));
     
     // Create cache directory
     const char *cache = cache_dir ? cache_dir : CEGAR_CACHE_DIR;
@@ -62,9 +65,10 @@ char *construct_cegar_prompt(
         return strdup("Error: invalid input to CEGAR prompt");
     }
     
-    char *prompt = (char *)calloc(4096, 1);
+    char *prompt = (char *)ck_alloc(CEGAR_PROMPT_MAX_SIZE);
+    memset(prompt, 0, CEGAR_PROMPT_MAX_SIZE);
     char *ptr = prompt;
-    size_t remaining = 4096;
+    size_t remaining = CEGAR_PROMPT_MAX_SIZE;
     
     // Build constraint-based prompt
     int written = snprintf(ptr, remaining,
@@ -139,7 +143,9 @@ cegar_patch_t *parse_cegar_patch(
         patch_obj = obj; // Assume whole response is the patch
     }
     
-    cegar_patch_t *patch = (cegar_patch_t *)calloc(1, sizeof(cegar_patch_t));
+    cegar_patch_t *patch = (cegar_patch_t *)ck_alloc(sizeof(cegar_patch_t));
+    memset(patch, 0, sizeof(cegar_patch_t));
+    memset(patch, 0, sizeof(cegar_patch_t));
     
     // Extract fields from JSON
     json_object *field_idx_obj = json_object_object_get(patch_obj, "field_index");
@@ -192,7 +198,8 @@ int apply_and_verify_patch(
     }
     
     // Construct patched message by modifying the specified field
-    unsigned char *patched_msg = (unsigned char *)calloc(msg_len + 256, 1);
+    unsigned char *patched_msg = (unsigned char *)ck_alloc(msg_len + 256);
+    memset(patched_msg, 0, msg_len + 256);
     memcpy(patched_msg, original_msg, msg_len);
     
     // v0: Simple field replacement
@@ -206,8 +213,8 @@ int apply_and_verify_patch(
                                            &fields);
     
     if (!parseability) {
-        free(patched_msg);
-        if (fields) free(fields);
+        ck_free(patched_msg);
+        if (fields) ck_free(fields);
         return 0;
     }
     
@@ -219,8 +226,8 @@ int apply_and_verify_patch(
     // For v0, just simulate
     int acceptability = 1;  // Assume patched works (in real version, actually test)
     
-    free(patched_msg);
-    if (fields) free(fields);
+    ck_free(patched_msg);
+    if (fields) ck_free(fields);
     
     return acceptability;
 }
@@ -337,13 +344,14 @@ cegar_patch_t *iterative_field_refinement(
         
         // Would call LLM here in real implementation
         // For v0, just construct the patch framework
-        cegar_patch_t *patch = (cegar_patch_t *)calloc(1, sizeof(cegar_patch_t));
+        cegar_patch_t *patch = (cegar_patch_t *)ck_alloc(sizeof(cegar_patch_t));
+        memset(patch, 0, sizeof(cegar_patch_t));
         patch->field_idx_patched = field_idx;
         patch->patch_description = strdup("v0 placeholder patch");
         patch->patch_confidence = 2;
         patch->patched_grammar = json_object_new_object();
         
-        free(prompt);
+        ck_free(prompt);
         
         // In real version, would verify patch here
         // For now, return first attempt
@@ -378,10 +386,10 @@ void cegar_cleanup(void) {
     }
     
     if (g_cegar_ctx) {
-        free(g_cegar_ctx->failures);
-        free(g_cegar_ctx->successful_patches);
-        free(g_cegar_ctx->cache_file);
-        free(g_cegar_ctx);
+        ck_free(g_cegar_ctx->failures);
+        ck_free(g_cegar_ctx->successful_patches);
+        ck_free(g_cegar_ctx->cache_file);
+        ck_free(g_cegar_ctx);
         g_cegar_ctx = NULL;
     }
 }

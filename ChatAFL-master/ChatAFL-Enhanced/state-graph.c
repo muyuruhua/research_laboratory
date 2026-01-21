@@ -13,6 +13,9 @@
 #include <time.h>
 #include <math.h>
 
+// Safety limits to prevent memory exhaustion
+#define MAX_SEEDS_PER_STATE 1024  // Limit seeds per state to prevent DoS
+
 /**
  * @brief 初始化状态转移图
  */
@@ -132,10 +135,22 @@ int state_graph_register_seed_for_state(StateGraph *graph,
     StateNode *node = find_or_create_state_node(graph, state_id);
     if (!node) return 0;
     
+    // Safety check: prevent excessive memory allocation
+    if (node->triggering_seeds_count >= MAX_SEEDS_PER_STATE) {
+        // Silently skip to avoid DoS via memory exhaustion
+        return 1;  // Return success but don't add
+    }
+    
     // 扩展seeds数组（如果需要）
     if (node->triggering_seeds_count >= node->triggering_seeds_capacity) {
         uint32_t new_capacity = node->triggering_seeds_capacity * 2;
         if (new_capacity == 0) new_capacity = 4;
+        if (new_capacity > MAX_SEEDS_PER_STATE) new_capacity = MAX_SEEDS_PER_STATE;
+        
+        // Safety check: prevent excessive memory allocation
+        if (new_capacity > 1024) {
+            return 0;  // Limit to 1024 seeds per state
+        }
         
         uint32_t *new_seeds = (uint32_t *)ck_realloc(node->triggering_seeds,
                                                      new_capacity * sizeof(uint32_t));

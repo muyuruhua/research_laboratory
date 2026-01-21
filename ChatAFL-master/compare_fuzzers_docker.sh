@@ -41,6 +41,14 @@ cd "$PROJECT_ROOT"
 
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 COMPARISON_DIR="$PROJECT_ROOT/comparison_results/${TARGET}_${TIMESTAMP}"
+
+# 确保目录唯一性
+COUNTER=1
+while [ -d "$COMPARISON_DIR" ]; do
+    COMPARISON_DIR="$PROJECT_ROOT/comparison_results/${TARGET}_${TIMESTAMP}_${COUNTER}"
+    COUNTER=$((COUNTER + 1))
+done
+
 mkdir -p "$COMPARISON_DIR"/{chatafl,chatafl-enhanced}
 
 CHATAFL_OUTPUT="${COMPARISON_DIR}/chatafl"
@@ -70,42 +78,37 @@ case "$TARGET" in
         AFL_OPTS="-d -P FTP -D 10000 -q 3 -s 3 -E -K -m none -t 5000+ -N tcp://127.0.0.1/2200 -c $CLEAN_SCRIPT"
         ;;
     BFTPD|bftpd)
-        CONTAINER_WORKDIR="/home/ubuntu/experiments/BFTPD"
+        CONTAINER_WORKDIR="/home/ubuntu/experiments/bftpd"
         CONTAINER_TARGET="./bftpd"
-        TARGET_ARGS="-c bftpd.conf -D"
+        TARGET_ARGS="-c /home/ubuntu/experiments/basic.conf -D"
         SEED_DIR="/home/ubuntu/experiments/in-ftp"
-        CLEAN_SCRIPT="/home/ubuntu/experiments/ftpclean"
-        AFL_OPTS="-d -P FTP -D 10000 -q 3 -s 3 -E -K -m none -t 5000+ -N tcp://127.0.0.1/2200 -c $CLEAN_SCRIPT"
+        CLEAN_SCRIPT="/home/ubuntu/experiments/clean"
+        AFL_OPTS="-d -P FTP -D 10000 -q 3 -s 3 -E -K -m none -t 5000+ -N tcp://127.0.0.1/21 -c $CLEAN_SCRIPT"
         ;;
     ProFTPD|proftpd)
-        CONTAINER_WORKDIR="/home/ubuntu/experiments/ProFTPD"
+        CONTAINER_WORKDIR="/home/ubuntu/experiments/proftpd"
         CONTAINER_TARGET="./proftpd"
         TARGET_ARGS="-n -c proftpd.conf"
         SEED_DIR="/home/ubuntu/experiments/in-ftp"
-        CLEAN_SCRIPT="/home/ubuntu/experiments/ftpclean"
+        CLEAN_SCRIPT="/home/ubuntu/experiments/clean"
         AFL_OPTS="-d -P FTP -D 10000 -q 3 -s 3 -E -K -m none -t 5000+ -N tcp://127.0.0.1/2200 -c $CLEAN_SCRIPT"
-        ;;
-    PureFTPD|pure-ftpd)
-        CONTAINER_WORKDIR="/home/ubuntu/experiments/PureFTPD"
+        CONTAINER_WORKDIR="/home/ubuntu/experiments/pure-ftpd"
         CONTAINER_TARGET="./pure-ftpd"
         TARGET_ARGS="-A -B"
         SEED_DIR="/home/ubuntu/experiments/in-ftp"
-        CLEAN_SCRIPT="/home/ubuntu/experiments/ftpclean"
+        CLEAN_SCRIPT="/home/ubuntu/experiments/clean"
         AFL_OPTS="-d -P FTP -D 10000 -q 3 -s 3 -E -K -m none -t 5000+ -N tcp://127.0.0.1/2200 -c $CLEAN_SCRIPT"
-        ;;
-    Live555|live555)
-        CONTAINER_WORKDIR="/home/ubuntu/experiments/live/mediaServer"
-        CONTAINER_TARGET="./live555MediaServer"
+        CONTAINER_WORKDIR="/home/ubuntu/experiments/live/testProgs"
+        CONTAINER_TARGET="./testOnDemandRTSPServer"
         TARGET_ARGS="8554"
         SEED_DIR="/home/ubuntu/experiments/in-rtsp"
-        AFL_OPTS="-d -P RTSP -D 10000 -q 3 -s 3 -E -K -R -m none -t 5000+ -N tcp://127.0.0.1/8554"
-        ;;
-    Exim|exim)
-        CONTAINER_WORKDIR="/home/ubuntu/experiments/Exim"
+        CLEAN_SCRIPT="/home/ubuntu/experiments/kill-server"
+        AFL_OPTS="-d -P RTSP -D 10000 -q 3 -s 3 -E -K -R -m none -t 5000+ -N tcp://127.0.0.1/8554 -c $CLEAN_SCRIPT"
+        CONTAINER_WORKDIR="/home/ubuntu/experiments/exim"
         CONTAINER_TARGET="./exim"
         TARGET_ARGS="-bdf -q15m"
         SEED_DIR="/home/ubuntu/experiments/in-smtp"
-        CLEAN_SCRIPT="/home/ubuntu/experiments/smtpclean"
+        CLEAN_SCRIPT="/home/ubuntu/experiments/clean"
         AFL_OPTS="-d -P SMTP -D 10000 -q 3 -s 3 -E -K -W 100 -m none -t 5000+ -N tcp://127.0.0.1/25 -c $CLEAN_SCRIPT"
         ;;
     *)
@@ -145,13 +148,21 @@ sleep 5
 
 print_header "启动ChatAFL-Enhanced容器测试${TARGET}"
 
+# Enhanced版本需要更大的超时值
+ENHANCED_AFL_OPTS="$AFL_OPTS"
+if [[ "$TARGET" == "BFTPD" || "$TARGET" == "bftpd" ]]; then
+    # BFTPD的Enhanced版本需要更长超时 (5秒 -> 15秒)
+    ENHANCED_AFL_OPTS="${AFL_OPTS//t 5000+/t 15000+}"
+    echo "[INFO] BFTPD Enhanced: 使用增加的超时值 (15秒)"
+fi
+
 # 运行ChatAFL-Enhanced容器
 docker run -d \
     --name "enhanced_${TARGET}_${TIMESTAMP}" \
     -v "${ENHANCED_OUTPUT}:/home/ubuntu/output" \
     -e CHATAFL_ENHANCED=1 \
     "$DOCKER_IMAGE" \
-    bash -c "cd $CONTAINER_WORKDIR && timeout ${TIMEOUT_SECONDS}s /home/ubuntu/chatafl-enhanced/afl-fuzz -i $SEED_DIR -o /home/ubuntu/output $AFL_OPTS -- $CONTAINER_TARGET $TARGET_ARGS" \
+    bash -c "cd $CONTAINER_WORKDIR && timeout ${TIMEOUT_SECONDS}s /home/ubuntu/chatafl-enhanced/afl-fuzz -i $SEED_DIR -o /home/ubuntu/output $ENHANCED_AFL_OPTS -- $CONTAINER_TARGET $TARGET_ARGS" \
     > /dev/null 2>&1
 
 if [ $? -eq 0 ]; then
@@ -198,13 +209,13 @@ while true; do
     
     # 显示当前统计
     if [ -f "${CHATAFL_OUTPUT}/fuzzer_stats" ]; then
-        CHATAFL_EXECS=$(grep "execs_done" "${CHATAFL_OUTPUT}/fuzzer_stats" 2>/dev/null | awk '{print $3}' || echo "0")
+        CHATAFL_EXECS=$(sudo grep "execs_done" "${CHATAFL_OUTPUT}/fuzzer_stats" 2>/dev/null | awk '{print $3}' || echo "0")
     else
         CHATAFL_EXECS="启动中..."
     fi
     
     if [ -f "${ENHANCED_OUTPUT}/fuzzer_stats" ]; then
-        ENHANCED_EXECS=$(grep "execs_done" "${ENHANCED_OUTPUT}/fuzzer_stats" 2>/dev/null | awk '{print $3}' || echo "0")
+        ENHANCED_EXECS=$(sudo grep "execs_done" "${ENHANCED_OUTPUT}/fuzzer_stats" 2>/dev/null | awk '{print $3}' || echo "0")
     else
         ENHANCED_EXECS="启动中..."
     fi
@@ -236,7 +247,7 @@ COMPARISON_LOG="${COMPARISON_DIR}/report.txt"
     
     if [ -f "${CHATAFL_OUTPUT}/fuzzer_stats" ]; then
         echo "========== ChatAFL 统计 =========="
-        grep -E "execs_done|execs_per_sec|paths_total|unique_crashes|unique_hangs|bitmap_cvg|last_path" "${CHATAFL_OUTPUT}/fuzzer_stats"
+        sudo grep -E "execs_done|execs_per_sec|paths_total|unique_crashes|unique_hangs|bitmap_cvg|last_path" "${CHATAFL_OUTPUT}/fuzzer_stats"
         echo ""
         
         if [ -d "${CHATAFL_OUTPUT}/crashes" ]; then
@@ -251,7 +262,7 @@ COMPARISON_LOG="${COMPARISON_DIR}/report.txt"
     
     if [ -f "${ENHANCED_OUTPUT}/fuzzer_stats" ]; then
         echo "========== ChatAFL-Enhanced 统计 =========="
-        grep -E "execs_done|execs_per_sec|paths_total|unique_crashes|unique_hangs|bitmap_cvg|last_path" "${ENHANCED_OUTPUT}/fuzzer_stats"
+        sudo grep -E "execs_done|execs_per_sec|paths_total|unique_crashes|unique_hangs|bitmap_cvg|last_path" "${ENHANCED_OUTPUT}/fuzzer_stats"
         echo ""
         
         if [ -d "${ENHANCED_OUTPUT}/crashes" ]; then
@@ -279,10 +290,10 @@ COMPARISON_LOG="${COMPARISON_DIR}/report.txt"
     
     echo "========== 对比分析 =========="
     if [ -f "${CHATAFL_OUTPUT}/fuzzer_stats" ] && [ -f "${ENHANCED_OUTPUT}/fuzzer_stats" ]; then
-        CHATAFL_EXECS=$(grep "execs_done" "${CHATAFL_OUTPUT}/fuzzer_stats" | awk '{print $3}')
-        ENHANCED_EXECS=$(grep "execs_done" "${ENHANCED_OUTPUT}/fuzzer_stats" | awk '{print $3}')
-        CHATAFL_PATHS=$(grep "paths_total" "${CHATAFL_OUTPUT}/fuzzer_stats" | awk '{print $3}')
-        ENHANCED_PATHS=$(grep "paths_total" "${ENHANCED_OUTPUT}/fuzzer_stats" | awk '{print $3}')
+        CHATAFL_EXECS=$(sudo grep "execs_done" "${CHATAFL_OUTPUT}/fuzzer_stats" | awk '{print $3}')
+        ENHANCED_EXECS=$(sudo grep "execs_done" "${ENHANCED_OUTPUT}/fuzzer_stats" | awk '{print $3}')
+        CHATAFL_PATHS=$(sudo grep "paths_total" "${CHATAFL_OUTPUT}/fuzzer_stats" | awk '{print $3}')
+        ENHANCED_PATHS=$(sudo grep "paths_total" "${ENHANCED_OUTPUT}/fuzzer_stats" | awk '{print $3}')
         
         echo "执行数对比: ChatAFL=$CHATAFL_EXECS, Enhanced=$ENHANCED_EXECS"
         echo "路径数对比: ChatAFL=$CHATAFL_PATHS, Enhanced=$ENHANCED_PATHS"

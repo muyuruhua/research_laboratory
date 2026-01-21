@@ -12,7 +12,8 @@ We give at most 400 for the examples and 1300 for the stall prompt
 Similarly 1700 is for the example request in the seed enrichment
 */
 
-#define OPENAI_TOKEN "sk-ILojcXJTq7HKk5RJ232858Aa05C24128830bDc12610d3c0d"
+/* API Token 应通过环境变量 KEY 提供，不使用硬编码 */
+/* 已移除硬编码token以避免安全风险 */
 
 #define MAX_PROMPT_LENGTH 2048
 #define EXAMPLES_PROMPT_LENGTH 400
@@ -41,6 +42,9 @@ Similarly 1700 is for the example request in the seed enrichment
 
 #define PCRE2_CODE_UNIT_WIDTH 8 // Characters are 8 bits
 #include <pcre2.h>
+
+// Security: API key must be provided via KEY environment variable
+// Do NOT hardcode API keys in source code
 
 // Init KLIST with JSON object
 #define __grammar_t_free(x)

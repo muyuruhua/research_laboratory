@@ -29,16 +29,21 @@ void state_scheduler_init(
     
     if (!scheduler) return;
     
-    scheduler->stt = (state_transition_tree_t *)calloc(1, sizeof(state_transition_tree_t));
-    scheduler->stt->nodes = (state_node_t *)calloc(4096, sizeof(state_node_t));
+    scheduler->stt = (state_transition_tree_t *)ck_alloc(sizeof(state_transition_tree_t));
+    memset(scheduler->stt, 0, sizeof(state_transition_tree_t));
+    scheduler->stt->nodes = (state_node_t *)ck_alloc(4096 * sizeof(state_node_t));
+    memset(scheduler->stt->nodes, 0, 4096 * sizeof(state_node_t));
     scheduler->stt->node_count = 0;
-    scheduler->stt->transitions = (state_transition_t *)calloc(4096 * 4, sizeof(state_transition_t));
+    scheduler->stt->transitions = (state_transition_t *)ck_alloc(4096 * 4 * sizeof(state_transition_t));
+    memset(scheduler->stt->transitions, 0, 4096 * 4 * sizeof(state_transition_t));
     scheduler->stt->transition_count = 0;
     
-    scheduler->state_stats = (state_stats_t *)calloc(4096, sizeof(state_stats_t));
+    scheduler->state_stats = (state_stats_t *)ck_alloc(4096 * sizeof(state_stats_t));
+    memset(scheduler->state_stats, 0, 4096 * sizeof(state_stats_t));
     scheduler->state_stats_count = 0;
     
-    scheduler->rare_transitions = (rare_transition_t *)calloc(8192, sizeof(rare_transition_t));
+    scheduler->rare_transitions = (rare_transition_t *)ck_alloc(8192 * sizeof(rare_transition_t));
+    memset(scheduler->rare_transitions, 0, 8192 * sizeof(rare_transition_t));
     scheduler->rare_transition_count = 0;
     
     scheduler->plateau_counter = 0;
@@ -162,19 +167,65 @@ struct queue_entry *select_seed_by_state_rarity(
     
     struct queue_entry *best_seed = NULL;
     float best_score = -1.0f;
+    int evaluated_count = 0;
     
-    for (struct queue_entry *q = queue_head; q != NULL; q = ((void *)0)) {
-        // Simplified: just return first seed for v0
-        // Full implementation requires AFL queue_entry structure
-        best_seed = q;
-        break;
+    /* 论文Algorithm 1: Stateful Seed Selection */
+    /* 遍历队列，计算每个seed的state-aware score */
+    for (struct queue_entry *q = queue_head; q != NULL; q = q->next) {
+        /* 跳过没有region的seed（无效种子）*/
+        if (q->region_count == 0) continue;
+        
+        evaluated_count++;
+        
+        /* 1. 计算状态稀有度：基于该seed生成的最终状态 */
+        float rarity = 1.0f;  // Default maximum rarity for unknown states
+        
+        /* 如果该seed有generating_state_id（AFLNet扩展字段）*/
+        if (q->generating_state_id > 0) {
+            rarity = compute_state_rarity(scheduler->stt, q->generating_state_id);
+        }
+        /* 否则使用unique_state_count作为状态多样性的proxy */
+        else if (q->unique_state_count > 0) {
+            /* 状态数越少越稀有（反向相关）*/
+            rarity = 1.0f / (1.0f + (float)q->unique_state_count);
+        }
+        
+        /* 2. 计算覆盖增益：基于bitmap_size（新边缘数）*/
+        float coverage_score = 0.0f;
+        if (q->bitmap_size > 0) {
+            /* 归一化到[0, 1]范围（假设最大bitmap_size为10000）*/
+            coverage_score = (float)q->bitmap_size / 10000.0f;
+            if (coverage_score > 1.0f) coverage_score = 1.0f;
+        }
+        
+        /* 3. 综合评分：加权组合 */
+        /* score = α * rarity + (1-α) * coverage */
+        float score = rarity_weight * rarity + (1.0f - rarity_weight) * coverage_score;
+        
+        /* 额外加分项：favored seeds、has_new_cov、未完全探索 */
+        if (q->favored) score *= 1.2f;  // 20% bonus
+        if (q->has_new_cov) score *= 1.1f;  // 10% bonus
+        if (!q->was_fuzzed) score *= 1.15f;  // 15% bonus for unexplored
+        
+        /* 更新最佳seed */
+        if (score > best_score) {
+            best_score = score;
+            best_seed = q;
+        }
     }
     
-    if (g_sched_log && best_seed) {
-        fprintf(g_sched_log, "[SELECT] seed score=%.3f\n", best_score);
+    if (g_sched_log) {
+        if (best_seed) {
+            fprintf(g_sched_log, 
+                    "[STATE-SCHEDULER] Selected seed with score=%.4f (evaluated %d seeds, rarity_weight=%.2f)\n",
+                    best_score, evaluated_count, rarity_weight);
+        } else {
+            fprintf(g_sched_log, "[STATE-SCHEDULER] No valid seed found in queue\n");
+        }
         fflush(g_sched_log);
     }
     
+    /* 如果没找到有效seed，返回队列头作为fallback */
     return best_seed ? best_seed : queue_head;
 }
 
@@ -224,7 +275,8 @@ char *construct_state_targeting_prompt(
         return strdup("Error: invalid protocol name");
     }
     
-    char *prompt = (char *)calloc(2048, 1);
+    char *prompt = (char *)ck_alloc(2048);
+    memset(prompt, 0, 2048);
     char *ptr = prompt;
     
     ptr += sprintf(ptr,

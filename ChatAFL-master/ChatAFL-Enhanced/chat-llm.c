@@ -214,7 +214,16 @@ char *chat_with_llm1(char *prompt, char *model, int tries, float temperature)
     {
         url = "https://api.openai.com/v1/chat/completions";
     }
-    char *auth_header = "Authorization: Bearer " OPENAI_TOKEN;
+    
+    // Get API key from environment (security fix: no hardcoded tokens)
+    const char* api_key = get_api_key();
+    if (!api_key) {
+        fprintf(stderr, "[ERROR] API key not found. Set KEY environment variable.\n");
+        return NULL;
+    }
+    
+    char *auth_header = NULL;
+    asprintf(&auth_header, "Authorization: Bearer %s", api_key);
     char *content_header = "Content-Type: application/json";
     char *accept_header = "Accept: application/json";
     char *data = NULL;
@@ -226,7 +235,7 @@ char *chat_with_llm1(char *prompt, char *model, int tries, float temperature)
     {
         asprintf(&data, "{\"model\": \"gpt-3.5-turbo\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
     }
-    curl_global_init(CURL_GLOBAL_DEFAULT);
+    // Note: curl_global_init/cleanup called in constructor/destructor, not here
     do
     {
         struct MemoryStruct chunk;
@@ -296,12 +305,16 @@ char *chat_with_llm1(char *prompt, char *model, int tries, float temperature)
         free(chunk.memory);
     } while ((res != CURLE_OK || answer == NULL) && (--tries > 0));
 
+    if (auth_header != NULL)
+    {
+        free(auth_header);
+    }
     if (data != NULL)
     {
         free(data);
     }
 
-    curl_global_cleanup();
+    // Note: curl_global_cleanup called in destructor, not here
     return answer;
 }
 

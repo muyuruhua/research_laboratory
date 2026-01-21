@@ -93,7 +93,7 @@ RUN cd ${WORKDIR} && \
     tar -zxvf bftpd-6.1.tar.gz && \
     cd bftpd && \
     patch -p1 < ${WORKDIR}/fuzzing.patch && \
-    AFL_USE_ASAN=1 CC=afl-clang-fast make clean all $MAKE_OPT
+    CC=afl-clang-fast make clean all $MAKE_OPT
 
 
 # Set up Bftpd for coverage analysis

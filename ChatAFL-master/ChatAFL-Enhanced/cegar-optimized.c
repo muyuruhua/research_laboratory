@@ -112,6 +112,13 @@ bool check_llm_budget(void) {
     uint64_t estimated_calls = g_cegar_config.stats.triggers * g_cegar_config.max_retries;
     uint64_t max_calls = g_cegar_config.max_llm_calls_per_hour;
     
+    // Check for potential overflow
+    if (g_cegar_config.stats.triggers > UINT64_MAX / g_cegar_config.max_retries) {
+        WARNF("CEGAR trigger count overflow risk, resetting statistics");
+        g_cegar_config.stats.triggers = 0;
+        return false;
+    }
+    
     if (estimated_calls >= max_calls) {
         static bool warned = false;
         if (!warned) {

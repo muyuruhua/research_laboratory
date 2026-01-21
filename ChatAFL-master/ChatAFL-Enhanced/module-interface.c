@@ -78,9 +78,12 @@ verifier_module_ctx_t *verifier_module_create(
     ctx->event_bus = event_bus;
     
     // Create local STT (no global dependency)
-    ctx->local_stt = (state_transition_tree_t *)calloc(1, sizeof(state_transition_tree_t));
-    ctx->local_stt->nodes = (state_node_t *)calloc(STATE_CACHE_SIZE, sizeof(state_node_t));
-    ctx->local_stt->transitions = (state_transition_t *)calloc(STATE_CACHE_SIZE * 4, sizeof(state_transition_t));
+    ctx->local_stt = (state_transition_tree_t *)ck_alloc(sizeof(state_transition_tree_t));
+    memset(ctx->local_stt, 0, sizeof(state_transition_tree_t));
+    ctx->local_stt->nodes = (state_node_t *)ck_alloc(STATE_CACHE_SIZE * sizeof(state_node_t));
+    memset(ctx->local_stt->nodes, 0, STATE_CACHE_SIZE * sizeof(state_node_t));
+    ctx->local_stt->transitions = (state_transition_t *)ck_alloc(STATE_CACHE_SIZE * 4 * sizeof(state_transition_t));
+    memset(ctx->local_stt->transitions, 0, STATE_CACHE_SIZE * 4 * sizeof(state_transition_t));
     
     if (config) {
         memcpy(&ctx->config, config, sizeof(verifier_config_t));
@@ -171,9 +174,11 @@ cegar_module_ctx_t *cegar_module_create(
     ctx->event_bus = event_bus;
     ctx->cache_dir = cache_dir ? ck_strdup(cache_dir) : ck_strdup(".cegar_cache");
     
-    ctx->failure_cache = (cegar_failure_t *)calloc(256, sizeof(cegar_failure_t));
+    ctx->failure_cache = (cegar_failure_t *)ck_alloc(256 * sizeof(cegar_failure_t));
+    memset(ctx->failure_cache, 0, 256 * sizeof(cegar_failure_t));
     ctx->failure_cache_size = 0;
-    ctx->patch_cache = (cegar_patch_t *)calloc(256, sizeof(cegar_patch_t));
+    ctx->patch_cache = (cegar_patch_t *)ck_alloc(256 * sizeof(cegar_patch_t));
+    memset(ctx->patch_cache, 0, 256 * sizeof(cegar_patch_t));
     ctx->patch_cache_size = 0;
     
     // Subscribe to verification failure events
@@ -218,12 +223,17 @@ scheduler_module_ctx_t *scheduler_module_create(
     ctx->last_coverage = 0.0f;
     
     // Create local STT
-    ctx->local_stt = (state_transition_tree_t *)calloc(1, sizeof(state_transition_tree_t));
-    ctx->local_stt->nodes = (state_node_t *)calloc(STATE_CACHE_SIZE, sizeof(state_node_t));
-    ctx->local_stt->transitions = (state_transition_t *)calloc(STATE_CACHE_SIZE * 4, sizeof(state_transition_t));
+    ctx->local_stt = (state_transition_tree_t *)ck_alloc(sizeof(state_transition_tree_t));
+    memset(ctx->local_stt, 0, sizeof(state_transition_tree_t));
+    ctx->local_stt->nodes = (state_node_t *)ck_alloc(4096 * sizeof(state_node_t));
+    memset(ctx->local_stt->nodes, 0, 4096 * sizeof(state_node_t));
+    ctx->local_stt->transitions = (state_transition_t *)ck_alloc(4096 * 4 * sizeof(state_transition_t));
+    memset(ctx->local_stt->transitions, 0, 4096 * 4 * sizeof(state_transition_t));
     
-    ctx->state_stats = (state_stats_t *)calloc(4096, sizeof(state_stats_t));
-    ctx->rare_transitions = (rare_transition_t *)calloc(8192, sizeof(rare_transition_t));
+    ctx->state_stats = (state_stats_t *)ck_alloc(4096 * sizeof(state_stats_t));
+    memset(ctx->state_stats, 0, 4096 * sizeof(state_stats_t));
+    ctx->rare_transitions = (rare_transition_t *)ck_alloc(8192 * sizeof(rare_transition_t));
+    memset(ctx->rare_transitions, 0, 8192 * sizeof(rare_transition_t));
     
     // Subscribe to new state events
     event_bus_subscribe(event_bus, EVENT_NEW_STATE_DISCOVERED,

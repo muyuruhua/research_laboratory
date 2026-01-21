@@ -4919,23 +4919,26 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
             ACTF("[CEGAR] Executing new refinement for state %u (rejection code: %u)",
                  g_current_state_id, response.status_code);
             
-            // 调用LLM获取修复建议（实际实现中需要配置API端点）
+            // 调用LLM获取修复建议（真实LLM集成）
             char *llm_response = NULL;
             
-            // 模拟LLM响应用于开发测试
-            #ifdef CEGAR_SIMULATION_MODE
-            llm_response = ck_strdup("{\"patch\": {"
-              "\"field_index\": 2,"
-              "\"patch_type\": \"FIELD_MODIFICATION\","
-              "\"new_value\": \"GET /valid_path HTTP/1.1\\r\\nHost: target\\r\\n\\r\\n\","
-              "\"explanation\": \"Corrected HTTP path format for better acceptance\""
-              "}}");
-            #else
-            // 实际生产环境中的LLM API调用
+            /* 真实LLM API调用（移除模拟模式）*/
             char *model_name = getenv("CHATAFL_LLM_MODEL");
-            if (!model_name) model_name = "gpt-4";
-            llm_response = chat_with_llm(cegar_prompt, model_name, 3, 0.7f);
-            #endif
+            if (!model_name) model_name = "gpt-3.5-turbo";  // 默认使用GPT-3.5
+            
+            /* 检查API key是否配置 */
+            const char *api_key = getenv("KEY");
+            if (!api_key || strlen(api_key) == 0) {
+                WARNF("[CEGAR] API key not configured (set KEY env var), skipping LLM call");
+                ck_free(cegar_prompt);
+                cegar_call_end(cegar_start, 0);
+                continue;  // 跳过此次CEGAR
+            }
+            
+            /* 执行真实LLM调用 */
+            ACTF("[CEGAR] Calling LLM API (model=%s)...", model_name);
+            llm_response = chat_with_llm(cegar_prompt, model_name, 
+                                        g_cegar_config.max_retries, 0.7f);
             
             if (llm_response) {
               cegar_patch_t *patch = parse_cegar_patch(llm_response, NULL);
@@ -11205,7 +11208,7 @@ int main(int argc, char **argv)
         selected_seed = scheduler_module_select_seed(g_scheduler_module, queue);
         
         if (selected_seed) {
-          ACTF(\"[EVENT-BUS] Scheduler selected seed via decoupled interface\");
+          ACTF("[EVENT-BUS] Scheduler selected seed via decoupled interface");
         }
       } else {
         /* 传统全局变量模式 */

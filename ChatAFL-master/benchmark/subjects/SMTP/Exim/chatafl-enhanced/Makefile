@@ -23,6 +23,14 @@ CFLAGS     += -Wall -D_FORTIFY_SOURCE=2 -g -Wno-pointer-sign -Wno-unused-result 
               -DAFL_PATH=\"$(HELPER_PATH)\" -DDOC_PATH=\"$(DOC_PATH)\" \
               -DBIN_PATH=\"$(BIN_PATH)\"
 
+# Enable Enhanced modules if CHATAFL_ENHANCED=1
+ifdef CHATAFL_ENHANCED
+  CFLAGS += -DCHATAFL_ENHANCED=1
+  ENHANCED_OBJS = verifier.o cegar-refinement.o state-scheduler.o verifier_extended.o cegar-optimized.o
+else
+  ENHANCED_OBJS =
+endif
+
 ifneq "$(filter Linux GNU%,$(shell uname))" ""
   LDFLAGS  += -ldl -lgvc -lcgraph -lm -lcap
 endif
@@ -52,9 +60,9 @@ afl-gcc: afl-gcc.c $(COMM_HDR) | test_x86
 	$(CC) $(CFLAGS) $@.c -o $@ $(LDFLAGS)
 	ln -sf afl-gcc afl-g++
 
-# LIGHTWEIGHT: No enhanced modules linked
-afl-fuzz: afl-fuzz.c aflnet.o chat-llm.o $(COMM_HDR) | test_x86
-	$(CC) $(CFLAGS) $@.c aflnet.o chat-llm.o -o $@ $(LDFLAGS) -lcurl -ljson-c -lpcre2-8
+# Link Enhanced modules if CHATAFL_ENHANCED=1
+afl-fuzz: afl-fuzz.c aflnet.o chat-llm.o $(ENHANCED_OBJS) $(COMM_HDR) | test_x86
+	$(CC) $(CFLAGS) $@.c aflnet.o chat-llm.o $(ENHANCED_OBJS) -o $@ $(LDFLAGS) -lcurl -ljson-c -lpcre2-8
 
 afl-showmap: afl-showmap.c $(COMM_HDR) | test_x86
 	$(CC) $(CFLAGS) $@.c aflnet.o -o $@ $(LDFLAGS)
@@ -82,6 +90,22 @@ aflnet.o: aflnet.c aflnet.h
 
 chat-llm.o: chat-llm.c chat-llm.h
 	$(CC) $(CFLAGS) -c chat-llm.c -o chat-llm.o -lcurl -ljson-c
+
+# Enhanced module object files
+verifier.o: verifier.c verifier.h
+	$(CC) $(CFLAGS) -c verifier.c -o verifier.o
+
+cegar-refinement.o: cegar-refinement.c cegar-refinement.h verifier.h
+	$(CC) $(CFLAGS) -c cegar-refinement.c -o cegar-refinement.o
+
+state-scheduler.o: state-scheduler.c state-scheduler.h verifier.h
+	$(CC) $(CFLAGS) -c state-scheduler.c -o state-scheduler.o
+
+verifier_extended.o: verifier_extended.c verifier.h state-graph.h
+	$(CC) $(CFLAGS) -c verifier_extended.c -o verifier_extended.o
+
+cegar-optimized.o: cegar-optimized.c cegar-optimized.h
+	$(CC) $(CFLAGS) -c cegar-optimized.c -o cegar-optimized.o
 
 afl-as: afl-as.c afl-as.h $(COMM_HDR) | test_x86
 	$(CC) $(CFLAGS) $@.c -o $@ $(LDFLAGS)

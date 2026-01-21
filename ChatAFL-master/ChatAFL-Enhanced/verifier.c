@@ -54,10 +54,13 @@ void verifier_init(verifier_config_t *config) {
     
     g_stt = config->stt;
     if (!g_stt) {
-        g_stt = (state_transition_tree_t *)calloc(1, sizeof(state_transition_tree_t));
-        g_stt->nodes = (state_node_t *)calloc(STATE_CACHE_SIZE, sizeof(state_node_t));
+        g_stt = (state_transition_tree_t *)ck_alloc(sizeof(state_transition_tree_t));
+        memset(g_stt, 0, sizeof(state_transition_tree_t));
+        g_stt->nodes = (state_node_t *)ck_alloc(STATE_CACHE_SIZE * sizeof(state_node_t));
+        memset(g_stt->nodes, 0, STATE_CACHE_SIZE * sizeof(state_node_t));
         g_stt->node_count = 0;
-        g_stt->transitions = (state_transition_t *)calloc(STATE_CACHE_SIZE * 4, sizeof(state_transition_t));
+        g_stt->transitions = (state_transition_t *)ck_alloc(STATE_CACHE_SIZE * 4 * sizeof(state_transition_t));
+        memset(g_stt->transitions, 0, STATE_CACHE_SIZE * 4 * sizeof(state_transition_t));
         g_stt->transition_count = 0;
         g_stt->current_state = 0;
     }
@@ -70,6 +73,17 @@ void verifier_init(verifier_config_t *config) {
 /**
  * Simple regex-based parseability check
  * Matches field patterns against grammar rules
+ * 
+ * @param message Input message to parse
+ * @param msg_len Length of message
+ * @param grammar Grammar rules (optional, NULL for simple parsing)
+ * @param fields_out Output parsed fields (caller should free)
+ * @return 1 if parseable, 0 if not
+ * 
+ * Note: This allocates memory for fields_out. Caller must free:
+ *   - fields_out->fields[i].name for each field
+ *   - fields_out->fields
+ *   - fields_out itself
  */
 int verify_parseability(
     const unsigned char *message,
@@ -83,8 +97,10 @@ int verify_parseability(
     
     // For v0: Simple line-by-line check
     // Full CFG parsing would be more robust but expensive
-    parsed_fields_t *fields = (parsed_fields_t *)calloc(1, sizeof(parsed_fields_t));
-    fields->fields = (parsed_field_t *)calloc(MAX_FIELDS, sizeof(parsed_field_t));
+    parsed_fields_t *fields = (parsed_fields_t *)ck_alloc(sizeof(parsed_fields_t));
+    memset(fields, 0, sizeof(parsed_fields_t));
+    fields->fields = (parsed_field_t *)ck_alloc(MAX_FIELDS * sizeof(parsed_field_t));
+    memset(fields->fields, 0, MAX_FIELDS * sizeof(parsed_field_t));
     fields->field_count = 0;
     
     // Split by CRLF (common in network protocols)
@@ -104,7 +120,8 @@ int verify_parseability(
             parsed_field_t *field = &fields->fields[fields->field_count];
             field->start = line_start - (const char *)message;
             field->len = line_len;
-            field->name = (char *)calloc(line_len + 1, 1);
+            field->name = (char *)ck_alloc(line_len + 1);
+            memset(field->name, 0, line_len + 1);
             strncpy(field->name, line_start, line_len);
             field->type = "string";  // v0 assumes all strings
             field->mutable = 1;
@@ -147,7 +164,7 @@ int verify_parseability_with_cfg(
     if (!parse_result) {
         // Parse failed
         if (g_verification_log) {
-            fprintf(g_verification_log, \"[PARSEABILITY] CFG parse FAILED (len=%zu)\\n\", msg_len);
+            fprintf(g_verification_log, "[PARSEABILITY] CFG parse FAILED (len=%zu)\n", msg_len);
             fflush(g_verification_log);
         }
         return 0;
@@ -155,7 +172,8 @@ int verify_parseability_with_cfg(
     
     // Extract fields from parse tree
     if (fields_out && parse_tree) {
-        parsed_fields_t *fields = (parsed_fields_t *)calloc(1, sizeof(parsed_fields_t));
+        parsed_fields_t *fields = (parsed_fields_t *)ck_alloc(sizeof(parsed_fields_t));
+        memset(fields, 0, sizeof(parsed_fields_t));
         parsed_field_t *field_array = NULL;
         int field_count = 0;
         
@@ -172,7 +190,7 @@ int verify_parseability_with_cfg(
     }
     
     if (g_verification_log) {
-        fprintf(g_verification_log, \"[PARSEABILITY] CFG parse SUCCESS (len=%zu)\\n\", msg_len);
+        fprintf(g_verification_log, "[PARSEABILITY] CFG parse SUCCESS (len=%zu)\n", msg_len);
         fflush(g_verification_log);
     }
     
@@ -272,16 +290,19 @@ int verify_acceptability(
     
     // Parse response (simple HTTP/text protocol)
     if (response_out) {
-        response_out->body = (unsigned char *)calloc(recv_len + 1, 1);
+        response_out->body = (unsigned char *)ck_alloc(recv_len + 1);
+        memset(response_out->body, 0, recv_len + 1);
         memcpy(response_out->body, response_buf, recv_len);
         response_out->body_len = recv_len;
         
         // Try to extract status code (simplistic)
         // Look for patterns like "200", "400", "500", etc.
         char *status_str = NULL;
-        for (int i = 0; i < recv_len - 2; i++) {
-            if (isdigit(response_buf[i]) && isdigit(response_buf[i+1]) && 
-                isdigit(response_buf[i+2])) {
+        // Fix: prevent array out-of-bounds when recv_len < 3
+        if (recv_len >= 3) {
+            for (int i = 0; i < recv_len - 2; i++) {
+                if (isdigit(response_buf[i]) && isdigit(response_buf[i+1]) && 
+                    isdigit(response_buf[i+2])) {
                 int code = atoi((const char *)&response_buf[i]);
                 if (code >= 100 && code < 600) {
                     response_out->status_code = code;
@@ -293,6 +314,7 @@ int verify_acceptability(
                 }
             }
         }
+        }  // End of if (recv_len >= 3)
         
         if (response_out->status_code == 0) {
             response_out->status_code = -1;
@@ -507,7 +529,8 @@ unsigned char *minimize_counterexample(
     }
     
     // Allocate working buffer
-    unsigned char *current = (unsigned char *)calloc(msg_len, 1);
+    unsigned char *current = (unsigned char *)ck_alloc(msg_len);
+    memset(current, 0, msg_len);
     memcpy(current, message, msg_len);
     size_t current_len = msg_len;
     
@@ -537,7 +560,8 @@ unsigned char *minimize_counterexample(
             size_t candidate_len = current_len - (remove_end - remove_start);
             if (candidate_len == 0) continue;  // Don't remove everything
             
-            unsigned char *candidate = (unsigned char *)calloc(candidate_len, 1);
+            unsigned char *candidate = (unsigned char *)ck_alloc(candidate_len);
+            memset(candidate, 0, candidate_len);
             memcpy(candidate, current, remove_start);
             memcpy(candidate + remove_start, current + remove_end, 
                    current_len - remove_end);
@@ -559,7 +583,7 @@ unsigned char *minimize_counterexample(
             
             // If still behaves same (parseable or not), keep reduction
             if (still_parseable == 0) {  // Still fails → good candidate
-                free(current);
+                ck_free(current);
                 current = candidate;
                 current_len = candidate_len;
                 improvements++;
@@ -572,7 +596,7 @@ unsigned char *minimize_counterexample(
                 }
                 break;  // Restart with new current
             } else {
-                free(candidate);
+                ck_free(candidate);
             }
         }
         
@@ -621,12 +645,12 @@ void verifier_cleanup(void) {
     if (g_stt) {
         for (int i = 0; i < g_stt->transition_count; i++) {
             if (g_stt->transitions[i].message_type) {
-                free(g_stt->transitions[i].message_type);
+                ck_free(g_stt->transitions[i].message_type);
             }
         }
-        if (g_stt->transitions) free(g_stt->transitions);
-        if (g_stt->nodes) free(g_stt->nodes);
-        free(g_stt);
+        if (g_stt->transitions) ck_free(g_stt->transitions);
+        if (g_stt->nodes) ck_free(g_stt->nodes);
+        ck_free(g_stt);
         g_stt = NULL;
     }
 }

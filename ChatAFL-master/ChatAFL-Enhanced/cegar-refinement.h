@@ -4,6 +4,12 @@
 #include "verifier.h"
 #include <json-c/json.h>
 
+/* ============ Constants ============ */
+#define CEGAR_FAILURE_CACHE_SIZE 256
+#define CEGAR_PATCH_CACHE_SIZE 256
+#define CEGAR_PROMPT_MAX_SIZE 4096
+#define CEGAR_MAX_PATCH_ATTEMPTS 5
+
 /*
  * CEGAR Refinement Loop: Counterexample-Guided Abstraction Refinement
  * 

@@ -1,8 +1,9 @@
 #
-# ChatAFL-Enhanced Makefile (Lightweight - No unused modules)
+# ChatAFL-Enhanced Makefile
 #
-# This version DOES NOT include verifier/cegar/scheduler
-# to isolate performance issues
+# Enhanced features are OPTIONAL and controlled by CHATAFL_ENHANCED flag
+# Build without flag: base AFL functionality only
+# Build with flag: includes verifier, CEGAR, and scheduler modules
 #
 
 PROGNAME    = afl
@@ -132,7 +133,11 @@ test_build: afl-gcc afl-as afl-showmap
 
 all_done: test_build
 	@echo "[+] All done! Be sure to review README - it's pretty short and useful."
-	@echo "[!] LIGHTWEIGHT BUILD - No Enhanced modules"
+	if [ -z "$(CHATAFL_ENHANCED)" ]; then \
+		echo "[!] BASIC BUILD - Enhanced modules not included. Set CHATAFL_ENHANCED=1 to enable."; \
+	else \
+		echo "[+] ENHANCED BUILD - All modules included."; \
+	fi
 
 .NOTPARALLEL: clean
 
