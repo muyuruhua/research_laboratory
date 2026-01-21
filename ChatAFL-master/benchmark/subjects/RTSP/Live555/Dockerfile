@@ -94,7 +94,7 @@ RUN cd $WORKDIR && \
     cd live && \
     patch -p1 < ${WORKDIR}/fuzzing.patch && \
     ./genMakefiles linux && \
-    AFL_USE_ASAN=1 make clean all $MAKE_OPT || make all
+    make clean all $MAKE_OPT || make all
 
 # Set up Live555 for fuzzing
 RUN cd ${WORKDIR}/live/testProgs && \

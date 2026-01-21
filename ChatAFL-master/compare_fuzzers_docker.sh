@@ -107,7 +107,7 @@ case "$TARGET" in
         TARGET_ARGS="8554"
         SEED_DIR="/home/ubuntu/experiments/in-rtsp"
         CLEAN_SCRIPT="/home/ubuntu/experiments/kill-server"
-        AFL_OPTS="-d -P RTSP -D 10000 -q 3 -s 3 -E -K -R -m none -t 5000+ -N tcp://127.0.0.1/8554 -c $CLEAN_SCRIPT"
+        AFL_OPTS="-d -P RTSP -D 10000 -q 3 -s 3 -E -K -R -m none -t 15000+ -N tcp://127.0.0.1/8554 -c $CLEAN_SCRIPT"
         ;;
     Exim|exim)
         CONTAINER_WORKDIR="/home/ubuntu/experiments/exim"
