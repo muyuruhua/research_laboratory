@@ -95,7 +95,7 @@ case "$TARGET" in
         ;;
     PureFTPD|pureftpd)
         CONTAINER_WORKDIR="/home/ubuntu/experiments/pure-ftpd"
-        CONTAINER_TARGET="./pure-ftpd"
+        CONTAINER_TARGET="src/pure-ftpd"
         TARGET_ARGS="-A -B"
         SEED_DIR="/home/ubuntu/experiments/in-ftp"
         CLEAN_SCRIPT="/home/ubuntu/experiments/clean"
