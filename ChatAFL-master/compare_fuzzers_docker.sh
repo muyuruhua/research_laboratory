@@ -115,7 +115,7 @@ case "$TARGET" in
         TARGET_ARGS="-bdf -q15m"
         SEED_DIR="/home/ubuntu/experiments/in-smtp"
         CLEAN_SCRIPT="/home/ubuntu/experiments/clean"
-        AFL_OPTS="-d -P SMTP -D 10000 -q 3 -s 3 -E -K -W 100 -m none -t 15000+ -N tcp://127.0.0.1/25 -c $CLEAN_SCRIPT"
+        AFL_OPTS="-d -P SMTP -D 10000 -q 3 -s 3 -E -K -W 100 -m none -t 30000+ -N tcp://127.0.0.1/25 -c $CLEAN_SCRIPT"
         ;;
     *)
         print_error "不支持的目标: $TARGET"
