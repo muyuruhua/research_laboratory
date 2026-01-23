@@ -1,21 +1,36 @@
 #!/bin/bash
 
-PFBENCH="$PWD/benchmark"
-cd $PFBENCH
-
-PATH=$PATH:$PFBENCH/scripts/execution:$PFBENCH/scripts/analysis
-NUM_CONTAINERS=$1
-TIMEOUT=$(( ${2:-1440} * 60))
-SKIPCOUNT="${SKIPCOUNT:-1}"
-TEST_TIMEOUT="${TEST_TIMEOUT:-5000}"
-
-export TARGET_LIST=$3
-export FUZZER_LIST=$4
-
-if [[ "x$NUM_CONTAINERS" == "x" ]] || [[ "x$TIMEOUT" == "x" ]] || [[ "x$TARGET_LIST" == "x" ]] || [[ "x$FUZZER_LIST" == "x" ]]
-then
-    echo "Usage: $0 NUM_CONTAINERS TIMEOUT TARGET FUZZER"
-    exit 1
+if [ -z $KEY ]; then
+    echo "NO OPENAI API KEY PROVIDED! Please set the KEY environment variable"
+    exit 0
 fi
 
-PFBENCH=$PFBENCH PATH=$PATH NUM_CONTAINERS=$NUM_CONTAINERS TIMEOUT=$TIMEOUT SKIPCOUNT=$SKIPCOUNT TEST_TIMEOUT=$TEST_TIMEOUT scripts/execution/profuzzbench_exec_all.sh ${TARGET_LIST} ${FUZZER_LIST}
+# Update the openAI key
+for x in ChatAFL ChatAFL-CL1 ChatAFL-CL2 ChatAFL-Enhanced;
+do
+  sed -i "s/#define OPENAI_TOKEN \".*\"/#define OPENAI_TOKEN \"$KEY\"/" $x/chat-llm.h
+done
+
+# Copy the different versions of ChatAFL to the benchmark directories
+for subject in ./benchmark/subjects/*/*; do
+  rm -r $subject/aflnet 2>&1 >/dev/null
+  cp -r aflnet $subject/aflnet
+
+  rm -r $subject/chatafl 2>&1 >/dev/null
+  cp -r ChatAFL $subject/chatafl
+  
+  rm -r $subject/chatafl-cl1 2>&1 >/dev/null
+  cp -r ChatAFL-CL1 $subject/chatafl-cl1
+  
+  rm -r $subject/chatafl-cl2 2>&1 >/dev/null
+  cp -r ChatAFL-CL2 $subject/chatafl-cl2
+  
+  rm -r $subject/chatafl-enhanced 2>&1 >/dev/null
+  cp -r ChatAFL-Enhanced $subject/chatafl-enhanced
+done;
+
+# Build the docker images
+
+PFBENCH="$PWD/benchmark"
+cd $PFBENCH
+PFBENCH=$PFBENCH scripts/execution/profuzzbench_build_all.sh

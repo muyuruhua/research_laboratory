@@ -1,0 +1,90 @@
+#!/bin/bash
+
+if [ -z "$KEY" ]; then
+    echo "========================================"
+    echo "❌ ERROR: NO OPENAI API KEY PROVIDED!"
+    echo "========================================"
+    echo ""
+    echo "Please set the KEY environment variable before running this script:"
+echo ""
+echo "📝 Updating OpenAI API key in source files..."
+for x in ChatAFL ChatAFL-CL1 ChatAFL-CL2 ChatAFL-Enhanced;
+do
+  if [ -f "$x/chat-llm.h" ]; then
+    sed -i "s/#define OPENAI_TOKEN \".*\"/#define OPENAI_TOKEN \"$KEY\"/" $x/chat-llm.h
+    echo "  ✅ Updated $x/chat-llm.h"
+  else
+    echo "  ⚠️  Warning: $x/chat-llm.h not found, skipping..."
+  fi
+    echo ""
+    echo "Or provide it inline:"
+    echo ""
+    echo "  KEY=\"sk-your-openai-api-key-here\" ./setup.sh"
+    echo ""
+    echo "Note: Do NOT use 'sudo' as it won't preserve environment variables."
+    echo "========================================"
+    exit 2
+fi
+
+echo "✅ OpenAI API Key detected: ${KEY:0:10}..."
+
+echo ""
+echo "📦 Copying fuzzer sources to benchmark directories..."
+target_count=0
+for subject in ./benchmark/subjects/*/*; do
+  if [ -d "$subject" ]; then
+    target_count=$((target_count + 1))
+    subject_name=$(basename "$subject")
+    
+    # Copy aflnet
+    rm -rf "$subject/aflnet" 2>/dev/null
+    cp -r aflnet "$subject/aflnet"
+
+    # Copy chatafl
+    rm -rf "$subject/chatafl" 2>/dev/null
+    cp -r ChatAFL "$subject/chatafl"
+    
+    # Copy chatafl-cl1
+    rm -rf "$subject/chatafl-cl1" 2>/dev/null
+echo ""
+echo "🐳 Building Docker images..."
+echo "  (This may take 10-30 minutes for the first time)"
+echo ""
+
+PFBENCH="$PWD/benchmark"
+cd "$PFBENCH" || exit 1
+PFBENCH=$PFBENCH scripts/execution/profuzzbench_build_all.sh
+
+echo ""
+echo "========================================"
+echo "✅ Setup completed successfully!"
+echo "========================================"
+echo ""
+echo "Next steps:"
+echo "  1. Run fuzzing: ./run.sh <containers> <timeout_min> <target> <fuzzer>"
+echo "  2. Example: ./run.sh 5 10 kamailio chatafl"
+echo "  3. Or use Enhanced: ./run.sh 5 10 kamailio chatafl-enhanced"
+echo ""
+    cp -r ChatAFL-CL2 "$subject/chatafl-cl2"
+    
+    # Copy chatafl-enhanced
+    rm -rf "$subject/chatafl-enhanced" 2>/dev/null
+    cp -r ChatAFL-Enhanced "$subject/chatafl-enhanced"
+    
+    echo "  ✅ Configured $subject_name"
+  fi
+done
+echo "  📊 Total targets configured: $target_count"-r ChatAFL-CL1 $subject/chatafl-cl1
+  
+  rm -r $subject/chatafl-cl2 2>&1 >/dev/null
+  cp -r ChatAFL-CL2 $subject/chatafl-cl2
+  
+  rm -r $subject/chatafl-enhanced 2>&1 >/dev/null
+  cp -r ChatAFL-Enhanced $subject/chatafl-enhanced
+done;
+
+# Build the docker images
+
+PFBENCH="$PWD/benchmark"
+cd $PFBENCH
+PFBENCH=$PFBENCH scripts/execution/profuzzbench_build_all.sh
