@@ -11,24 +11,6 @@ do
   sed -i "s/#define OPENAI_TOKEN \".*\"/#define OPENAI_TOKEN \"$KEY\"/" $x/chat-llm.h
 done
 
-# Build ChatAFL-Enhanced modules with optimized flags
-echo "Building ChatAFL-Enhanced..."
-cd ChatAFL-Enhanced
-
-# Build WITH optimized Enhanced modules (CEGAR default disabled, can enable via env var)
-echo "  → Building ChatAFL-Enhanced with CHATAFL_ENHANCED=1"
-echo "     Features: Optimized CEGAR control, verifier, state scheduler"
-echo "     CEGAR: Disabled by default (enable with CHATAFL_CEGAR_ENABLE=1)"
-make clean all CHATAFL_ENHANCED=1
-if [ $? -ne 0 ]; then
-    echo "ERROR: ChatAFL-Enhanced build failed!"
-    exit 1
-fi
-
-cd ..
-echo "ChatAFL-Enhanced built successfully (Enhanced mode with optimized control)"
-echo "  Binary: $(ls -lh ChatAFL-Enhanced/afl-fuzz | awk '{print $5, $9}')"
-
 # Copy the different versions of ChatAFL to the benchmark directories
 for subject in ./benchmark/subjects/*/*; do
   rm -r $subject/aflnet 2>&1 >/dev/null
@@ -46,8 +28,6 @@ for subject in ./benchmark/subjects/*/*; do
   rm -r $subject/chatafl-enhanced 2>&1 >/dev/null
   cp -r ChatAFL-Enhanced $subject/chatafl-enhanced
 done;
-
-echo "All ChatAFL versions (including Enhanced) copied to benchmark subjects"
 
 # Build the docker images
 

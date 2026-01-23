@@ -26,8 +26,14 @@ CFLAGS     += -Wall -D_FORTIFY_SOURCE=2 -g -Wno-pointer-sign -Wno-unused-result 
 
 # Enable Enhanced modules if CHATAFL_ENHANCED=1
 ifdef CHATAFL_ENHANCED
-  CFLAGS += -DCHATAFL_ENHANCED=1 -I/opt/homebrew/opt/json-c/include -I/opt/homebrew/opt/pcre2/include
-  LDFLAGS += -L/opt/homebrew/opt/json-c/lib -L/opt/homebrew/opt/pcre2/lib
+  CFLAGS += -DCHATAFL_ENHANCED=1
+  # Platform-specific library paths
+  ifeq "$(shell uname)" "Darwin"
+    # macOS with Homebrew
+    CFLAGS += -I/opt/homebrew/opt/json-c/include -I/opt/homebrew/opt/pcre2/include
+    LDFLAGS += -L/opt/homebrew/opt/json-c/lib -L/opt/homebrew/opt/pcre2/lib
+  endif
+  # Linux uses system paths, no extra flags needed
   ENHANCED_OBJS = verifier.o cegar-refinement.o state-scheduler.o cegar-optimized.o state-graph.o cfg-parser.o module-interface.o
 else
   ENHANCED_OBJS =

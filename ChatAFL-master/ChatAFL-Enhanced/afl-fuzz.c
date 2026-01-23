@@ -4894,7 +4894,7 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
         uint64_t cegar_start = cegar_call_begin();
         
         // 步骤2.3: 实际执行CEGAR refinement循环
-        char *cegar_prompt = construct_cegar_prompt("Protocol",  // 可配置协议名
+        char *cegar_prompt = construct_cegar_prompt(protocol_name,  // 使用实际协议名（FTP/SMTP等）
                                                    &failure,
                                                    parsed_fields,
                                                    -1,  // Auto-detect field
