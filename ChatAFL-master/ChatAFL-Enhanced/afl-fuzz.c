@@ -44,19 +44,19 @@
 #include "hash.h"
 #include "chat-llm.h"
 
+/* ============================================================================
+ * PLUGIN SYSTEM INTEGRATION
+ * 
+ * Instead of directly including module headers, we use the plugin interface.
+ * This follows the Open/Closed Principle: core is closed for modification,
+ * open for extension via plugins.
+ * ============================================================================ */
 #ifdef CHATAFL_ENHANCED
-#include "verifier.h"
-#include "cegar-optimized.h"
-#include "cegar-refinement.h"
-#include "state-scheduler.h"
-#include "state-graph.h"
-#include "cfg-parser.h"
-#include "module-interface.h"
-
-/* Enable CEGAR simulation mode for development/testing */
-#ifndef CHATAFL_PRODUCTION
-#define CEGAR_SIMULATION_MODE 1
-#endif
+#include "afl-fuzz-plugin.h"
+#else
+// Provide no-op plugin functions for base ChatAFL
+static inline bool setup_plugins(void *ctx) { (void)ctx; return true; }
+static inline void cleanup_plugins(void) { }
 #endif
 
 #include <stdio.h>
