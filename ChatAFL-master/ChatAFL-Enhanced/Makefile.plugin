@@ -35,7 +35,9 @@ ifdef CHATAFL_ENHANCED
   ifeq "$(shell uname)" "Darwin"
     # macOS with Homebrew
     CFLAGS += -I/opt/homebrew/opt/json-c/include -I/opt/homebrew/opt/pcre2/include
+    CFLAGS += -I/opt/homebrew/opt/graphviz/include
     LDFLAGS += -L/opt/homebrew/opt/json-c/lib -L/opt/homebrew/opt/pcre2/lib
+    LDFLAGS += -L/opt/homebrew/opt/graphviz/lib -lgvc -lcgraph
   endif
   
   # Core plugin system (always included when CHATAFL_ENHANCED=1)

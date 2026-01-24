@@ -11,6 +11,14 @@
 #include "plugin-interface.h"
 
 /* ============================================================================
+ * PLUGIN SYSTEM API (from plugin-manager.c)
+ * ============================================================================ */
+extern bool plugin_system_init(void *fuzzer_ctx);
+extern void plugin_system_cleanup(void);
+extern void plugin_print_stats(void);
+extern plugin_decision_t plugin_invoke_hook(plugin_hook_type_t hook_type, hook_data_t *hook_data);
+
+/* ============================================================================
  * PLUGIN REGISTRATION FUNCTIONS
  * 
  * Each plugin provides a registration function that returns a plugin handle.
@@ -156,6 +164,9 @@ static inline void cleanup_plugins(void) {
         plugin_invoke_hook(HOOK_PERIODIC, &hook_data); \
     } while(0)
 
+#define PLUGIN_HOOK_CLEANUP() \
+    plugin_invoke_hook(HOOK_CLEANUP, NULL)
+
 #else
 
 // No-op macros when plugins are disabled
@@ -165,6 +176,7 @@ static inline void cleanup_plugins(void) {
 #define PLUGIN_HOOK_STATE_TRANSITION(...)
 #define PLUGIN_HOOK_COVERAGE_UPDATE(...)
 #define PLUGIN_HOOK_CRASH_FOUND(...)
+#define PLUGIN_HOOK_CLEANUP()
 #define PLUGIN_HOOK_PERIODIC(...)
 
 #endif

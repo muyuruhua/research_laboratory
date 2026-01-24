@@ -10,6 +10,9 @@
 #include "state-graph.h"
 #include "alloc-inl.h"
 
+/* Define global state graph (needed by verifier_extended.c) */
+StateGraph g_state_graph = {0};
+
 /* Plugin private data */
 typedef struct {
     state_scheduler_t scheduler;

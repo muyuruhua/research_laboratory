@@ -10,9 +10,26 @@
 #include <string.h>
 #include <stdarg.h>
 #include <time.h>
+#include <sys/time.h>
 #include "plugin-interface.h"
 #include "alloc-inl.h"
 #include "debug.h"
+
+/* ============================================================================
+ * UTILITY FUNCTIONS
+ * ============================================================================ */
+
+static u64 plugin_get_cur_time(void) {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (tv.tv_sec * 1000ULL) + (tv.tv_usec / 1000);
+}
+
+static u64 plugin_get_cur_time_us(void) {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (tv.tv_sec * 1000000ULL) + tv.tv_usec;
+}
 
 /* Maximum number of plugins */
 #define MAX_PLUGINS 32
@@ -283,11 +300,11 @@ plugin_decision_t plugin_invoke_hook(plugin_hook_type_t hook_type,
         }
         
         // Track timing
-        u64 start_time = get_cur_time_us();
+        u64 start_time = plugin_get_cur_time_us();
         
         plugin_result_t *result = p->ops.on_hook(p, hook_type, hook_data);
         
-        u64 elapsed = get_cur_time_us() - start_time;
+        u64 elapsed = plugin_get_cur_time_us() - start_time;
         p->total_time_us += elapsed;
         p->total_calls++;
         
@@ -335,9 +352,9 @@ plugin_result_t* plugin_invoke_single(plugin_t *plugin,
         return NULL;
     }
     
-    u64 start_time = get_cur_time_us();
+    u64 start_time = plugin_get_cur_time_us();
     plugin_result_t *result = plugin->ops.on_hook(plugin, hook_type, hook_data);
-    u64 elapsed = get_cur_time_us() - start_time;
+    u64 elapsed = plugin_get_cur_time_us() - start_time;
     
     plugin->total_time_us += elapsed;
     plugin->total_calls++;
@@ -363,19 +380,23 @@ void plugin_result_free(plugin_result_t *result) {
  * UTILITY FUNCTIONS FOR PLUGINS
  * ============================================================================ */
 
-// External symbols from afl-fuzz.c (will be linked)
-extern u64 total_execs;
-extern u32 queued_paths;
-extern u32 pending_favored;
-extern u64 start_time;
+// Note: These statistics will be set via plugin hooks rather than direct access
+// to avoid static linkage issues
+static u64 g_plugin_total_execs = 0;
+static u32 g_plugin_queue_size = 0;
+static u32 g_plugin_pending_favored = 0;
+static u64 g_plugin_start_time = 0;
 
 u64 plugin_get_stat(const char *key) {
     if (!key) return 0;
     
-    if (strcmp(key, "total_execs") == 0) return total_execs;
-    if (strcmp(key, "queue_size") == 0) return queued_paths;
-    if (strcmp(key, "pending_favored") == 0) return pending_favored;
-    if (strcmp(key, "runtime_ms") == 0) return get_cur_time() - start_time;
+    if (strcmp(key, "total_execs") == 0) return g_plugin_total_execs;
+    if (strcmp(key, "queue_size") == 0) return g_plugin_queue_size;
+    if (strcmp(key, "pending_favored") == 0) return g_plugin_pending_favored;
+    if (strcmp(key, "runtime_ms") == 0) {
+        if (g_plugin_start_time == 0) g_plugin_start_time = plugin_get_cur_time();
+        return plugin_get_cur_time() - g_plugin_start_time;
+    }
     
     return 0;
 }
@@ -394,7 +415,8 @@ void plugin_log(plugin_t *plugin, int level, const char *format, ...) {
     
     int idx = (level >= 0 && level <= 3) ? level : 1;
     
-    SAYF(level_color[idx] "[%s:%s] " cRST "%s\n", 
+    SAYF("%s[%s:%s] " cRST "%s\n",
+         level_color[idx],
          plugin->ops.name, level_str[idx], buf);
 }
 
