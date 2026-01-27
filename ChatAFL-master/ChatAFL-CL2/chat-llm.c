@@ -5,7 +5,7 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <unistd.h>
-
+#include <stdlib.h>
 #include "chat-llm.h"
 #include "alloc-inl.h"
 #include "hash.h"
@@ -15,6 +15,7 @@
 
 #define MAX_TOKENS 2048
 #define CONFIDENT_TIMES 3
+#define DEBUG_MODE 1
 
 struct MemoryStruct
 {
@@ -42,7 +43,308 @@ static size_t chat_with_llm_helper(void *contents, size_t size, size_t nmemb, vo
     return realsize;
 }
 
-char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
+// --- 全局初始化和清理函数 ---
+
+/**
+ * @brief 在 main 函数执行前自动调用，用于初始化 libcurl 全局环境。
+ * 
+ * 使用 __attribute__((constructor)) 是 GCC 的一个扩展，它告诉编译器
+ * 将这个函数标记为构造函数，在 main() 函数执行之前自动运行。
+ */
+__attribute__((constructor))
+static void global_init() {
+    // CURL_GLOBAL_ALL 会初始化所有可能需要的子系统，如 SSL, zlib 等。
+    // 这是最常用和最安全的初始化方式。
+    curl_global_init(CURL_GLOBAL_ALL);
+}
+
+/**
+ * @brief 在程序退出时自动调用，用于清理 libcurl 全局环境。
+ * 
+ * 使用 __attribute__((destructor)) 是 GCC 的一个扩展，它告诉编译器
+ * 将这个函数标记为析构函数，在 main() 函数返回后、程序退出前自动运行。
+ */
+__attribute__((destructor))
+static void global_cleanup() {
+    // 与 curl_global_init() 配对使用，释放所有全局资源。
+    curl_global_cleanup();
+}
+
+const char* get_api_key() {
+    const char* key = getenv("KEY");
+    return (key && strlen(key) > 0) ? key : NULL;
+}
+
+// OCP: Model name resolver - extensible via environment variable
+// Usage: export MODEL_ALIAS_TURBO="gpt-3.5-turbo"
+static const char* resolve_model_name(const char* model) {
+    if (!model) return "gpt-4o-mini";
+    
+    // OCP Extension Point 1: Environment variable override
+    // Example: MODEL_ALIAS_TURBO=gpt-4 ./fuzzer
+    char env_var[128];
+    snprintf(env_var, sizeof(env_var), "MODEL_ALIAS_%s", model);
+    // Convert to uppercase
+    for (char* p = env_var; *p; p++) *p = toupper(*p);
+    const char* env_model = getenv(env_var);
+    if (env_model && strlen(env_model) > 0) {
+        return env_model;  // Environment override
+    }
+    
+    // OCP Extension Point 2: Static mapping (backward compatibility)
+    if (strcmp(model, "turbo") == 0) return "gpt-3.5-turbo";
+    if (strcmp(model, "instruct") == 0) return "gpt-3.5-turbo-instruct";
+    
+    // OCP Extension Point 3: Pass-through for full names
+    if (strcmp(model, "gpt-4o-mini") == 0 || 
+        strcmp(model, "gpt-4") == 0 || 
+        strcmp(model, "gpt-3.5-turbo") == 0) {
+        return model;
+    }
+    
+    // Default fallback
+    return "gpt-4o-mini";
+}
+
+// OCP: Retry strategy configuration via environment variable
+// Usage: export LLM_RETRY_DELAY=5
+static int get_retry_delay() {
+    const char* delay_str = getenv("LLM_RETRY_DELAY");
+    if (delay_str) {
+        int delay = atoi(delay_str);
+        if (delay > 0 && delay <= 30) return delay;
+    }
+    return 2;  // Default 2 seconds
+}
+
+char* json_escape_string(const char* input) {
+    if (!input) return strdup("");
+    size_t len = strlen(input);
+    char* output = calloc(len * 6 + 1, sizeof(char));
+    const char* src = input; char* dst = output;
+    while (*src) {
+        if (*src == '"') { strcpy(dst, "\\\""); dst += 2; }
+        else if (*src == '\\') { strcpy(dst, "\\\\"); dst += 2; }
+        else if (*src == '\n') { strcpy(dst, "\\n"); dst += 2; }
+        else if (*src == '\r') { strcpy(dst, "\\r"); dst += 2; }
+        else if ((unsigned char)*src < 32) dst += sprintf(dst, "\\u%04x", (unsigned char)*src);
+        else *dst++ = *src;
+        src++;
+    }
+    *dst = '\0';
+    return output;
+}
+
+char* extract_content_from_json(const char* json_str) {
+    if (!json_str) return NULL;
+    const char* key_pos = strstr(json_str, "\"content\"");
+    if (!key_pos) return NULL;
+    const char* colon_pos = strchr(key_pos, ':');
+    if (!colon_pos) return NULL;
+    const char* start_quote = strchr(colon_pos, '"');
+    if (!start_quote) return NULL; 
+    start_quote++;
+    
+    const char* ptr = start_quote;
+    const char* end_quote = NULL;
+    while (*ptr) {
+        if (*ptr == '\\') { ptr += 2; continue; }
+        if (*ptr == '"') { end_quote = ptr; break; }
+        ptr++;
+    }
+    if (!end_quote) return NULL;
+    
+    size_t len = end_quote - start_quote;
+    char* raw = malloc(len + 1);
+    strncpy(raw, start_quote, len);
+    raw[len] = '\0';
+    
+    char* final = malloc(len + 1);
+    char* w = final; char* r = raw;
+    while (*r) {
+        if (*r == '\\' && *(r+1)) {
+            r++;
+            switch (*r) {
+                case 'n': *w++ = '\n'; break;
+                case 'r': *w++ = '\r'; break;
+                case 't': *w++ = '\t'; break;
+                case '"': *w++ = '"'; break;
+                case '\\': *w++ = '\\'; break;
+                default: *w++ = *r;
+            }
+        } else {
+            *w++ = *r;
+        }
+        r++;
+    }
+    *w = '\0';
+    free(raw);
+    return final;
+}
+
+// OCP: Unescape JSON string literals (e.g., "[\\"INVITE...", ...]" → ["INVITE...", ...])
+// OCP: Helper to detect if string still contains escape sequences
+static int has_escape_sequences(const char* str) {
+    if (!str) return 0;
+    const char* p = str;
+    while (*p) {
+        if (*p == '\\' && *(p+1) && 
+            (*(p+1) == 'n' || *(p+1) == 'r' || *(p+1) == 't' || 
+             *(p+1) == '"' || *(p+1) == '\\')) {
+            return 1;  // Found valid escape sequence
+        }
+        p++;
+    }
+    return 0;
+}
+
+// OCP: Single-pass unescape helper
+static char* unescape_once(const char* escaped) {
+    if (!escaped) return NULL;
+    
+    size_t len = strlen(escaped);
+    char* unescaped = malloc(len + 1);  // Worst case: same length
+    if (!unescaped) return NULL;
+    
+    const char* r = escaped;
+    char* w = unescaped;
+    
+    while (*r) {
+        if (*r == '\\' && *(r+1)) {
+            r++;  // Skip backslash
+            switch (*r) {
+                case 'n':  *w++ = '\n'; break;
+                case 'r':  *w++ = '\r'; break;
+                case 't':  *w++ = '\t'; break;
+                case '"':  *w++ = '"';  break;
+                case '\\': *w++ = '\\'; break;
+                default:   *w++ = *r;    break;  // Unknown escape, keep as-is
+            }
+            r++;
+        } else {
+            *w++ = *r++;
+        }
+    }
+    *w = '\0';
+    return unescaped;
+}
+
+// OCP: Recursive unescape - handles multi-layer escaping from LLM
+static char* unescape_json_string(const char* escaped) {
+    if (!escaped) return NULL;
+    
+    char* result = unescape_once(escaped);
+    if (!result) return NULL;
+    
+    // OCP: Recursively unescape until no escape sequences remain (max 3 iterations)
+    int max_iterations = 3;  // Prevent infinite loop
+    int iteration = 0;
+    
+    while (has_escape_sequences(result) && iteration < max_iterations) {
+        char* temp = unescape_once(result);
+        if (!temp) break;  // Allocation failed
+        
+        // Check if result changed (防止无限循环)
+        if (strcmp(result, temp) == 0) {
+            free(temp);
+            break;  // No change, stop recursion
+        }
+        
+        free(result);
+        result = temp;
+        iteration++;
+    }
+    
+    return result;
+}
+
+static size_t write_cb(void* contents, size_t size, size_t nmemb, char** response) {
+    size_t total = size * nmemb;
+    size_t old_len = *response ? strlen(*response) : 0;
+    
+    // OCP: Safe memory reallocation with corruption prevention
+    char* new_res = realloc(*response, old_len + total + 1);
+    if (!new_res) {
+        // Don't free *response here, caller will handle it
+        return 0;
+    }
+    
+    *response = new_res;
+    // Use memcpy instead of strncat to avoid double-scanning
+    if (total > 0) {
+        memcpy(*response + old_len, contents, total);
+        (*response)[old_len + total] = '\0';
+    }
+    return total;
+}
+
+char* chat_with_llm(char* prompt, char* model, int tries, float temperature) {
+    if (!get_api_key()) return NULL;
+    CURL* curl = curl_easy_init();
+    if (!curl) return NULL;
+    if (tries < 1) tries = 1;
+
+    // OCP: Use extensible model name resolver
+    const char* actual_model = resolve_model_name(model);
+
+    struct curl_slist* headers = curl_slist_append(NULL, "Content-Type: application/json");
+    char auth[256]; 
+    snprintf(auth, sizeof(auth), "Authorization: Bearer %s", get_api_key());
+    headers = curl_slist_append(headers, auth);
+    
+    char* esc_prompt = json_escape_string(prompt);
+    size_t jsize = strlen(esc_prompt) + 2048;
+    char* data = malloc(jsize);
+    
+    snprintf(data, jsize, 
+             "{\"model\":\"%s\",\"messages\":[{\"role\":\"user\",\"content\":\"%s\"}],\"temperature\":%.2f}", 
+             actual_model, esc_prompt, temperature);
+    
+    char* resp = NULL;
+    char* content = NULL;
+    CURLcode res;
+    long http_code = 0;
+
+    curl_easy_setopt(curl, CURLOPT_URL, "https://free.v36.cm/v1/chat/completions");
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
+    
+    for (int i = 0; i < tries; i++) {
+        if (resp) { free(resp); resp = NULL; }
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
+        res = curl_easy_perform(curl);
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+        
+        if (res == CURLE_OK && http_code == 200) {
+            content = extract_content_from_json(resp);
+            if (content) break; 
+        }
+        if (DEBUG_MODE) {
+            printf("[DEBUG] Attempt %d/%d failed. Code: %ld\n", i + 1, tries, http_code);
+            if (resp && http_code != 200) {
+                printf("[DEBUG] Response: %s\n", resp);
+            }
+        }
+        // OCP: Use configurable retry delay via environment variable
+        if (i < tries - 1) {
+            sleep(get_retry_delay());
+        }
+    }
+    
+    // OCP: Safe cleanup in correct order
+    curl_easy_cleanup(curl);
+    curl_slist_free_all(headers);
+    
+    if (esc_prompt) free(esc_prompt);
+    if (data) free(data);
+    if (resp) free(resp);
+    
+    return content;
+}
+
+char *chat_with_llm1(char *prompt, char *model, int tries, float temperature)
 {
     CURL *curl;
     CURLcode res = CURLE_OK;
@@ -117,7 +419,16 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
                     }
                     if (data[0] == '\n')
                         data++;
-                    answer = strdup(data);
+                    // OCP: Unescape LLM response (extend output without modifying extraction logic)
+                    char* raw_answer = strdup(data);
+                    answer = unescape_json_string(raw_answer);
+                    if (answer == raw_answer) {
+                        // unescape didn't allocate, use original
+                        answer = raw_answer;
+                    } else {
+                        // unescape allocated new memory, free original
+                        free(raw_answer);
+                    }
                 }
                 else
                 {
@@ -398,7 +709,16 @@ void extract_message_grammars(char *answers, klist_t(gram) * grammar_list)
 
         // conver temp to json object and save it to the list
         json_object *jobj = json_tokener_parse(temp);
-        *kl_pushp(gram, grammar_list) = jobj;
+        // OCP: Validate JSON parsing - skip invalid entries
+        if (jobj != NULL && json_object_get_type(jobj) == json_type_array) {
+            *kl_pushp(gram, grammar_list) = jobj;
+        } else {
+            if (jobj) json_object_put(jobj);  // Free invalid object
+            fprintf(stderr, "[WARNING] Skipping invalid JSON grammar: %s\n", temp);
+        }
+        
+        // OCP: Memory safety - free temporary buffer after use
+        ck_free(temp);
 
         // printf("%s\n", temp);
     }
@@ -779,7 +1099,7 @@ void get_protocol_message_types(char *state_prompt, khash_t(strSet) * states_set
 
     for (int i = 0; i < CONFIDENT_TIMES; i++)
     {
-        char *state_answer = chat_with_llm(state_prompt, "instruct", MESSAGE_TYPE_RETRIES, 0.5);
+        char *state_answer = chat_with_llm(state_prompt, "gpt-4o-mini", MESSAGE_TYPE_RETRIES, 0.5);
         if (state_answer == NULL)
             continue;
         // printf("## Answer from LLM:\n %s\n", state_answer);
@@ -965,7 +1285,7 @@ char *enrich_sequence(char *sequence, khash_t(strSet) * missing_message_types)
     ck_free(missing_fields_seq);
     json_object_put(sequence_escaped);
 
-    char *response = chat_with_llm(prompt, "instruct", ENRICHMENT_RETRIES, 0.5);
+    char *response = chat_with_llm(prompt, "gpt-4o-mini", ENRICHMENT_RETRIES, 0.5);
 
     free(prompt);
 

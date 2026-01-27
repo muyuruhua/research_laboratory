@@ -75,6 +75,48 @@ const char* get_api_key() {
     return (key && strlen(key) > 0) ? key : NULL;
 }
 
+// OCP: Model name resolver - extensible via environment variable
+// Usage: export MODEL_ALIAS_TURBO="gpt-3.5-turbo"
+static const char* resolve_model_name(const char* model) {
+    if (!model) return "gpt-4o-mini";
+    
+    // OCP Extension Point 1: Environment variable override
+    // Example: MODEL_ALIAS_TURBO=gpt-4 ./fuzzer
+    char env_var[128];
+    snprintf(env_var, sizeof(env_var), "MODEL_ALIAS_%s", model);
+    // Convert to uppercase
+    for (char* p = env_var; *p; p++) *p = toupper(*p);
+    const char* env_model = getenv(env_var);
+    if (env_model && strlen(env_model) > 0) {
+        return env_model;  // Environment override
+    }
+    
+    // OCP Extension Point 2: Static mapping (backward compatibility)
+    if (strcmp(model, "turbo") == 0) return "gpt-3.5-turbo";
+    if (strcmp(model, "instruct") == 0) return "gpt-3.5-turbo-instruct";
+    
+    // OCP Extension Point 3: Pass-through for full names
+    if (strcmp(model, "gpt-4o-mini") == 0 || 
+        strcmp(model, "gpt-4") == 0 || 
+        strcmp(model, "gpt-3.5-turbo") == 0) {
+        return model;
+    }
+    
+    // Default fallback
+    return "gpt-4o-mini";
+}
+
+// OCP: Retry strategy configuration via environment variable
+// Usage: export LLM_RETRY_DELAY=5
+static int get_retry_delay() {
+    const char* delay_str = getenv("LLM_RETRY_DELAY");
+    if (delay_str) {
+        int delay = atoi(delay_str);
+        if (delay > 0 && delay <= 30) return delay;
+    }
+    return 2;  // Default 2 seconds
+}
+
 char* json_escape_string(const char* input) {
     if (!input) return strdup("");
     size_t len = strlen(input);
@@ -140,12 +182,99 @@ char* extract_content_from_json(const char* json_str) {
     return final;
 }
 
+// OCP: Unescape JSON string literals (e.g., "[\\"INVITE...", ...]" → ["INVITE...", ...])
+// OCP: Helper to detect if string still contains escape sequences
+static int has_escape_sequences(const char* str) {
+    if (!str) return 0;
+    const char* p = str;
+    while (*p) {
+        if (*p == '\\' && *(p+1) && 
+            (*(p+1) == 'n' || *(p+1) == 'r' || *(p+1) == 't' || 
+             *(p+1) == '"' || *(p+1) == '\\')) {
+            return 1;  // Found valid escape sequence
+        }
+        p++;
+    }
+    return 0;
+}
+
+// OCP: Single-pass unescape helper
+static char* unescape_once(const char* escaped) {
+    if (!escaped) return NULL;
+    
+    size_t len = strlen(escaped);
+    char* unescaped = malloc(len + 1);  // Worst case: same length
+    if (!unescaped) return NULL;
+    
+    const char* r = escaped;
+    char* w = unescaped;
+    
+    while (*r) {
+        if (*r == '\\' && *(r+1)) {
+            r++;  // Skip backslash
+            switch (*r) {
+                case 'n':  *w++ = '\n'; break;
+                case 'r':  *w++ = '\r'; break;
+                case 't':  *w++ = '\t'; break;
+                case '"':  *w++ = '"';  break;
+                case '\\': *w++ = '\\'; break;
+                default:   *w++ = *r;    break;  // Unknown escape, keep as-is
+            }
+            r++;
+        } else {
+            *w++ = *r++;
+        }
+    }
+    *w = '\0';
+    return unescaped;
+}
+
+// OCP: Recursive unescape - handles multi-layer escaping from LLM
+static char* unescape_json_string(const char* escaped) {
+    if (!escaped) return NULL;
+    
+    char* result = unescape_once(escaped);
+    if (!result) return NULL;
+    
+    // OCP: Recursively unescape until no escape sequences remain (max 3 iterations)
+    int max_iterations = 3;  // Prevent infinite loop
+    int iteration = 0;
+    
+    while (has_escape_sequences(result) && iteration < max_iterations) {
+        char* temp = unescape_once(result);
+        if (!temp) break;  // Allocation failed
+        
+        // Check if result changed (防止无限循环)
+        if (strcmp(result, temp) == 0) {
+            free(temp);
+            break;  // No change, stop recursion
+        }
+        
+        free(result);
+        result = temp;
+        iteration++;
+    }
+    
+    return result;
+}
+
 static size_t write_cb(void* contents, size_t size, size_t nmemb, char** response) {
     size_t total = size * nmemb;
-    char* new_res = realloc(*response, (*response ? strlen(*response) : 0) + total + 1);
-    if (!new_res) return 0;
+    size_t old_len = *response ? strlen(*response) : 0;
+    
+    // OCP: Safe memory reallocation with corruption prevention
+    char* new_res = realloc(*response, old_len + total + 1);
+    if (!new_res) {
+        // Don't free *response here, caller will handle it
+        return 0;
+    }
+    
     *response = new_res;
-    if (total > 0) strncat(*response, (char*)contents, total);
+    // Use memcpy instead of strncat to avoid double-scanning
+    if (total > 0) {
+        memcpy(*response + old_len, contents, total);
+        (*response)[old_len + total] = '\0';
+    }
     return total;
 }
 
@@ -154,6 +283,9 @@ char* chat_with_llm(char* prompt, char* model, int tries, float temperature) {
     CURL* curl = curl_easy_init();
     if (!curl) return NULL;
     if (tries < 1) tries = 1;
+
+    // OCP: Use extensible model name resolver
+    const char* actual_model = resolve_model_name(model);
 
     struct curl_slist* headers = curl_slist_append(NULL, "Content-Type: application/json");
     char auth[256]; 
@@ -166,7 +298,7 @@ char* chat_with_llm(char* prompt, char* model, int tries, float temperature) {
     
     snprintf(data, jsize, 
              "{\"model\":\"%s\",\"messages\":[{\"role\":\"user\",\"content\":\"%s\"}],\"temperature\":%.2f}", 
-             model, esc_prompt, temperature);
+             actual_model, esc_prompt, temperature);
     
     char* resp = NULL;
     char* content = NULL;
@@ -191,12 +323,24 @@ char* chat_with_llm(char* prompt, char* model, int tries, float temperature) {
         }
         if (DEBUG_MODE) {
             printf("[DEBUG] Attempt %d/%d failed. Code: %ld\n", i + 1, tries, http_code);
+            if (resp && http_code != 200) {
+                printf("[DEBUG] Response: %s\n", resp);
+            }
+        }
+        // OCP: Use configurable retry delay via environment variable
+        if (i < tries - 1) {
+            sleep(get_retry_delay());
         }
     }
     
+    // OCP: Safe cleanup in correct order
     curl_easy_cleanup(curl);
     curl_slist_free_all(headers);
-    free(esc_prompt); free(data); free(resp);
+    
+    if (esc_prompt) free(esc_prompt);
+    if (data) free(data);
+    if (resp) free(resp);
+    
     return content;
 }
 
@@ -242,6 +386,12 @@ char *chat_with_llm1(char *prompt, char *model, int tries, float temperature)
 
         chunk.memory = malloc(1); /* will be grown as needed by the realloc above */
         chunk.size = 0;           /* no data at this point */
+        
+        // OCP: Defensive check - ensure memory allocation succeeded
+        if (!chunk.memory) {
+            fprintf(stderr, "[ERROR] Failed to allocate memory for response buffer\n");
+            break;  // Exit retry loop on malloc failure
+        }
 
         curl = curl_easy_init();
         if (curl)
@@ -284,25 +434,56 @@ char *chat_with_llm1(char *prompt, char *model, int tries, float temperature)
                     }
                     if (data[0] == '\n')
                         data++;
-                    answer = strdup(data);
+                    // OCP: Unescape LLM response (extend output without modifying extraction logic)
+                    char* raw_answer = strdup(data);
+                    answer = unescape_json_string(raw_answer);
+                    if (answer == raw_answer) {
+                        // unescape didn't allocate, use original
+                        answer = raw_answer;
+                    } else {
+                        // unescape allocated new memory, free original
+                        free(raw_answer);
+                    }
                 }
                 else
                 {
-                    printf("Error response is: %s\n", chunk.memory);
+                    // OCP: Extract HTTP status code for better debugging
+                    long http_code = 0;
+                    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+                    printf("[DEBUG] Attempt %d/%d failed. Code: %ld\n", 
+                           (5 - tries), 5, http_code);  // Assuming max 5 tries
+                    if (DEBUG_MODE && chunk.memory) {
+                        printf("Error response is: %s\n", chunk.memory);
+                    }
                     sleep(2); // Sleep for a small amount of time to ensure that the service can recover
                 }
                 json_object_put(jobj);
             }
             else
             {
-                printf("Error: %s\n", curl_easy_strerror(res));
+                fprintf(stderr, "[ERROR] CURL perform failed: %s\n", curl_easy_strerror(res));
             }
 
             curl_slist_free_all(headers);
             curl_easy_cleanup(curl);
         }
+        else
+        {
+            // OCP: Handle curl_easy_init failure gracefully
+            fprintf(stderr, "[ERROR] Failed to initialize CURL handle\n");
+            // chunk.memory was allocated but curl failed, must free it
+            if (chunk.memory) {
+                free(chunk.memory);
+                chunk.memory = NULL;  // Prevent double-free
+            }
+            break;  // Exit retry loop on init failure
+        }
 
-        free(chunk.memory);
+        // OCP: Safe memory cleanup - only free if not already freed
+        if (chunk.memory) {
+            free(chunk.memory);
+            chunk.memory = NULL;
+        }
     } while ((res != CURLE_OK || answer == NULL) && (--tries > 0));
 
     if (auth_header != NULL)
@@ -569,7 +750,16 @@ void extract_message_grammars(char *answers, klist_t(gram) * grammar_list)
 
         // conver temp to json object and save it to the list
         json_object *jobj = json_tokener_parse(temp);
-        *kl_pushp(gram, grammar_list) = jobj;
+        // OCP: Validate JSON parsing - skip invalid entries
+        if (jobj != NULL && json_object_get_type(jobj) == json_type_array) {
+            *kl_pushp(gram, grammar_list) = jobj;
+        } else {
+            if (jobj) json_object_put(jobj);  // Free invalid object
+            fprintf(stderr, "[WARNING] Skipping invalid JSON grammar: %s\n", temp);
+        }
+        
+        // OCP: Memory safety - free temporary buffer after use
+        ck_free(temp);
 
         // printf("%s\n", temp);
     }

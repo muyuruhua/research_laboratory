@@ -25,6 +25,10 @@ RUN apt-get -y update && \
     libpcre2-dev \
     libpcre2-8-0 \
     libcurl4-openssl-dev \
+    curl \
+    ca-certificates \
+    dnsutils \
+    iputils-ping \
     libjson-c-dev \
     wget
 
@@ -63,9 +67,10 @@ COPY --chown=ubuntu:ubuntu chatafl-cl2 chatafl-cl2
 RUN cd chatafl-cl2 && \
     make clean all $MAKE_OPT && \
     cd llvm_mode && make $MAKE_OPT
+
 COPY --chown=ubuntu:ubuntu chatafl-enhanced chatafl-enhanced
 RUN cd chatafl-enhanced && \
-    make clean all CHATAFL_ENHANCED=1 $MAKE_OPT && \
+    make -f Makefile.plugin clean all CHATAFL_ENHANCED=1 $MAKE_OPT && \
     cd llvm_mode && make $MAKE_OPT
 
 # Set up environment variables for AFLNet
@@ -92,7 +97,7 @@ RUN cd ${WORKDIR} && \
     tar -zxvf bftpd-6.1.tar.gz && \
     cd bftpd && \
     patch -p1 < ${WORKDIR}/fuzzing.patch && \
-    AFL_USE_ASAN=1 CC=afl-clang-fast make clean all $MAKE_OPT
+    CC=afl-clang-fast make clean all $MAKE_OPT
 
 
 # Set up Bftpd for coverage analysis

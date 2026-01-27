@@ -1,0 +1,5 @@
+#!/bin/bash
+# Cleanup script for Mosquitto fuzzing
+
+killall -9 mosquitto 2>/dev/null || true
+rm -rf /tmp/mosquitto.db /tmp/*.log 2>/dev/null || true

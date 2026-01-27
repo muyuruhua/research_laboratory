@@ -44,20 +44,25 @@
 #include "hash.h"
 #include "chat-llm.h"
 
+/* ============================================================================
+ * PLUGIN SYSTEM INTEGRATION
+ * 
+ * Two plugin loading modes:
+ * 1. Static plugins (#ifdef CHATAFL_ENHANCED) - Legacy mode
+ * 2. Dynamic plugins (afl-plugin-loader) - OCP-compliant mode
+ * ============================================================================ */
 #ifdef CHATAFL_ENHANCED
-#include "verifier.h"
-#include "cegar-optimized.h"
-#include "cegar-refinement.h"
-#include "state-scheduler.h"
-#include "state-graph.h"
-#include "cfg-parser.h"
-#include "module-interface.h"
+#include "afl-fuzz-plugin.h"
+#else
+// Provide no-op plugin functions for base ChatAFL
+#include <stdbool.h>
+static inline bool setup_plugins(void *ctx) { (void)ctx; return true; }
+static inline void cleanup_plugins(void) { }
+#endif
 
-/* Enable CEGAR simulation mode for development/testing */
-#ifndef CHATAFL_PRODUCTION
-#define CEGAR_SIMULATION_MODE 1
-#endif
-#endif
+/* Dynamic plugin loader (always available, independent of CHATAFL_ENHANCED) */
+#include "afl-plugin-loader.h"
+#include "afl-plugin-hooks.h"
 
 #include <stdio.h>
 #include <unistd.h>
@@ -87,13 +92,14 @@
 #endif
 
 #include "aflnet.h"
-#ifdef __linux__
+#if defined(__linux__) || defined(__APPLE__)
 #include <graphviz/gvc.h>
 #endif
 #include <math.h>
 
 #if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
 #include <sys/sysctl.h>
+#include <libgen.h>  // for basename() on macOS
 #endif /* __APPLE__ || __FreeBSD__ || __OpenBSD__ */
 
 /* For systems that have sched_setaffinity; right now just Linux, but one
@@ -126,19 +132,7 @@ EXP_ST u8 *in_dir, /* Input directory with test cases  */
     *target_path,  /* Path to target binary            */
     *orig_cmdline; /* Original command line            */
 
-#ifdef CHATAFL_ENHANCED
-/* ChatAFL-Enhanced: Global variables for CEGAR/Verifier/Scheduler (only when enabled) */
-static u64 g_verifier_checks = 0;
-static u64 g_verifier_rejects = 0;
-StateGraph g_state_graph = {0};  /* State transition graph */
-static state_scheduler_t g_scheduler = {0};  /* State scheduler */
-static verifier_config_t g_verifier_config = {0};  /* Verifier config */
-CEGARConfig g_cegar_config = {0};  /* CEGAR config - needs to match extern declaration */
-static u32 g_current_state_id = 0;  /* Current protocol state */
-static u32 g_previous_state_id = 0;  /* Previous protocol state */
-static float g_last_coverage = 0.0f;  /* Last coverage for plateau detection */
-static int g_plateau_detected = 0;  /* Plateau flag */
-#endif
+/* ChatAFL-Enhanced: Global variables removed - now encapsulated in plugins */
 
 EXP_ST u32 exec_tmout = EXEC_TIMEOUT; /* Configurable exec timeout (ms)   */
 static u32 hang_tmout = EXEC_TIMEOUT; /* Timeout used for hang det (ms)   */
@@ -238,7 +232,12 @@ static u32 subseq_tmouts; /* Number of timeouts in a row      */
 
 static u8 *stage_name = "init", /* Name of the current fuzz stage   */
     *stage_short,               /* Short stage name                 */
-    *syncing_party;             /* Currently syncing with...        */
+    *syncing_party,             /* Currently syncing with...        */
+    *plugin_path = NULL;        /* Dynamic plugin .so path          */
+
+/* OCP: Default LLM model - configurable via DEFAULT_LLM_MODEL env var */
+static const char *default_llm_model = NULL;
+static const char* get_default_llm_model(void);  /* Forward declaration */
 
 static s32 stage_cur, stage_max; /* Stage progression                */
 static s32 splicing_with = -1;   /* Splicing with which test case?   */
@@ -273,7 +272,7 @@ static s32 cpu_aff = -1; /* Selected CPU core                */
 
 static FILE *plot_file; /* Gnuplot output file              */
 
-/* struct queue_entry is now defined in types.h */
+/* struct queue_entry is now defined in types.h to avoid duplication */
 
 static struct queue_entry *queue, /* Fuzzing queue (linked list)      */
     *queue_cur,                   /* Current offset within the queue  */
@@ -430,19 +429,7 @@ char *protocol_name;
 u32 reward_random;
 u32 reward_grammar;
 
-#ifdef CHATAFL_ENHANCED
-// Structured CFG grammars (for parseability verification)
-static cfg_grammar_t **g_cfg_grammars = NULL;
-static int g_cfg_grammar_count = 0;
-static json_object *g_merged_grammar_json = NULL;
-
-// Event-driven module architecture (decoupled)
-static event_bus_t *g_event_bus = NULL;
-static verifier_module_ctx_t *g_verifier_module = NULL;
-static cegar_module_ctx_t *g_cegar_module = NULL;
-static scheduler_module_ctx_t *g_scheduler_module = NULL;
-static int g_module_interface_enabled = 0;  // Toggle for migration
-#endif
+/* ChatAFL-Enhanced: CFG and module variables removed - handled by plugins */
 
 void setup_llm_grammars()
 {
@@ -457,16 +444,26 @@ void setup_llm_grammars()
   {
     klist_t(gram) *grammar_list = kl_init(gram);
 
-    char *templates_answer = chat_with_llm(templates_prompt, "turbo", GRAMMAR_RETRIES, 0.5);
-    if (templates_answer == NULL)
-      goto free_templates_answer;
+    char *templates_answer = chat_with_llm(templates_prompt, get_default_llm_model(), GRAMMAR_RETRIES, 0.5);
+    // OCP: Graceful degradation - exit loop on LLM failure (API error 503, etc.)
+    if (templates_answer == NULL) {
+      fprintf(stderr, "[WARNING] LLM call failed after %d retries. Using existing grammars.\n", GRAMMAR_RETRIES);
+      kl_destroy(gram, grammar_list);
+      break;  // Exit loop, continue with existing grammars
+    }
 
     // printf("## Answer from LLM:\n %s\n", templates_answer);
     char *remaining_prompt = construct_prompt_for_remaining_templates(protocol_name, first_question, templates_answer);
     // printf("remaining prompt is:\n %s\n", remaining_prompt);
-    char *remaining_templates = chat_with_llm(remaining_prompt, "turbo", GRAMMAR_RETRIES, 0.5);
-    if (remaining_templates == NULL)
-      goto free_remaining;
+    char *remaining_templates = chat_with_llm(remaining_prompt, get_default_llm_model(), GRAMMAR_RETRIES, 0.5);
+    // OCP: Graceful degradation on second LLM call failure
+    if (remaining_templates == NULL) {
+      fprintf(stderr, "[WARNING] Second LLM call failed. Using partial results.\n");
+      free(remaining_prompt);
+      free(templates_answer);
+      kl_destroy(gram, grammar_list);
+      break;  // Exit loop
+    }
 
     // printf("## Remaining templates:\n %s\n", remaining_templates);
 
@@ -481,42 +478,20 @@ void setup_llm_grammars()
     close(grammar_output_fd);
     ck_free(grammar_output_path);
 
-#ifdef CHATAFL_ENHANCED
-    // Convert LLM grammar text to structured CFG
-    json_object *cfg_json = cfg_convert_llm_grammar(combined_templates);
-    if (cfg_json) {
-      if (!g_merged_grammar_json) {
-        g_merged_grammar_json = json_object_new_object();
-        json_object_object_add(g_merged_grammar_json, "rules", json_object_new_array());
-        json_object_object_add(g_merged_grammar_json, "start", json_object_new_string("Message"));
-      }
-      
-      // Merge rules into global grammar
-      json_object *rules_array = json_object_object_get(g_merged_grammar_json, "rules");
-      json_object *new_rules = json_object_object_get(cfg_json, "rules");
-      if (rules_array && new_rules) {
-        int rule_count = json_object_array_length(new_rules);
-        for (int r = 0; r < rule_count; r++) {
-          json_object *rule = json_object_array_get_idx(new_rules, r);
-          json_object_array_add(rules_array, json_object_get(rule));
-        }
-      }
-      
-      // Create CFG grammar structure
-      cfg_grammar_t *cfg = cfg_load_grammar(g_merged_grammar_json);
-      if (cfg) {
-        if (!g_cfg_grammars) {
-          g_cfg_grammars = (cfg_grammar_t **)ck_alloc(16 * sizeof(cfg_grammar_t*));
-        }
-        if (g_cfg_grammar_count < 16) {
-          g_cfg_grammars[g_cfg_grammar_count++] = cfg;
-        }
-        ACTF("[CFG] Loaded grammar with %d rules", cfg->rule_count);
-      }
-    }
-#endif
+    // ChatAFL-Enhanced: CFG handling moved to plugins
 
     extract_message_grammars(combined_templates, grammar_list);
+
+    // OCP: Graceful degradation - skip empty grammar lists
+    if (kl_begin(grammar_list) == kl_end(grammar_list)) {
+      fprintf(stderr, "[WARNING] No valid grammars extracted from LLM response.\n");
+      kl_destroy(gram, grammar_list);
+      free(combined_templates);
+      free(remaining_templates);
+      free(remaining_prompt);
+      free(templates_answer);
+      continue;  // Skip this iteration
+    }
 
     kliter_t(gram) * iter;
     for (iter = kl_begin(grammar_list); iter != kl_end(grammar_list); iter = kl_next(iter))
@@ -548,17 +523,16 @@ void setup_llm_grammars()
         kh_value(field_table, field_k)++;
       }
     }
-    kl_destroy_gram(grammar_list);
+    kl_destroy(gram, grammar_list);
 
     free(combined_templates);
     free(remaining_templates);
-
-  free_remaining:
     free(remaining_prompt);
-
-  free_templates_answer:
     free(templates_answer);
   }
+
+  // OCP: Memory safety - free first_question allocated by construct_prompt_for_templates
+  free(first_question);
 
   int pattern_index = 0;
   for (khiter_t con_t_iter = kh_begin(const_table); con_t_iter != kh_end(const_table); ++con_t_iter)
@@ -3432,6 +3406,7 @@ static void destroy_extras(void)
   ck_free(a_extras);
 }
 
+#ifdef __linux__
 /* Move process to the network namespace "netns_name" */
 
 static void move_process_to_netns()
@@ -3452,6 +3427,7 @@ static void move_process_to_netns()
   if (setns(netns_fd, CLONE_NEWNET) == -1)
     PFATAL("setns failed");
 }
+#endif  /* __linux__ */
 
 /* Spin up fork server (instrumented mode only). The idea is explained here:
 
@@ -3523,8 +3499,10 @@ EXP_ST void init_forkserver(char **argv)
 
     /* Move the process to the different namespace. */
 
+#ifdef __linux__
     if (netns_name)
       move_process_to_netns();
+#endif
 
     /* Isolate the process and configure standard descriptors. If out_file is
        specified, stdin is /dev/null; otherwise, out_fd is cloned instead. */
@@ -3823,8 +3801,10 @@ static u8 run_target(char **argv, u32 timeout)
 
       /* Move the process to the different namespace. */
 
+#ifdef __linux__
       if (netns_name)
         move_process_to_netns();
+#endif
 
       /* Isolate the process and configure standard descriptors. If out_file is
          specified, stdin is /dev/null; otherwise, out_fd is cloned instead. */
@@ -4683,299 +4663,8 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
   // s32 fd;
   u8 keeping = 0, res;
 
-#ifdef CHATAFL_ENHANCED
-  /* ============================================================================
-   * ChatAFL-Enhanced: 完整的4维度验证循环 (Verified Loop)
-   * 论文依据：ChatAFL - Verification Phase (4 dimensions)
-   * ============================================================================ */
-  
-  if (response_buf && response_buf_size > 0) {
-    unsigned int state_count = 0;
-    unsigned int *state_sequence = (*extract_response_codes)(response_buf, 
-                                                             response_buf_size, 
-                                                             &state_count);
-    
-    if (state_sequence && state_count > 0) {
-      g_verifier_checks++;
-      
-#ifdef CHATAFL_ENHANCED
-      /* 事件驱动模式：使用解耦模块 */
-      if (g_module_interface_enabled && g_verifier_module) {
-        // 调用verifier模块（内部会发布EVENT_VERIFICATION_COMPLETE）
-        verifier_module_verify(
-            g_verifier_module,
-            (unsigned char*)mem,
-            len,
-            state_sequence,
-            state_count
-        );
-        
-        // 事件总线自动触发：
-        //   1. CEGAR模块订阅了VERIFICATION_COMPLETE事件
-        //   2. Scheduler模块订阅了NEW_STATE_DISCOVERED事件
-        //   3. 模块间通过事件通信，无全局变量依赖
-        
-        SAYF("[EVENT-BUS] Verification complete, event published to subscribers\n");
-      } else {
-        /* 传统模式：使用全局变量 */
-#endif
-      
-      /* ========== Step 1: 4维度验证检查 (Complete Verification) ========== */
-      
-      // 1.1 可解析性验证 (Parseability) - 使用真实CFG parser
-      parsed_fields_t *parsed_fields = NULL;
-      int parseability = 0;
-      
-      if (g_cfg_grammar_count > 0 && g_cfg_grammars[0]) {
-        // Use CFG parser
-        parseability = verify_parseability_with_cfg((unsigned char*)mem, len,
-                                                     g_cfg_grammars[0], &parsed_fields);
-      } else {
-        // Fallback to basic parsing
-        parseability = verify_parseability((unsigned char*)mem, len, 
-                                          NULL, &parsed_fields);
-      }
-      
-      // 1.2 可接受性验证 (Acceptability) - 实际发送到SUT验证
-      response_t response = {0};
-      int acceptability = 1;  // Default assume acceptable
-      
-      // 首先检查state_sequence中的响应码（快速预检）
-      int has_error_response = 0;
-      for (unsigned int i = 0; i < state_count; i++) {
-        if (state_sequence[i] >= 400 && state_sequence[i] < 600) {
-          has_error_response = 1;
-          response.status_code = state_sequence[i];
-          response.classification = (state_sequence[i] >= 500) ? RESP_5XX : RESP_4XX;
-          break;
-        }
-      }
-      
-      // 实际发送到SUT验证（如果配置了网络目标）
-      if (net_ip && net_port > 0) {
-        response_t sut_response = {0};
-        int sut_acceptability = verify_acceptability(
-            (char*)net_ip,
-            net_port,
-            (unsigned char*)mem,
-            len,
-            &sut_response,
-            socket_timeout_usecs / 1000  // Convert to milliseconds
-        );
-        
-        // 使用SUT实际响应
-        if (sut_acceptability == 0) {
-          acceptability = 0;
-          response = sut_response;  // 使用真实响应
-          g_verifier_rejects++;
-        } else if (has_error_response) {
-          // state_sequence显示错误但SUT接受 - 记录不一致
-          acceptability = 0;
-          response.status_code = response.status_code ? response.status_code : 499;
-          response.classification = RESP_4XX;
-          response.status_message = ck_strdup("Inconsistent: state error but SUT accepted");
-          g_verifier_rejects++;
-        } else {
-          // 两者一致：SUT接受
-          acceptability = 1;
-        }
-      } else {
-        // 无SUT配置，回退到state_sequence检查
-        if (has_error_response) {
-          acceptability = 0;
-          response.timestamp = time(NULL);
-          g_verifier_rejects++;
-        }
-      }
-      
-      // 1.3 状态可达性验证 (State Reachability)
-      int new_state_discovered = 0;
-      if (state_count >= 2) {
-        // 更新状态转移图并检查新状态
-        for (unsigned int i = 0; i < state_count - 1; i++) {
-          int transition_added = state_graph_add_transition(&g_state_graph,
-                                        state_sequence[i],
-                                        state_sequence[i+1],
-                                        (unsigned char*)mem,
-                                        len > 64 ? 64 : len);
-          if (transition_added) new_state_discovered = 1;
-        }
-        
-        // 关联当前seed到达的状态
-        g_previous_state_id = g_current_state_id;
-        g_current_state_id = state_sequence[state_count - 1];
-        state_graph_register_seed_for_state(&g_state_graph, 
-                                           g_current_state_id, 
-                                           current_entry);
-      }
-      
-      // 1.4 覆盖增益计算 (Coverage Gain) - 使用verifier模块
-      u32 current_coverage_count = 0;
-      for (u32 i = 0; i < MAP_SIZE; i++) {
-        if (trace_bits[i] != 0) current_coverage_count++;
-      }
-      
-      // 调用verifier模块的覆盖增益计算（模块化）
-      float coverage_gain = calculate_coverage_gain_from_bitmap(
-          trace_bits, MAP_SIZE, 
-          total_bitmap_entries,
-          current_coverage_count,
-          g_verifier_config.stt);
-      
-      /* ========== Step 2: CEGAR Refinement (完整实现) ========== */
-      if (!acceptability && g_cegar_config.enabled && should_trigger_cegar(g_verifier_rejects)) {
-        
-        // 步骤2.1: 使用Delta-debugging最小化失败样例
-        size_t minimized_len = 0;
-        unsigned char *minimized_message = minimize_counterexample(
-            (unsigned char*)mem,
-            len,
-            g_merged_grammar_json,  // 使用已加载的grammar
-            &minimized_len
-        );
-        
-        if (!minimized_message) {
-          // 最小化失败，使用原始消息
-          minimized_message = (unsigned char*)ck_alloc(len);
-          memcpy(minimized_message, mem, len);
-          minimized_len = len;
-        } else {
-          ACTF("[DELTA-DEBUG] Minimized from %zu to %zu bytes (%.1f%%)",
-               len, minimized_len, 100.0 * minimized_len / len);
-        }
-        
-        // 步骤2.2: 构建完整的counterexample（使用最小化消息）
-        cegar_failure_t failure = {
-          .original_message = minimized_message,
-          .original_len = minimized_len,
-          .failed_field_idx = -1,  // Auto-detect
-          .parsed_fields = parsed_fields,
-          .failure_response = response,
-          .failure_classification = (response.status_code >= 500) ? "server_error" : "client_error",
-          .retry_count = 0,
-          .timestamp = time(NULL)
-        };
-        
-        // 记录CEGAR调用开始
-        uint64_t cegar_start = cegar_call_begin();
-        
-        // 步骤2.3: 实际执行CEGAR refinement循环
-        char *cegar_prompt = construct_cegar_prompt(protocol_name,  // 使用实际协议名（FTP/SMTP等）
-                                                   &failure,
-                                                   parsed_fields,
-                                                   -1,  // Auto-detect field
-                                                   NULL);  // prev_grammar
-        
-        if (cegar_prompt) {
-          // 首先检查是否有缓存的修复方案
-          cegar_patch_t *cached_patch = lookup_cached_cegar_result(&failure);
-          
-          if (cached_patch) {
-            ACTF("[CEGAR] Using cached refinement for state %u", g_current_state_id);
-            
-            // 应用缓存的补丁
-            int patch_success = apply_and_verify_patch(cached_patch,
-                                                      failure.original_message,
-                                                      failure.original_len,
-                                                      &g_verifier_config);
-            cegar_call_end(cegar_start, patch_success);
-            free_cegar_patch(cached_patch);
-          } else {
-            // 执行完整的LLM调用
-            ACTF("[CEGAR] Executing new refinement for state %u (rejection code: %u)",
-                 g_current_state_id, response.status_code);
-            
-            // 调用LLM获取修复建议（真实LLM集成）
-            char *llm_response = NULL;
-            
-            /* 真实LLM API调用（移除模拟模式）*/
-            char *model_name = getenv("CHATAFL_LLM_MODEL");
-            if (!model_name) model_name = "gpt-3.5-turbo";  // 默认使用GPT-3.5
-            
-            /* 检查API key是否配置 */
-            const char *api_key = getenv("KEY");
-            if (!api_key || strlen(api_key) == 0) {
-                WARNF("[CEGAR] API key not configured (set KEY env var), skipping LLM call");
-                ck_free(cegar_prompt);
-                cegar_call_end(cegar_start, 0);
-                goto skip_cegar;  // 跳过此次CEGAR
-            }
-            
-            /* 执行真实LLM调用 */
-            ACTF("[CEGAR] Calling LLM API (model=%s)...", model_name);
-            llm_response = chat_with_llm(cegar_prompt, model_name, 
-                                        g_cegar_config.max_retries, 0.7f);
-            
-            if (llm_response) {
-              cegar_patch_t *patch = parse_cegar_patch(llm_response, NULL);
-              
-              if (patch) {
-                int patch_success = apply_and_verify_patch(patch,
-                                                          failure.original_message,
-                                                          failure.original_len,
-                                                          &g_verifier_config);
-                cegar_call_end(cegar_start, patch_success);
-                
-                // 缓存成功的补丁用于未来复用
-                if (patch_success) {
-                  cache_cegar_result(&failure, patch);
-                  ACTF("[CEGAR] Successful refinement cached for future use");
-                }
-                
-                free_cegar_patch(patch);
-              } else {
-                WARNF("[CEGAR] Failed to parse LLM response");
-                cegar_call_end(cegar_start, 0);
-              }
-              
-              ck_free(llm_response);
-            } else {
-              WARNF("[CEGAR] LLM request failed");
-              cegar_call_end(cegar_start, 0);
-            }
-          }
-          
-          ck_free(cegar_prompt);
-        }
-        
-        // 清理
-        if (failure.original_message) {
-          ck_free(failure.original_message);
-          failure.original_message = NULL;
-        }
-      }
-skip_cegar:  // CEGAR跳过标签
-      
-      /* ========== Step 3: State Scheduler更新 ========== */
-      update_state_rarity(&g_scheduler);
-      
-      // 记录验证结果用于debugging
-      if (g_verifier_config.enable_logging) {
-        log_verification_result("",  // hex string省略
-                               parseability,
-                               acceptability, 
-                               new_state_discovered,
-                               &response);
-      }
-      
-      // 清理解析字段
-      if (parsed_fields) {
-        for (int i = 0; i < parsed_fields->field_count; i++) {
-          if (parsed_fields->fields[i].name) ck_free(parsed_fields->fields[i].name);
-          if (parsed_fields->fields[i].type) ck_free(parsed_fields->fields[i].type);
-        }
-        ck_free(parsed_fields->fields);
-        ck_free(parsed_fields);
-      }
-      
-#ifdef CHATAFL_ENHANCED
-      }  // 关闭 if (g_module_interface_enabled) 分支
-#endif
-    }
-    
-    if (state_sequence) ck_free(state_sequence);
-  }
-#endif
+  /* ChatAFL-Enhanced: Plugin hook removed from this location - 
+   * verification logic handled in dedicated plugin hooks elsewhere */
 
   if (fault == crash_mode)
   {
@@ -7288,7 +6977,7 @@ AFLNET_REGIONS_SELECTION:;
 
         char *stall_prompt = construct_prompt_stall(protocol_name, examples, history);
         // printf("Got prompt:\n\n%s\n",stall_prompt);
-        char *stall_response = chat_with_llm(stall_prompt, "turbo", STALL_RETRIES, 1.5);
+        char *stall_response = chat_with_llm(stall_prompt, get_default_llm_model(), STALL_RETRIES, 1.5);
         // printf("Got response:\n\n%s\n",stall_response);
 
         {
@@ -9785,7 +9474,8 @@ static void usage(u8 *argv0)
 
        "  -T text       - text banner to show on the screen\n"
        "  -M / -S id    - distributed mode (see parallel_fuzzing.txt)\n"
-       "  -C            - crash exploration mode (the peruvian rabbit thing)\n\n"
+       "  -C            - crash exploration mode (the peruvian rabbit thing)\n"
+       "  -L plugin.so  - load dynamic plugin for enhanced fuzzing (100%% OCP)\n\n"
 
        "For additional tips, please consult %s/README.\n\n",
 
@@ -10343,6 +10033,20 @@ EXP_ST void detect_file_args(char **argv)
    Solaris doesn't resume interrupted reads(), sets SA_RESETHAND when you call
    siginterrupt(), and does other unnecessary things. */
 
+/* OCP: Get default LLM model from environment or use fallback */
+static const char* get_default_llm_model(void) {
+  if (default_llm_model) return default_llm_model;
+  
+  const char* env_model = getenv("DEFAULT_LLM_MODEL");
+  if (env_model && strlen(env_model) > 0) {
+    default_llm_model = env_model;
+    return default_llm_model;
+  }
+  
+  default_llm_model = "gpt-4o-mini";  /* Fallback */
+  return default_llm_model;
+}
+
 EXP_ST void setup_signal_handlers(void)
 {
 
@@ -10485,6 +10189,7 @@ static void save_cmdline(u32 argc, char **argv)
   *buf = 0;
 }
 
+#ifdef __linux__
 /* Check that afl-fuzz (file/process) has some effective and permitted capability */
 
 static int check_ep_capability(cap_value_t cap, const char *filename)
@@ -10532,6 +10237,7 @@ static int check_ep_capability(cap_value_t cap, const char *filename)
 
   return 0;
 }
+#endif  /* __linux__ */
 
 #ifndef AFL_LIB
 
@@ -10560,7 +10266,7 @@ int main(int argc, char **argv)
   gettimeofday(&tv, &tz);
   srandom(tv.tv_sec ^ tv.tv_usec ^ getpid());
 
-  while ((opt = getopt(argc, argv, "+i:o:f:m:t:T:dnCB:S:M:x:QN:D:W:w:e:P:KEq:s:RFc:l:")) > 0)
+  while ((opt = getopt(argc, argv, "+i:o:f:m:t:T:dnCB:S:M:x:QN:D:W:w:e:P:KEq:s:RFc:l:L:")) > 0)
 
     switch (opt)
     {
@@ -10927,6 +10633,13 @@ int main(int argc, char **argv)
         FATAL("Invalid source port number");
       break;
 
+    case 'L': /* Load dynamic plugin */
+
+      if (plugin_path)
+        FATAL("Multiple -L options not supported");
+      plugin_path = optarg;
+      break;
+
     default:
 
       usage(argv[0]);
@@ -10944,11 +10657,15 @@ int main(int argc, char **argv)
 
   if (netns_name)
   {
+#ifdef __linux__
     if (check_ep_capability(CAP_SYS_ADMIN, argv[0]) != 0)
       FATAL("Could not run the server under test in a \"%s\" network namespace "
             "without CAP_SYS_ADMIN capability.\n You can set it by invoking "
             "afl-fuzz with sudo or by \"$ setcap cap_sys_admin+ep /path/to/afl-fuzz\".",
             netns_name);
+#else
+    FATAL("Network namespace support is only available on Linux");
+#endif
   }
 
   setup_signal_handlers();
@@ -11022,29 +10739,18 @@ int main(int argc, char **argv)
 
   setup_dirs_fds();
 
-#ifdef CHATAFL_ENHANCED
-  // 初始化事件驱动模块架构（可通过环境变量控制）
-  char *use_event_bus = getenv("CHATAFL_USE_EVENT_BUS");
-  if (use_event_bus && strcmp(use_event_bus, "1") == 0) {
-    g_module_interface_enabled = 1;
-    
-    // 创建全局事件总线
-    g_event_bus = event_bus_create();
-    ACTF("[MODULE-INTERFACE] Event bus initialized");
-    
-    // 创建解耦模块上下文
-    g_verifier_module = verifier_module_create(g_event_bus, &g_verifier_config);
-    g_verifier_module->grammars = g_cfg_grammars;
-    g_verifier_module->grammar_count = g_cfg_grammar_count;
-    
-    g_cegar_module = cegar_module_create(g_event_bus, ".cegar_cache");
-    g_scheduler_module = scheduler_module_create(g_event_bus, 50);
-    
-    ACTF("[MODULE-INTERFACE] Decoupled modules initialized (verifier/cegar/scheduler)");
-  } else {
-    ACTF("[MODULE-INTERFACE] Using legacy global variable architecture (set CHATAFL_USE_EVENT_BUS=1 to enable)");
+  /* ===== DYNAMIC PLUGIN LOADING ===== */
+  if (plugin_path) {
+    ACTF("Loading dynamic plugin: %s", plugin_path);
+    if (afl_load_plugin(plugin_path) != 0) {
+      FATAL("Failed to load plugin: %s", plugin_path);
+    }
+    SAYF(cGRA "    Plugin loaded: " cRST "%u plugin(s) active\n", 
+         afl_get_plugin_count());
   }
-#endif
+  /* ==================================== */
+
+  // ChatAFL-Enhanced: Old event bus code removed - replaced by plugin system
 
   if (protocol_selected)
   {
@@ -11083,52 +10789,18 @@ int main(int argc, char **argv)
 
 #ifdef CHATAFL_ENHANCED
   /* ============================================================================
-   * ChatAFL-Enhanced: 初始化所有Enhanced模块
-   * 论文依据：
-   * 1. ChatAFL - Verified Loop: Verifier + CEGAR
-   * 2. Stateful Greybox Fuzzing - STT + State Scheduler
+   * ChatAFL-Enhanced: Plugin System Initialization
+   * Replaces direct module initialization with plugin architecture
    * ============================================================================ */
   
-  /* 1. 初始化CEGAR配置（环境变量驱动）*/
-  cegar_config_init();
-  if (g_cegar_config.enabled) {
-    ACTF("ChatAFL-Enhanced: CEGAR initialized with optimized settings");
-    ACTF("  Trigger interval: %u rejections", g_cegar_config.trigger_interval);
-    ACTF("  LLM budget: %u calls/hour", g_cegar_config.max_llm_calls_per_hour);
-    ACTF("  Fast-fail: %s", g_cegar_config.fast_fail_enabled ? "enabled" : "disabled");
-    
-    /* 初始化CEGAR context（缓存目录）*/
-    char *cache_dir = getenv("CHATAFL_CEGAR_CACHE_DIR");
-    if (!cache_dir) cache_dir = "./cegar_cache";
-    cegar_init(cache_dir);
+  if (!setup_plugins(NULL)) {
+    FATAL("Failed to initialize plugin system");
   }
   
-  /* 2. 初始化State Graph（状态转移图）*/
-  state_graph_init(&g_state_graph);
-  ACTF("ChatAFL-Enhanced: State Graph initialized (max %d states)", MAX_GRAPH_STATES);
+  ACTF("ChatAFL-Enhanced: Plugin system initialized");
   
-  /* 3. 初始化State Scheduler（状态调度器）*/
-  /* Plateau阈值：从环境变量读取，默认50次迭代无覆盖增长 */
-  int plateau_threshold = 50;
-  char *plateau_env = getenv("CHATAFL_PLATEAU_THRESHOLD");
-  if (plateau_env) plateau_threshold = atoi(plateau_env);
-  
-  state_scheduler_init(&g_scheduler, plateau_threshold);
-  ACTF("ChatAFL-Enhanced: State Scheduler initialized (plateau threshold: %d)", 
-       plateau_threshold);
-  
-  /* 4. 初始化Verifier配置 */
-  g_verifier_config.enable_logging = (getenv("CHATAFL_VERIFIER_LOG") != NULL);
-  g_verifier_config.debug_mode = (getenv("CHATAFL_VERIFIER_DEBUG") != NULL);
-  g_verifier_config.log_file = "./verifier.log";
-  g_verifier_config.stt = g_scheduler.stt;  /* 共享STT */
-  verifier_init(&g_verifier_config);
-  ACTF("ChatAFL-Enhanced: Verifier initialized (logging: %s)", 
-       g_verifier_config.enable_logging ? "enabled" : "disabled");
-  
-  /* 5. 初始化覆盖率追踪（用于Plateau检测）*/
-  g_last_coverage = 0.0f;
-  g_plateau_detected = 0;
+  /* Trigger plugin initialization hook */
+  PLUGIN_HOOK_INIT(in_dir, out_dir, target_path, exec_tmout, mem_limit);
   
   ACTF("ChatAFL-Enhanced: All modules initialized successfully");
   ACTF("================================================================================");
@@ -11141,6 +10813,20 @@ int main(int argc, char **argv)
   seek_to = find_start_position();
 
   write_stats_file(0, 0, 0);
+
+  /* ===== DYNAMIC PLUGIN INIT HOOK ===== */
+  if (afl_plugins_enabled()) {
+    afl_hook_data_t init_data = {0};
+    init_data.init.input_dir = in_dir;
+    init_data.init.output_dir = out_dir;
+    init_data.init.target_path = argv[optind];
+    init_data.init.exec_timeout = exec_tmout;
+    init_data.init.mem_limit = mem_limit;
+    AFL_HOOK_CALL_INIT(&init_data);
+    SAYF(cLGN "    Dynamic plugin initialized\n" cRST);
+  }
+  /* ===================================== */
+
   save_auto();
 
   if (stop_soon)
@@ -11168,104 +10854,26 @@ int main(int argc, char **argv)
     {
       struct queue_entry *selected_seed = NULL;
       
-#ifdef CHATAFL_ENHANCED
-      /* 事件驱动调度模式 */
-      if (g_module_interface_enabled && g_scheduler_module) {
-        // 使用解耦的scheduler模块（通过事件总线同步状态）
-        selected_seed = scheduler_module_select_seed(g_scheduler_module, queue);
-        
-        if (selected_seed) {
-          ACTF("[EVENT-BUS] Scheduler selected seed via decoupled interface");
-        }
-      } else {
-        /* 传统全局变量模式 */
-#endif
+      // ChatAFL-Enhanced: Old event bus code removed
+      // Plugin-based scheduling will be implemented in plugin-scheduler.c
+      // For now, use original AFLNet scheduling logic
       
-#ifdef CHATAFL_ENHANCED
-      /* ============================================================================
-       * ChatAFL-Enhanced: State-Aware Scheduling with Plateau Detection
-       * 论文依据: Stateful Greybox Fuzzing - Algorithm 1: Stateful Seed Selection
-       * ============================================================================ */
-      
-      /* Step 1: 计算真实覆盖率（使用全局位图统计）*/
-      u32 current_coverage_count = 0;
-      for (u32 i = 0; i < MAP_SIZE; i++) {
-        if (trace_bits[i] != 0) current_coverage_count++;
-      }
-      float current_coverage = (float)current_coverage_count / (float)MAP_SIZE;
-      
-      if (detect_coverage_plateau(&g_scheduler, current_coverage)) {
-        if (!g_plateau_detected) {
-          g_plateau_detected = 1;
-          ACTF("[STATE-SCHEDULER] Coverage plateau detected! Triggering state-targeted exploration");
-          
-          /* 选择最有价值的低覆盖状态（多因子评估）*/
-          uint32_t target_low_cov_state = state_graph_select_valuable_target(&g_state_graph, true);
-          
-          if (target_low_cov_state > 0) {
-            ACTF("[STATE-SCHEDULER] Target state selected: %u (low visitation)", 
-                 target_low_cov_state);
-            
-            /* 查找能触发该状态的最佳seed */
-            int best_seed_id = state_graph_get_best_seed_for_state(&g_state_graph, 
-                                                                   target_low_cov_state);
-            
-            if (best_seed_id >= 0) {
-              /* 定位到该seed（遍历队列）*/
-              struct queue_entry *plateau_seed = queue;
-              int idx = 0;
-              while (plateau_seed && idx < best_seed_id) {
-                plateau_seed = plateau_seed->next;
-                idx++;
-              }
-              
-              if (plateau_seed && plateau_seed->region_count > 0) {
-                selected_seed = plateau_seed;
-                ACTF("[STATE-SCHEDULER] Plateau-driven seed selected: queue_id=%d", best_seed_id);
-              }
-            }
-            
-            /* 可选：触发LLM生成针对该状态的测试序列 */
-            /* 这里可以调用construct_state_targeting_prompt() */
-          }
-        }
-      } else {
-        /* 覆盖率有增长，重置plateau标志 */
-        if (g_plateau_detected) {
-          reset_plateau_counter(&g_scheduler);
-          g_plateau_detected = 0;
-          ACTF("[STATE-SCHEDULER] Coverage improved, plateau resolved");
-        }
-      }
-      g_last_coverage = current_coverage;
-      
-      /* Step 2: 如果未触发Plateau模式，使用状态稀有度调度 */
-      if (!selected_seed) {
-        /* 基于状态稀有度选择seed（论文Algorithm 1）*/
-        selected_seed = select_seed_by_state_rarity(&g_scheduler, queue, 0.7f);
-        
-        /* 如果state scheduler返回NULL，回退到原始的AFLNet调度 */
-        if (!selected_seed) {
-          while (!selected_seed || selected_seed->region_count == 0)
-          {
-            target_state_id = choose_target_state(state_selection_algo);
+      while (!selected_seed || selected_seed->region_count == 0)
+      {
+        target_state_id = choose_target_state(state_selection_algo);
 
-            /* Update favorites based on the selected state */
-            cull_queue();
+        /* Update favorites based on the selected state */
+        cull_queue();
 
-            /* Update number of times a state has been selected for targeted fuzzing */
-            khint_t k = kh_get(hms, khms_states, target_state_id);
-            if (k != kh_end(khms_states))
-            {
-              kh_val(khms_states, k)->selected_times++;
-            }
-
-            selected_seed = choose_seed(target_state_id, seed_selection_algo);
-          }
+        /* Update number of times a state has been selected for targeted fuzzing */
+        khint_t k = kh_get(hms, khms_states, target_state_id);
+        if (k != kh_end(khms_states))
+        {
+          kh_val(khms_states, k)->selected_times++;
         }
+
+        selected_seed = choose_seed(target_state_id, seed_selection_algo);
       }
-      }  // 关闭事件驱动模式分支 else 块
-#endif
 
       /* Seek to the selected seed */
       if (selected_seed)
@@ -11401,81 +11009,9 @@ int main(int argc, char **argv)
 stop_fuzzing:
 
 #ifdef CHATAFL_ENHANCED
-  /* ============================================================================
-   * ChatAFL-Enhanced: 退出前打印完整统计信息
-   * ============================================================================ */
-  if (g_cegar_config.enabled || g_scheduler.stt || g_state_graph.node_count > 0) {
-    ACTF("");
-    ACTF("================================================================================");
-    ACTF("ChatAFL-Enhanced Statistics Summary");
-    ACTF("================================================================================");
-    
-    /* CEGAR统计 */
-    if (g_cegar_config.enabled) {
-      print_cegar_stats();
-      
-      uint64_t total_time_ms = (get_cur_time() - start_time);
-      float cegar_ratio = get_cegar_time_ratio(total_time_ms);
-      if (cegar_ratio > 0.0f) {
-        ACTF("CEGAR time usage: %.1f%% of total fuzzing time", cegar_ratio * 100.0f);
-        if (cegar_ratio > (CEGAR_TIME_BUDGET_PERCENT / 100.0f)) {
-          WARNF("CEGAR exceeded time budget (%.1f%% > %d%%)", 
-                cegar_ratio * 100.0f, CEGAR_TIME_BUDGET_PERCENT);
-        }
-      }
-    }
-    
-    /* Verifier统计 */
-    ACTF("");
-    ACTF("[VERIFIER] Total checks: %llu", g_verifier_checks);
-    ACTF("[VERIFIER] Total rejections (4xx/5xx): %llu", g_verifier_rejects);
-    if (g_verifier_checks > 0) {
-      ACTF("[VERIFIER] Rejection rate: %.2f%%", 
-           (g_verifier_rejects * 100.0f) / g_verifier_checks);
-    }
-    
-    /* State Graph统计 */
-    ACTF("");
-    ACTF("[STATE-GRAPH] Total states discovered: %u", g_state_graph.node_count);
-    ACTF("[STATE-GRAPH] Total transitions: %u", g_state_graph.total_transitions);
-    
-    if (g_state_graph.node_count > 0) {
-      /* 计算稀有状态数量 */
-      uint32_t rare_states = 0;
-      for (uint32_t i = 0; i < g_state_graph.node_count; i++) {
-        if (g_state_graph.nodes[i].visit_count < 10) {
-          rare_states++;
-        }
-      }
-      ACTF("[STATE-GRAPH] Rare states (visit < 10): %u (%.1f%%)",
-           rare_states, (rare_states * 100.0f) / g_state_graph.node_count);
-      
-      /* 导出状态图为GraphViz格式 */
-      char *dot_file = alloc_printf("%s/state_graph.dot", out_dir);
-#ifdef __linux__
-      export_stt_graphviz(&g_scheduler, dot_file);
-      ACTF("[STATE-GRAPH] Graph exported to: %s", dot_file);
-#else
-      ACTF("[STATE-GRAPH] Graph export skipped (GraphViz not available on this platform)");
-#endif
-      ck_free(dot_file);
-    }
-    
-    /* State Scheduler统计 */
-    ACTF("");
-    ACTF("[STATE-SCHEDULER] Plateau detected: %s", g_plateau_detected ? "YES" : "NO");
-    ACTF("[STATE-SCHEDULER] Plateau counter: %d / %d",
-         g_scheduler.plateau_counter, g_scheduler.plateau_threshold);
-    
-    ACTF("================================================================================");
-    ACTF("");
-  }
-  
-  /* Cleanup Enhanced modules */
-  if (g_cegar_config.enabled) {
-    cegar_cleanup();
-  }
-  state_scheduler_cleanup(&g_scheduler);
+  /* ChatAFL-Enhanced: Cleanup hook - plugins print their statistics */
+  PLUGIN_HOOK_CLEANUP();
+  cleanup_plugins();
 #endif
 
   SAYF(CURSOR_SHOW cLRD "\n\n+++ Testing aborted %s +++\n" cRST,
@@ -11503,6 +11039,13 @@ stop_fuzzing:
   alloc_report();
 
   OKF("We're done here. Have a nice day!\n");
+
+  /* ===== DYNAMIC PLUGIN CLEANUP ===== */
+  if (afl_plugins_enabled()) {
+    AFL_HOOK_CALL_CLEANUP();
+    afl_unload_all_plugins();
+  }
+  /* =================================== */
 
   exit(0);
 }

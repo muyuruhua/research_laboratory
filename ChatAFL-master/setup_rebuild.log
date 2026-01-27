@@ -1,0 +1,1162 @@
+[INFO] Using API key: sk-ILojcXJ...12610d3c0d
+[INFO] Updating OpenAI API key in source files...
+[OK] Updated ChatAFL/chat-llm.h
+[OK] Updated ChatAFL-CL1/chat-llm.h
+[OK] Updated ChatAFL-CL2/chat-llm.h
+[OK] Updated ChatAFL-Enhanced/chat-llm.h
+[INFO] Copying ChatAFL variants to benchmark directories...
+[OK] Copied fuzzer variants to 9 target directories
+[INFO] Starting Docker image builds...
+[INFO] This may take 30-60 minutes depending on your system...
+DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
+            Install the buildx component to build images with BuildKit:
+            https://docs.docker.com/go/buildx/
+
+Sending build context to Docker daemon  37.72MB
+Step 1/40 : FROM ubuntu:20.04
+ ---> b7bab04fd9aa
+Step 2/40 : ENV DEBIAN_FRONTEND=noninteractive
+ ---> Using cache
+ ---> 3a973c9532a8
+Step 3/40 : RUN apt-get -y update &&     apt-get -y install sudo     apt-utils     build-essential     openssl     clang     graphviz-dev     git     autoconf     libgnutls28-dev     libssl-dev     llvm     python3-pip     nano     net-tools     vim     gdb     netcat     strace     libcap-dev     libpcre2-dev     libpcre2-8-0     libcurl4-openssl-dev     libjson-c-dev     wget
+ ---> Using cache
+ ---> f1ac222791ed
+Step 4/40 : RUN groupadd ubuntu &&     useradd -rm -d /home/ubuntu -s /bin/bash -g ubuntu -G sudo -u 1000 ubuntu -p "$(openssl passwd -1 ubuntu)"
+ ---> Using cache
+ ---> 8e04654e5acf
+Step 5/40 : RUN chmod 777 /tmp
+ ---> Using cache
+ ---> 7c574321f097
+Step 6/40 : RUN pip3 install gcovr==4.2
+ ---> Using cache
+ ---> 28be1cb87d75
+Step 7/40 : USER ubuntu
+ ---> Using cache
+ ---> 6c35639fd3d0
+Step 8/40 : WORKDIR /home/ubuntu
+ ---> Using cache
+ ---> 6745b17f47f4
+Step 9/40 : ARG MAKE_OPT
+ ---> Using cache
+ ---> 2023b46e1c23
+Step 10/40 : COPY --chown=ubuntu:ubuntu aflnet aflnet
+ ---> Using cache
+ ---> 3f5c22620d5d
+Step 11/40 : RUN cd aflnet &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 2480b4c2109b
+Step 12/40 : COPY --chown=ubuntu:ubuntu chatafl chatafl
+ ---> Using cache
+ ---> 2d4e4720afd1
+Step 13/40 : RUN cd chatafl &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 7b0e19b42678
+Step 14/40 : COPY --chown=ubuntu:ubuntu chatafl-cl1 chatafl-cl1
+ ---> Using cache
+ ---> 722481d05ed7
+Step 15/40 : RUN cd chatafl-cl1 &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 2ceacf8aee76
+Step 16/40 : COPY --chown=ubuntu:ubuntu chatafl-cl2 chatafl-cl2
+ ---> Using cache
+ ---> 21d5701316cd
+Step 17/40 : RUN cd chatafl-cl2 &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> d94e095dfe3a
+Step 18/40 : COPY --chown=ubuntu:ubuntu chatafl-enhanced chatafl-enhanced
+ ---> Using cache
+ ---> 70518e53cf97
+Step 19/40 : RUN cd chatafl-enhanced &&     make -f Makefile.plugin clean all CHATAFL_ENHANCED=1 $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> d33f5469f793
+Step 20/40 : ENV WORKDIR="/home/ubuntu/experiments"
+ ---> Using cache
+ ---> 3ac328950172
+Step 21/40 : ENV AFLNET="/home/ubuntu/aflnet"
+ ---> Using cache
+ ---> 17146e32b819
+Step 22/40 : ENV PATH="${PATH}:${AFLNET}:/home/ubuntu/.local/bin:${WORKDIR}"
+ ---> Using cache
+ ---> 690d320792c9
+Step 23/40 : ENV AFL_PATH="${AFLNET}"
+ ---> Using cache
+ ---> 956906bc494c
+Step 24/40 : ENV AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1     AFL_SKIP_CPUFREQ=1     AFL_NO_AFFINITY=1
+ ---> Using cache
+ ---> 3f366f9e989f
+Step 25/40 : RUN mkdir $WORKDIR
+ ---> Using cache
+ ---> 11d21684bcf3
+Step 26/40 : COPY --chown=ubuntu:ubuntu fuzzing.patch ${WORKDIR}/fuzzing.patch
+ ---> Using cache
+ ---> f06b1bd47490
+Step 27/40 : COPY --chown=ubuntu:ubuntu gcov.patch ${WORKDIR}/gcov.patch
+ ---> Using cache
+ ---> 4f7a057a97fd
+Step 28/40 : env ASAN_OPTIONS='abort_on_error=1:symbolize=0:detect_leaks=0:detect_stack_use_after_return=1:detect_container_overflow=0:poison_array_cookie=0:malloc_fill_byte=0:max_malloc_fill_size=16777216'
+ ---> Using cache
+ ---> ee7c812fc877
+Step 29/40 : RUN cd $WORKDIR &&     git clone https://github.com/hfiref0x/LightFTP.git &&     cd LightFTP &&     git checkout 139af7c &&     patch -p1 < ${WORKDIR}/fuzzing.patch &&     cd Source/Release &&     AFL_USE_ASAN=1 CC=afl-clang-fast make clean all $MAKE_OPT
+ ---> Using cache
+ ---> 1741e1a3d0a1
+Step 30/40 : RUN cd ${WORKDIR}/LightFTP/Source/Release &&     cp ${AFLNET}/tutorials/lightftp/fftp.conf ./ &&     cp ${AFLNET}/tutorials/lightftp/ftpclean.sh ./ &&     cp -r ${AFLNET}/tutorials/lightftp/certificate /home/ubuntu &&     mkdir /home/ubuntu/ftpshare
+ ---> Using cache
+ ---> dafcffffc96d
+Step 31/40 : RUN cd $WORKDIR &&     git clone https://github.com/hfiref0x/LightFTP.git LightFTP-gcov &&     cd LightFTP-gcov &&     git checkout 139af7c &&     patch -p1 < ${WORKDIR}/gcov.patch &&     cd Source/Release &&     make CFLAGS="-fprofile-arcs -ftest-coverage" CPPFLAGS="-fprofile-arcs -ftest-coverage" CXXFLAGS="-fprofile-arcs -ftest-coverage" LDFLAGS="-fprofile-arcs -ftest-coverage" clean all $MAKE_OPT
+ ---> Using cache
+ ---> 5e4c157c754d
+Step 32/40 : RUN cd ${WORKDIR}/LightFTP-gcov/Source/Release &&     cp ${AFLNET}/tutorials/lightftp/fftp.conf ./ &&     cp ${AFLNET}/tutorials/lightftp/ftpclean.sh ./
+ ---> Using cache
+ ---> 4fb42147ec1a
+Step 33/40 : COPY --chown=ubuntu:ubuntu in-ftp ${WORKDIR}/in-ftp
+ ---> Using cache
+ ---> 2c7e0ef35af8
+Step 34/40 : COPY --chown=ubuntu:ubuntu ftp.dict ${WORKDIR}/ftp.dict
+ ---> Using cache
+ ---> 22bc453d60cf
+Step 35/40 : COPY --chown=ubuntu:ubuntu cov_script.sh ${WORKDIR}/cov_script
+ ---> Using cache
+ ---> 4932820ea1d3
+Step 36/40 : COPY --chown=ubuntu:ubuntu run.sh ${WORKDIR}/run
+ ---> Using cache
+ ---> a7072519de61
+Step 37/40 : COPY --chown=ubuntu:ubuntu clean.sh ${WORKDIR}/ftpclean
+ ---> Using cache
+ ---> 9882513b2458
+Step 38/40 : USER root
+ ---> Using cache
+ ---> b0d48e11f8ab
+Step 39/40 : RUN apt-get -y install ftp
+ ---> Using cache
+ ---> b9799d980007
+Step 40/40 : USER ubuntu
+ ---> Using cache
+ ---> cfb70b02f2fa
+Successfully built cfb70b02f2fa
+Successfully tagged lightftp:latest
+DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
+            Install the buildx component to build images with BuildKit:
+            https://docs.docker.com/go/buildx/
+
+Sending build context to Docker daemon  37.81MB
+Step 1/40 : FROM ubuntu:20.04
+ ---> b7bab04fd9aa
+Step 2/40 : ENV DEBIAN_FRONTEND=noninteractive
+ ---> Using cache
+ ---> 3a973c9532a8
+Step 3/40 : RUN apt-get -y update &&     apt-get -y install sudo     apt-utils     build-essential     openssl     clang     graphviz-dev     git     autoconf     libgnutls28-dev     libssl-dev     llvm     python3-pip     nano     net-tools     vim     gdb     netcat     strace     libcap-dev     libpcre2-dev     libpcre2-8-0     libcurl4-openssl-dev     libjson-c-dev     wget
+ ---> Using cache
+ ---> f1ac222791ed
+Step 4/40 : RUN groupadd ubuntu &&     useradd -rm -d /home/ubuntu -s /bin/bash -g ubuntu -G sudo -u 1000 ubuntu -p "$(openssl passwd -1 ubuntu)"
+ ---> Using cache
+ ---> 8e04654e5acf
+Step 5/40 : RUN chmod 777 /tmp
+ ---> Using cache
+ ---> 7c574321f097
+Step 6/40 : RUN pip3 install gcovr==4.2
+ ---> Using cache
+ ---> 28be1cb87d75
+Step 7/40 : USER ubuntu
+ ---> Using cache
+ ---> 6c35639fd3d0
+Step 8/40 : WORKDIR /home/ubuntu
+ ---> Using cache
+ ---> 6745b17f47f4
+Step 9/40 : ARG MAKE_OPT
+ ---> Using cache
+ ---> 2023b46e1c23
+Step 10/40 : COPY --chown=ubuntu:ubuntu aflnet aflnet
+ ---> Using cache
+ ---> 3f5c22620d5d
+Step 11/40 : RUN cd aflnet &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 2480b4c2109b
+Step 12/40 : COPY --chown=ubuntu:ubuntu chatafl chatafl
+ ---> Using cache
+ ---> 2d4e4720afd1
+Step 13/40 : RUN cd chatafl &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 7b0e19b42678
+Step 14/40 : COPY --chown=ubuntu:ubuntu chatafl-cl1 chatafl-cl1
+ ---> Using cache
+ ---> 722481d05ed7
+Step 15/40 : RUN cd chatafl-cl1 &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 2ceacf8aee76
+Step 16/40 : COPY --chown=ubuntu:ubuntu chatafl-cl2 chatafl-cl2
+ ---> Using cache
+ ---> 21d5701316cd
+Step 17/40 : RUN cd chatafl-cl2 &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> d94e095dfe3a
+Step 18/40 : COPY --chown=ubuntu:ubuntu chatafl-enhanced chatafl-enhanced
+ ---> Using cache
+ ---> 70518e53cf97
+Step 19/40 : RUN cd chatafl-enhanced &&     make -f Makefile.plugin clean all CHATAFL_ENHANCED=1 $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> d33f5469f793
+Step 20/40 : ENV WORKDIR="/home/ubuntu/experiments"
+ ---> Using cache
+ ---> 3ac328950172
+Step 21/40 : ENV AFLNET="/home/ubuntu/aflnet"
+ ---> Using cache
+ ---> 17146e32b819
+Step 22/40 : ENV PATH="${PATH}:${AFLNET}:/home/ubuntu/.local/bin:${WORKDIR}"
+ ---> Using cache
+ ---> 690d320792c9
+Step 23/40 : ENV AFL_PATH="${AFLNET}"
+ ---> Using cache
+ ---> 956906bc494c
+Step 24/40 : ENV AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1     AFL_SKIP_CPUFREQ=1     AFL_NO_AFFINITY=1
+ ---> Using cache
+ ---> 3f366f9e989f
+Step 25/40 : RUN mkdir $WORKDIR
+ ---> Using cache
+ ---> 11d21684bcf3
+Step 26/40 : COPY --chown=ubuntu:ubuntu fuzzing.patch ${WORKDIR}/fuzzing.patch
+ ---> Using cache
+ ---> 1a243a68021b
+Step 27/40 : COPY --chown=ubuntu:ubuntu gcov.patch ${WORKDIR}/gcov.patch
+ ---> Using cache
+ ---> 863a87b0308a
+Step 28/40 : env ASAN_OPTIONS='abort_on_error=1:symbolize=0:detect_leaks=0:detect_stack_use_after_return=1:detect_container_overflow=0:poison_array_cookie=0:malloc_fill_byte=0:max_malloc_fill_size=16777216'
+ ---> Using cache
+ ---> 88dc5f098c53
+Step 29/40 : RUN cd ${WORKDIR} &&     wget https://sourceforge.net/projects/bftpd/files/bftpd/bftpd-6.1/bftpd-6.1.tar.gz &&     tar -zxvf bftpd-6.1.tar.gz &&     cd bftpd &&     patch -p1 < ${WORKDIR}/fuzzing.patch &&     CC=afl-clang-fast make clean all $MAKE_OPT
+ ---> Using cache
+ ---> 338f2ef21d9c
+Step 30/40 : RUN cd ${WORKDIR} &&     mkdir ${WORKDIR}/bftpd-gcov &&     tar -zxvf bftpd-6.1.tar.gz -C ${WORKDIR}/bftpd-gcov --strip-components=1 &&     cd ${WORKDIR}/bftpd-gcov &&     patch -p1 < ${WORKDIR}/gcov.patch &&     make $MAKE_OPT
+ ---> Using cache
+ ---> 13d16f2f48d4
+Step 31/40 : COPY --chown=ubuntu:ubuntu basic.conf ${WORKDIR}/
+ ---> Using cache
+ ---> f1160843fbe7
+Step 32/40 : COPY --chown=ubuntu:ubuntu in-ftp ${WORKDIR}/in-ftp
+ ---> Using cache
+ ---> 9ec6a0edcd2f
+Step 33/40 : COPY --chown=ubuntu:ubuntu ftp.dict ${WORKDIR}/ftp.dict
+ ---> Using cache
+ ---> ced619b1d312
+Step 34/40 : COPY --chown=ubuntu:ubuntu run.sh ${WORKDIR}/run
+ ---> Using cache
+ ---> 2626f6389317
+Step 35/40 : COPY --chown=ubuntu:ubuntu clean.sh ${WORKDIR}/clean
+ ---> Using cache
+ ---> 7d8c00f8fe43
+Step 36/40 : COPY --chown=ubuntu:ubuntu cov_script.sh ${WORKDIR}/cov_script
+ ---> Using cache
+ ---> 5f5f317868f7
+Step 37/40 : RUN mkdir /home/ubuntu/ftpshare &&     chown -R ubuntu:ubuntu /home/ubuntu/ftpshare
+ ---> Using cache
+ ---> e01b93047c58
+Step 38/40 : USER root
+ ---> Using cache
+ ---> e97384ba8c08
+Step 39/40 : WORKDIR /home/ubuntu
+ ---> Using cache
+ ---> b8f62ae64edf
+Step 40/40 : RUN apt-get -y install ftp
+ ---> Using cache
+ ---> 14c5630e8cfa
+Successfully built 14c5630e8cfa
+Successfully tagged bftpd:latest
+DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
+            Install the buildx component to build images with BuildKit:
+            https://docs.docker.com/go/buildx/
+
+Sending build context to Docker daemon   37.8MB
+Step 1/38 : FROM ubuntu:20.04
+ ---> b7bab04fd9aa
+Step 2/38 : ENV DEBIAN_FRONTEND=noninteractive
+ ---> Using cache
+ ---> 3a973c9532a8
+Step 3/38 : RUN apt-get -y update &&     apt-get -y install sudo     apt-utils     build-essential     openssl     clang     graphviz-dev     git     autoconf     libgnutls28-dev     libssl-dev     llvm     python3-pip     nano     net-tools     vim     gdb     netcat     strace     libcap-dev     libpcre2-dev     libpcre2-8-0     libcurl4-openssl-dev     libjson-c-dev     wget
+ ---> Using cache
+ ---> f1ac222791ed
+Step 4/38 : RUN groupadd ubuntu &&     useradd -rm -d /home/ubuntu -s /bin/bash -g ubuntu -G sudo -u 1000 ubuntu -p "$(openssl passwd -1 ubuntu)"
+ ---> Using cache
+ ---> 8e04654e5acf
+Step 5/38 : RUN chmod 777 /tmp
+ ---> Using cache
+ ---> 7c574321f097
+Step 6/38 : RUN pip3 install gcovr==4.2
+ ---> Using cache
+ ---> 28be1cb87d75
+Step 7/38 : USER ubuntu
+ ---> Using cache
+ ---> 6c35639fd3d0
+Step 8/38 : WORKDIR /home/ubuntu
+ ---> Using cache
+ ---> 6745b17f47f4
+Step 9/38 : ARG MAKE_OPT
+ ---> Using cache
+ ---> 2023b46e1c23
+Step 10/38 : COPY --chown=ubuntu:ubuntu aflnet aflnet
+ ---> Using cache
+ ---> 3f5c22620d5d
+Step 11/38 : RUN cd aflnet &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 2480b4c2109b
+Step 12/38 : COPY --chown=ubuntu:ubuntu chatafl chatafl
+ ---> Using cache
+ ---> 2d4e4720afd1
+Step 13/38 : RUN cd chatafl &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 7b0e19b42678
+Step 14/38 : COPY --chown=ubuntu:ubuntu chatafl-cl1 chatafl-cl1
+ ---> Using cache
+ ---> 722481d05ed7
+Step 15/38 : RUN cd chatafl-cl1 &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 2ceacf8aee76
+Step 16/38 : COPY --chown=ubuntu:ubuntu chatafl-cl2 chatafl-cl2
+ ---> Using cache
+ ---> 21d5701316cd
+Step 17/38 : RUN cd chatafl-cl2 &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> d94e095dfe3a
+Step 18/38 : COPY --chown=ubuntu:ubuntu chatafl-enhanced chatafl-enhanced
+ ---> Using cache
+ ---> 70518e53cf97
+Step 19/38 : RUN cd chatafl-enhanced &&     make -f Makefile.plugin clean all CHATAFL_ENHANCED=1 $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> d33f5469f793
+Step 20/38 : ENV WORKDIR="/home/ubuntu/experiments"
+ ---> Using cache
+ ---> 3ac328950172
+Step 21/38 : ENV AFLNET="/home/ubuntu/aflnet"
+ ---> Using cache
+ ---> 17146e32b819
+Step 22/38 : ENV PATH="${PATH}:${AFLNET}:/home/ubuntu/.local/bin:${WORKDIR}"
+ ---> Using cache
+ ---> 690d320792c9
+Step 23/38 : ENV AFL_PATH="${AFLNET}"
+ ---> Using cache
+ ---> 956906bc494c
+Step 24/38 : ENV AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1     AFL_SKIP_CPUFREQ=1     AFL_NO_AFFINITY=1
+ ---> Using cache
+ ---> 3f366f9e989f
+Step 25/38 : env ASAN_OPTIONS='abort_on_error=1:symbolize=0:detect_leaks=0:detect_stack_use_after_return=1:detect_container_overflow=0:poison_array_cookie=0:malloc_fill_byte=0:max_malloc_fill_size=16777216'
+ ---> Using cache
+ ---> 95302327f618
+Step 26/38 : RUN mkdir $WORKDIR
+ ---> Using cache
+ ---> 5f7f4d74e0f0
+Step 27/38 : RUN cd ${WORKDIR} &&     git clone https://github.com/proftpd/proftpd.git &&     cd proftpd &&     git checkout 61e621e743346 &&     CC="afl-clang-fast" CXX="afl-clang-fast++" ./configure --enable-devel=nodaemon:nofork &&     make $MAKE_OPT
+ ---> Using cache
+ ---> 7a0af8780d7a
+Step 28/38 : RUN cd ${WORKDIR} &&     git clone https://github.com/proftpd/proftpd.git proftpd-gcov &&     cd proftpd-gcov &&     git checkout 61e621e743346 &&     CFLAGS="-fprofile-arcs -ftest-coverage" CPPFLAGS="-fprofile-arcs -ftest-coverage" CXXFLAGS="-fprofile-arcs -ftest-coverage" LDFLAGS="-fprofile-arcs -ftest-coverage" ./configure --enable-devel=nodaemon:nofork &&     make $MAKE_OPT
+ ---> Using cache
+ ---> 4d377932ef30
+Step 29/38 : COPY --chown=ubuntu:ubuntu basic.conf ${WORKDIR}/
+ ---> Using cache
+ ---> 10f90c70b6cc
+Step 30/38 : COPY --chown=ubuntu:ubuntu in-ftp ${WORKDIR}/in-ftp
+ ---> Using cache
+ ---> 855ca9352aa3
+Step 31/38 : COPY --chown=ubuntu:ubuntu ftp.dict ${WORKDIR}/ftp.dict
+ ---> Using cache
+ ---> c84dcfc4c72b
+Step 32/38 : COPY --chown=ubuntu:ubuntu run.sh ${WORKDIR}/run
+ ---> Using cache
+ ---> 6148d8fec3e8
+Step 33/38 : COPY --chown=ubuntu:ubuntu clean.sh ${WORKDIR}/clean
+ ---> Using cache
+ ---> 56fe9cc718e5
+Step 34/38 : COPY --chown=ubuntu:ubuntu cov_script.sh ${WORKDIR}/cov_script
+ ---> Using cache
+ ---> e1076951c9e9
+Step 35/38 : RUN mkdir /home/ubuntu/ftpshare &&     chown -R ubuntu:ubuntu /home/ubuntu/ftpshare
+ ---> Using cache
+ ---> 201183248de2
+Step 36/38 : USER root
+ ---> Using cache
+ ---> 7d151c6b35a7
+Step 37/38 : WORKDIR /home/ubuntu
+ ---> Using cache
+ ---> c2d6017de8ca
+Step 38/38 : RUN apt-get -y install ftp
+ ---> Using cache
+ ---> 03dbe6a2e43c
+Successfully built 03dbe6a2e43c
+Successfully tagged proftpd:latest
+DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
+            Install the buildx component to build images with BuildKit:
+            https://docs.docker.com/go/buildx/
+
+Sending build context to Docker daemon  37.79MB
+Step 1/42 : FROM ubuntu:20.04
+ ---> b7bab04fd9aa
+Step 2/42 : ENV DEBIAN_FRONTEND=noninteractive
+ ---> Using cache
+ ---> 3a973c9532a8
+Step 3/42 : RUN apt-get -y update &&     apt-get -y install sudo     apt-utils     build-essential     openssl     clang     graphviz-dev     git     autoconf     libgnutls28-dev     libssl-dev     llvm     python3-pip     nano     net-tools     vim     gdb     netcat     strace     libcap-dev     libpcre2-dev     libpcre2-8-0     libcurl4-openssl-dev     libjson-c-dev     wget
+ ---> Using cache
+ ---> f1ac222791ed
+Step 4/42 : RUN groupadd ubuntu &&     useradd -rm -d /home/ubuntu -s /bin/bash -g ubuntu -G sudo -u 1000 ubuntu -p "$(openssl passwd -1 ubuntu)"
+ ---> Using cache
+ ---> 8e04654e5acf
+Step 5/42 : RUN chmod 777 /tmp
+ ---> Using cache
+ ---> 7c574321f097
+Step 6/42 : RUN pip install gcovr==4.2
+ ---> Using cache
+ ---> c2b116ba6172
+Step 7/42 : USER ubuntu
+ ---> Using cache
+ ---> ab92eaad9e78
+Step 8/42 : WORKDIR /home/ubuntu
+ ---> Using cache
+ ---> 9d5cbb1f515c
+Step 9/42 : ARG MAKE_OPT
+ ---> Using cache
+ ---> 60005351e70d
+Step 10/42 : COPY --chown=ubuntu:ubuntu aflnet aflnet
+ ---> Using cache
+ ---> 7949f63a723d
+Step 11/42 : RUN cd aflnet &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> e6852b1c9a3d
+Step 12/42 : COPY --chown=ubuntu:ubuntu chatafl chatafl
+ ---> Using cache
+ ---> 8454aadc15e4
+Step 13/42 : RUN cd chatafl &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 5310731fac78
+Step 14/42 : COPY --chown=ubuntu:ubuntu chatafl-cl1 chatafl-cl1
+ ---> Using cache
+ ---> d9f7c526f7b0
+Step 15/42 : RUN cd chatafl-cl1 &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 9166056c38c9
+Step 16/42 : COPY --chown=ubuntu:ubuntu chatafl-cl2 chatafl-cl2
+ ---> Using cache
+ ---> 2654d399c5c4
+Step 17/42 : RUN cd chatafl-cl2 &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 65ec5bd14ee9
+Step 18/42 : COPY --chown=ubuntu:ubuntu chatafl-enhanced chatafl-enhanced
+ ---> Using cache
+ ---> 29ea72caa960
+Step 19/42 : RUN cd chatafl-enhanced &&     make -f Makefile.plugin clean all CHATAFL_ENHANCED=1 $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 4f6a11047a9f
+Step 20/42 : ENV WORKDIR="/home/ubuntu/experiments"
+ ---> Using cache
+ ---> eeea5386ab9c
+Step 21/42 : ENV AFLNET="/home/ubuntu/aflnet"
+ ---> Using cache
+ ---> aad65e99b180
+Step 22/42 : ENV PATH="${PATH}:${AFLNET}:/home/ubuntu/.local/bin:${WORKDIR}"
+ ---> Using cache
+ ---> a79ffc6ff009
+Step 23/42 : ENV AFL_PATH="${AFLNET}"
+ ---> Using cache
+ ---> df4dd509d7ed
+Step 24/42 : ENV AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1     AFL_SKIP_CPUFREQ=1     AFL_NO_AFFINITY=1
+ ---> Using cache
+ ---> 88d11509daf3
+Step 25/42 : RUN mkdir $WORKDIR
+ ---> Using cache
+ ---> ad6285b4089c
+Step 26/42 : COPY --chown=ubuntu:ubuntu fuzzing.patch ${WORKDIR}/fuzzing.patch
+ ---> Using cache
+ ---> bdd4e999e29a
+Step 27/42 : COPY --chown=ubuntu:ubuntu gcov.patch ${WORKDIR}/gcov.patch
+ ---> Using cache
+ ---> 5e2856317e16
+Step 28/42 : USER root
+ ---> Using cache
+ ---> f6068969e5d2
+Step 29/42 : RUN apt -y install automake
+ ---> Using cache
+ ---> ea3726086353
+Step 30/42 : USER ubuntu
+ ---> Using cache
+ ---> 6e84ad846647
+Step 31/42 : env ASAN_OPTIONS='abort_on_error=1:symbolize=0:detect_leaks=0:detect_stack_use_after_return=1:detect_container_overflow=0:poison_array_cookie=0:malloc_fill_byte=0:max_malloc_fill_size=16777216'
+ ---> Using cache
+ ---> d452206884e0
+Step 32/42 : RUN cd ${WORKDIR} &&     git clone https://github.com/jedisct1/pure-ftpd.git &&     cd pure-ftpd &&     git checkout 10122d9f &&     patch -p1 < ${WORKDIR}/fuzzing.patch &&     ./autogen.sh &&     CC="afl-clang-fast" CXX="afl-clang-fast++" ./configure --without-privsep -without-capabilities &&     make $MAKE_OPT
+ ---> Using cache
+ ---> 94082c15dad5
+Step 33/42 : RUN cd ${WORKDIR} &&     git clone https://github.com/jedisct1/pure-ftpd.git pure-ftpd-gcov &&     cd pure-ftpd-gcov &&     git checkout 10122d9f &&     patch -p1 < ${WORKDIR}/gcov.patch &&     ./autogen.sh &&     CC=cc CXX=c++ CFLAGS="-fprofile-arcs -ftest-coverage" CPPFLAGS="-fprofile-arcs -ftest-coverage" CXXFLAGS="-fprofile-arcs -ftest-coverage" LDFLAGS="-fprofile-arcs -ftest-coverage" ./configure --without-privsep -without-capabilities &&     make $MAKE_OPT
+ ---> Using cache
+ ---> ff4ddb717bb5
+Step 34/42 : COPY --chown=ubuntu:ubuntu in-ftp ${WORKDIR}/in-ftp
+ ---> Using cache
+ ---> a7f634ec47ad
+Step 35/42 : COPY --chown=ubuntu:ubuntu ftp.dict ${WORKDIR}/ftp.dict
+ ---> Using cache
+ ---> c5ddfb3ccde3
+Step 36/42 : COPY --chown=ubuntu:ubuntu run.sh ${WORKDIR}/run
+ ---> Using cache
+ ---> c866069d40b7
+Step 37/42 : COPY --chown=ubuntu:ubuntu clean.sh ${WORKDIR}/clean
+ ---> Using cache
+ ---> a2104180f06a
+Step 38/42 : COPY --chown=ubuntu:ubuntu cov_script.sh ${WORKDIR}/cov_script
+ ---> Using cache
+ ---> 119cb6ee46e0
+Step 39/42 : USER root
+ ---> Using cache
+ ---> 65460d300d18
+Step 40/42 : WORKDIR /home/ubuntu
+ ---> Using cache
+ ---> c93c04edc10f
+Step 41/42 : RUN useradd -rm -d /home/fuzzing -s /bin/bash -g ubuntu -G sudo -u 1001 fuzzing -p "$(openssl passwd -1 fuzzing)"
+ ---> Using cache
+ ---> fb1a2d5fdc83
+Step 42/42 : RUN apt-get -y install ftp
+ ---> Using cache
+ ---> 1b874cc52518
+Successfully built 1b874cc52518
+Successfully tagged pure-ftpd:latest
+DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
+            Install the buildx component to build images with BuildKit:
+            https://docs.docker.com/go/buildx/
+
+Sending build context to Docker daemon  37.75MB
+Step 1/43 : FROM ubuntu:20.04
+ ---> b7bab04fd9aa
+Step 2/43 : ENV DEBIAN_FRONTEND=noninteractive
+ ---> Using cache
+ ---> 3a973c9532a8
+Step 3/43 : RUN apt-get -y update &&     apt-get -y install sudo     apt-utils     build-essential     openssl     clang     graphviz-dev     git     autoconf     libgnutls28-dev     libssl-dev     llvm     python3-pip     nano     net-tools     vim     gdb     netcat     strace     libcap-dev     libpcre2-dev     libpcre2-8-0     libcurl4-openssl-dev     libjson-c-dev     wget
+ ---> Using cache
+ ---> f1ac222791ed
+Step 4/43 : RUN groupadd ubuntu &&     useradd -rm -d /home/ubuntu -s /bin/bash -g ubuntu -G sudo -u 1000 ubuntu -p "$(openssl passwd -1 ubuntu)"
+ ---> Using cache
+ ---> 8e04654e5acf
+Step 5/43 : RUN chmod 777 /tmp
+ ---> Using cache
+ ---> 7c574321f097
+Step 6/43 : RUN pip3 install gcovr==4.2
+ ---> Using cache
+ ---> 28be1cb87d75
+Step 7/43 : USER ubuntu
+ ---> Using cache
+ ---> 6c35639fd3d0
+Step 8/43 : WORKDIR /home/ubuntu
+ ---> Using cache
+ ---> 6745b17f47f4
+Step 9/43 : ARG MAKE_OPT
+ ---> Using cache
+ ---> 2023b46e1c23
+Step 10/43 : COPY --chown=ubuntu:ubuntu aflnet aflnet
+ ---> Using cache
+ ---> 3f5c22620d5d
+Step 11/43 : RUN cd aflnet &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 2480b4c2109b
+Step 12/43 : COPY --chown=ubuntu:ubuntu chatafl chatafl
+ ---> Using cache
+ ---> 2d4e4720afd1
+Step 13/43 : RUN cd chatafl &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 7b0e19b42678
+Step 14/43 : COPY --chown=ubuntu:ubuntu chatafl-cl1 chatafl-cl1
+ ---> Using cache
+ ---> 722481d05ed7
+Step 15/43 : RUN cd chatafl-cl1 &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 2ceacf8aee76
+Step 16/43 : COPY --chown=ubuntu:ubuntu chatafl-cl2 chatafl-cl2
+ ---> Using cache
+ ---> 21d5701316cd
+Step 17/43 : RUN cd chatafl-cl2 &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> d94e095dfe3a
+Step 18/43 : COPY --chown=ubuntu:ubuntu chatafl-enhanced chatafl-enhanced
+ ---> Using cache
+ ---> 70518e53cf97
+Step 19/43 : RUN cd chatafl-enhanced &&     make -f Makefile.plugin clean all CHATAFL_ENHANCED=1 $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> d33f5469f793
+Step 20/43 : ENV WORKDIR="/home/ubuntu/experiments"
+ ---> Using cache
+ ---> 3ac328950172
+Step 21/43 : ENV AFLNET="/home/ubuntu/aflnet"
+ ---> Using cache
+ ---> 17146e32b819
+Step 22/43 : ENV PATH="${PATH}:${AFLNET}:/home/ubuntu/.local/bin:${WORKDIR}"
+ ---> Using cache
+ ---> 690d320792c9
+Step 23/43 : ENV AFL_PATH="${AFLNET}"
+ ---> Using cache
+ ---> 956906bc494c
+Step 24/43 : ENV AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1     AFL_SKIP_CPUFREQ=1     AFL_NO_AFFINITY=1
+ ---> Using cache
+ ---> 3f366f9e989f
+Step 25/43 : RUN mkdir $WORKDIR
+ ---> Using cache
+ ---> 11d21684bcf3
+Step 26/43 : USER root
+ ---> Using cache
+ ---> db20a13d025f
+Step 27/43 : RUN apt-get install -y psmisc
+ ---> Using cache
+ ---> dbc76774a62d
+Step 28/43 : RUN apt-get -y install     libpcre2-dev     pkg-config     libdb-dev     libgdbm-dev
+ ---> Using cache
+ ---> b0b2ce9d70cf
+Step 29/43 : COPY --chown=ubuntu:ubuntu exim.patch ${WORKDIR}/exim.patch
+ ---> Using cache
+ ---> 5bdf7d963fad
+Step 30/43 : COPY --chown=ubuntu:ubuntu exim-response-code.patch ${WORKDIR}/exim-response-code.patch
+ ---> Using cache
+ ---> 1582d0ef5437
+Step 31/43 : COPY --chown=ubuntu:ubuntu exim-rand.patch ${WORKDIR}/exim-rand.patch
+ ---> Using cache
+ ---> 050684429fad
+Step 32/43 : COPY --chown=ubuntu:ubuntu exim-log-bug.patch ${WORKDIR}/exim-log-bug.patch
+ ---> Using cache
+ ---> 848f75aa49ac
+Step 33/43 : COPY --chown=ubuntu:ubuntu exim.configure.patch ${WORKDIR}/exim.configure.patch
+ ---> Using cache
+ ---> 468df8043be8
+Step 34/43 : env ASAN_OPTIONS='abort_on_error=1:symbolize=0:detect_leaks=0:detect_stack_use_after_return=1:detect_container_overflow=0:poison_array_cookie=0:malloc_fill_byte=0:max_malloc_fill_size=16777216'
+ ---> Using cache
+ ---> 39ee31ac5592
+Step 35/43 : RUN cd ${WORKDIR} &&     git clone https://github.com/Exim/exim &&     cd exim &&     git checkout d6a5a05b84 &&     patch -p1 < ${WORKDIR}/exim-response-code.patch &&     patch -p1 < ${WORKDIR}/exim-rand.patch &&     patch -p1 < ${WORKDIR}/exim-log-bug.patch &&     cd src; mkdir Local; cp src/EDITME Local/Makefile &&     cd Local; patch -p1 < ${WORKDIR}/exim.patch; cd .. &&     make CFLAGS="-DUSE_OPENSSL=1" LDFLAGS+="-lssl -lcrypto" CC=afl-clang-fast clean all install $MAKE_OPT
+ ---> Using cache
+ ---> c02cb4fee2bb
+Step 36/43 : RUN cd ${WORKDIR} &&     git clone https://github.com/Exim/exim exim-gcov &&     cd exim-gcov &&     git checkout d6a5a05b84 &&     patch -p1 < ${WORKDIR}/exim-rand.patch &&     patch -p1 < ${WORKDIR}/exim-log-bug.patch &&     cd src; mkdir Local; cp src/EDITME Local/Makefile &&     cd Local; patch -p1 < ${WORKDIR}/exim.patch; cd .. &&     make CFLAGS="-fprofile-arcs -ftest-coverage -DUSE_OPENSSL=1" LDFLAGS="-fprofile-arcs -ftest-coverage -lssl -lcrypto" LFLAGS+="-lgcov --coverage" clean all $MAKE_OPT
+ ---> Using cache
+ ---> 419c1ff9b7c3
+Step 37/43 : RUN cd /usr/exim &&     patch -p1 < ${WORKDIR}/exim.configure.patch &&     chmod 1777 /var/mail
+ ---> Using cache
+ ---> f741c977f12b
+Step 38/43 : ENV PATH="/usr/exim/bin:${PATH}"
+ ---> Using cache
+ ---> 160d0262f63d
+Step 39/43 : COPY --chown=ubuntu:ubuntu in-smtp ${WORKDIR}/in-smtp
+ ---> Using cache
+ ---> a1edd64b8988
+Step 40/43 : COPY --chown=ubuntu:ubuntu smtp.dict ${WORKDIR}/smtp.dict
+ ---> Using cache
+ ---> 1e445b2b517b
+Step 41/43 : COPY --chown=ubuntu:ubuntu cov_script.sh ${WORKDIR}/cov_script
+ ---> Using cache
+ ---> d4f42f1efa20
+Step 42/43 : COPY --chown=ubuntu:ubuntu run.sh ${WORKDIR}/run
+ ---> Using cache
+ ---> 21696a74ce99
+Step 43/43 : COPY --chown=ubuntu:ubuntu clean.sh ${WORKDIR}/clean
+ ---> Using cache
+ ---> e1cb0985dca7
+Successfully built e1cb0985dca7
+Successfully tagged exim:latest
+DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
+            Install the buildx component to build images with BuildKit:
+            https://docs.docker.com/go/buildx/
+
+Sending build context to Docker daemon  38.48MB
+Step 1/38 : FROM ubuntu:20.04
+ ---> b7bab04fd9aa
+Step 2/38 : ENV DEBIAN_FRONTEND=noninteractive
+ ---> Using cache
+ ---> 3a973c9532a8
+Step 3/38 : RUN apt-get -y update &&     apt-get -y install sudo     apt-utils     build-essential     openssl     clang     graphviz-dev     git     autoconf     libgnutls28-dev     libssl-dev     llvm     python3-pip     nano     net-tools     vim     gdb     netcat     strace     libcap-dev     libpcre2-dev     libpcre2-8-0     libcurl4-openssl-dev     libjson-c-dev     wget
+ ---> Using cache
+ ---> f1ac222791ed
+Step 4/38 : RUN groupadd ubuntu &&     useradd -rm -d /home/ubuntu -s /bin/bash -g ubuntu -G sudo -u 1000 ubuntu -p "$(openssl passwd -1 ubuntu)"
+ ---> Using cache
+ ---> 8e04654e5acf
+Step 5/38 : RUN chmod 777 /tmp
+ ---> Using cache
+ ---> 7c574321f097
+Step 6/38 : RUN pip3 install gcovr==4.2
+ ---> Using cache
+ ---> 28be1cb87d75
+Step 7/38 : USER ubuntu
+ ---> Using cache
+ ---> 6c35639fd3d0
+Step 8/38 : WORKDIR /home/ubuntu
+ ---> Using cache
+ ---> 6745b17f47f4
+Step 9/38 : ARG MAKE_OPT
+ ---> Using cache
+ ---> 2023b46e1c23
+Step 10/38 : COPY --chown=ubuntu:ubuntu aflnet aflnet
+ ---> Using cache
+ ---> 3f5c22620d5d
+Step 11/38 : RUN cd aflnet &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 2480b4c2109b
+Step 12/38 : COPY --chown=ubuntu:ubuntu chatafl chatafl
+ ---> Using cache
+ ---> 2d4e4720afd1
+Step 13/38 : RUN cd chatafl &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 7b0e19b42678
+Step 14/38 : COPY --chown=ubuntu:ubuntu chatafl-cl1 chatafl-cl1
+ ---> Using cache
+ ---> 722481d05ed7
+Step 15/38 : RUN cd chatafl-cl1 &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 2ceacf8aee76
+Step 16/38 : COPY --chown=ubuntu:ubuntu chatafl-cl2 chatafl-cl2
+ ---> Using cache
+ ---> 21d5701316cd
+Step 17/38 : RUN cd chatafl-cl2 &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> d94e095dfe3a
+Step 18/38 : COPY --chown=ubuntu:ubuntu chatafl-enhanced chatafl-enhanced
+ ---> Using cache
+ ---> 70518e53cf97
+Step 19/38 : RUN cd chatafl-enhanced &&     make -f Makefile.plugin clean all CHATAFL_ENHANCED=1 $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> d33f5469f793
+Step 20/38 : ENV WORKDIR="/home/ubuntu/experiments"
+ ---> Using cache
+ ---> 3ac328950172
+Step 21/38 : ENV AFLNET="/home/ubuntu/aflnet"
+ ---> Using cache
+ ---> 17146e32b819
+Step 22/38 : ENV PATH="${PATH}:${AFLNET}:/home/ubuntu/.local/bin:${WORKDIR}"
+ ---> Using cache
+ ---> 690d320792c9
+Step 23/38 : ENV AFL_PATH="${AFLNET}"
+ ---> Using cache
+ ---> 956906bc494c
+Step 24/38 : ENV AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1     AFL_SKIP_CPUFREQ=1     AFL_NO_AFFINITY=1
+ ---> Using cache
+ ---> 3f366f9e989f
+Step 25/38 : RUN mkdir $WORKDIR
+ ---> Using cache
+ ---> 11d21684bcf3
+Step 26/38 : COPY --chown=ubuntu:ubuntu fuzzing.patch ${WORKDIR}/fuzzing.patch
+ ---> Using cache
+ ---> 76bafcc6f752
+Step 27/38 : COPY --chown=ubuntu:ubuntu gcov.patch ${WORKDIR}/gcov.patch
+ ---> Using cache
+ ---> 350628c4c0bc
+Step 28/38 : COPY --chown=ubuntu:ubuntu live.2023.05.10.tar.gz ${WORKDIR}/live.2023.05.10.tar.gz
+ ---> Using cache
+ ---> 120892bb6601
+Step 29/38 : env ASAN_OPTIONS='abort_on_error=1:symbolize=0:detect_leaks=0:detect_stack_use_after_return=1:detect_container_overflow=0:poison_array_cookie=0:malloc_fill_byte=0:max_malloc_fill_size=16777216'
+ ---> Using cache
+ ---> 870c58e61bce
+Step 30/38 : RUN cd $WORKDIR &&     tar -zxvf live.2023.05.10.tar.gz &&     cd live &&     patch -p1 < ${WORKDIR}/fuzzing.patch &&     ./genMakefiles linux &&     make clean all $MAKE_OPT || make all
+ ---> Using cache
+ ---> 3b2feac49ed1
+Step 31/38 : RUN cd ${WORKDIR}/live/testProgs &&     cp ${AFLNET}/tutorials/live555/sample_media_sources/*.* ./
+ ---> Using cache
+ ---> 46a4aea89c33
+Step 32/38 : RUN cd $WORKDIR &&     mkdir ${WORKDIR}/live-gcov &&     tar -zxvf live.2023.05.10.tar.gz -C ${WORKDIR}/live-gcov --strip-components=1 &&     cd live-gcov &&     patch -p1 < ${WORKDIR}/gcov.patch &&     ./genMakefiles linux &&     make CFLAGS="-fprofile-arcs -ftest-coverage" CPPFLAGS="-fprofile-arcs -ftest-coverage" CXXFLAGS="-fprofile-arcs -ftest-coverage" LDFLAGS="-fprofile-arcs -ftest-coverage" clean all
+ ---> Using cache
+ ---> 5312b2e1cc56
+Step 33/38 : RUN cd ${WORKDIR}/live-gcov/testProgs &&     cp ${AFLNET}/tutorials/live555/sample_media_sources/*.* ./
+ ---> Using cache
+ ---> d07000f464ed
+Step 34/38 : COPY --chown=ubuntu:ubuntu kill-server.sh ${WORKDIR}/kill-server
+ ---> Using cache
+ ---> 6f5c135a9934
+Step 35/38 : COPY --chown=ubuntu:ubuntu in-rtsp ${WORKDIR}/in-rtsp
+ ---> Using cache
+ ---> dba09a6bb4dc
+Step 36/38 : COPY --chown=ubuntu:ubuntu rtsp.dict ${WORKDIR}/rtsp.dict
+ ---> Using cache
+ ---> 4c1cf7da9c63
+Step 37/38 : COPY --chown=ubuntu:ubuntu cov_script.sh ${WORKDIR}/cov_script
+ ---> Using cache
+ ---> 62f78b9a2480
+Step 38/38 : COPY --chown=ubuntu:ubuntu run.sh ${WORKDIR}/run
+ ---> Using cache
+ ---> 60ccaeae1c27
+Successfully built 60ccaeae1c27
+Successfully tagged live555:latest
+DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
+            Install the buildx component to build images with BuildKit:
+            https://docs.docker.com/go/buildx/
+
+Sending build context to Docker daemon  37.87MB
+Step 1/40 : FROM ubuntu:20.04
+ ---> b7bab04fd9aa
+Step 2/40 : ENV DEBIAN_FRONTEND=noninteractive
+ ---> Using cache
+ ---> 3a973c9532a8
+Step 3/40 : RUN apt-get -y update &&     apt-get -y install sudo     apt-utils     build-essential     openssl     clang     graphviz-dev     git     autoconf     libgnutls28-dev     libssl-dev     llvm     python3-pip     nano     net-tools     vim     gdb     netcat     strace     libcap-dev     libpcre2-dev     libpcre2-8-0     libcurl4-openssl-dev     libjson-c-dev     wget
+ ---> Using cache
+ ---> f1ac222791ed
+Step 4/40 : RUN groupadd ubuntu &&     useradd -rm -d /home/ubuntu -s /bin/bash -g ubuntu -G sudo -u 1000 ubuntu -p "$(openssl passwd -1 ubuntu)"
+ ---> Using cache
+ ---> 8e04654e5acf
+Step 5/40 : RUN chmod 777 /tmp
+ ---> Using cache
+ ---> 7c574321f097
+Step 6/40 : RUN pip3 install gcovr==4.2
+ ---> Using cache
+ ---> 28be1cb87d75
+Step 7/40 : USER ubuntu
+ ---> Using cache
+ ---> 6c35639fd3d0
+Step 8/40 : WORKDIR /home/ubuntu
+ ---> Using cache
+ ---> 6745b17f47f4
+Step 9/40 : ARG MAKE_OPT
+ ---> Using cache
+ ---> 2023b46e1c23
+Step 10/40 : COPY --chown=ubuntu:ubuntu aflnet aflnet
+ ---> Using cache
+ ---> 3f5c22620d5d
+Step 11/40 : RUN cd aflnet &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 2480b4c2109b
+Step 12/40 : COPY --chown=ubuntu:ubuntu chatafl chatafl
+ ---> Using cache
+ ---> 2d4e4720afd1
+Step 13/40 : RUN cd chatafl &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 7b0e19b42678
+Step 14/40 : COPY --chown=ubuntu:ubuntu chatafl-cl1 chatafl-cl1
+ ---> Using cache
+ ---> 722481d05ed7
+Step 15/40 : RUN cd chatafl-cl1 &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 2ceacf8aee76
+Step 16/40 : COPY --chown=ubuntu:ubuntu chatafl-cl2 chatafl-cl2
+ ---> Using cache
+ ---> 21d5701316cd
+Step 17/40 : RUN cd chatafl-cl2 &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> d94e095dfe3a
+Step 18/40 : COPY --chown=ubuntu:ubuntu chatafl-enhanced chatafl-enhanced
+ ---> Using cache
+ ---> 70518e53cf97
+Step 19/40 : RUN cd chatafl-enhanced &&     make -f Makefile.plugin clean all CHATAFL_ENHANCED=1 $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> d33f5469f793
+Step 20/40 : ENV WORKDIR="/home/ubuntu/experiments"
+ ---> Using cache
+ ---> 3ac328950172
+Step 21/40 : ENV AFLNET="/home/ubuntu/aflnet"
+ ---> Using cache
+ ---> 17146e32b819
+Step 22/40 : ENV PATH="${PATH}:${AFLNET}:/home/ubuntu/.local/bin:${WORKDIR}"
+ ---> Using cache
+ ---> 690d320792c9
+Step 23/40 : ENV AFL_PATH="${AFLNET}"
+ ---> Using cache
+ ---> 956906bc494c
+Step 24/40 : ENV AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1     AFL_SKIP_CPUFREQ=1     AFL_NO_AFFINITY=1
+ ---> Using cache
+ ---> 3f366f9e989f
+Step 25/40 : RUN mkdir $WORKDIR
+ ---> Using cache
+ ---> 11d21684bcf3
+Step 26/40 : USER root
+ ---> Using cache
+ ---> db20a13d025f
+Step 27/40 : RUN apt-get -y install     bison     flex
+ ---> Using cache
+ ---> 6403e52237c0
+Step 28/40 : USER ubuntu
+ ---> Using cache
+ ---> 865cc8ca8825
+Step 29/40 : COPY --chown=ubuntu:ubuntu kamailio.patch ${WORKDIR}/kamailio.patch
+ ---> Using cache
+ ---> 91a45f739a5d
+Step 30/40 : COPY --chown=ubuntu:ubuntu pjsip.patch ${WORKDIR}/pjsip.patch
+ ---> Using cache
+ ---> 4dde6d2394b3
+Step 31/40 : env ASAN_OPTIONS='abort_on_error=1:symbolize=0:detect_leaks=0:detect_stack_use_after_return=1:detect_container_overflow=0:poison_array_cookie=0:malloc_fill_byte=0:max_malloc_fill_size=16777216'
+ ---> Using cache
+ ---> f367d8643768
+Step 32/40 : RUN cd $WORKDIR &&     git clone https://github.com/kamailio/kamailio.git &&     cd kamailio &&     git checkout a2209018fb03d &&     patch -p1 < $WORKDIR/kamailio.patch &&     CC=afl-clang-fast make MEMPKG=sys cfg &&     CC=afl-clang-fast make all $MAKE_OPT
+ ---> Using cache
+ ---> e5952a11acba
+Step 33/40 : RUN cd $WORKDIR &&     git clone https://github.com/pjsip/pjproject.git &&     cd pjproject &&     git checkout 87cd4a &&     patch -p1 < $WORKDIR/pjsip.patch &&     ./configure &&     make dep && make clean && make $MAKE_OPT
+ ---> Using cache
+ ---> 77d7bd3f1f69
+Step 34/40 : RUN cd $WORKDIR &&     git clone https://github.com/kamailio/kamailio.git kamailio-gcov &&     cd kamailio-gcov &&     git checkout a2209018fb03d &&     patch -p1 < $WORKDIR/kamailio.patch &&     make CC_EXTRA_OPTS="-fprofile-arcs -ftest-coverage" LD_EXTRA_OPTS="-fprofile-arcs -ftest-coverage" MEMPKG=sys cfg &&     make CC_EXTRA_OPTS="-fprofile-arcs -ftest-coverage" LD_EXTRA_OPTS="-fprofile-arcs -ftest-coverage" all $MAKE_OPT
+ ---> Using cache
+ ---> ea7ab7b5a928
+Step 35/40 : COPY --chown=ubuntu:ubuntu in-sip ${WORKDIR}/in-sip
+ ---> Using cache
+ ---> 74a357735821
+Step 36/40 : COPY --chown=ubuntu:ubuntu cov_script.sh ${WORKDIR}/cov_script
+ ---> Using cache
+ ---> 331701d5fada
+Step 37/40 : COPY --chown=ubuntu:ubuntu run.sh ${WORKDIR}/run
+ ---> Using cache
+ ---> 3c66fb391334
+Step 38/40 : COPY --chown=ubuntu:ubuntu run_pjsip.sh ${WORKDIR}/run_pjsip
+ ---> Using cache
+ ---> cc244682ad40
+Step 39/40 : COPY --chown=ubuntu:ubuntu kamailio-basic.cfg ${WORKDIR}/kamailio-basic.cfg
+ ---> Using cache
+ ---> c38101e9059b
+Step 40/40 : COPY --chown=ubuntu:ubuntu StarWars3.wav ${WORKDIR}/StarWars3.wav
+ ---> Using cache
+ ---> ccffd69762ed
+Successfully built ccffd69762ed
+Successfully tagged kamailio:latest
+DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
+            Install the buildx component to build images with BuildKit:
+            https://docs.docker.com/go/buildx/
+
+Sending build context to Docker daemon  72.98MB
+Step 1/48 : FROM ubuntu:20.04
+ ---> b7bab04fd9aa
+Step 2/48 : ENV DEBIAN_FRONTEND=noninteractive
+ ---> Using cache
+ ---> 3a973c9532a8
+Step 3/48 : RUN apt-get -y update &&     apt-get -y install sudo     apt-utils     build-essential     openssl     clang     graphviz-dev     git     autoconf     libgnutls28-dev     llvm     python3-pip     nano     net-tools     vim     gdb     netcat     strace     libcap-dev     libpcre2-dev     libpcre2-8-0     libcurl4-openssl-dev     libjson-c-dev     wget
+ ---> Using cache
+ ---> 6cdfe2fb4c44
+Step 4/48 : RUN groupadd ubuntu &&     useradd -rm -d /home/ubuntu -s /bin/bash -g ubuntu -G sudo -u 1000 ubuntu -p "$(openssl passwd -1 ubuntu)"
+ ---> Using cache
+ ---> bac0fec2290c
+Step 5/48 : RUN chmod 777 /tmp
+ ---> Using cache
+ ---> 12231abef716
+Step 6/48 : RUN pip3 install gcovr==4.2
+ ---> Using cache
+ ---> 24c04efd3d06
+Step 7/48 : USER ubuntu
+ ---> Using cache
+ ---> a9a59da6210d
+Step 8/48 : WORKDIR /home/ubuntu
+ ---> Using cache
+ ---> 2b7e62235c80
+Step 9/48 : ARG MAKE_OPT
+ ---> Using cache
+ ---> f37138aef3d9
+Step 10/48 : COPY --chown=ubuntu:ubuntu aflnet aflnet
+ ---> Using cache
+ ---> 83db9714082e
+Step 11/48 : RUN cd aflnet &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 2e356f0a97a6
+Step 12/48 : COPY --chown=ubuntu:ubuntu chatafl chatafl
+ ---> Using cache
+ ---> 1582a26ba887
+Step 13/48 : RUN cd chatafl &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 410b3927c8f1
+Step 14/48 : COPY --chown=ubuntu:ubuntu chatafl-cl1 chatafl-cl1
+ ---> Using cache
+ ---> 5e8a04377869
+Step 15/48 : RUN cd chatafl-cl1 &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> a8eebbff3fe6
+Step 16/48 : COPY --chown=ubuntu:ubuntu chatafl-cl2 chatafl-cl2
+ ---> Using cache
+ ---> b6970ad98273
+Step 17/48 : RUN cd chatafl-cl2 &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 73d3d86af367
+Step 18/48 : COPY --chown=ubuntu:ubuntu chatafl-enhanced chatafl-enhanced
+ ---> Using cache
+ ---> e375b3922d11
+Step 19/48 : RUN cd chatafl-enhanced &&     make -f Makefile.plugin clean all CHATAFL_ENHANCED=1 $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> aef232ddf0cf
+Step 20/48 : ENV WORKDIR="/home/ubuntu/experiments"
+ ---> Using cache
+ ---> eaae562185c2
+Step 21/48 : ENV AFLNET="/home/ubuntu/aflnet"
+ ---> Using cache
+ ---> df50337f353e
+Step 22/48 : ENV PATH="${PATH}:${AFLNET}:/home/ubuntu/.local/bin:${WORKDIR}"
+ ---> Using cache
+ ---> edfba1a2386e
+Step 23/48 : ENV AFL_PATH="${AFLNET}"
+ ---> Using cache
+ ---> 7a84c9d6325a
+Step 24/48 : ENV AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1     AFL_SKIP_CPUFREQ=1     AFL_NO_AFFINITY=1
+ ---> Using cache
+ ---> fd818868b1cc
+Step 25/48 : RUN mkdir $WORKDIR
+ ---> Using cache
+ ---> 5b0bbdec3644
+Step 26/48 : USER root
+ ---> Using cache
+ ---> c7634b07d887
+Step 27/48 : RUN apt-get -y update &&     apt-get -y install     bison     flex     autotools-dev autoconf automake libtool gettext gawk     gperf antlr3 libantlr3c-dev libconfuse-dev libunistring-dev libsqlite3-dev     libavcodec-dev libavformat-dev libavfilter-dev libswscale-dev libavutil-dev     libasound2-dev libmxml-dev libgcrypt20-dev libavahi-client-dev zlib1g-dev     libevent-dev libplist-dev libsodium-dev libjson-c-dev libwebsockets-dev     libcurl4-openssl-dev avahi-daemon
+ ---> Using cache
+ ---> c87e32b4abec
+Step 28/48 : USER ubuntu
+ ---> Using cache
+ ---> f1d6fedbefe4
+Step 29/48 : COPY --chown=ubuntu:ubuntu forked-daapd.patch ${WORKDIR}/forked-daapd.patch
+ ---> Using cache
+ ---> 7a5518d5fcc7
+Step 30/48 : COPY --chown=ubuntu:ubuntu forked-daapd-gcov.patch ${WORKDIR}/forked-daapd-gcov.patch
+ ---> Using cache
+ ---> f364bfebfab8
+Step 31/48 : env ASAN_OPTIONS='abort_on_error=1:symbolize=0:detect_leaks=0:detect_stack_use_after_return=1:detect_container_overflow=0:poison_array_cookie=0:malloc_fill_byte=0:max_malloc_fill_size=16777216'
+ ---> Using cache
+ ---> d4b91369a95e
+Step 32/48 : RUN cd $WORKDIR &&     git clone https://github.com/ejurgensen/forked-daapd.git &&     cd forked-daapd &&     git checkout 2ca10d9 &&     patch -p1 < $WORKDIR/forked-daapd.patch &&     autoreconf -i &&     CC=$AFLNET/afl-clang-fast CFLAGS="-DSQLITE_CORE" ./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var  --disable-mpd --disable-itunes --disable-lastfm --disable-spotify --disable-verification  --disable-shared --enable-static &&     AFL_USE_ASAN=1 make -C src/ SMARTPL2SQL.c SMARTPL.c DAAP2SQL.c DAAPLexer.c RSPLexer.c RSP2SQL.c &&     AFL_USE_ASAN=1 make clean all $MAKE_OPT
+ ---> Using cache
+ ---> 3d32f3145eaa
+Step 33/48 : RUN cd $WORKDIR &&     git clone https://github.com/ejurgensen/forked-daapd.git forked-daapd-gcov &&     cd forked-daapd-gcov &&     git checkout 2ca10d9 &&     patch -p1 < $WORKDIR/forked-daapd.patch &&     patch -p1 < $WORKDIR/forked-daapd-gcov.patch &&     autoreconf -i &&     CFLAGS="-DSQLITE_CORE -fprofile-arcs -ftest-coverage" LDFLAGS="-fprofile-arcs -ftest-coverage" ./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var  --disable-mpd --disable-itunes --disable-lastfm --disable-spotify --disable-verification  --disable-shared --enable-static &&     make -C src/ SMARTPL2SQL.c SMARTPL.c DAAP2SQL.c DAAPLexer.c RSPLexer.c RSP2SQL.c &&     make clean all $MAKE_OPT
+ ---> Using cache
+ ---> 80f120d4a80a
+Step 34/48 : USER root
+ ---> Using cache
+ ---> 3af181d25d47
+Step 35/48 : RUN touch /home/ubuntu/experiments/forked-daapd.log &&     chown ubuntu.root /home/ubuntu/experiments/forked-daapd.log
+ ---> Using cache
+ ---> 9594b227e008
+Step 36/48 : RUN touch /var/log/forked-daapd.log &&     chown ubuntu.root /var/log/forked-daapd.log
+ ---> Using cache
+ ---> 183857c2151a
+Step 37/48 : RUN touch /var/run/forked-daapd.pid &&     chown ubuntu.root /var/run/forked-daapd.pid
+ ---> Using cache
+ ---> 3f006e597ce9
+Step 38/48 : RUN update-rc.d avahi-daemon defaults
+ ---> Using cache
+ ---> 7a68da444416
+Step 39/48 : RUN mkdir /usr/share/forked-daapd/ &&     cp -R $WORKDIR/forked-daapd/htdocs /usr/share/forked-daapd/htdocs
+ ---> Using cache
+ ---> 75fe2e77a98c
+Step 40/48 : RUN ln -s $WORKDIR/MP3 /tmp/MP3
+ ---> Using cache
+ ---> 6410717b91f6
+Step 41/48 : RUN echo "ALL ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+ ---> Using cache
+ ---> f2200e516735
+Step 42/48 : USER ubuntu
+ ---> Using cache
+ ---> 291e36e24c0d
+Step 43/48 : RUN mkdir ${WORKDIR}/db
+ ---> Using cache
+ ---> e4da84ce7e8b
+Step 44/48 : COPY --chown=ubuntu:ubuntu in-daap ${WORKDIR}/in-daap
+ ---> Using cache
+ ---> 657b8835337e
+Step 45/48 : COPY --chown=ubuntu:ubuntu cov_script.sh ${WORKDIR}/cov_script
+ ---> Using cache
+ ---> 1b1bc2325e8e
+Step 46/48 : COPY --chown=ubuntu:ubuntu run.sh ${WORKDIR}/run
+ ---> Using cache
+ ---> 4349a4e793ab
+Step 47/48 : COPY --chown=ubuntu:ubuntu MP3 ${WORKDIR}/MP3
+ ---> Using cache
+ ---> 7814053657bf
+Step 48/48 : COPY --chown=ubuntu:ubuntu forked-daapd.conf ${WORKDIR}/forked-daapd.conf
+ ---> Using cache
+ ---> b3bea0f7007c
+Successfully built b3bea0f7007c
+Successfully tagged forked-daapd:latest
+DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
+            Install the buildx component to build images with BuildKit:
+            https://docs.docker.com/go/buildx/
+
+Sending build context to Docker daemon  37.84MB
+Step 1/36 : FROM ubuntu:20.04
+ ---> b7bab04fd9aa
+Step 2/36 : ENV DEBIAN_FRONTEND=noninteractive
+ ---> Using cache
+ ---> 3a973c9532a8
+Step 3/36 : RUN apt-get -y update &&     apt-get -y install sudo     apt-utils     build-essential     openssl     clang     graphviz-dev     git     autoconf     libgnutls28-dev     libssl-dev     llvm     python3-pip     nano     net-tools     vim     gdb     netcat     strace     libcap-dev     libpcre2-dev     libpcre2-8-0     libcurl4-openssl-dev     libjson-c-dev     pkg-config     zlib1g-dev     automake libtool m4     wget
+ ---> Using cache
+ ---> 4bf2927c7596
+Step 4/36 : RUN groupadd ubuntu &&     useradd -rm -d /home/ubuntu -s /bin/bash -g ubuntu -G sudo -u 1000 ubuntu -p "$(openssl passwd -1 ubuntu)"
+ ---> Using cache
+ ---> 9247c9b04909
+Step 5/36 : RUN chmod 777 /tmp
+ ---> Using cache
+ ---> bfe541b515db
+Step 6/36 : RUN pip3 install gcovr==4.2
+ ---> Using cache
+ ---> be10b76e0197
+Step 7/36 : USER ubuntu
+ ---> Using cache
+ ---> 8e1c9e119389
+Step 8/36 : WORKDIR /home/ubuntu
+ ---> Using cache
+ ---> 33a371630937
+Step 9/36 : ARG MAKE_OPT
+ ---> Using cache
+ ---> 909cef91de15
+Step 10/36 : COPY --chown=ubuntu:ubuntu aflnet aflnet
+ ---> Using cache
+ ---> 8cb111969116
+Step 11/36 : RUN cd aflnet &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 853b38cf3fa2
+Step 12/36 : COPY --chown=ubuntu:ubuntu chatafl chatafl
+ ---> Using cache
+ ---> a8f2218dd3f2
+Step 13/36 : RUN cd chatafl &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> a74a11275554
+Step 14/36 : COPY --chown=ubuntu:ubuntu chatafl-cl1 chatafl-cl1
+ ---> Using cache
+ ---> d943f04ffb6b
+Step 15/36 : RUN cd chatafl-cl1 &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 7a9b52195390
+Step 16/36 : COPY --chown=ubuntu:ubuntu chatafl-cl2 chatafl-cl2
+ ---> Using cache
+ ---> 3928ee50370b
+Step 17/36 : RUN cd chatafl-cl2 &&     make clean all $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 409126a513d9
+Step 18/36 : COPY --chown=ubuntu:ubuntu chatafl-enhanced chatafl-enhanced
+ ---> Using cache
+ ---> c4238aa0dd72
+Step 19/36 : RUN cd chatafl-enhanced &&     make -f Makefile.plugin clean all CHATAFL_ENHANCED=1 $MAKE_OPT &&     cd llvm_mode && make $MAKE_OPT
+ ---> Using cache
+ ---> 70e86b1d9dc4
+Step 20/36 : ENV WORKDIR="/home/ubuntu/experiments"
+ ---> Using cache
+ ---> d23fb8dba423
+Step 21/36 : ENV AFLNET="/home/ubuntu/aflnet"
+ ---> Using cache
+ ---> da30bdd6d4b2
+Step 22/36 : ENV PATH="${PATH}:${AFLNET}:/home/ubuntu/.local/bin:${WORKDIR}"
+ ---> Using cache
+ ---> 6abb113def07
+Step 23/36 : ENV AFL_PATH="${AFLNET}"
+ ---> Using cache
+ ---> 4e4a560a519d
+Step 24/36 : ENV AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1     AFL_SKIP_CPUFREQ=1     AFL_NO_AFFINITY=1
+ ---> Using cache
+ ---> 218c213b1d02
+Step 25/36 : RUN mkdir $WORKDIR
+ ---> Using cache
+ ---> e642d863563c
+Step 26/36 : COPY --chown=ubuntu:ubuntu gcov.patch ${WORKDIR}/gcov.patch
+ ---> Using cache
+ ---> b434fbc20b03
+Step 27/36 : env ASAN_OPTIONS='abort_on_error=1:symbolize=0:detect_leaks=0:detect_stack_use_after_return=1:detect_container_overflow=0:poison_array_cookie=0:malloc_fill_byte=0:max_malloc_fill_size=16777216'
+ ---> Using cache
+ ---> 8b13b7af6e29
+Step 28/36 : RUN cd $WORKDIR &&     git clone https://git.lighttpd.net/lighttpd/lighttpd1.4.git lighttpd1 &&     cd lighttpd1 &&     git checkout 9f38b63cae3e2 &&     ./autogen.sh &&     CC=afl-clang-fast CXX=afl-clang-fast++ ./configure --enable-static --disable-shared &&     AFL_USE_ASAN=1 make clean all $MAKE_OPT || make all
+ ---> Using cache
+ ---> 39843fcb7523
+Step 29/36 : RUN cd $WORKDIR &&     git clone https://git.lighttpd.net/lighttpd/lighttpd1.4.git lighttpd1-gcov &&     cd lighttpd1-gcov &&     git checkout 9f38b63cae3e2 &&     patch -p1 < ${WORKDIR}/gcov.patch &&     ./autogen.sh &&     CFLAGS="-fprofile-arcs -ftest-coverage" CPPFLAGS="-fprofile-arcs -ftest-coverage" CXXFLAGS="-fprofile-arcs -ftest-coverage" LDFLAGS="-fprofile-arcs -ftest-coverage" ./configure --enable-static --disable-shared &&     make clean all
+ ---> Using cache
+ ---> f744c7f4fd32
+Step 30/36 : COPY --chown=ubuntu:ubuntu in-http ${WORKDIR}/in-http
+ ---> Using cache
+ ---> 169d4967ac80
+Step 31/36 : COPY --chown=ubuntu:ubuntu http.dict ${WORKDIR}/http.dict
+ ---> Using cache
+ ---> 8de1b2c0f6da
+Step 32/36 : COPY --chown=ubuntu:ubuntu cov_script.sh ${WORKDIR}/cov_script
+ ---> Using cache
+ ---> 0bda9f29b5ec
+Step 33/36 : COPY --chown=ubuntu:ubuntu run.sh ${WORKDIR}/run
+ ---> Using cache
+ ---> ea6efbb32c53
+Step 34/36 : COPY --chown=ubuntu:ubuntu inputs ${WORKDIR}/inputs
+ ---> Using cache
+ ---> af85ccaf976d
+Step 35/36 : COPY --chown=ubuntu:ubuntu lighttpd.conf ${WORKDIR}/lighttpd.conf
+ ---> Using cache
+ ---> 597e3390f8f8
+Step 36/36 : RUN cp -rf ${WORKDIR}/inputs/* /tmp/
+ ---> Using cache
+ ---> 26c91e3c0a65
+Successfully built 26c91e3c0a65
+Successfully tagged lighttpd1:latest
+[SUCCESS] Setup completed successfully!
+[INFO] Docker images are ready for fuzzing experiments
+[SUCCESS] Setup completed successfully!

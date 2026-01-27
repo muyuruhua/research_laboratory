@@ -25,8 +25,13 @@ RUN apt-get -y update && \
     libpcre2-dev \
     libpcre2-8-0 \
     libcurl4-openssl-dev \
+    curl \
+    ca-certificates \
+    dnsutils \
+    iputils-ping \
     libjson-c-dev \
-    wget
+    wget \
+    parallel
 
 # Add a new user ubuntu, pass: ubuntu
 RUN groupadd ubuntu && \
@@ -63,9 +68,10 @@ COPY --chown=ubuntu:ubuntu chatafl-cl2 chatafl-cl2
 RUN cd chatafl-cl2 && \
     make clean all $MAKE_OPT && \
     cd llvm_mode && make $MAKE_OPT
+
 COPY --chown=ubuntu:ubuntu chatafl-enhanced chatafl-enhanced
 RUN cd chatafl-enhanced && \
-    make clean all CHATAFL_ENHANCED=1 $MAKE_OPT && \
+    make -f Makefile.plugin clean all CHATAFL_ENHANCED=1 $MAKE_OPT && \
     cd llvm_mode && make $MAKE_OPT
 
 # Set up environment variables for AFLNet
@@ -109,7 +115,7 @@ RUN cd ${WORKDIR} && \
     patch -p1 < ${WORKDIR}/exim-log-bug.patch && \
     cd src; mkdir Local; cp src/EDITME Local/Makefile && \
     cd Local; patch -p1 < ${WORKDIR}/exim.patch; cd .. && \
-    AFL_USE_ASAN=1 make CFLAGS="-DUSE_OPENSSL=1" LDFLAGS+="-lssl -lcrypto" CC=afl-clang-fast clean all install $MAKE_OPT
+    make CFLAGS="-DUSE_OPENSSL=1" LDFLAGS+="-lssl -lcrypto" CC=afl-clang-fast clean all install $MAKE_OPT
 
 # Download and compile Exim for coverage analysis
 RUN cd ${WORKDIR} && \
