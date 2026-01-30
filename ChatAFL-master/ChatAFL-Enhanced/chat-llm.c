@@ -358,16 +358,7 @@ char *chat_with_llm1(char *prompt, char *model, int tries, float temperature)
     {
         url = "https://api.openai.com/v1/chat/completions";
     }
-    
-    // Get API key from environment (security fix: no hardcoded tokens)
-    const char* api_key = get_api_key();
-    if (!api_key) {
-        fprintf(stderr, "[ERROR] API key not found. Set KEY environment variable.\n");
-        return NULL;
-    }
-    
-    char *auth_header = NULL;
-    asprintf(&auth_header, "Authorization: Bearer %s", api_key);
+    char *auth_header = "Authorization: Bearer " OPENAI_TOKEN;
     char *content_header = "Content-Type: application/json";
     char *accept_header = "Accept: application/json";
     char *data = NULL;
@@ -379,19 +370,13 @@ char *chat_with_llm1(char *prompt, char *model, int tries, float temperature)
     {
         asprintf(&data, "{\"model\": \"gpt-3.5-turbo\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
     }
-    // Note: curl_global_init/cleanup called in constructor/destructor, not here
+    curl_global_init(CURL_GLOBAL_DEFAULT);
     do
     {
         struct MemoryStruct chunk;
 
         chunk.memory = malloc(1); /* will be grown as needed by the realloc above */
         chunk.size = 0;           /* no data at this point */
-        
-        // OCP: Defensive check - ensure memory allocation succeeded
-        if (!chunk.memory) {
-            fprintf(stderr, "[ERROR] Failed to allocate memory for response buffer\n");
-            break;  // Exit retry loop on malloc failure
-        }
 
         curl = curl_easy_init();
         if (curl)
@@ -447,55 +432,29 @@ char *chat_with_llm1(char *prompt, char *model, int tries, float temperature)
                 }
                 else
                 {
-                    // OCP: Extract HTTP status code for better debugging
-                    long http_code = 0;
-                    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-                    printf("[DEBUG] Attempt %d/%d failed. Code: %ld\n", 
-                           (5 - tries), 5, http_code);  // Assuming max 5 tries
-                    if (DEBUG_MODE && chunk.memory) {
-                        printf("Error response is: %s\n", chunk.memory);
-                    }
+                    printf("Error response is: %s\n", chunk.memory);
                     sleep(2); // Sleep for a small amount of time to ensure that the service can recover
                 }
                 json_object_put(jobj);
             }
             else
             {
-                fprintf(stderr, "[ERROR] CURL perform failed: %s\n", curl_easy_strerror(res));
+                printf("Error: %s\n", curl_easy_strerror(res));
             }
 
             curl_slist_free_all(headers);
             curl_easy_cleanup(curl);
         }
-        else
-        {
-            // OCP: Handle curl_easy_init failure gracefully
-            fprintf(stderr, "[ERROR] Failed to initialize CURL handle\n");
-            // chunk.memory was allocated but curl failed, must free it
-            if (chunk.memory) {
-                free(chunk.memory);
-                chunk.memory = NULL;  // Prevent double-free
-            }
-            break;  // Exit retry loop on init failure
-        }
 
-        // OCP: Safe memory cleanup - only free if not already freed
-        if (chunk.memory) {
-            free(chunk.memory);
-            chunk.memory = NULL;
-        }
+        free(chunk.memory);
     } while ((res != CURLE_OK || answer == NULL) && (--tries > 0));
 
-    if (auth_header != NULL)
-    {
-        free(auth_header);
-    }
     if (data != NULL)
     {
         free(data);
     }
 
-    // Note: curl_global_cleanup called in destructor, not here
+    curl_global_cleanup();
     return answer;
 }
 
@@ -767,8 +726,6 @@ void extract_message_grammars(char *answers, klist_t(gram) * grammar_list)
 
 int parse_pattern(pcre2_code *replacer, pcre2_match_data *match_data, const char *str, size_t len, char *pattern)
 {
-    size_t pattern_len = strlen(pattern);
-    if (pattern_len + 4 >= 128) return 0; /* Buffer overflow protection */
     strcat(pattern, "(?:");
     // offset == 3;
     int rc = pcre2_match(replacer, str, len, 0, 0, match_data, NULL);
@@ -796,17 +753,13 @@ int parse_pattern(pcre2_code *replacer, pcre2_match_data *match_data, const char
 
     if (rc == 4)
     { // matched the first option - there is a special value
-        size_t current_len = strlen(pattern);
-        size_t add_len1 = ovector[3] - ovector[2];
-        size_t add_len2 = ovector[7] - ovector[6];
-        if (current_len + add_len1 + 5 + add_len2 + 2 >= 128) return 0; /* Buffer overflow protection */
-        strncat(pattern, str + ovector[2], add_len1);
+        strncat(pattern, str + ovector[2], ovector[3] - ovector[2]);
         // offset += ovector[3] - ovector[2];
 
         strcat(pattern, "(.*)");
         // offset += 3;
 
-        strncat(pattern, str + ovector[6], add_len2);
+        strncat(pattern, str + ovector[6], ovector[7] - ovector[6]);
         // offset += ovector[7] - ovector[6];
     }
     else if (rc == 5)
