@@ -1,5 +1,10 @@
+
 # syntax=docker/dockerfile-upstream:master-labs
 FROM ubuntu:18.04
+
+# Copy run.sh and set executable permission
+COPY run.sh /home/ubuntu/experiments/run
+RUN chmod +x /home/ubuntu/experiments/run
 
 RUN apt-get -y update && \
     apt-get -y install sudo \ 
@@ -15,13 +20,15 @@ RUN apt-get -y update && \
     libcap-dev \
     libcurl3
 
+
 # Download and compile AFLNet
 ENV LLVM_CONFIG="llvm-config-6.0"
 
-COPY . /opt/aflnet
-WORKDIR /opt/aflnet
+COPY ./benchmark/subjects/RTSP/Live555/chatafl-enhanced/ /opt/chatafl-enhanced/
+WORKDIR /opt/chatafl-enhanced
 
-RUN make clean all && \
+RUN make clean CHATAFL_ENHANCED=1 && \
+    make CHATAFL_ENHANCED=1 && \
     cd llvm_mode && \
     make
 

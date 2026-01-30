@@ -34,7 +34,12 @@ ifdef CHATAFL_ENHANCED
     LDFLAGS += -L/opt/homebrew/opt/json-c/lib -L/opt/homebrew/opt/pcre2/lib
   endif
   # Linux uses system paths, no extra flags needed
-  ENHANCED_OBJS = verifier.o cegar-refinement.o state-scheduler.o cegar-optimized.o state-graph.o cfg-parser.o module-interface.o
+	ENHANCED_OBJS = verifier.o cegar-refinement.o state-scheduler.o cegar-optimized.o state-graph.o cfg-parser.o module-interface.o \
+		plugin-manager.o plugin-verifier.o plugin-cegar.o plugin-scheduler.o afl-plugin-loader.o
+
+# 自动生成 ENHANCED_OBJS 的编译规则
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
 else
   ENHANCED_OBJS =
 endif
@@ -150,6 +155,10 @@ all_done: test_build
 clean:
 	rm -f $(PROGS) afl-as as afl-g++ *.o *~ a.out core core.[1-9][0-9]* *.stackdump test .test test-instr .test-instr0 .test-instr1 qemu_mode/qemu-2.10.0.tar.bz2 afl-qemu-trace
 	rm -rf out_dir qemu_mode/qemu-2.10.0
+	find . -type f -name '*.o' -delete
+	find . -type f -name '*.so' -delete
+	find . -type f -name '*.a' -delete
+	find . -type f -name '*.d' -delete
 	$(MAKE) -C llvm_mode clean
 	$(MAKE) -C libdislocator clean
 	$(MAKE) -C libtokencap clean

@@ -122,14 +122,14 @@ char* json_escape_string(const char* input) {
     size_t len = strlen(input);
     char* output = calloc(len * 6 + 1, sizeof(char));
     const char* src = input; char* dst = output;
-    while (*src) {
-        if (*src == '"') { strcpy(dst, "\\\""); dst += 2; }
-        else if (*src == '\\') { strcpy(dst, "\\\\"); dst += 2; }
-        else if (*src == '\n') { strcpy(dst, "\\n"); dst += 2; }
-        else if (*src == '\r') { strcpy(dst, "\\r"); dst += 2; }
-        else if ((unsigned char)*src < 32) dst += sprintf(dst, "\\u%04x", (unsigned char)*src);
-        else *dst++ = *src;
-        src++;
+        while (*src) {
+            if (*src == '"') { strcpy(dst, "\\\""); dst += 2; }
+            else if (*src == '\\') { strcpy(dst, "\\\\"); dst += 2; }
+            else if (*src == '\n') { strcpy(dst, "\\n"); dst += 2; }
+            else if (*src == '\r') { strcpy(dst, "\\r"); dst += 2; }
+            else if ((unsigned char)*src < 32) dst += sprintf(dst, "\\u%04x", (unsigned char)*src);
+            else *dst++ = *src;
+            src++;
     }
     *dst = '\0';
     return output;
@@ -235,8 +235,7 @@ static char* unescape_json_string(const char* escaped) {
     
     char* result = unescape_once(escaped);
     if (!result) return NULL;
-    
-    // OCP: Recursively unescape until no escape sequences remain (max 3 iterations)
+
     int max_iterations = 3;  // Prevent infinite loop
     int iteration = 0;
     
@@ -258,93 +257,112 @@ static char* unescape_json_string(const char* escaped) {
     return result;
 }
 
-static size_t write_cb(void* contents, size_t size, size_t nmemb, char** response) {
-    size_t total = size * nmemb;
-    size_t old_len = *response ? strlen(*response) : 0;
-    
-    // OCP: Safe memory reallocation with corruption prevention
-    char* new_res = realloc(*response, old_len + total + 1);
-    if (!new_res) {
-        // Don't free *response here, caller will handle it
-        return 0;
+/* 管理 LLM 响应缓冲区的结构体 */
+struct LLMResponseBuffer {
+    char *data;
+    size_t size;
+};
+
+/* 安全的写入回调函数：处理网络流，防止缓冲区溢出 */
+static size_t safe_write_cb(void *contents, size_t size, size_t nmemb, void *userp) {
+    size_t realsize = size * nmemb;
+    struct LLMResponseBuffer *mem = (struct LLMResponseBuffer *)userp;
+
+    // 分配内存：当前大小 + 新数据大小 + 1 字节结束符
+    char *ptr = realloc(mem->data, mem->size + realsize + 1);
+    if (!ptr) {
+        fprintf(stderr, "[ERROR] Out of memory (realloc failed)\n");
+        return 0; // 返回 0 会使 CURL 报错并停止传输
     }
-    
-    *response = new_res;
-    // Use memcpy instead of strncat to avoid double-scanning
-    if (total > 0) {
-        memcpy(*response + old_len, contents, total);
-        (*response)[old_len + total] = '\0';
-    }
-    return total;
+
+    mem->data = ptr;
+    memcpy(&(mem->data[mem->size]), contents, realsize);
+    mem->size += realsize;
+    mem->data[mem->size] = 0; // 强制以 null 结尾
+
+    return realsize;
 }
 
-char* chat_with_llm(char* prompt, char* model, int tries, float temperature) {
-    if (!get_api_key()) return NULL;
+/* 重构后的 chat_with_llm 函数 */
+char* chat_with_llm(const char* prompt, const char* model, int tries, float temperature) {
+    const char* api_key = get_api_key();
+    if (!api_key) {
+        fprintf(stderr, "[ERROR] KEY environment variable is not set.\n");
+        return NULL;
+    }
+
     CURL* curl = curl_easy_init();
     if (!curl) return NULL;
+
+    // 1. 准备 HTTP 头部
+    struct curl_slist* headers = NULL;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    char auth_header[256];
+    snprintf(auth_header, sizeof(auth_header), "Authorization: Bearer %s", api_key);
+    headers = curl_slist_append(headers, auth_header);
+
+    // 2. 准备 POST 数据
+    char* esc_prompt = json_escape_string(prompt);
+    size_t data_size = strlen(esc_prompt) + 2048;
+    char* post_data = malloc(data_size);
+    snprintf(post_data, data_size, 
+             "{\"model\":\"%s\",\"messages\":[{\"role\":\"user\",\"content\":\"%s\"}],\"temperature\":%.2f}", 
+             model, esc_prompt, temperature);
+
+    char* final_content = NULL;
+    int retry_count = 0;
     if (tries < 1) tries = 1;
 
-    // OCP: Use extensible model name resolver
-    const char* actual_model = resolve_model_name(model);
+    // 3. 执行重试循环
+    while (retry_count < tries) {
+        struct LLMResponseBuffer chunk = { .data = malloc(1), .size = 0 };
+        if (!chunk.data) break;
+        chunk.data[0] = '\0';
 
-    struct curl_slist* headers = curl_slist_append(NULL, "Content-Type: application/json");
-    char auth[256]; 
-    snprintf(auth, sizeof(auth), "Authorization: Bearer %s", get_api_key());
-    headers = curl_slist_append(headers, auth);
-    
-    char* esc_prompt = json_escape_string(prompt);
-    size_t jsize = strlen(esc_prompt) + 2048;
-    char* data = malloc(jsize);
-    
-    snprintf(data, jsize, 
-             "{\"model\":\"%s\",\"messages\":[{\"role\":\"user\",\"content\":\"%s\"}],\"temperature\":%.2f}", 
-             actual_model, esc_prompt, temperature);
-    
-    char* resp = NULL;
-    char* content = NULL;
-    CURLcode res;
-    long http_code = 0;
+        curl_easy_setopt(curl, CURLOPT_URL, "https://free.v36.cm/v1/chat/completions");
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post_data);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, safe_write_cb);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 45L); // 适当放宽超时
 
-    curl_easy_setopt(curl, CURLOPT_URL, "https://free.v36.cm/v1/chat/completions");
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
-    
-    for (int i = 0; i < tries; i++) {
-        if (resp) { free(resp); resp = NULL; }
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
-        res = curl_easy_perform(curl);
+        CURLcode res = curl_easy_perform(curl);
+        long http_code = 0;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-        
+
         if (res == CURLE_OK && http_code == 200) {
-            content = extract_content_from_json(resp);
-            if (content) break; 
-        }
-        if (DEBUG_MODE) {
-            printf("[DEBUG] Attempt %d/%d failed. Code: %ld\n", i + 1, tries, http_code);
-            if (resp && http_code != 200) {
-                printf("[DEBUG] Response: %s\n", resp);
+            // 成功：提取内容
+            final_content = extract_content_from_json(chunk.data);
+            free(chunk.data);
+            if (final_content) break; // 成功解析 JSON 则退出重试
+        } else {
+            // 失败处理
+            if (DEBUG_MODE) {
+                fprintf(stderr, "[DEBUG] Attempt %d/%d failed. HTTP Code: %ld, Curl Code: %d\n", 
+                        retry_count + 1, tries, http_code, res);
+                if (chunk.size > 0 && chunk.data) {
+                    fprintf(stderr, "[DEBUG] Server response fragment: %.100s\n", chunk.data);
+                }
             }
+            free(chunk.data);
+            
+            // 指数退避：第一次等 2s，第二次等 4s，第三次等 8s... 避免被 503 持续封锁
+            unsigned int wait_seconds = (1 << retry_count) + 1;
+            sleep(wait_seconds);
         }
-        // OCP: Use configurable retry delay via environment variable
-        if (i < tries - 1) {
-            sleep(get_retry_delay());
-        }
+        retry_count++;
     }
-    
-    // OCP: Safe cleanup in correct order
+
+    // 4. 资源清理
     curl_easy_cleanup(curl);
     curl_slist_free_all(headers);
-    
     if (esc_prompt) free(esc_prompt);
-    if (data) free(data);
-    if (resp) free(resp);
-    
-    return content;
+    if (post_data) free(post_data);
+
+    return final_content;
 }
 
-char *chat_with_llm1(char *prompt, char *model, int tries, float temperature)
+char *chat_with_llm1(const char *prompt, const char *model, int tries, float temperature)
 {
     CURL *curl;
     CURLcode res = CURLE_OK;
@@ -380,22 +398,19 @@ char *chat_with_llm1(char *prompt, char *model, int tries, float temperature)
         asprintf(&data, "{\"model\": \"gpt-3.5-turbo\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
     }
     // Note: curl_global_init/cleanup called in constructor/destructor, not here
-    do
-    {
+    do {
         struct MemoryStruct chunk;
-
         chunk.memory = malloc(1); /* will be grown as needed by the realloc above */
         chunk.size = 0;           /* no data at this point */
-        
-        // OCP: Defensive check - ensure memory allocation succeeded
+
+        // Defensive check - ensure memory allocation succeeded
         if (!chunk.memory) {
             fprintf(stderr, "[ERROR] Failed to allocate memory for response buffer\n");
-            break;  // Exit retry loop on malloc failure
+            break;
         }
 
         curl = curl_easy_init();
-        if (curl)
-        {
+        if (curl) {
             struct curl_slist *headers = NULL;
             headers = curl_slist_append(headers, auth_header);
             headers = curl_slist_append(headers, content_header);
@@ -409,97 +424,73 @@ char *chat_with_llm1(char *prompt, char *model, int tries, float temperature)
 
             res = curl_easy_perform(curl);
 
-            if (res == CURLE_OK)
-            {
+            if (res == CURLE_OK) {
                 json_object *jobj = json_tokener_parse(chunk.memory);
-
-                // Check if the "choices" key exists
-                if (json_object_object_get_ex(jobj, "choices", NULL))
-                {
+                if (json_object_object_get_ex(jobj, "choices", NULL)) {
                     json_object *choices = json_object_object_get(jobj, "choices");
                     json_object *first_choice = json_object_array_get_idx(choices, 0);
                     const char *data;
-
-                    // The answer begins with a newline character, so we remove it
-                    if (strcmp(model, "instruct") == 0)
-                    {
+                    if (strcmp(model, "instruct") == 0) {
                         json_object *jobj4 = json_object_object_get(first_choice, "text");
                         data = json_object_get_string(jobj4);
-                    }
-                    else
-                    {
+                    } else {
                         json_object *jobj4 = json_object_object_get(first_choice, "message");
                         json_object *jobj5 = json_object_object_get(jobj4, "content");
                         data = json_object_get_string(jobj5);
                     }
-                    if (data[0] == '\n')
+                    if (data && data[0] == '\n')
                         data++;
-                    // OCP: Unescape LLM response (extend output without modifying extraction logic)
-                    char* raw_answer = strdup(data);
+                    char* raw_answer = strdup(data ? data : "");
                     answer = unescape_json_string(raw_answer);
                     if (answer == raw_answer) {
-                        // unescape didn't allocate, use original
                         answer = raw_answer;
                     } else {
-                        // unescape allocated new memory, free original
                         free(raw_answer);
+                        raw_answer = NULL;
                     }
-                }
-                else
-                {
-                    // OCP: Extract HTTP status code for better debugging
+                } else {
                     long http_code = 0;
                     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-                    printf("[DEBUG] Attempt %d/%d failed. Code: %ld\n", 
-                           (5 - tries), 5, http_code);  // Assuming max 5 tries
+                    printf("[DEBUG] Attempt %d/%d failed. Code: %ld\n", (5 - tries), 5, http_code);
                     if (DEBUG_MODE && chunk.memory) {
                         printf("Error response is: %s\n", chunk.memory);
                     }
-                    sleep(2); // Sleep for a small amount of time to ensure that the service can recover
+                    sleep(2);
                 }
                 json_object_put(jobj);
-            }
-            else
-            {
+            } else {
                 fprintf(stderr, "[ERROR] CURL perform failed: %s\n", curl_easy_strerror(res));
             }
-
             curl_slist_free_all(headers);
             curl_easy_cleanup(curl);
-        }
-        else
-        {
-            // OCP: Handle curl_easy_init failure gracefully
+        } else {
             fprintf(stderr, "[ERROR] Failed to initialize CURL handle\n");
-            // chunk.memory was allocated but curl failed, must free it
             if (chunk.memory) {
                 free(chunk.memory);
-                chunk.memory = NULL;  // Prevent double-free
+                chunk.memory = NULL;
             }
-            break;  // Exit retry loop on init failure
+            break;
         }
-
-        // OCP: Safe memory cleanup - only free if not already freed
         if (chunk.memory) {
             free(chunk.memory);
             chunk.memory = NULL;
         }
     } while ((res != CURLE_OK || answer == NULL) && (--tries > 0));
 
-    if (auth_header != NULL)
-    {
+    if (auth_header != NULL) {
         free(auth_header);
+        auth_header = NULL;
     }
-    if (data != NULL)
-    {
+    if (data != NULL) {
         free(data);
+        data = NULL;
     }
 
     // Note: curl_global_cleanup called in destructor, not here
     return answer;
 }
 
-char *construct_prompt_stall(char *protocol_name, char *examples, char *history)
+char *construct_prompt_stall(const char *protocol_name, const char *examples, const char *history)
 {
     char *template = "In the %s protocol, the communication history between the %s client and the %s server is as follows."
                      "The next proper client request that can affect the server's state are:\\n\\n"
@@ -517,7 +508,7 @@ char *construct_prompt_stall(char *protocol_name, char *examples, char *history)
     return final_prompt;
 }
 
-char *construct_prompt_for_templates(char *protocol_name, char **final_msg)
+char *construct_prompt_for_templates(const char *protocol_name, char **final_msg)
 {
     // Give one example for learning formats
     char *prompt_rtsp_example = "For the RTSP protocol, the DESCRIBE client request template is:\\n"
@@ -546,16 +537,14 @@ char *construct_prompt_for_templates(char *protocol_name, char **final_msg)
     return prompt_grammars;
 }
 
-char *construct_prompt_for_remaining_templates(char *protocol_name, char *first_question, char *first_answer)
+char *construct_prompt_for_remaining_templates(const char *protocol_name, const char *templates_prompt, const char *templates_answer)
 {
     char *second_question = NULL;
     asprintf(&second_question, "For the %s protocol, other templates of client requests are:", protocol_name);
 
-    json_object *answer_str = json_object_new_string(first_answer);
-    // printf("The First Question\n%s\n\n", first_question);
-    // printf("The First Answer\n%s\n\n", first_answer);
-    // printf("The Second Question\n%s\n\n", second_question);
-    const char *answer_str_escaped = json_object_to_json_string(answer_str);
+    json_object *answer_str = json_object_new_string(templates_answer);
+    const char *tmp_answer_escaped = json_object_to_json_string(answer_str);
+    char *answer_str_escaped = tmp_answer_escaped ? strdup(tmp_answer_escaped) : NULL;
 
     char *prompt = NULL;
 
@@ -566,9 +555,10 @@ char *construct_prompt_for_remaining_templates(char *protocol_name, char *first_
              "{\"role\": \"assistant\", \"content\": %s },"
              "{\"role\": \"user\", \"content\": \"%s\"}"
              "]",
-             first_question, answer_str_escaped, second_question);
+             templates_prompt, answer_str_escaped, second_question);
 
     json_object_put(answer_str);
+    if (answer_str_escaped) free(answer_str_escaped);
     free(second_question);
 
     return prompt;
@@ -647,11 +637,11 @@ char *format_request_message(char *message)
         max_len++;
     }
     res[res_len++] = '\0';
-    free(message);
+    // Do not free message here; caller is responsible for freeing if needed
     return res;
 }
 
-char *construct_prompt_for_protocol_message_types(char *protocol_name)
+char *construct_prompt_for_protocol_message_types(const char *protocol_name)
 {
     /***
      * Prompt to ask the protocol states as follow:
@@ -699,10 +689,12 @@ char *construct_prompt_for_requests_to_states(const char *protocol_name,
 
     // Transfer formats of example_requests
     json_object *example_requests_json = json_object_new_string(example_requests);
-    const char *example_requests_json_str = json_object_to_json_string(example_requests_json);
+    const char *tmp_example_requests_json_str = json_object_to_json_string(example_requests_json);
+    char *example_requests_json_str = tmp_example_requests_json_str ? strdup(tmp_example_requests_json_str) : NULL;
 
     json_object *protocol_state_json = json_object_new_string(protocol_state);
-    const char *protocol_state_json_str = json_object_to_json_string(protocol_state_json);
+    const char *tmp_protocol_state_json_str = json_object_to_json_string(protocol_state_json);
+    char *protocol_state_json_str = tmp_protocol_state_json_str ? strdup(tmp_protocol_state_json_str) : NULL;
 
     char *prompt = NULL;
 
@@ -724,51 +716,168 @@ char *construct_prompt_for_requests_to_states(const char *protocol_name,
 
     json_object_put(protocol_state_json);
     json_object_put(example_requests_json);
+    if (example_requests_json_str) free(example_requests_json_str);
+    if (protocol_state_json_str) free(protocol_state_json_str);
 
     return prompt;
 }
 
-void extract_message_grammars(char *answers, klist_t(gram) * grammar_list)
+
+void extract_message_grammars(const char *answers, klist_t(gram) *grammar_list)
 {
+    if (!answers) return;
 
-    char *ptr = answers;
+    /* Debug: print raw response (truncated) */
+    if (DEBUG_MODE) {
+        fprintf(stderr, "[DEBUG] LLM raw response (first 2048 chars):\n%.*s\n", 2048, answers);
+    }
+
+    const char *ptr = answers;
     int len = strlen(answers);
+    int found_grammar = 0;
 
-    while (ptr < answers + len)
-    {
-        char *start = strchr(ptr, '[');
-        if (start == NULL)
-            break;
-        char *end = strchr(start, ']');
-        if (end == NULL)
-            break;
+    /* Accept either JSON arrays or objects that contain arrays. Also be resilient
+       to Markdown fences and multi-layer escaping from LLMs. */
+    while (ptr < answers + len) {
+        /* Find next potential opening bracket or brace */
+        char *start = NULL;
+        char *s1 = strchr(ptr, '[');
+        char *s2 = strchr(ptr, '{');
+        if (s1 && s2) start = (s1 < s2) ? s1 : s2;
+        else if (s1) start = s1;
+        else if (s2) start = s2;
+        else break;
+
+        /* Only allow if the bracket/brace is reasonably at line start or after a label (e.g., "INVITE: [") */
+        char *line_head = start;
+        while (line_head > answers && *(line_head - 1) != '\n' && *(line_head - 1) != '\r') line_head--;
+        char *prev = start;
+        while (prev > line_head && isspace((unsigned char)*(prev - 1))) prev--;
+        int accept_start = 0;
+        if (prev == line_head) accept_start = 1;
+        else {
+            char nonws = *(prev - 1);
+            if (nonws == ':' || nonws == '\n' || nonws == '\r') accept_start = 1;
+        }
+        if (!accept_start) { ptr = start + 1; continue; }
+
+        /* Find matching closing bracket/brace, respecting strings and escapes */
+        char open_ch = *start;
+        char close_ch = (open_ch == '{') ? '}' : ']';
+        int depth = 0;
+        int in_string = 0;
+        char *end = NULL;
+        for (char *p = start; p < answers + len; ++p) {
+            if (*p == '"' && (p == start || *(p-1) != '\\')) in_string = !in_string;
+            if (!in_string) {
+                if (*p == open_ch) depth++;
+                else if (*p == close_ch) depth--;
+                if (depth == 0) { end = p; break; }
+            }
+        }
+        if (!end) break;
+
         int count = end - start + 1;
         char *temp = (char *)ck_alloc(count + 1);
+        if (!temp) {
+            fprintf(stderr, "[ERROR] Memory allocation failed in extract_message_grammars\n");
+            break;
+        }
         strncpy(temp, start, count);
         temp[count] = '\0';
         ptr = end + 1;
 
-        // conver temp to json object and save it to the list
-        json_object *jobj = json_tokener_parse(temp);
-        // OCP: Validate JSON parsing - skip invalid entries
-        if (jobj != NULL && json_object_get_type(jobj) == json_type_array) {
-            *kl_pushp(gram, grammar_list) = jobj;
-        } else {
-            if (jobj) json_object_put(jobj);  // Free invalid object
-            fprintf(stderr, "[WARNING] Skipping invalid JSON grammar: %s\n", temp);
+        /* Remove surrounding Markdown code fences or inline backticks if present */
+        char *work = temp;
+        /* Trim leading whitespace */
+        while (*work && isspace((unsigned char)*work)) work++;
+        /* Strip triple-backtick fences */
+        if (strncmp(work, "```", 3) == 0) {
+            char *fend = strstr(work + 3, "```");
+            if (fend) {
+                /* move inner content to beginning of buffer */
+                size_t inner_len = (size_t)(fend - (work + 3));
+                memmove(work, work + 3, inner_len);
+                work[inner_len] = '\0';
+            }
         }
-        
-        // OCP: Memory safety - free temporary buffer after use
-        ck_free(temp);
+        /* Strip single backticks wrapping */
+        size_t wlen = strlen(work);
+        if (wlen >= 2 && work[0] == '`' && work[wlen - 1] == '`') {
+            work[wlen - 1] = '\0';
+            work++;
+        }
 
-        // printf("%s\n", temp);
+        /* Try to unescape and parse. LLMs often double-escape JSON, so use
+           our recursive unescape helper which already limits iterations. */
+        char *unesc = unescape_json_string(work);
+        int parsed_any = 0;
+        json_object *jobj = NULL;
+        if (unesc) {
+            jobj = json_tokener_parse(unesc);
+        }
+
+        /* If initial parse failed, try parsing the raw snippet as-is (sometimes
+           it is already valid JSON), or try the original temp after trimming. */
+        if (!jobj) {
+            jobj = json_tokener_parse(work);
+        }
+
+        if (jobj) {
+            /* If array, accept it. If object, look for any array-valued fields
+               that likely contain grammars (be forgiving). */
+            enum json_type t = json_object_get_type(jobj);
+            if (t == json_type_array) {
+                *kl_pushp(gram, grammar_list) = jobj;
+                parsed_any = 1;
+                found_grammar = 1;
+            } else if (t == json_type_object) {
+                /* Search for arrays inside the object and push each array found */
+                json_object_object_foreach(jobj, key, val) {
+                    if (json_object_get_type(val) == json_type_array) {
+                        /* bump refcount and push */
+                        json_object_get(val);
+                        *kl_pushp(gram, grammar_list) = val;
+                        parsed_any = 1;
+                        found_grammar = 1;
+                    }
+                }
+                /* If we didn't find array fields, free the object */
+                if (!parsed_any) {
+                    json_object_put(jobj);
+                    jobj = NULL;
+                }
+            } else {
+                /* Not useful JSON; drop it */
+                json_object_put(jobj);
+                jobj = NULL;
+            }
+        }
+
+        if (!parsed_any) {
+            if (DEBUG_MODE) {
+                fprintf(stderr, "[DEBUG] Failed to parse candidate grammar (truncated): %.256s\n", work);
+            }
+        }
+
+        if (unesc) free(unesc);
+        ck_free(temp);
+    }
+
+    if (!found_grammar) {
+        /* Reduce noise: include a short debug hint when in DEBUG_MODE */
+        if (DEBUG_MODE) {
+            fprintf(stderr, "[WARNING] No valid grammars extracted from LLM response. Consider disabling Markdown or returning raw JSON arrays.\n");
+        } else {
+            fprintf(stderr, "[WARNING] No valid grammars extracted from LLM response.\n");
+        }
     }
 }
 
 int parse_pattern(pcre2_code *replacer, pcre2_match_data *match_data, const char *str, size_t len, char *pattern)
 {
     size_t pattern_len = strlen(pattern);
-    if (pattern_len + 4 >= 128) return 0; /* Buffer overflow protection */
+    if (pattern_len + 4 >= 4096) return 0; /* Buffer overflow protection (increased) */
     strcat(pattern, "(?:");
     // offset == 3;
     int rc = pcre2_match(replacer, str, len, 0, 0, match_data, NULL);
@@ -799,7 +908,7 @@ int parse_pattern(pcre2_code *replacer, pcre2_match_data *match_data, const char
         size_t current_len = strlen(pattern);
         size_t add_len1 = ovector[3] - ovector[2];
         size_t add_len2 = ovector[7] - ovector[6];
-        if (current_len + add_len1 + 5 + add_len2 + 2 >= 128) return 0; /* Buffer overflow protection */
+        if (current_len + add_len1 + 5 + add_len2 + 2 >= 4096) return 0; /* Buffer overflow protection (increased) */
         strncat(pattern, str + ovector[2], add_len1);
         // offset += ovector[3] - ovector[2];
 
@@ -829,8 +938,8 @@ char *extract_message_pattern(const char *header_str, khash_t(field_table) * fie
 {
     int errornumber;
     size_t erroroffset;
-    char header_pattern[128] = {0};
-    char fields_pattern[1024] = {0};
+    char header_pattern[4096] = {0};
+    char fields_pattern[8192] = {0};
     pcre2_code *replacer = pcre2_compile("(?:(.*)(?:<<(.*)>>)(.*))|(.+)", PCRE2_ZERO_TERMINATED, PCRE2_DOTALL, &errornumber, &erroroffset, NULL);
     pcre2_match_data *match_data = pcre2_match_data_create_from_pattern(replacer, NULL);
     char *message_type = NULL;
@@ -886,15 +995,23 @@ char *extract_message_pattern(const char *header_str, khash_t(field_table) * fie
         }
 
         json_object *field_v = json_object_new_string(kh_key(field_table, field_t_iter));
-        const char *str = json_object_to_json_string(field_v);
+        const char *tmp_str = json_object_to_json_string(field_v);
+        char *strdup_str = tmp_str ? strdup(tmp_str) : NULL;
         // We use the string in such an escaped format for easier debugging as the regex library supports parsing it properly
         // The string contains quotations so they are ignored
-        str++;
-        size_t len = strlen(str) - 1;
-        int matched = parse_pattern(replacer, match_data, str, len, fields_pattern);
-        json_object_put(field_v);
-        if (!matched)
-        {
+        if (strdup_str) {
+            char *str = strdup_str + 1;
+            size_t len = strlen(str) - 1;
+            int matched = parse_pattern(replacer, match_data, str, len, fields_pattern);
+            json_object_put(field_v);
+            free(strdup_str);
+            if (!matched)
+            {
+                patterns[0] = NULL;
+                return NULL;
+            }
+        } else {
+            json_object_put(field_v);
             patterns[0] = NULL;
             return NULL;
         }
@@ -1240,18 +1357,18 @@ khash_t(strSet) * duplicate_hash(khash_t(strSet) * set)
 //         return newCombinations;
 //     }
 // }
-void make_combination(khash_t(strSet)* sequence, char** data , message_set_list* res,khiter_t st, khiter_t end, int index, int size);
+void make_combination(khash_t(strSet)* sequence, const char** data , message_set_list* res,khiter_t st, khiter_t end, int index, int size);
 
 message_set_list message_combinations(khash_t(strSet)* sequence, int size)
 {
     message_set_list res;
     kv_init(res);
-    char* data[size];
+    const char* data[size];
     make_combination(sequence,data, &res, kh_begin(sequence), kh_end(sequence), 0, size);
     return res;
 }
 
-void make_combination(khash_t(strSet)* sequence, char** data , message_set_list* res,khiter_t st, khiter_t end,
+void make_combination(khash_t(strSet)* sequence, const char** data , message_set_list* res,khiter_t st, khiter_t end,
                      int index, int size)
 {
 

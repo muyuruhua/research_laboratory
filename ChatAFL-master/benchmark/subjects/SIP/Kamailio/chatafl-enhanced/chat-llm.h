@@ -67,16 +67,15 @@ typedef kvec_t(khash_t(strSet)*) message_set_list;
 KHASH_MAP_INIT_STR(strMap, int)
 KHASH_MAP_INIT_STR(field_table, int);
 KHASH_INIT(consistency_table, const char *, khash_t(field_table) *, 1, kh_str_hash_func, kh_str_hash_equal);
-
-char *chat_with_llm(char *prompt, char *model, int tries, float temperature);
-char *chat_with_llm1(char *prompt, char *model, int tries, float temperature);
-char *construct_prompt_for_templates(char *protocol_name, char **final_msg);
-char *construct_prompt_for_remaining_templates(char *protocol_name, char *templates_prompt, char *templates_answer);
-char *construct_prompt_for_protocol_message_types(char *protocol_name);
+char *chat_with_llm(const char *prompt, const char *model, int tries, float temperature);
+char *chat_with_llm1(const char *prompt, const char *model, int tries, float temperature);
+char *construct_prompt_for_templates(const char *protocol_name, char **final_msg);
+char *construct_prompt_for_remaining_templates(const char *protocol_name, const char *templates_prompt, const char *templates_answer);
+char *construct_prompt_for_protocol_message_types(const char *protocol_name);
 char *construct_prompt_for_requests_to_states(const char *protocol_name, const char *protocol_state, const char *example_requests);
-char *construct_prompt_stall(char *protocol_name, char *examples, char *history);
+char *construct_prompt_stall(const char *protocol_name, const char *examples, const char *history);
 
-void extract_message_grammars(char *answers, klist_t(gram) * grammar_set);
+void extract_message_grammars(const char *answers, klist_t(gram) * grammar_set);
 char *extract_message_pattern(const char *header_str,
                                khash_t(field_table) * field_table,
                                pcre2_code **patterns,

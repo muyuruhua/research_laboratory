@@ -21,7 +21,7 @@ ENV LLVM_CONFIG="llvm-config-6.0"
 COPY . /opt/aflnet
 WORKDIR /opt/aflnet
 
-RUN make clean all && \
+RUN make clean all CHATAFL_ENHANCED=1 && \
     cd llvm_mode && \
     make
 
@@ -29,5 +29,12 @@ RUN make clean all && \
 ENV AFLNET="/opt/aflnet"
 ENV PATH="${PATH}:${AFLNET}"
 ENV AFL_PATH="${AFLNET}"
+
 ENV AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
     AFL_SKIP_CPUFREQ=1
+
+
+
+# Copy run.sh and set executable permission
+COPY run.sh /home/ubuntu/experiments/run
+RUN chmod +x /home/ubuntu/experiments/run

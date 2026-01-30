@@ -34,7 +34,12 @@ ifdef CHATAFL_ENHANCED
     LDFLAGS += -L/opt/homebrew/opt/json-c/lib -L/opt/homebrew/opt/pcre2/lib
   endif
   # Linux uses system paths, no extra flags needed
-  ENHANCED_OBJS = verifier.o cegar-refinement.o state-scheduler.o cegar-optimized.o state-graph.o cfg-parser.o module-interface.o
+	ENHANCED_OBJS = verifier.o cegar-refinement.o state-scheduler.o cegar-optimized.o state-graph.o cfg-parser.o module-interface.o \
+		plugin-manager.o plugin-verifier.o plugin-cegar.o plugin-scheduler.o afl-plugin-loader.o
+
+# 自动生成 ENHANCED_OBJS 的编译规则
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
 else
   ENHANCED_OBJS =
 endif
