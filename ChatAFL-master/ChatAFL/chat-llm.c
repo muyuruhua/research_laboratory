@@ -104,7 +104,7 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
                     const char *data;
 
                     // The answer begins with a newline character, so we remove it
-                    if (strcmp(model, "instruct") == 0)
+                    if (strcmp(model, "gpt-4o") == 0)
                     {
                         json_object *jobj4 = json_object_object_get(first_choice, "text");
                         data = json_object_get_string(jobj4);
