@@ -12,8 +12,7 @@ We give at most 400 for the examples and 1300 for the stall prompt
 Similarly 1700 is for the example request in the seed enrichment
 */
 
-/* API Token 应通过环境变量 KEY 提供，不使用硬编码 */
-/* 已移除硬编码token以避免安全风险 */
+#define OPENAI_TOKEN "1"
 
 #define MAX_PROMPT_LENGTH 2048
 #define EXAMPLES_PROMPT_LENGTH 400
@@ -43,9 +42,6 @@ Similarly 1700 is for the example request in the seed enrichment
 #define PCRE2_CODE_UNIT_WIDTH 8 // Characters are 8 bits
 #include <pcre2.h>
 
-// Security: API key must be provided via KEY environment variable
-// Do NOT hardcode API keys in source code
-
 // Init KLIST with JSON object
 #define __grammar_t_free(x)
 #define __rang_t_free(x)
@@ -69,7 +65,6 @@ KHASH_MAP_INIT_STR(field_table, int);
 KHASH_INIT(consistency_table, const char *, khash_t(field_table) *, 1, kh_str_hash_func, kh_str_hash_equal);
 
 char *chat_with_llm(char *prompt, char *model, int tries, float temperature);
-char *chat_with_llm1(char *prompt, char *model, int tries, float temperature);
 char *construct_prompt_for_templates(char *protocol_name, char **final_msg);
 char *construct_prompt_for_remaining_templates(char *protocol_name, char *templates_prompt, char *templates_answer);
 char *construct_prompt_for_protocol_message_types(char *protocol_name);
