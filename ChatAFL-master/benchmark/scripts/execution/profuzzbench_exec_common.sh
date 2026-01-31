@@ -18,14 +18,7 @@ cids=()
 
 #create one container for each run
 for i in $(seq 1 $RUNS); do
-  # OCP: Pass KEY environment variable for LLM-based fuzzers (OpenAI API key)
-  # This allows chatafl-enhanced to access the API key without code modification
-  KEY_ENV_FLAG=""
-  if [ -n "$KEY" ]; then
-    KEY_ENV_FLAG="-e KEY=$KEY"
-  fi
-  
-  id=$(docker run --cpus=1 $KEY_ENV_FLAG -d -it $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
+  id=$(docker run --cpus=1 -d -it $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   cids+=(${id::12}) #store only the first 12 characters of a container ID
 done
 

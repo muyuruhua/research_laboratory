@@ -1,0 +1,94 @@
+#!/bin/bash
+
+FUZZER=$1     #fuzzer name (e.g., aflnet) -- this name must match the name of the fuzzer folder inside the Docker container
+OUTDIR=$2     #name of the output folder
+OPTIONS=$3    #all configured options -- to make it flexible, we only fix some options (e.g., -i, -o, -N) in this script
+TIMEOUT=$4    #time for fuzzing
+SKIPCOUNT=$5  #used for calculating cov over time. e.g., SKIPCOUNT=5 means we run gcovr after every 5 test cases
+
+strstr() {
+  [ "${1#*$2*}" = "$1" ] && return 1
+  return 0
+}
+
+#Commands for afl-based fuzzers (e.g., aflnet, aflnwe)
+if $(strstr $FUZZER "afl") || $(strstr $FUZZER "llm"); then
+
+  # Run fuzzer-specific commands (if any)
+  if [ -e ${WORKDIR}/run-${FUZZER} ]; then
+    source ${WORKDIR}/run-${FUZZER}
+  fi
+
+  TARGET_DIR=${TARGET_DIR:-"bftpd"}
+  INPUTS=${INPUTS-${WORKDIR}"/in-ftp"}
+
+  #Step-1. Do Fuzzing
+  #Move to fuzzing folder
+  cd $WORKDIR/${TARGET_DIR}
+  # Auto-enable plugin for chatafl-enhanced (OCP: smart auto-detection)
+  # Automatically loads plugin if .so file exists, skips if not
+  # To force disable: export AFL_DISABLE_PLUGIN=1
+  PLUGIN_ARG=""
+  if [[ "$FUZZER" == "chatafl-enhanced" ]] && [[ "${AFL_DISABLE_PLUGIN:-0}" != "1" ]]; then
+    DEFAULT_PLUGIN="chatafl-deep-integration.so"
+    PLUGIN_FILE="${AFL_PLUGIN:-$DEFAULT_PLUGIN}"
+    if [ -n "$PLUGIN_FILE" ] && [ -f "/home/ubuntu/${FUZZER}/${PLUGIN_FILE}" ]; then
+      PLUGIN_ARG="-L /home/ubuntu/${FUZZER}/${PLUGIN_FILE}"
+    fi
+  fi
+  
+  timeout -k 2s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER}/afl-fuzz -d -i ${INPUTS} -o $OUTDIR -x ${WORKDIR}/ftp.dict -N tcp://127.0.0.1/21 $OPTIONS $PLUGIN_ARG -c ${WORKDIR}/clean ./bftpd -D -c ${WORKDIR}/basic.conf
+
+  STATUS=$?
+
+  #Step-2. Collect code coverage over time
+  #Move to gcov folder
+  cd $WORKDIR/bftpd-gcov
+
+  # OCP-compliant parallel coverage collection strategy
+  # Detects and uses parallel_cov_wrapper.sh if available and PARALLEL_MODE != 0
+  # Falls back to original cov_script for backward compatibility
+  PARALLEL_MODE=${PARALLEL_MODE:-1}  # Default: enable parallel if available
+  
+  # Select coverage script implementation (Strategy Pattern)
+  if [ "$PARALLEL_MODE" = "1" ] && [ -x "./parallel_cov_wrapper.sh" ] && command -v parallel &> /dev/null; then
+    COV_SCRIPT="./parallel_cov_wrapper.sh"
+    echo "[INFO] Using parallel coverage collection (GNU parallel detected)"
+  else
+    COV_SCRIPT="cov_script"
+    if [ "$PARALLEL_MODE" = "1" ]; then
+      echo "[INFO] Parallel mode requested but not available, using serial mode"
+    fi
+  fi
+
+
+  #The last argument passed to $COV_SCRIPT should be 0 if the fuzzer is afl/nwe and it should be 1 if the fuzzer is based on aflnet
+  #0: the test case is a concatenated message sequence -- there is no message boundary
+  #1: the test case is a structured file keeping several request messages
+  if [ $FUZZER = "aflnwe" ]; then
+    $COV_SCRIPT ${WORKDIR}/${TARGET_DIR}/${OUTDIR}/ 21 ${SKIPCOUNT} ${WORKDIR}/${TARGET_DIR}/${OUTDIR}/cov_over_time.csv 0
+  else
+    $COV_SCRIPT ${WORKDIR}/${TARGET_DIR}/${OUTDIR}/ 21 ${SKIPCOUNT} ${WORKDIR}/${TARGET_DIR}/${OUTDIR}/cov_over_time.csv 1
+  fi
+
+  # Coverage collection with timeout protection (OCP: configurable via GCOVR_TIMEOUT)
+  GCOVR_TIMEOUT=${GCOVR_TIMEOUT:-300}  # Default 5 minutes timeout
+  SKIP_GCOVR_HTML=${SKIP_GCOVR_HTML:-0}  # Set to 1 to skip HTML generation
+  
+  if [ "$SKIP_GCOVR_HTML" = "0" ]; then
+    timeout -k 10s $GCOVR_TIMEOUT gcovr -r . --html --html-details -o index.html 2>/dev/null || \
+      echo "[WARNING] gcovr HTML generation failed or timed out, continuing..."
+    
+    if [ -f "index.html" ]; then
+      mkdir ${WORKDIR}/${TARGET_DIR}/${OUTDIR}/cov_html/
+      cp *.html ${WORKDIR}/${TARGET_DIR}/${OUTDIR}/cov_html/ 2>/dev/null || true
+    fi
+  fi
+
+  #Step-3. Save the result to the ${WORKDIR} folder
+  #Tar all results to a file
+  cd ${WORKDIR}/${TARGET_DIR}
+  tar -zcvf ${WORKDIR}/${OUTDIR}.tar.gz ${OUTDIR}
+
+  exit $STATUS
+fi
