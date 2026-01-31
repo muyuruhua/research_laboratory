@@ -1,73 +1,190 @@
-#define _GNU_SOURCE
+#define _GNU_SOURCE // asprintf
 #include <stdio.h>
-#include <stdlib.h>
+#include <curl/curl.h>
 #include <string.h>
+#include <ctype.h>
+#include <dirent.h>
 #include <unistd.h>
+#include <json-c/json.h>
 
-// 引入 chat-llm 头文件（根据实际路径调整）
-#include "chat-llm.h"
+//#include "chat-llm.h"
+#include "alloc-inl.h"
+#include "hash.h"
 
-// 编译时需要链接的库：-lcurl -ljson-c -lpcre2-8
-// 编译命令示例：
-// gcc testLLM1.c ChatAFL-master/ChatAFL/chat-llm.c -o testLLM1 -lcurl -ljson-c -lpcre2-8
-//gcc -o testLLM1 testLLM1.c chat-llm.c -lcurl -ljson-c -lpcre2-8 -Wall -g && ./testLLM1
+// -lcurl -ljson-c -lpcre2-8
+// apt install libcurl4-openssl-dev libjson-c-dev libpcre2-dev libpcre2-8-0
 
-// int main(int argc, char *argv[]) {
-//     // 1. 定义测试用的 Prompt（支持两种模式：instruct / chat）
-//     // 模式1：instruct 模式（对应 gpt-3.5-turbo-instruct）
-//     char *instruct_prompt = "请解释什么是协议模糊测试？";
-    
-//     // 模式2：chat 模式（对应 gpt-3.5-turbo，需符合 OpenAI Chat 消息格式）
-//     char *chat_prompt = "[{\"role\":\"user\",\"content\":\"请解释什么是协议模糊测试？\"}]";
+#define MAX_TOKENS 2048
+#define CONFIDENT_TIMES 3
 
-//     // 2. 调用 chat_with_llm 函数
-//     // 参数说明：
-//     // - prompt: 提示词
-//     // - model: 模型类型（"instruct" 或其他值表示 chat 模式）
-//     // - tries: 重试次数
-//     // - temperature: 生成温度（0.0~1.0，值越高越随机）
-//     char *instruct_result = chat_with_llm(instruct_prompt, "gpt-4o-mini", 3, 0.7f);
-//     char *chat_result = chat_with_llm(chat_prompt, "gpt-4o-mini", 3, 0.7f);
+/*
+大模型调用示例
+导入大模型key：export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS"
+执行命令：gcc -I/opt/homebrew/include -L/opt/homebrew/lib -o testLLM1 testLLM1.c -lcurl -ljson-c -Wall -g && ./testLLM1
+*/
 
-//     // 3. 输出结果
-//     // printf("===== Instruct 模式响应 =====\n");
-//     // if (instruct_result) {
-//     //     printf("%s\n", instruct_result);
-//     //     free(instruct_result); // 释放返回值内存
-//     // } else {
-//     //     printf("调用失败（instruct 模式）\n");
-//     // }
+struct MemoryStruct
+{
+    char *memory;
+    size_t size;
+};
 
-//     printf("\n===== Chat 模式响应 =====\n");
-//     if (chat_result) {
-//         printf("%s\n", chat_result);
-//         free(chat_result); // 释放返回值内存
-//     } else {
-//         printf("调用失败（chat 模式）\n");
-//     }
+static size_t chat_with_llm_helper(void *contents, size_t size, size_t nmemb, void *userp)
+{
+    size_t realsize = size * nmemb;
+    struct MemoryStruct *mem = (struct MemoryStruct *)userp;
 
-//     return 0;
-// }
+    mem->memory = realloc(mem->memory, mem->size + realsize + 1);
+    if (mem->memory == NULL)
+    {
+        /* out of memory! */
+        printf("not enough memory (realloc returned NULL)\n");
+        return 0;
+    }
 
-// 示例使用
+    memcpy(&(mem->memory[mem->size]), contents, realsize);
+    mem->size += realsize;
+    mem->memory[mem->size] = 0;
+
+    return realsize;
+}
+
+char *chat_with_llm(const char *prompt, const char *model, int tries, float temperature)
+{
+    CURL *curl;
+    CURLcode res = CURLE_OK;
+    char *answer = NULL;
+    char *url = NULL;
+    printf("[DEBUG] model: %s\n", model);
+    printf("[DEBUG] prompt: %s\n", prompt);
+    if (strcmp(model, "gpt-4o") == 0)
+    {
+        url = "https://lingyunapi.com/v1/completions";
+    }
+    else
+    {
+        url = "https://lingyunapi.com/v1/chat/completions";
+    }
+    const char *api_key = getenv("KEY");
+    if (!api_key) {
+        fprintf(stderr, "KEY not set\n");
+        return NULL;
+    }
+    char auth_header[256];
+    snprintf(auth_header, sizeof(auth_header), "Authorization: Bearer %s", api_key);
+    char *content_header = "Content-Type: application/json";
+    char *accept_header = "Accept: application/json";
+    char *data = NULL;
+    if (strcmp(model, "gpt-4o") == 0)
+    {
+        asprintf(&data, "{\"model\": \"gpt-4o\", \"prompt\": \"%s\", \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
+    }
+    else
+    {
+        asprintf(&data, "{\"model\": \"gpt-4o-mini\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
+    }
+    printf("[DEBUG] url: %s\n", url);
+    printf("[DEBUG] data: %s\n", data);
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+    do
+    {
+        struct MemoryStruct chunk;
+
+        chunk.memory = malloc(1); /* will be grown as needed by the realloc above */
+        chunk.size = 0;           /* no data at this point */
+
+        curl = curl_easy_init();
+        if (curl)
+        {
+            struct curl_slist *headers = NULL;
+            headers = curl_slist_append(headers, auth_header);
+            headers = curl_slist_append(headers, content_header);
+            headers = curl_slist_append(headers, accept_header);
+
+            curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data);
+            curl_easy_setopt(curl, CURLOPT_URL, url);
+            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, chat_with_llm_helper);
+            curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+
+
+            res = curl_easy_perform(curl);
+            printf("[DEBUG] curl_easy_perform result: %d (%s)\n", res, curl_easy_strerror(res));
+
+            if (chunk.memory && chunk.size > 0) {
+                printf("[DEBUG] API raw response: %s\n", chunk.memory);
+            } else {
+                printf("[DEBUG] No response received from API.\n");
+            }
+            if (res == CURLE_OK)
+            {
+                json_object *jobj = json_tokener_parse(chunk.memory);
+                if (!jobj) {
+                    printf("[DEBUG] Failed to parse JSON response.\n");
+                }
+                // Check if the "choices" key exists
+                if (jobj && json_object_object_get_ex(jobj, "choices", NULL))
+                {
+                    json_object *choices = json_object_object_get(jobj, "choices");
+                    json_object *first_choice = json_object_array_get_idx(choices, 0);
+                    const char *data;
+
+                    // The answer begins with a newline character, so we remove it
+                    if (strcmp(model, "instruct") == 0)
+                    {
+                        json_object *jobj4 = json_object_object_get(first_choice, "text");
+                        data = json_object_get_string(jobj4);
+                    }
+                    else
+                    {
+                        json_object *jobj4 = json_object_object_get(first_choice, "message");
+                        json_object *jobj5 = json_object_object_get(jobj4, "content");
+                        data = json_object_get_string(jobj5);
+                    }
+                    if (data && data[0] == '\n')
+                        data++;
+                    answer = strdup(data);
+                    printf("[DEBUG] Parsed answer: %s\n", answer);
+                }
+                else
+                {
+                    printf("[DEBUG] Error response is: %s\n", chunk.memory);
+                    sleep(2); // Sleep for a small amount of time to ensure that the service can recover
+                }
+                if (jobj) json_object_put(jobj);
+            }
+            else
+            {
+                printf("[DEBUG] Error: %s\n", curl_easy_strerror(res));
+            }
+            fflush(stdout);
+
+            curl_slist_free_all(headers);
+            curl_easy_cleanup(curl);
+        }
+
+        free(chunk.memory);
+    } while ((res != CURLE_OK || answer == NULL) && (--tries > 0));
+
+    if (data != NULL)
+    {
+        free(data);
+    }
+
+    curl_global_cleanup();
+    return answer;
+}
+
+
 int main() {
-    // 设置环境变量（在实际使用中，应该在shell中设置）
-    // setenv("KEY", "sk-ILojcXJTq7HKk5RJ232858Aa05C24128830bDc12610d3c0d", 1);
-    
-    char* prompt = "You are an expert in networking protocols. For the RTSP protocol, "
-                  "the typical sequence is: DESCRIBE, SETUP, PLAY. Please explain where "
-                  "SET_PARAMETER and TEARDOWN should be placed in this sequence.";
-    
+    char* messages = "[{\"role\": \"user\", \"content\": \"You are an expert in networking protocols. For the RTSP protocol, the typical sequence is: DESCRIBE, SETUP, PLAY. Please explain where SET_PARAMETER and TEARDOWN should be placed in this sequence.\"}]";
+    char* model ="gpt-4o-mini";
     printf("Sending request to LLM API...\n");
-    
-    // 调用封装后的函数
-    char* response = chat_with_llm(prompt, "gpt-4o-mini", 3, 0.7);
-    
+    char* response = chat_with_llm(messages, model, 3, 0.7);
     if (response) {
         printf("\n=== LLM Response ===\n");
         printf("%s\n", response);
         free(response);
     }
-    
     return 0;
 }
