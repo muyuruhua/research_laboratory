@@ -56,7 +56,13 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
     {
         url = "https://lingyunapi.com/v1/chat/completions";
     }
-    char *auth_header = "Authorization: Bearer " OPENAI_TOKEN;
+    const char *api_key = getenv("KEY");
+    if (!api_key) {
+        fprintf(stderr, "KEY environment variable not set\n");
+        return NULL;
+    }
+    char auth_header[256];
+    snprintf(auth_header, sizeof(auth_header), "Authorization: Bearer %s", api_key);
     char *content_header = "Content-Type: application/json";
     char *accept_header = "Accept: application/json";
     char *data = NULL;
@@ -104,7 +110,7 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
                     const char *data;
 
                     // The answer begins with a newline character, so we remove it
-                    if (strcmp(model, "instruct") == 0)
+                    if (strcmp(model, "gpt-4o") == 0)
                     {
                         json_object *jobj4 = json_object_object_get(first_choice, "text");
                         data = json_object_get_string(jobj4);
@@ -360,7 +366,8 @@ char *construct_prompt_for_requests_to_states(const char *protocol_name,
         example_request_len = EXAMPLE_SEQUENCE_PROMPT_LENGTH;
     }
 
-    asprintf(&prompt,
+    char *content = NULL;
+    asprintf(&content,
              "In the %s protocol, if the server just starts, to reach the INIT state, the sequence of client requests can be:\\n"
              "%.*s\\nSimilarly, in the %s protocol, if the server just starts, to reach the %.*s state, the sequence of client requests can be:\\n",
              protocol_name,
@@ -370,6 +377,9 @@ char *construct_prompt_for_requests_to_states(const char *protocol_name,
              (int)strlen(protocol_state_json_str) - 2,
              protocol_state_json_str + 1);
 
+    asprintf(&prompt, "[{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"}, {\"role\": \"user\", \"content\": \"%s\"}]", content);
+    
+    free(content);
     json_object_put(protocol_state_json);
     json_object_put(example_requests_json);
 
@@ -950,6 +960,7 @@ char *enrich_sequence(char *sequence, khash_t(strSet) * missing_message_types)
     missing_fields_len -= 2; // ignore the last ', '
 
     char *prompt = NULL;
+    char *content = NULL;
 
     json_object *sequence_escaped = json_object_new_string(sequence);
     const char *sequence_escaped_str = json_object_to_json_string(sequence_escaped);
@@ -961,7 +972,10 @@ char *enrich_sequence(char *sequence, khash_t(strSet) * missing_message_types)
     {
         sequence_len = allowed_tokens;
     }
-    asprintf(&prompt, prompt_template, sequence_len, sequence_escaped_str, missing_fields_len, missing_fields_seq);
+    asprintf(&content, prompt_template, sequence_len, sequence_escaped_str, missing_fields_len, missing_fields_seq);
+    asprintf(&prompt, "[{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"}, {\"role\": \"user\", \"content\": \"%s\"}]", content);
+    
+    free(content);
     ck_free(missing_fields_seq);
     json_object_put(sequence_escaped);
 
@@ -1002,7 +1016,7 @@ char *enrich_sequence(char *sequence, khash_t(strSet) * missing_message_types)
 //     // char *prompt = NULL;
 //     // asprintf(&prompt, "user: The colors of flowers:\\nassistant: red and yellow.\\nuser: Other colors are:");
 //     // printf("## Prompt to LLM:\n %s\n", prompt);
-//     // char *answer = chat_with_llm(prompt, "instruct");
+//     // char *answer = chat_with_llm(prompt, "gpt-4o-mini");
 //     // printf("## Answer from LLM:\n %s\n", answer);
 
 //     char *protocol_name = argv[1];

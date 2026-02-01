@@ -21,6 +21,7 @@
 大模型调用示例
 导入大模型key：export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS"
 执行命令：gcc -I/opt/homebrew/include -L/opt/homebrew/lib -o testLLM1 testLLM1.c -lcurl -ljson-c -Wall -g && ./testLLM1
+执行命令：gcc -o testLLM1 testLLM1.c -lcurl -ljson-c -Wall -g && ./testLLM1
 */
 
 struct MemoryStruct
