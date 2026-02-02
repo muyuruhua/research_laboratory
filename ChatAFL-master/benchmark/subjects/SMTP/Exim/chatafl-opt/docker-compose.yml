@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  # ChatAFL-Opt 模糊测试器
+  chatafl-opt:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chatafl-opt-fuzzer
+    environment:
+      - KEY=${OPENAI_API_KEY:-}
+      - AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1
+      - AFL_SKIP_CPUFREQ=1
+    volumes:
+      # 种子文件
+      - ./seeds:/opt/in:ro
+      # 测试结果
+      - ./results:/opt/out
+      # 目标程序
+      - ./targets:/opt/targets:ro
+    networks:
+      - fuzzing-net
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 8G
+        reservations:
+          cpus: '2.0'
+          memory: 4G
+    # 重启策略
+    restart: unless-stopped
+    # 日志配置
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # 默认命令（可被覆盖）
+    command: bash
+
+  # 示例：LightFTP 目标服务
+  lightftp:
+    image: chatafl-opt:latest
+    container_name: lightftp-target
+    volumes:
+      - ./targets/lightftp:/app
+    networks:
+      - fuzzing-net
+    ports:
+      - "2121:21"
+    command: /app/fftp /app/ftpconfig.txt 21
+    restart: unless-stopped
+
+  # 可选：监控服务
+  grafana:
+    image: grafana/grafana:latest
+    container_name: fuzzing-monitor
+    ports:
+      - "3000:3000"
+    networks:
+      - fuzzing-net
+    volumes:
+      - grafana-data:/var/lib/grafana
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+networks:
+  fuzzing-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  grafana-data:
