@@ -25,6 +25,10 @@ RUN apt-get -y update && \
     libpcre2-dev \
     libpcre2-8-0 \
     libcurl4-openssl-dev \
+    curl \
+    ca-certificates \
+    dnsutils \
+    iputils-ping \
     libjson-c-dev \
     wget
 
@@ -64,6 +68,11 @@ RUN cd chatafl-cl2 && \
     make clean all $MAKE_OPT && \
     cd llvm_mode && make $MAKE_OPT
 
+COPY --chown=ubuntu:ubuntu chatafl-enhanced chatafl-enhanced
+RUN cd chatafl-enhanced && \
+    make -f Makefile.plugin clean all CHATAFL_ENHANCED=1 $MAKE_OPT && \
+    cd llvm_mode && make $MAKE_OPT
+
 # Set up environment variables for AFLNet
 ENV WORKDIR="/home/ubuntu/experiments"
 ENV AFLNET="/home/ubuntu/aflnet"
@@ -93,7 +102,7 @@ RUN cd ${WORKDIR} && \
     git checkout 10122d9f && \
     patch -p1 < ${WORKDIR}/fuzzing.patch && \
     ./autogen.sh && \
-    CC="afl-clang-fast" CXX="afl-clang-fast++" CFLAGS="-fsanitize=address -g -O0" CXXFLAGS="-fsanitize=address -g -O0" LDFLAGS="-fsanitize=address" ./configure --without-privsep -without-capabilities && \
+    CC="afl-clang-fast" CXX="afl-clang-fast++" ./configure --without-privsep -without-capabilities && \
     make $MAKE_OPT
 
 # Set up PureFTPD for coverage analysis

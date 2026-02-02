@@ -77,12 +77,32 @@ for fuzzer in $fuzzers; do
   for i in $(seq 1 $runs); do 
     printf "\nProcessing out-${prog}-${fuzzer}-${i} ..."
     rm -rf out-${prog}-${fuzzer}-${i}
-    #tar -zxvf out-${prog}-${fuzzer}_${i}.tar.gz > /dev/null 2>&1
-    tar -axf out-${prog}-${fuzzer}_${i}.tar.gz out-${prog}-${fuzzer}/cov_over_time.csv
-    tar -axf out-${prog}-${fuzzer}_${i}.tar.gz out-${prog}-${fuzzer}/plot_data
-    mv out-${prog}-${fuzzer} out-${prog}-${fuzzer}-${i}
-    #combine all csv files
-    convert $fuzzer $prog $i out-${prog}-${fuzzer}-${i}/cov_over_time.csv $covfile
-    convert_state $fuzzer $prog $i out-${prog}-${fuzzer}-${i}/plot_data $states_data
+    
+    # Support both naming formats: with/without timestamp (OCP: extensible via file pattern)
+    # Format 1: out-${prog}-${fuzzer}_${i}.tar.gz (original)
+    # Format 2: out-${prog}-${timestamp}-${fuzzer}_${i}.tar.gz (timestamped)
+    TAR_FILE=""
+    if [ -f "out-${prog}-${fuzzer}_${i}.tar.gz" ]; then
+      TAR_FILE="out-${prog}-${fuzzer}_${i}.tar.gz"
+    else
+      # Try to find timestamped version
+      TAR_FILE=$(ls -1 out-${prog}-*-${fuzzer}_${i}.tar.gz 2>/dev/null | head -1)
+    fi
+    
+    if [ -z "$TAR_FILE" ] || [ ! -f "$TAR_FILE" ]; then
+      echo "Issue with run $i. Skipping"
+      continue
+    fi
+    
+    #tar -zxvf $TAR_FILE > /dev/null 2>&1
+    tar -axf $TAR_FILE out-${prog}-${fuzzer}/cov_over_time.csv 2>/dev/null || echo "Issue with run $i. Skipping"
+    tar -axf $TAR_FILE out-${prog}-${fuzzer}/plot_data 2>/dev/null || echo "Issue with run $i. Skipping"
+    
+    if [ -d "out-${prog}-${fuzzer}" ]; then
+      mv out-${prog}-${fuzzer} out-${prog}-${fuzzer}-${i}
+      #combine all csv files
+      convert $fuzzer $prog $i out-${prog}-${fuzzer}-${i}/cov_over_time.csv $covfile
+      convert_state $fuzzer $prog $i out-${prog}-${fuzzer}-${i}/plot_data $states_data
+    fi
   done 
 done

@@ -9,11 +9,15 @@ fmode=$5    #file mode -- structured or not
             #fmode = 0: the test case is a concatenated message sequence -- there is no message boundary
             #fmode = 1: the test case is a structured file keeping several request messages
 
+# OCP: Performance optimization via environment variables (open for extension)
+GCOVR_THREADS=${GCOVR_THREADS:-4}  # Parallel gcovr threads (default: 4)
+GCOVR_EXCLUDE_UNREACHABLE=${GCOVR_EXCLUDE_UNREACHABLE:-1}  # Skip unreachable code (faster)
+
 #delete the existing coverage file
-rm $covfile; touch $covfile
+rm $covfile > /dev/null 2>&1; touch $covfile
 
 #clear gcov data
-gcovr -r . -s -d > /dev/null 2>&1
+gcovr -r kamailio-gcov -s -d > /dev/null 2>&1
 
 #output the header of the coverage file which is in the CSV format
 #Time: timestamp, l_per/b_per and l_abs/b_abs: line/branch coverage in percentage and absolutate number
@@ -29,17 +33,16 @@ else
   replayer="afl-replay"
 fi
 
-#start exim daemon
-exim -bd -oX $pno
-
 #process initial seed corpus first
 for f in $(echo $folder/$testdir/*.raw); do 
   time=$(stat -c %Y $f)
-    
-  $replayer $f SMTP $pno 100 > /dev/null 2>&1
+
+  $replayer $f SIP $pno 1 > /dev/null 2>&1 & ./run_pjsip > /dev/null 2>&1 &
+  timeout -k 1s -s SIGTERM 3s ./kamailio-gcov/src/kamailio -f ./kamailio-basic.cfg -L ./kamailio-gcov/src/modules -Y ./kamailio-gcov/runtime_dir/ -n 1 -D -E > /dev/null 2>&1
   
   wait
-  cov_data=$(gcovr -r . -s | grep "[lb][a-z]*:")
+  # OCP: Use parallel gcovr for faster coverage analysis
+  cov_data=$(gcovr -r kamailio-gcov -s -j $GCOVR_THREADS | grep "[lb][a-z]*:")
   l_per=$(echo "$cov_data" | grep lines | cut -d" " -f2 | rev | cut -c2- | rev)
   l_abs=$(echo "$cov_data" | grep lines | cut -d" " -f3 | cut -c2-)
   b_per=$(echo "$cov_data" | grep branch | cut -d" " -f2 | rev | cut -c2- | rev)
@@ -48,18 +51,20 @@ for f in $(echo $folder/$testdir/*.raw); do
   echo "$time,$l_per,$l_abs,$b_per,$b_abs" >> $covfile
 done
 
-#process other testcases
+#process fuzzer-generated testcases
 count=0
 for f in $(echo $folder/$testdir/id*); do 
   time=$(stat -c %Y $f)
-  
-  $replayer $f SMTP $pno 100 > /dev/null 2>&1
+
+  $replayer $f SIP $pno 1 > /dev/null 2>&1 & ./run_pjsip > /dev/null 2>&1 &
+  timeout -k 1s -s SIGTERM 3s ./kamailio-gcov/src/kamailio -f ./kamailio-basic.cfg -L ./kamailio-gcov/src/modules -Y ./kamailio-gcov/runtime_dir/ -n 1 -D -E > /dev/null 2>&1
 
   wait
   count=$(expr $count + 1)
   rem=$(expr $count % $step)
   if [ "$rem" != "0" ]; then continue; fi
-  cov_data=$(gcovr -r . -s | grep "[lb][a-z]*:")
+  # OCP: Use parallel gcovr for faster coverage analysis
+  cov_data=$(gcovr -r kamailio-gcov -s -j $GCOVR_THREADS | grep "[lb][a-z]*:")
   l_per=$(echo "$cov_data" | grep lines | cut -d" " -f2 | rev | cut -c2- | rev)
   l_abs=$(echo "$cov_data" | grep lines | cut -d" " -f3 | cut -c2-)
   b_per=$(echo "$cov_data" | grep branch | cut -d" " -f2 | rev | cut -c2- | rev)
@@ -72,7 +77,8 @@ done
 if [[ $step -gt 1 ]]
 then
   time=$(stat -c %Y $f)
-  cov_data=$(gcovr -r . -s | grep "[lb][a-z]*:")
+  # OCP: Use parallel gcovr for faster coverage analysis
+  cov_data=$(gcovr -r kamailio-gcov -s -j $GCOVR_THREADS | grep "[lb][a-z]*:")
   l_per=$(echo "$cov_data" | grep lines | cut -d" " -f2 | rev | cut -c2- | rev)
   l_abs=$(echo "$cov_data" | grep lines | cut -d" " -f3 | cut -c2-)
   b_per=$(echo "$cov_data" | grep branch | cut -d" " -f2 | rev | cut -c2- | rev)

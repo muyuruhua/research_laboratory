@@ -38,3 +38,7 @@ docker build . -t forked-daapd --build-arg MAKE_OPT $NO_CACHE
 cd $PFBENCH
 cd subjects/HTTP/Lighttpd1
 docker build . -t lighttpd1 --build-arg MAKE_OPT $NO_CACHE
+
+cd $PFBENCH
+cd subjects/MQTT/Mosquitto
+docker build . -t mosquitto --build-arg MAKE_OPT $NO_CACHE
