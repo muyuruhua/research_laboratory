@@ -225,7 +225,74 @@ dot -Tpng out_dir/state_tree.dot -o tree.png
 
 ### 方式 2: Docker 容器运行（推荐）
 
-#### 快速开始
+#### 使用 Benchmark 框架（完整测试流程）
+
+**步骤 1: 复制 ChatAFL-Opt 到 Benchmark**
+```bash
+# 在 ChatAFL-master 根目录执行
+sudo cp -r ChatAFL-Opt ./benchmark/subjects/FTP/LightFTP/chatafl-opt
+```
+
+**步骤 2: 构建 LightFTP 镜像（如已完成可跳过）**
+```bash
+cd benchmark/subjects/FTP/LightFTP
+docker build . -t lightftp
+```
+
+**步骤 3: 运行模糊测试**
+```bash
+# 返回项目根目录
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master
+
+# 设置 OpenAI API Key
+export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS"
+
+# 运行测试
+# 格式: ./run.sh <容器数> <超时分钟> <目标> <模糊器>
+./run.sh 1 60 lightftp chatafl-opt
+
+# 参数说明:
+# 1        - 1个并发容器
+# 60       - 运行60分钟
+# lightftp - 目标程序
+# chatafl-opt - 使用 ChatAFL-Opt 模糊器
+```
+
+**步骤 4: 查看结果**
+```bash
+# 容器日志
+docker logs -f <container-id>
+
+# 查看生成的假设
+docker exec <container-id> cat /opt/out/hypotheses.json
+
+# 查看状态树
+docker exec <container-id> cat /opt/out/state_tree.dot
+
+# 查看统计信息
+docker exec <container-id> cat /opt/out/statistics.txt
+
+# 复制结果到本地
+docker cp <container-id>:/opt/out ./results-chatafl-opt
+```
+
+**步骤 5: 对比测试（可选）**
+```bash
+# 同时运行所有变体进行对比
+./run.sh 4 60 lightftp "chatafl,chatafl-cl1,chatafl-cl2,chatafl-opt"
+
+# 或分别运行
+./run.sh 1 60 lightftp chatafl        # 原版
+./run.sh 1 60 lightftp chatafl-cl1    # CL1变体
+./run.sh 1 60 lightftp chatafl-cl2    # CL2变体
+./run.sh 1 60 lightftp chatafl-opt    # Opt版本（带验证+精化）
+```
+
+---
+
+#### 独立 Docker 运行（开发调试）
+
+**快速开始**
 ```bash
 # 1. 使用快速脚本
 ./docker-run.sh build          # 构建镜像
@@ -237,7 +304,7 @@ docker-compose up -d           # 启动服务
 docker-compose logs -f         # 查看日志
 ```
 
-#### 手动运行
+**手动运行**
 ```bash
 # 构建镜像
 docker build -t chatafl-opt:latest .
@@ -251,7 +318,7 @@ docker run -it --rm \
   ./afl-fuzz -i /opt/in -o /opt/out -N tcp://127.0.0.1/21 -P FTP -- /path/to/target
 ```
 
-#### 查看结果
+**查看结果**
 ```bash
 # 在容器内
 docker exec chatafl-opt-fuzzer cat /opt/out/statistics.txt

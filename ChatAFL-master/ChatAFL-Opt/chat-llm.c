@@ -127,8 +127,10 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
                 }
                 else
                 {
-                    printf("Error response is: %s\n", chunk.memory);
-                    sleep(2); // Sleep for a small amount of time to ensure that the service can recover
+                    fprintf(stderr, "[LLM ERROR] API returned error: %s\n", chunk.memory);
+                    fprintf(stderr, "[LLM ERROR] Request URL: %s\n", url);
+                    fprintf(stderr, "[LLM ERROR] Retries remaining: %d\n", tries - 1);
+                    sleep(3); // Sleep for a longer time to ensure that the service can recover
                 }
                 json_object_put(jobj);
             }
@@ -974,6 +976,16 @@ char *enrich_sequence(char *sequence, khash_t(strSet) * missing_message_types)
     }
     asprintf(&content, prompt_template, sequence_len, sequence_escaped_str, missing_fields_len, missing_fields_seq);
     asprintf(&prompt, "[{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"}, {\"role\": \"user\", \"content\": \"%s\"}]", content);
+    
+    // Debug: Check if prompt is too long or malformed
+    if (strlen(prompt) > 15000) {
+        fprintf(stderr, "[LLM WARN] Prompt length (%zu) exceeds safe limit. Truncating enrichment request.\\n", strlen(prompt));
+        free(content);
+        free(prompt);
+        ck_free(missing_fields_seq);
+        json_object_put(sequence_escaped);
+        return NULL;
+    }
     
     free(content);
     ck_free(missing_fields_seq);

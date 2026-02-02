@@ -2723,8 +2723,10 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
       // Try enriching the sequence
         char *client_request_answer = enrich_sequence(nl_file_content, subset);
 
-        if (client_request_answer == NULL)
+        if (client_request_answer == NULL) {
+          WARNF("LLM enrichment failed for %s (subset %d). Skipping.", nl_file_name, i);
           continue;
+        }
 
         // Check whether the client_request_answer is the same as the nl_file_content or if the client_request_answer is empty
         char *formatted_nl_file_content = format_string(nl_file_content);
@@ -2780,7 +2782,20 @@ static void enrich_testcases(void)
   // free(message_prompt);
 
   // Get seeds to states and save them to the in_dir
-  get_seeds_with_messsage_types(in_dir, message_types_set);
+  // Wrap in try-catch equivalent: if LLM fails, continue with original seeds
+  int enrichment_failed = 0;
+  const char *api_key = getenv("KEY");
+  if (!api_key) {
+    WARNF("KEY environment variable not set. Skipping LLM enrichment.");
+    enrichment_failed = 1;
+  }
+  
+  if (!enrichment_failed) {
+    get_seeds_with_messsage_types(in_dir, message_types_set);
+  }
+  
+  SAYF("[+] Testcase enrichment %s. Proceeding with fuzzing.\n", 
+       enrichment_failed ? "skipped" : "completed");
 }
 
 /* Read all testcases from the input directory, then queue them for testing.
