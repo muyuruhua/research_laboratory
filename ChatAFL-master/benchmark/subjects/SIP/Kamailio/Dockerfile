@@ -26,12 +26,7 @@ RUN apt-get -y update && \
     libpcre2-8-0 \
     libcurl4-openssl-dev \
     libjson-c-dev \
-    curl \
-    ca-certificates \
-    dnsutils \
-    iputils-ping \
-    wget \
-    parallel
+    wget
 
 # Add a new user ubuntu, pass: ubuntu
 RUN groupadd ubuntu && \
@@ -68,11 +63,6 @@ COPY --chown=ubuntu:ubuntu chatafl-cl2 chatafl-cl2
 RUN cd chatafl-cl2 && \
     make clean all $MAKE_OPT && \
     cd llvm_mode && make $MAKE_OPT
-
-COPY --chown=ubuntu:ubuntu chatafl-enhanced chatafl-enhanced
-RUN cd chatafl-enhanced && \
-    make -f Makefile.plugin clean all CHATAFL_ENHANCED=1 $MAKE_OPT && \
-    cd llvm_mode && make $MAKE_OPT
     
 # Set up environment variables for AFLNet
 ENV WORKDIR="/home/ubuntu/experiments"
@@ -105,7 +95,7 @@ RUN cd $WORKDIR && \
     git checkout a2209018fb03d && \
     patch -p1 < $WORKDIR/kamailio.patch && \
     CC=afl-clang-fast make MEMPKG=sys cfg && \
-    CC=afl-clang-fast make all $MAKE_OPT
+    AFL_USE_ASAN=1 CC=afl-clang-fast make all $MAKE_OPT
 
 # Build SIP client to simulate the callee
 RUN cd $WORKDIR && \
