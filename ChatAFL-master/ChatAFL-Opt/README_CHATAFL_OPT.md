@@ -135,25 +135,68 @@ out_dir/
 
 ## 使用方法
 
-### 编译
+### 方式 1: 本地编译运行
+
+#### 编译
 ```bash
 cd ChatAFL-Opt
 make clean
 make
 ```
 
-### 运行
+#### 运行
 ```bash
 export KEY="your-openai-api-key"
 ./afl-fuzz -i in_dir -o out_dir -N tcp://127.0.0.1/21 -P FTP -- /path/to/target
 ```
 
-### 监控
+#### 监控
 ```bash
 # 查看假设和状态树
 cat out_dir/hypotheses.json
 dot -Tpng out_dir/state_tree.dot -o tree.png
 ```
+
+---
+
+### 方式 2: Docker 容器运行（推荐）
+
+#### 快速开始
+```bash
+# 1. 使用快速脚本
+./docker-run.sh build          # 构建镜像
+./docker-run.sh interactive    # 交互式运行
+
+# 2. 或使用 Docker Compose
+export OPENAI_API_KEY="sk-xxxxx"
+docker-compose up -d           # 启动服务
+docker-compose logs -f         # 查看日志
+```
+
+#### 手动运行
+```bash
+# 构建镜像
+docker build -t chatafl-opt:latest .
+
+# 运行容器
+docker run -it --rm \
+  -e KEY="your-openai-api-key" \
+  -v $(pwd)/seeds:/opt/in \
+  -v $(pwd)/results:/opt/out \
+  chatafl-opt:latest \
+  ./afl-fuzz -i /opt/in -o /opt/out -N tcp://127.0.0.1/21 -P FTP -- /path/to/target
+```
+
+#### 查看结果
+```bash
+# 在容器内
+docker exec chatafl-opt-fuzzer cat /opt/out/statistics.txt
+
+# 复制到本地
+docker cp chatafl-opt-fuzzer:/opt/out ./results
+```
+
+**详细 Docker 使用指南**: 参见 [DOCKER_GUIDE.md](DOCKER_GUIDE.md)
 
 ---
 
