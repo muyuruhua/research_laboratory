@@ -142,12 +142,76 @@ out_dir/
 cd ChatAFL-Opt
 make clean
 make
+
+# 验证编译
+./verify_build.sh
 ```
 
 #### 运行
+
+**快速测试（验证功能）**:
 ```bash
+# 1. 准备种子文件
+mkdir -p /tmp/afl_in_test
+echo -e "USER anonymous\r\nPASS test\r\nQUIT\r\n" > /tmp/afl_in_test/seed.txt
+
+# 2. 设置环境变量
+export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS"
+export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1
+export AFL_SKIP_CPUFREQ=1
+
+# 3. 运行测试（使用 /bin/true 作为占位符）
+./afl-fuzz -i /tmp/afl_in_test -o /tmp/afl_out_test -N tcp://127.0.0.1/21 -P FTP -t 5000 -- /bin/true
+```
+
+**实际模糊测试（测试 LightFTP）**:
+
+**方式 A: 使用 Docker (推荐)**
+```bash
+# 1. 构建 LightFTP Docker 镜像
+cd ../benchmark_old/subjects/FTP/LightFTP
+docker build . -t lightftp
+
+# 2. 启动 LightFTP 服务（后台）
+docker run -d --name lightftp-server -p 2200:2200 lightftp
+
+# 3. 准备种子文件
+cd -  # 返回 ChatAFL-Opt 目录
+mkdir -p seeds
+cp -r ../benchmark_old/subjects/FTP/LightFTP/in-ftp/* seeds/
+
+# 4. 设置环境并运行
 export KEY="your-openai-api-key"
-./afl-fuzz -i in_dir -o out_dir -N tcp://127.0.0.1/21 -P FTP -- /path/to/target
+export AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1
+export AFL_SKIP_CPUFREQ=1
+
+./afl-fuzz -i seeds -o results-lightftp \
+  -N tcp://127.0.0.1/2200 \
+  -P FTP \
+  -t 5000 \
+  -x ../benchmark_old/subjects/FTP/LightFTP/ftp.dict \
+  -- /bin/true
+
+# 5. 测试完成后清理
+docker stop lightftp-server && docker rm lightftp-server
+```
+
+**方式 B: 本地编译 LightFTP (需要源代码)**
+```bash
+# 如果您有 LightFTP 源代码
+cd /path/to/lightftp/source
+CC=afl-clang-fast make
+
+# 启动服务
+./fftp fftp.conf 2200 &
+
+# 运行模糊测试
+cd /path/to/ChatAFL-Opt
+./afl-fuzz -i seeds -o results \
+  -N tcp://127.0.0.1/2200 \
+  -P FTP \
+  -t 5000 \
+  -- /path/to/lightftp/fftp /path/to/fftp.conf 2200
 ```
 
 #### 监控

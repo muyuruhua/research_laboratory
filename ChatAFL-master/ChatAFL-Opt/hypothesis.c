@@ -146,8 +146,8 @@ int generate_initial_hypotheses(hypothesis_context_t *ctx,
         
         grammar_hypothesis_t *h = generate_message_hypothesis(ctx->protocol_name, msg_type, rfc_snippet, 0);
         if (h) {
-            klnode_t(hypo) *node = kl_pushp(hypo, ctx->grammar_list);
-            node->data = h;
+            grammar_hypothesis_t **node_data = kl_pushp(hypo, ctx->grammar_list);
+            *node_data = h;
             
             int ret;
             khiter_t k = kh_put(strMap, ctx->message_type_index, strdup(msg_type), &ret);
@@ -223,12 +223,16 @@ void free_hypothesis_context(hypothesis_context_t *ctx) {
     if (ctx->rfc_snippet) free(ctx->rfc_snippet);
     if (ctx->pcap_examples) free(ctx->pcap_examples);
     
-    // Free grammar list
-    klnode_t(hypo) *node;
-    for (node = ctx->grammar_list->head; node != ctx->grammar_list->tail; node = node->next) {
-        free_grammar_hypothesis(node->data);
+    // Manually free all grammar hypotheses in the list
+    if (ctx->grammar_list) {
+        kliter_t(hypo) *p;
+        for (p = kl_begin(ctx->grammar_list); p != kl_end(ctx->grammar_list); p = kl_next(p)) {
+            if (kl_val(p)) {
+                free_grammar_hypothesis(kl_val(p));
+            }
+        }
+        kl_destroy(hypo, ctx->grammar_list);
     }
-    kl_destroy(hypo, ctx->grammar_list);
     
     // Free index
     khiter_t k;

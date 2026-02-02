@@ -41,11 +41,18 @@ typedef struct {
     time_t refined_at;
 } refinement_history_t;
 
+// Forward declare free function for klist
+void free_refinement_history(refinement_history_t *rh);
+
+// KLIST for refinement history
+#define __refinement_hist_free(x)
+KLIST_INIT(refine_hist, refinement_history_t *, __refinement_hist_free)
+
 // CEGAR context
 typedef struct {
     hypothesis_context_t *hypo_ctx;
     verification_context_t *verify_ctx;
-    klist_t(hypo) *refinement_history; // Track all refinements
+    kl_refine_hist_t *refinement_history; // Track all refinements
     khash_t(strMap) *refinement_count; // Count refinements per message type
     int max_refinement_attempts;       // Prevent infinite loops
     double success_rate;               // Track overall success rate

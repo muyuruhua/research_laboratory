@@ -4,6 +4,7 @@
 #include "klist.h"
 #include "kvec.h"
 #include "khash.h"
+#include "chat-llm.h"
 #include <json-c/json.h>
 #include <time.h>
 
@@ -33,19 +34,24 @@ typedef struct {
     char *pattern;                // Regex pattern
 } field_constraint_t;
 
+// Forward declaration for free function
+void free_grammar_hypothesis(grammar_hypothesis_t *h);
+
+// KLIST and KHASH declarations - must come before using them
+// Note: We store pointers to grammar_hypothesis_t
+// Use a no-op free function since we'll manually free in free_hypothesis_context
+#define __hypothesis_node_free(x) 
+KLIST_INIT(hypo, grammar_hypothesis_t *, __hypothesis_node_free)
+
 // Hypothesis context for a protocol
 typedef struct {
     char *protocol_name;
-    klist_t(gram) *grammar_list;  // List of grammar_hypothesis_t
+    kl_hypo_t *grammar_list;  // List of grammar_hypothesis_t
     khash_t(strMap) *message_type_index; // Map message_type -> index in grammar_list
     char *rfc_snippet;            // Cached RFC context
     char *pcap_examples;          // Cached pcap examples
     int hypothesis_count;
 } hypothesis_context_t;
-
-// KLIST and KHASH declarations
-#define __hypothesis_t_free(x) free_grammar_hypothesis(x)
-KLIST_INIT(hypo, grammar_hypothesis_t *, __hypothesis_t_free)
 
 // Initialize hypothesis context
 hypothesis_context_t *init_hypothesis_context(const char *protocol_name);
@@ -71,8 +77,7 @@ grammar_hypothesis_t *refine_hypothesis(grammar_hypothesis_t *old_hypothesis,
 // Extract field constraints from grammar
 field_constraint_t **extract_field_constraints(const char *grammar_spec, int *count);
 
-// Free functions
-void free_grammar_hypothesis(grammar_hypothesis_t *h);
+// Free functions (free_grammar_hypothesis declared earlier)
 void free_hypothesis_context(hypothesis_context_t *ctx);
 void free_field_constraint(field_constraint_t *fc);
 

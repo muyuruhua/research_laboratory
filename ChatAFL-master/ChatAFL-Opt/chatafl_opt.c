@@ -172,20 +172,27 @@ bool execute_full_pipeline(chatafl_opt_context_t *ctx,
     
     if (k != kh_end(ctx->hypothesis_ctx->message_type_index)) {
         int idx = kh_value(ctx->hypothesis_ctx->message_type_index, k);
-        klnode_t(hypo) *node = ctx->hypothesis_ctx->grammar_list->head;
-        for (int i = 0; i < idx && node != ctx->hypothesis_ctx->grammar_list->tail; i++) {
-            node = node->next;
+        // Iterate to the idx-th element
+        kliter_t(hypo) *node = kl_begin(ctx->hypothesis_ctx->grammar_list);
+        for (int i = 0; i < idx && node != kl_end(ctx->hypothesis_ctx->grammar_list); i++) {
+            node = kl_next(node);
         }
-        hypothesis = node->data;
-        printf("[Pipeline] Using existing hypothesis (rev %d)\n", hypothesis->revision);
-    } else {
+        if (node != kl_end(ctx->hypothesis_ctx->grammar_list)) {
+            hypothesis = kl_val(node);
+        }
+        if (hypothesis) {
+            printf("[Pipeline] Using existing hypothesis (rev %d)\n", hypothesis->revision);
+        }
+    }
+    
+    if (!hypothesis) {
         hypothesis = generate_message_hypothesis(ctx->hypothesis_ctx->protocol_name,
                                                 message_type,
                                                 ctx->hypothesis_ctx->rfc_snippet,
                                                 0);
         if (hypothesis) {
-            klnode_t(hypo) *node = kl_pushp(hypo, ctx->hypothesis_ctx->grammar_list);
-            node->data = hypothesis;
+            grammar_hypothesis_t **node_data = kl_pushp(hypo, ctx->hypothesis_ctx->grammar_list);
+            *node_data = hypothesis;
             ctx->total_hypotheses_generated++;
             printf("[Pipeline] Generated new hypothesis\n");
         } else {
@@ -390,10 +397,10 @@ void export_system_state(chatafl_opt_context_t *ctx, const char *output_dir) {
         fprintf(f, "{\n  \"protocol\": \"%s\",\n  \"count\": %d,\n  \"hypotheses\": [\n",
                ctx->hypothesis_ctx->protocol_name, ctx->hypothesis_ctx->hypothesis_count);
         
-        klnode_t(hypo) *node;
+        kliter_t(hypo) *node;
         int idx = 0;
-        for (node = ctx->hypothesis_ctx->grammar_list->head; node != ctx->hypothesis_ctx->grammar_list->tail; node = node->next) {
-            grammar_hypothesis_t *h = (grammar_hypothesis_t *)node->data;
+        for (node = kl_begin(ctx->hypothesis_ctx->grammar_list); node != kl_end(ctx->hypothesis_ctx->grammar_list); node = kl_next(node)) {
+            grammar_hypothesis_t *h = kl_val(node);
             fprintf(f, "    {\"message_type\": \"%s\", \"revision\": %d, \"confidence\": %d}%s\n",
                    h->message_type, h->revision, h->confidence_score,
                    (idx++ < ctx->hypothesis_ctx->hypothesis_count - 1) ? "," : "");

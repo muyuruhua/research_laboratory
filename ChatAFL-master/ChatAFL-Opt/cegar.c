@@ -15,7 +15,7 @@ cegar_context_t *init_cegar_context(hypothesis_context_t *hypo_ctx,
     cegar_context_t *ctx = (cegar_context_t *)ck_alloc(sizeof(cegar_context_t));
     ctx->hypo_ctx = hypo_ctx;
     ctx->verify_ctx = verify_ctx;
-    ctx->refinement_history = kl_init(hypo);
+    ctx->refinement_history = kl_init(refine_hist);
     ctx->refinement_count = kh_init(strMap);
     ctx->max_refinement_attempts = 5; // Prevent infinite loops
     ctx->success_rate = 0.0;
@@ -242,8 +242,8 @@ grammar_hypothesis_t *cegar_refine_until_valid(cegar_context_t *ctx,
         history->success = (refined != NULL);
         history->refined_at = time(NULL);
         
-        klnode_t(hypo) *node = kl_pushp(hypo, ctx->refinement_history);
-        node->data = history;
+        refinement_history_t **node_data = kl_pushp(refine_hist, ctx->refinement_history);
+        *node_data = history;
         
         log_refinement_attempt(ctx, history);
         
@@ -262,9 +262,9 @@ bool is_duplicate_refinement(cegar_context_t *ctx,
                             grammar_hypothesis_t *hypothesis,
                             refinement_directive_t *directive) {
     // Check if we've tried this exact refinement before
-    klnode_t(hypo) *node;
-    for (node = ctx->refinement_history->head; node != ctx->refinement_history->tail; node = node->next) {
-        refinement_history_t *hist = (refinement_history_t *)node->data;
+    kliter_t(refine_hist) *node;
+    for (node = kl_begin(ctx->refinement_history); node != kl_end(ctx->refinement_history); node = kl_next(node)) {
+        refinement_history_t *hist = kl_val(node);
         if (hist->old_hypothesis == hypothesis &&
             hist->directive->strategy == directive->strategy &&
             strcmp(hist->directive->target_field, directive->target_field) == 0) {
@@ -310,9 +310,9 @@ void print_cegar_statistics(cegar_context_t *ctx) {
     printf("Total refinements: %lu\n", ctx->refinement_history->size);
     
     int successes = 0;
-    klnode_t(hypo) *node;
-    for (node = ctx->refinement_history->head; node != ctx->refinement_history->tail; node = node->next) {
-        refinement_history_t *hist = (refinement_history_t *)node->data;
+    kliter_t(refine_hist) *node;
+    for (node = kl_begin(ctx->refinement_history); node != kl_end(ctx->refinement_history); node = kl_next(node)) {
+        refinement_history_t *hist = kl_val(node);
         if (hist->success) successes++;
     }
     
@@ -349,11 +349,13 @@ void free_refinement_history(refinement_history_t *rh) {
 void free_cegar_context(cegar_context_t *ctx) {
     if (!ctx) return;
     
-    klnode_t(hypo) *node;
-    for (node = ctx->refinement_history->head; node != ctx->refinement_history->tail; node = node->next) {
-        free_refinement_history((refinement_history_t *)node->data);
+    if (ctx->refinement_history) {
+        kliter_t(refine_hist) *node;
+        for (node = kl_begin(ctx->refinement_history); node != kl_end(ctx->refinement_history); node = kl_next(node)) {
+            free_refinement_history(kl_val(node));
+        }
+        kl_destroy(refine_hist, ctx->refinement_history);
     }
-    kl_destroy(hypo, ctx->refinement_history);
     
     khiter_t k;
     for (k = kh_begin(ctx->refinement_count); k != kh_end(ctx->refinement_count); ++k) {
