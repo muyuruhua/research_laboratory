@@ -1,0 +1,22 @@
+To add the `CWD` (Change Working Directory) and `RNTO` (Rename To) commands to the sequence of client requests, we need to determine appropriate locations for these commands based on a typical FTP session flow.
+
+Here is the modified sequence of client requests with `CWD` and `RNTO` included:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+CWD /path/to/directory  # Specify the directory you want to change to
+PORT 127,0,0,1,152,193
+LIST
+RNTO new_filename.txt    # Specify the new name for the file or directory
+QUIT
+```
+
+In this example:
+- `CWD /path/to/directory` is added after the `PWD` command to change the working directory before listing files.
+- `RNTO new_filename.txt` is added after the `LIST` command, assuming you want to rename the last listed item. You would typically have a corresponding `RNFR` (Rename From) command before `RNTO`, which is not shown here, but this is the placement based on the context provided.
+
+Make sure to replace `/path/to/directory` and `new_filename.txt` with the actual directory path and new filename you intend to use
+

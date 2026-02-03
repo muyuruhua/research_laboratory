@@ -1,0 +1,22 @@
+To include the `STOR` (store) and `STRU` (structure) commands in the appropriate locations within the given sequence of FTP client requests, we can place `STRU` after the `SYST` command to define the file structure type, and `STOR` before the `LIST` command to upload a file. 
+
+Here’s the modified sequence of client requests:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+STRU I
+PWD
+PORT 127,0,0,1,152,193
+STOR filename.txt
+LIST
+QUIT
+```
+
+In this modified sequence:
+- `STRU I` specifies that the structure type is "Image" (binary file).
+- `STOR filename.txt` is used to upload a file named `filename.txt` to the server before listing the directory contents. 
+
+Feel free to replace `filename.txt` with the actual name of the file you wish to store
+

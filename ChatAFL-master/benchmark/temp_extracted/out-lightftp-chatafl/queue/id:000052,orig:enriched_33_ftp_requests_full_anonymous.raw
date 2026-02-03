@@ -1,0 +1,34 @@
+To modify the sequence of client requests by adding the CWD (Change Working Directory) and RETR (Retrieve File) commands, we need to consider the logical flow of an FTP session.
+
+Here’s a typical sequence of commands that might be used in an FTP session:
+
+1. USER: Authenticate the user.
+2. PASS: Provide the password.
+3. SYST: Get the system type.
+4. PWD: Print the working directory.
+5. PORT: Specify the data connection.
+6. CWD: Change to the desired directory (this would typically come before LIST or RETR).
+7. LIST: List the files in the current directory.
+8. RETR: Retrieve a specific file from the server.
+9. QUIT: End the session.
+
+Here’s how the modified sequence would look with the CWD and RETR commands added:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+CWD /desired/directory  # Specify the directory you want to change to
+LIST
+RETR filename.txt       # Specify the file you want to retrieve
+QUIT
+```
+
+In this example:
+- Replace `/desired/directory` with the actual directory you want to navigate to on the server.
+- Replace `filename.txt` with the actual name of the file you want to retrieve.
+
+This sequence ensures that the client first changes to the desired directory before listing the files and retrieving a specific file
+

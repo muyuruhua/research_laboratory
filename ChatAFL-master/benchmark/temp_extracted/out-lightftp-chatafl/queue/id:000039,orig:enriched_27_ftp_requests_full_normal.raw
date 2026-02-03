@@ -1,0 +1,23 @@
+To incorporate the `STAT` and `RMD` commands into the existing sequence of client requests, we should consider where they logically fit in the flow. The `STAT` command is used to request the status of a file or directory, while `RMD` is used to remove a directory.
+
+Here’s a modified sequence of client requests with `STAT` added after the `LIST` command and `RMD` added after the `MKD` command (assuming you want to remove the directory you just created):
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+STAT test
+MKD test
+RMD test
+QUIT
+```
+
+In this modified sequence:
+- `STAT test` checks the status of the `test` directory after listing the contents.
+- `RMD test` removes the `test` directory after it has been created. 
+
+Feel free to adjust the order or the specific usage of the commands as per your requirements!
+

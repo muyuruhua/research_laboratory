@@ -1,0 +1,23 @@
+Certainly! The CWD (Change Working Directory) command is typically used to change the current directory on the server, and the NOOP (No Operation) command is used to keep the connection alive without performing any action.
+
+Here’s how you could modify your sequence of client requests to include the CWD and NOOP commands in appropriate locations:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+CWD /path/to/directory  # Change this to the desired directory path
+NOOP                    # Keep the connection alive
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+QUIT
+```
+
+In this modified sequence:
+- The CWD command is added after the PWD command to change the working directory to the specified path.
+- The NOOP command is added after the CWD command to keep the connection alive, though it is optional and can be omitted depending on the server's requirements. 
+
+Make sure to replace `/path/to/directory` with the actual directory you want to change to on the server. If you don't need to change directories, you can remove the CWD command
+

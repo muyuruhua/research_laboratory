@@ -1,0 +1,24 @@
+To incorporate the NOOP and RNTO commands into the provided sequence of client requests, we need to decide where they logically fit based on typical FTP command sequences. The NOOP command is often used to keep the connection alive, while RNTO is used in the context of renaming a file or directory after an RNFR (rename from) command.
+
+Here’s a modified version of your sequence that includes the NOOP and RNTO commands:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+NOOP
+MKD test
+RNFR test
+RNTO new_test
+QUIT
+```
+
+In this modified sequence:
+- The NOOP command is added after the LIST command to keep the connection alive.
+- The RNFR command is added before RNTO to specify the file or directory that is being renamed, followed by the RNTO command to specify the new name.
+
+Please adjust the placement of RNFR and RNTO as per your specific use case if needed
+

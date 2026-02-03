@@ -1,0 +1,22 @@
+To incorporate the `STRU` and `HELP` client requests into the sequence you provided, we can place the `STRU` command after the `SYST` command (to specify the file structure type before listing files) and the `HELP` command after the `PORT` command (to get assistance or information about the server before listing files). 
+
+Here’s the modified sequence of client requests:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+STRU F
+PWD
+PORT 127,0,0,1,152,193
+HELP
+LIST
+QUIT
+```
+
+In this sequence:
+- `STRU F` is used to set the file structure to "File" (which is common).
+- `HELP` is added to request help or information from the server. 
+
+Feel free to adjust the specific parameters of the `STRU` command based on your needs, as it can also be `STRU R` for record structure or `STRU P` for page structure, depending on the context of your FTP operations
+

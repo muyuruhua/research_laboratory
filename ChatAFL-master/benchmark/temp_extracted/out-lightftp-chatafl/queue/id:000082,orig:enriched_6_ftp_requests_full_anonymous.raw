@@ -1,0 +1,22 @@
+To incorporate the `HELP` and `RMD` client requests into the sequence of client requests you provided, we need to determine a logical placement for these commands. Typically, `HELP` can be issued at any time to inquire about available commands, and `RMD` (which stands for "Remove Directory") would generally be placed after the `PWD` command to specify which directory you are intending to remove.
+
+Here’s a modified sequence of client requests with `HELP` and `RMD` added:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+HELP
+RMD directory_name  ; (replace 'directory_name' with the actual directory you want to remove)
+PORT 127,0,0,1,152,193
+LIST
+QUIT
+```
+
+In this modified sequence:
+- `HELP` is placed after `PWD` to allow the user to inquire about available commands after establishing the current working directory.
+- `RMD directory_name` is included after `HELP`, where `directory_name` should be replaced with the actual name of the directory you wish to remove.
+
+Feel free to adjust the placement or the directory name as per your specific requirements
+

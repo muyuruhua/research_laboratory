@@ -1,0 +1,18 @@
+To add the RNFR (Rename From) and RNTO (Rename To) commands to the provided sequence of FTP client requests, we need to place them in a logical order. Typically, the RNFR command is used to specify the file you want to rename, and the RNTO command is used to specify the new name for that file after the RNFR command.
+
+Here’s the modified sequence of client requests with RNFR and RNTO added:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+RNFR old_filename.txt  ; Specify the file to rename
+RNTO new_filename.txt   ; Specify the new name for the file
+LIST
+QUIT
+```
+
+In this example, replace `old_filename.txt` with the actual name of the file you wish to rename, and `new_filename.txt` with the desired new name for that file. The RNFR command must come before the RNTO command, as it specifies the file being renamed
+

@@ -10,11 +10,11 @@ states_data=$6
 #create a new file if append = 0
 if [ $append = "0" ]; then
   #echo "Trying to delete $PWD/$covfile"
-  rm "$PWD/$covfile" ; touch $covfile
+  rm -f "$PWD/$covfile" ; touch $covfile
   echo "time,subject,fuzzer,run,cov_type,cov" >> $covfile
 
   #echo "Trying to delete $PWD/$states_data"
-  rm $states_data ; touch $states_data
+  rm -f $states_data ; touch $states_data
   echo "time,subject,fuzzer,run,state_type,state" >> $states_data
 fi
 
@@ -80,7 +80,13 @@ for fuzzer in $fuzzers; do
     #tar -zxvf out-${prog}-${fuzzer}_${i}.tar.gz > /dev/null 2>&1
     tar -axf out-${prog}-${fuzzer}_${i}.tar.gz out-${prog}-${fuzzer}/cov_over_time.csv
     tar -axf out-${prog}-${fuzzer}_${i}.tar.gz out-${prog}-${fuzzer}/plot_data
+    # Rename first, then check
     mv out-${prog}-${fuzzer} out-${prog}-${fuzzer}-${i}
+    # Check if required files exist after extraction
+    if [ ! -f out-${prog}-${fuzzer}-${i}/cov_over_time.csv ] || [ ! -f out-${prog}-${fuzzer}-${i}/plot_data ]; then
+        echo "Error: Missing cov_over_time.csv or plot_data in out-${prog}-${fuzzer}-${i}"
+        continue
+    fi
     #combine all csv files
     convert $fuzzer $prog $i out-${prog}-${fuzzer}-${i}/cov_over_time.csv $covfile
     convert_state $fuzzer $prog $i out-${prog}-${fuzzer}-${i}/plot_data $states_data

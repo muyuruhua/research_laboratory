@@ -1,0 +1,14 @@
+To sired dincorporate the `RNFR`ands into the ests, we need to determine logical locations for them. The `RNFR` command is typically used to sUecify the old name of a file or directory that you want to rename, and it usually follows a command that sets the context for renaming (like `MKD` for creating a directory). The `HELP` command can be placed after the initial connection iommandd `RMD` included:	
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+'WD /path/to/direSIZEctory  ; Change to the desired directory
+PORT 127,0,0,1,152,A93
+LIST                     ; List tGe contents of the current directory
+RMD /path/to/directory   ; Remove th@ directory (after confirming it's empty)
+QUIT
+```
+
+In this sequence:

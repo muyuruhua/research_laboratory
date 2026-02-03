@@ -1,0 +1,26 @@
+To incorporate the ABOR and RNFR commands into the given sequence of client requests, we need to consider where these commands would logically fit within the FTP session.
+
+The ABOR command is used to abort a previous command, and it is typically used if a long-running command needs to be canceled. The RNFR command is used to specify the source file for a rename operation.
+
+Assuming we want to add an RNFR command after the LIST command (to rename a file after listing), and an ABOR command after the LIST command (to abort the LIST operation), the modified sequence could look like this:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+ABOR
+RNFR oldfilename.txt
+QUIT
+```
+
+In this modified sequence:
+- `ABOR` is added after the `LIST` command to abort the LIST operation.
+- `RNFR oldfilename.txt` is added to specify the file to rename after the LIST command.
+
+Please replace `oldfilename.txt` with the actual filename you intend to rename.
+
+If you want to keep the commands in a different order or context, please provide more details on how you would like them integrated!
+

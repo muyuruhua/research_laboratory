@@ -1,0 +1,22 @@
+To incorporate the `ABOR` and `PASV` commands into the sequence of client requests, we need to determine appropriate locations for them. The `ABOR` command is typically used to abort a previous command, while `PASV` is used to switch to passive mode for data transfer.
+
+Here’s a modified sequence of client requests with `ABOR` and `PASV` added in logical places:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PASV
+PORT 127,0,0,1,152,193
+LIST
+ABOR
+QUIT
+```
+
+In this sequence:
+- `PASV` is placed before the `PORT` command because it changes the mode of data transfer to passive mode, which is a common practice before initiating a data transfer.
+- `ABOR` is placed after the `LIST` command to indicate that if the `LIST` command was in progress and needed to be aborted, the `ABOR` command would be used here.
+
+Feel free to adjust the placement of `ABOR` if you have a specific context in mind for its use
+

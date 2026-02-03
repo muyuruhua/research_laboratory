@@ -1,0 +1,23 @@
+To include the `CWD` (Change Working Directory) and `RMD` (Remove Directory) requests in the proper locations, we can add them after the `MKD` command, since you would typically change to the new directory after creating it, and you might want to remove it afterward.
+
+Here's the modified sequence of client requests with `CWD` and `RMD` added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+CWD test
+RMD test
+QUIT
+```
+
+In this sequence:
+- `CWD test` changes the current working directory to the newly created `test` directory.
+- `RMD test` removes the `test` directory after changing into it. 
+
+Make sure that the directory is empty before attempting to remove it with `RMD`
+

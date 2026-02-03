@@ -1,0 +1,25 @@
+To incorporate the `CWD` (Change Working Directory) and `RETR` (Retrieve a file) commands into the sequence of client requests, we need to identify appropriate locations for these commands based on typical FTP operations. 
+
+Here's a modified sequence of client requests with `CWD` and `RETR` added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+CWD test        # Change to the 'test' directory
+LIST            # List the contents of the current directory (now 'test')
+RETR filename   # Retrieve a specific file (replace 'filename' with the actual file name you want to retrieve)
+MKD newdir     # Create a new directory (if needed, this can be kept or removed)
+QUIT
+```
+
+### Explanation:
+1. **CWD test**: This command is added after the `PORT` command to change the working directory to `test` before listing its contents.
+2. **LIST**: This command follows `CWD` to list the contents of the newly changed directory.
+3. **RETR filename**: This command is added after `LIST` to retrieve a specific file from the `test` directory. You would replace `filename` with the actual name of the file you wish to retrieve.
+4. **MKD newdir**: This command is optional and can be kept or removed based on your needs. It creates a new directory in the current working directory if necessary.
+
+Make sure to replace `filename` with the actual file you intend to retrieve
+

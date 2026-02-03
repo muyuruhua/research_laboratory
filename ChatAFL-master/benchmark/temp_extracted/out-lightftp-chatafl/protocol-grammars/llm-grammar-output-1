@@ -1,0 +1,121 @@
+For the FTP (File Transfer Protocol), the client request templates typically include commands for various operations. Here are some common FTP client request templates:
+
+1. **USER Command**: Used to send the username to the FTP server.
+   ```
+   USER: ["USER <<VALUE>>\r\n"]
+   ```
+
+2. **PASS Command**: Used to send the password to the FTP server.
+   ```
+   PASS: ["PASS <<VALUE>>\r\n"]
+   ```
+
+3. **LIST Command**: Used to list files in the current directory.
+   ```
+   LIST: ["LIST <<VALUE>>\r\n"]
+   ```
+
+4. **RETR Command**: Used to retrieve (download) a file from the server.
+   ```
+   RETR: ["RETR <<VALUE>>\r\n"]
+   ```
+
+5. **STOR Command**: Used to store (upload) a file to the server.
+   ```
+   STOR: ["STOR <<VALUE>>\r\n"]
+   ```
+
+6. **CWD Command**: Used to change the current working directory on the server.
+   ```
+   CWD: ["CWD <<VALUE>>\r\n"]
+   ```
+
+7. **PWD Command**: Used to print the current working directory on the server.
+   ```
+   PWD: ["PWD\r\n"]
+   ```
+
+8. **QUIT Command**: Used to terminate the session.
+   ```
+   QUIT: ["QUIT\r\n"]
+   ```
+
+9. **NOOP Command**: Used to send a no-operation command (keep-alive).
+   ```
+   NOOP: ["NOOP\r\n"]
+   ```
+
+These templates can be adapted to include specific values where indicated by `<<VALUE>>`. The actual commands may vary slightly based on the specific FTP server implementation, but these are the standard FTP commands used in client-server communication.
+In addition to the basic FTP commands previously mentioned, there are several other FTP client request templates that can be used to perform various operations. Here are additional FTP command templates:
+
+1. **ABOR Command**: Used to abort the previous command.
+   ```
+   ABOR: ["ABOR\r\n"]
+   ```
+
+2. **DELE Command**: Used to delete a file from the server.
+   ```
+   DELE: ["DELE <<VALUE>>\r\n"]
+   ```
+
+3. **RNFR Command**: Used to specify the old name of a file for renaming.
+   ```
+   RNFR: ["RNFR <<VALUE>>\r\n"]
+   ```
+
+4. **RNTO Command**: Used to specify the new name for a file after renaming.
+   ```
+   RNTO: ["RNTO <<VALUE>>\r\n"]
+   ```
+
+5. **MKD Command**: Used to create a new directory on the server.
+   ```
+   MKD: ["MKD <<VALUE>>\r\n"]
+   ```
+
+6. **RMD Command**: Used to remove a directory from the server.
+   ```
+   RMD: ["RMD <<VALUE>>\r\n"]
+   ```
+
+7. **SITE Command**: Used to send site-specific commands to the server.
+   ```
+   SITE: ["SITE <<VALUE>>\r\n"]
+   ```
+
+8. **SYST Command**: Used to get the system type of the server.
+   ```
+   SYST: ["SYST\r\n"]
+   ```
+
+9. **STAT Command**: Used to return the status of the server or a specific file.
+   ```
+   STAT: ["STAT <<VALUE>>\r\n"]
+   ```
+
+10. **TYPE Command**: Used to set the transfer mode (e.g., ASCII, binary).
+    ```
+    TYPE: ["TYPE <<VALUE>>\r\n"]
+    ```
+
+11. **PASV Command**: Used to enter passive mode for data transfer.
+    ```
+    PASV: ["PASV\r\n"]
+    ```
+
+12. **PORT Command**: Used to enter active mode for data transfer by specifying the IP address and port.
+    ```
+    PORT: ["PORT <<VALUE>>\r\n"]
+    ```
+
+13. **HELP Command**: Used to get help or a list of available commands.
+    ```
+    HELP: ["HELP\r\n"]
+    ```
+
+14. **NOOP Command**: Used to keep the connection alive (no operation).
+    ```
+    NOOP: ["NOOP\r\n"]
+    ```
+
+These templates provide a comprehensive set of commands that can be used in FTP client requests to interact with an FTP server. Each command can be customized by replacing `<<VALUE>>` with the appropriate parameters as needed.

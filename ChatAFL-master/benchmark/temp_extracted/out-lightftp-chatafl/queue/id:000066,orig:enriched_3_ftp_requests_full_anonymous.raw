@@ -1,0 +1,22 @@
+Certainly! The `CWD` (Change Working Directory) command is typically used to change the current directory on the server, and the `HELP` command is used to request information about the commands supported by the FTP server.
+
+Here’s the modified sequence of client requests with `CWD` and `HELP` added in appropriate locations:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+HELP           ; Request for help on available commands
+PWD
+CWD /desired/directory  ; Change to the desired directory (replace with actual directory)
+PORT 127,0,0,1,152,193
+LIST
+QUIT
+```
+
+In this modified sequence:
+- `HELP` is placed after `SYST` to inquire about the supported commands.
+- `CWD` is placed after `PWD` to change the working directory to a specified path. You would need to replace `/desired/directory` with the actual directory you want to change to. 
+
+Feel free to adjust the directory path in the `CWD` command as needed!
+

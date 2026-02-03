@@ -1,0 +1,26 @@
+To incorporate the `APPE` and `RMD` client requests into the provided sequence, we can place `APPE` after the `MKD` command, as it typically involves appending data to a file after a directory is created. The `RMD` command can be placed after the `LIST` command if we want to remove a directory after listing its contents.
+
+Here is a modified sequence of client requests that includes both `APPE` and `RMD`:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+RMD test
+MKD test
+APPE testfile
+QUIT
+```
+
+In this modified sequence:
+
+1. The `LIST` command is used to list the contents of the current directory.
+2. The `RMD test` command is added to remove the directory named `test` before creating it again to avoid conflicts.
+3. The `MKD test` command is used to create a new directory named `test`.
+4. The `APPE testfile` command is used to append data to a file named `testfile` in the current directory.
+
+Feel free to adjust the order or specifics based on your requirements!
+

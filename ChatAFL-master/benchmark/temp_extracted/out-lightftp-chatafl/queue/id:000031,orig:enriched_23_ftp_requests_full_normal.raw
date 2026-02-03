@@ -1,0 +1,40 @@
+To modify the sequence of client requests by adding the `CWD` (Change Working Directory) and `RNTO` (Rename To) commands in appropriate locations, we need to determine where they logically fit within the context of the FTP commands.
+
+Here's a typical sequence of commands for an FTP session:
+
+1. User logs in with USER and PASS.
+2. The client may check system information with SYST.
+3. The client may check the current directory with PWD.
+4. The client sets up a data connection with PORT.
+5. The client lists the contents of the current directory with LIST.
+6. The client may create a new directory with MKD.
+7. The client may change to the new directory with CWD.
+8. The client may rename or move files/directories with RNTO.
+9. Finally, the client ends the session with QUIT.
+
+Given this structure, here’s where we can add the `CWD` and `RNTO` commands:
+
+1. After creating a new directory with `MKD test`, we can change into that directory using `CWD test`.
+2. We can then rename a file or directory, so we would add `RNTO newname` after the `CWD` command (assuming we have something to rename).
+
+Here’s the modified sequence of client requests:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+CWD test
+RNTO newname
+QUIT
+```
+
+In this sequence:
+- `CWD test` changes the working directory to the newly created `test` directory.
+- `RNTO newname` would rename the current working directory or a file within it to `newname`, depending on the context of the FTP server and the files present. 
+
+Please let me know if you need any further modifications or explanations!
+

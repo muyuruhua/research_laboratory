@@ -1,0 +1,23 @@
+To incorporate the CWD (Change Working Directory) and APPE (Append) commands into the sequence of client requests, we can place them in logical positions. Typically, the CWD command would be used after the PWD command to change directories, and the APPE command would be used after establishing the data connection (like after the LIST command or before transferring a file).
+
+Here’s a modified version of the sequence with CWD and APPE added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+CWD test          # Change working directory to 'test'
+PORT 127,0,0,1,132,209
+LIST
+APPE example.txt  # Append data to 'example.txt' in the 'test' directory
+MKD test2        # Create a new directory 'test2' in the current directory
+QUIT
+```
+
+In this modified sequence:
+- The `CWD test` command is added to change the working directory to "test" after the `PWD` command.
+- The `APPE example.txt` command is added after the `LIST` command, indicating that the client is ready to append data to a file named "example.txt" in the current directory (which is now "test"). 
+
+Feel free to adjust the placement or the parameters of these commands according to your specific needs
+

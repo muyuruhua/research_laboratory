@@ -1,0 +1,21 @@
+To add the `HELP` and `RETR` client requests into the sequence of client requests you provided, we need to determine logical positions for these commands. The `HELP` command is typically used to request information about available commands, and it can be placed after the initial connection commands but before any file operations. The `RETR` command is used to retrieve a file from the server and should logically be placed after the `LIST` command, which would typically list the files available on the server.
+
+Here’s a modified sequence of client requests with `HELP` and `RETR` added in appropriate locations:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+HELP          ; Added HELP request here
+PWD
+PORT 127,0,0,1,132,209
+LIST
+RETR filename ; Added RETR request here, replace 'filename' with the actual file name you want to retrieve
+MKD test
+QUIT
+```
+
+In this sequence:
+- The `HELP` command is added after the connection commands to get information about available commands.
+- The `RETR` command is placed after the `LIST` command, which is where you would typically want to retrieve a file after confirming its presence in the directory listing. Make sure to replace `filename` with the actual name of the file you wish to retrieve
+

@@ -1,0 +1,5 @@
+To incorporate the `RNFR` and `HELP` commands into thesequence of client requests, we need to determine logical locations for them. The `RNFR` command is typically used to specify the old name of a file or directory that you want to rename, and it )
+QUIT
+ollows a command that sets the context for renaming (like `MKD` for creating a cirectory). The `HELP` command can be placed after the initial connection commandd `RMD` included:
+
+```

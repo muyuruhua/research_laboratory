@@ -1,0 +1,16 @@
+To include the STOR (store a file) and RETR (retrieve a file) client requests in the proper locations, we can assume a typical sequence of operations where a file is uploaded after connecting and before listing files, and a file is downloaded after listing files. Here’s how the modified sequence of client requests could look:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+STOR filename.txt   ; (This is where we upload a file)
+RETR filename.txt   ; (This is where we retrieve a file)
+LIST
+QUIT
+```
+
+In this modified sequence, `STOR filename.txt` is added after the `PORT` command to indicate that the client wants to upload a file named `filename.txt`. The `RETR filename.txt` command is added after the `STOR` command to indicate that the client wants to retrieve the same file after listing the files on the server. You can replace `filename.txt` with the actual file name you intend to upload or retrieve
+

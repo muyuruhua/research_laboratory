@@ -1,0 +1,22 @@
+To add the `PASV` and `RMD` client requests in the proper locations, we first need to understand the context of the FTP commands. The `PASV` command is used to enter passive mode, which allows the client to connect to the server for data transfer. The `RMD` command is used to remove a directory on the server.
+
+Here’s a modified sequence of client requests that includes both `PASV` and `RMD` commands in appropriate locations:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PASV
+PORT 127,0,0,1,152,193
+LIST
+RMD /path/to/directory  # Specify the path to the directory you want to remove
+QUIT
+```
+
+In this sequence:
+- The `PASV` command is added after the `PWD` command to switch to passive mode before initiating a data transfer.
+- The `RMD` command is placed before the `QUIT` command to remove a directory after any necessary operations are completed.
+
+Make sure to replace `/path/to/directory` with the actual path of the directory you wish to remove on the server
+

@@ -1,0 +1,21 @@
+To incorporate the `APPE` and `HELP` client requests into the existing sequence of FTP commands, we can place them logically based on the typical workflow of FTP operations. The `HELP` command can be placed after the initial connection and authentication steps, while the `APPE` command is typically used to append data to a file, which can be placed after the `MKD` command when we might want to append data to a file in the newly created directory.
+
+Here's the modified sequence of client requests:
+
+```
+USER ubuntu
+PASS ubuntu
+HELP
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+APPE test/example.txt
+QUIT
+```
+
+In this modified sequence:
+- The `HELP` command is added after the `PASS` command to request help information after logging in.
+- The `APPE` command is added after the `MKD` command to append data to a file named `example.txt` in the newly created `test` directory. This assumes that the directory exists and that the client intends to append data to a file within that directory
+

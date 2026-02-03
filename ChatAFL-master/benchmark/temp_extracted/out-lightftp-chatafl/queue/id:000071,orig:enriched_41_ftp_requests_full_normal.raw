@@ -1,0 +1,24 @@
+To incorporate the `APPE` (Append) and `RNTO` (Rename To) commands into the sequence of client requests, we need to determine appropriate locations for these commands based on a typical FTP workflow.
+
+Here's a modified sequence that includes `APPE` and `RNTO` commands:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+APPE test/file.txt  # Append data to a file named file.txt in the test directory
+RNTO newfile.txt    # Rename the file to newfile.txt
+QUIT
+```
+
+### Explanation of the Changes:
+1. **APPE Command**: This command is added after the `MKD test` command to indicate that we are appending data to a file within the newly created directory (`test`). You may need to ensure that the file exists or that the client is set up to handle the appending operation correctly.
+
+2. **RNTO Command**: This command is added after the `APPE` command to rename the file that was just appended to. Here, we rename `file.txt` to `newfile.txt`.
+
+Feel free to adjust the file names and paths according to your specific requirements
+

@@ -1,0 +1,22 @@
+To incorporate the `REST` (which is used to restart a file transfer at a specified point) and `RMD` (which is used to remove a directory) client requests into your sequence, we should place them in logical positions based on typical FTP operations. The `REST` command is usually used in the context of file transfers, while `RMD` is used after creating a directory if you want to remove it.
+
+Here’s a modified sequence of client requests with the `REST` and `RMD` commands added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+REST 0           ; Assuming we want to restart a transfer from the beginning
+RETR test_file   ; Example of retrieving a file after REST (not in the original request but typically follows REST)
+RMD test         ; Now we can remove the directory we just created
+QUIT
+```
+
+This sequence assumes that you want to restart a file transfer after listing the directory and creating a new directory. The `RMD` command is placed after the `MKD` command to remove the newly created directory. You would typically perform a file transfer operation (like `RETR` or `STOR`) after the `REST` command, but since it wasn't specified in your original request, I've included it as an example.
+
+If you want to remove the directory without transferring a file, you can simply keep the `RMD` command right after the `MKD` command. Adjust according to your specific use case
+

@@ -1,0 +1,23 @@
+To incorporate the `STAT` and `REST` commands into the sequence of client requests, we need to consider where they would logically fit in the FTP session. The `STAT` command is typically used to request the status of a file or directory, and `REST` is used to specify a point in a file for resuming file transfers.
+
+Here’s a modified sequence of client requests with `STAT` and `REST` added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+STAT /path/to/some/file  # Example of using STAT to check the status of a specific file
+REST 1000                # Example of using REST to set the restart position for a file transfer
+MKD test
+QUIT
+```
+
+In this modified sequence:
+- The `STAT` command is added after the `LIST` command, as it is logical to check the status of a file after listing the directory contents.
+- The `REST` command is added before the `MKD` command, as it is typically used when preparing for a file transfer, which would logically occur before creating a new directory.
+
+Please adjust the path in the `STAT` command and the number in the `REST` command to fit your specific use case
+

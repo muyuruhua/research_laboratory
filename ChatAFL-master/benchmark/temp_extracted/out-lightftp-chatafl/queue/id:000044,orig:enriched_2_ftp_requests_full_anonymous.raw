@@ -1,0 +1,22 @@
+To incorporate the RNFR (Rename From) and HELP commands into the sequence of client requests, we need to determine appropriate locations for these commands. The RNFR command is typically used in conjunction with the RNTO (Rename To) command to rename files or directories on the server. The HELP command is generally used to request information about the commands supported by the server.
+
+Here’s a modified sequence that includes the RNFR and HELP commands:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+HELP        ; Request for help on available commands
+RNFR filename.txt  ; Specify the file to rename (you would replace "filename.txt" with the actual file)
+LIST
+QUIT
+```
+
+In this sequence:
+- The HELP command is placed after the PORT command, allowing the user to understand what commands are available before proceeding with other actions.
+- The RNFR command is placed before the LIST command, indicating that the user intends to rename a file before listing the contents.
+
+You can adjust the filename in the RNFR command to match the actual file you want to rename on the server
+

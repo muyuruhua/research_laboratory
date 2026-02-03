@@ -1,0 +1,22 @@
+To include the `STOR` (store a file) and `RMD` (remove a directory) commands in the proper locations, we can place them logically in the sequence of FTP commands. Typically, `STOR` is used after the `PORT` command to upload a file, and `RMD` would be used after listing or navigating the directories.
+
+Here’s a modified sequence of client requests including the `STOR` and `RMD` commands:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+STOR filename.txt  # Assuming we want to store a file named 'filename.txt'
+LIST
+RMD directory_name  # Assuming we want to remove a directory named 'directory_name'
+QUIT
+```
+
+In this sequence:
+- `STOR filename.txt` is placed after the `PORT` command to indicate that we want to upload a file.
+- `RMD directory_name` is placed after the `LIST` command, which would typically be used to check the contents of the current directory before removing a directory.
+
+Feel free to replace `filename.txt` and `directory_name` with actual file and directory names as needed
+

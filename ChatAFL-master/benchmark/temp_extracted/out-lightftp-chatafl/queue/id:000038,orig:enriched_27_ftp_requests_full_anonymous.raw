@@ -1,0 +1,24 @@
+To incorporate the `RNFR` (Rename From) and `RMD` (Remove Directory) commands into the sequence of client requests, we need to determine where they logically fit. The `RNFR` command is typically used to specify the name of the file or directory you want to rename before using the `RNTO` (Rename To) command. The `RMD` command is used to remove a directory.
+
+Here's a modified version of your original sequence, including the `RNFR` and `RMD` commands:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+RNFR old_directory_name   # Specify the directory you want to rename
+RNTO new_directory_name    # Specify the new name for the directory (assuming this is needed)
+RMD directory_name_to_remove  # Specify the directory you want to remove
+QUIT
+```
+
+In this sequence:
+- `RNFR old_directory_name` specifies the directory you want to rename.
+- `RNTO new_directory_name` would typically follow `RNFR` to complete the rename operation.
+- `RMD directory_name_to_remove` is added to remove a specified directory.
+
+If you want to keep the sequence logical, ensure that the directories mentioned in the `RNFR`, `RNTO`, and `RMD` commands are appropriate for the context of your FTP session
+

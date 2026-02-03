@@ -1,0 +1,25 @@
+To properly add the RNFR (Rename From) and RETR (Retrieve) client requests to the sequence you provided, we need to consider where these commands would logically fit in the context of an FTP session.
+
+Here's a modified sequence of client requests with RNFR and RETR included:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+RNFR test/file.txt  ; This command indicates the file to rename
+RNTO newfile.txt    ; This command indicates the new name for the file
+RETR test/file.txt  ; This command is used to retrieve the specified file
+QUIT
+```
+
+In this modified sequence:
+1. `RNFR test/file.txt` specifies the file you want to rename.
+2. `RNTO newfile.txt` specifies the new name for that file (you may want to include this if you are renaming).
+3. `RETR test/file.txt` retrieves the specified file from the server.
+
+Please adjust the file paths and names as necessary for your specific use case
+

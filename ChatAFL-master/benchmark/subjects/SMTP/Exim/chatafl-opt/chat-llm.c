@@ -975,17 +975,11 @@ char *enrich_sequence(char *sequence, khash_t(strSet) * missing_message_types)
         sequence_len = allowed_tokens;
     }
     asprintf(&content, prompt_template, sequence_len, sequence_escaped_str, missing_fields_len, missing_fields_seq);
-    
-    // OCP: Properly escape content for JSON to handle special characters like < >
-    json_object *content_escaped = json_object_new_string(content);
-    const char *content_escaped_str = json_object_to_json_string(content_escaped);
-    
-    asprintf(&prompt, "[{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"}, {\"role\": \"user\", \"content\": %s}]", content_escaped_str);
+    asprintf(&prompt, "[{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"}, {\"role\": \"user\", \"content\": \"%s\"}]", content);
     
     // Debug: Check if prompt is too long or malformed
     if (strlen(prompt) > 15000) {
-        fprintf(stderr, "[LLM WARN] Prompt length (%zu) exceeds safe limit. Truncating enrichment request.\n", strlen(prompt));
-        json_object_put(content_escaped);
+        fprintf(stderr, "[LLM WARN] Prompt length (%zu) exceeds safe limit. Truncating enrichment request.\\n", strlen(prompt));
         free(content);
         free(prompt);
         ck_free(missing_fields_seq);
@@ -993,7 +987,6 @@ char *enrich_sequence(char *sequence, khash_t(strSet) * missing_message_types)
         return NULL;
     }
     
-    json_object_put(content_escaped);
     free(content);
     ck_free(missing_fields_seq);
     json_object_put(sequence_escaped);

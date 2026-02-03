@@ -1,0 +1,24 @@
+To incorporate the ABOR and CWD commands into the sequence of client requests, we need to determine appropriate locations for these commands. 
+
+The ABOR command is typically used to abort a previous command or operation, and it is usually sent when the client wants to cancel an ongoing process. The CWD command is used to change the working directory on the server.
+
+Here’s a modified version of your sequence of client requests with the ABOR and CWD commands added:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+CWD /desired/directory      ; (Add CWD here to change to the desired directory)
+PORT 127,0,0,1,152,193
+LIST
+ABOR                       ; (Add ABOR here if you want to abort the LIST command)
+QUIT
+```
+
+In this modified sequence:
+- The CWD command is placed after the PWD command, as it makes sense to change the directory before listing the files.
+- The ABOR command can be placed after the LIST command if you want to abort the listing operation. However, if you intend to abort a specific command that takes a long time, you may want to place it based on your application's logic.
+
+You can adjust the placement of the ABOR command based on your specific needs or the context of your FTP session
+

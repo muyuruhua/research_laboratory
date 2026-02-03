@@ -1,0 +1,24 @@
+To incorporate the RNFR (Rename From) and CWD (Change Working Directory) commands into the sequence of client requests, we need to place them in appropriate locations based on the context of FTP commands.
+
+Here’s a modified sequence of client requests, including RNFR and CWD:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+CWD /path/to/directory  # Change to the desired directory
+RNFR old_filename.txt   # Specify the file to rename
+RNTO new_filename.txt    # Specify the new name for the file
+PORT 127,0,0,1,152,193
+LIST
+QUIT
+```
+
+In this sequence:
+- The `CWD` command is used to change to the desired directory before renaming the file.
+- The `RNFR` command specifies the file that you want to rename.
+- The `RNTO` command (which is typically used after `RNFR`) specifies the new name for the file.
+
+Make sure to replace `/path/to/directory`, `old_filename.txt`, and `new_filename.txt` with the actual directory path and filenames you intend to use
+

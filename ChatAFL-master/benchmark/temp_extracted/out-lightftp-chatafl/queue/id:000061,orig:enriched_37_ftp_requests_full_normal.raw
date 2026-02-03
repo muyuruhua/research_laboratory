@@ -1,0 +1,19 @@
+To add the `RETR` (retrieve a file) and `NOOP` (no operation) commands into the sequence of client requests, we can place them logically based on typical FTP command usage. Here is a modified version of the sequence with `RETR` and `NOOP` included:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+NOOP                # Added to keep the connection alive
+LIST
+RETR filename.txt   # Added to retrieve a specific file after the LIST command
+MKD test
+QUIT
+```
+
+In this modified sequence:
+- The `NOOP` command is added after the `PORT` command to keep the connection alive.
+- The `RETR` command is added after the `LIST` command, assuming that the user wants to retrieve a file after listing the directory contents. Replace `filename.txt` with the actual file name you want to retrieve
+

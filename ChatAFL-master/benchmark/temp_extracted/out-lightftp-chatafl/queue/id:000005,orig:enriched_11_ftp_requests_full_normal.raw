@@ -1,0 +1,28 @@
+To incorporate the `RNFR` (Rename From) and `REST` (Restart) commands into the provided sequence of FTP client requests, we need to place them in a logical order based on typical FTP operations. Here's a modified sequence that includes these commands:
+
+1. The `RNFR` command is typically used before the `RNTO` command to specify the name of the file or directory to be renamed. It should be placed after the `MKD` command if we are renaming a directory after creating it.
+2. The `REST` command is used to specify the point from which to resume a file transfer. It can be placed before the `LIST` command if we want to resume a file transfer.
+
+Here's a modified sequence of client requests with `RNFR` and `REST` added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+REST 0                ; Specify the restart point (if needed)
+LIST
+MKD test
+RNFR test            ; Specify the directory to rename
+RNTO new_test        ; Specify the new name for the directory (this command is implied to be added)
+QUIT
+```
+
+In this modified sequence:
+- `REST 0` is added to indicate that we want to start from the beginning of a file transfer.
+- `RNFR test` is added after the `MKD test` command to indicate we want to rename the newly created directory.
+- An implied `RNTO new_test` command is added to complete the renaming operation, specifying the new name for the directory.
+
+Please adjust the new directory name as needed based on your requirements
+

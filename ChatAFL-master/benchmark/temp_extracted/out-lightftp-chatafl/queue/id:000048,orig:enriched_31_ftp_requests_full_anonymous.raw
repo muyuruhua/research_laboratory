@@ -1,0 +1,22 @@
+To incorporate the `CWD` (Change Working Directory) and `STRU` (Structure) commands into the sequence of client requests, we need to determine appropriate locations for these commands based on typical FTP operations.
+
+Here's a modified sequence of client requests with `CWD` and `STRU` included:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+CWD /desired/directory  # Change to the desired directory
+STRU F                    # Set the file structure to File
+PORT 127,0,0,1,152,193
+LIST
+QUIT
+```
+
+### Explanation of Changes:
+1. **CWD**: This command is added after `PWD` to change the working directory to the desired location before listing files. You can replace `/desired/directory` with the actual directory you want to navigate to.
+2. **STRU**: This command is added before the `PORT` command. It sets the file structure to "File" (which is the most common structure). You could also set it to "Record" or "Page" if needed, depending on your use case.
+
+Feel free to adjust the directory path in the `CWD` command as needed!
+

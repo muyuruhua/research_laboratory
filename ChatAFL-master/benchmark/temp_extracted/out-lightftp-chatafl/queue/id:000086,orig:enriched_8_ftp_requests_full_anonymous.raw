@@ -1,0 +1,23 @@
+To incorporate the `HELP` and `RNTO` commands into the sequence of client requests, we need to determine where they would logically fit in the flow of FTP commands. The `HELP` command is typically used to request help or information about available commands, and it can be placed after the initial connection and before the file operations. The `RNTO` command is used in the context of renaming a file, which usually follows a `RNFR` (rename from) command.
+
+Here's a modified version of the sequence that includes the `HELP` and `RNTO` commands:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+HELP
+PORT 127,0,0,1,152,193
+LIST
+RNFR old_filename
+RNTO new_filename
+QUIT
+```
+
+In this sequence:
+- The `HELP` command is added after the `PWD` command, allowing the user to request help after logging in and before performing file operations.
+- The `RNFR` command is included before `RNTO`, as `RNTO` requires a preceding `RNFR` to specify the file to rename. You would replace `old_filename` and `new_filename` with the actual filenames you wish to use.
+
+This maintains a logical flow of commands while integrating the new requests
+

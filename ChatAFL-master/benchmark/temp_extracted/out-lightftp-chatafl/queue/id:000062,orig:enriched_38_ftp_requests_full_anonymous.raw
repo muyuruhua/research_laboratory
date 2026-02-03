@@ -1,0 +1,28 @@
+To incorporate the PASV and RNTO commands into the sequence of client requests, we need to understand their purpose:
+
+- **PASV**: This command is used to switch the FTP connection to passive mode, which allows the client to connect to the server on a port that the server specifies.
+- **RNTO**: This command is used to rename a file or directory. It typically follows the **RNFR** (rename from) command, which specifies the current name of the file or directory to be renamed.
+
+Given the original sequence of commands, we can add PASV before the LIST command to switch to passive mode, and we can add RNTO after an RNFR command to rename a file. However, we need to specify what file we are renaming. For this example, let's assume we want to rename a file named "oldfile.txt" to "newfile.txt".
+
+Here is the modified sequence of client requests:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+PASV
+RNFR oldfile.txt
+RNTO newfile.txt
+LIST
+QUIT
+```
+
+In this modified sequence:
+- PASV is added before the LIST command to switch to passive mode.
+- RNFR and RNTO are added to rename "oldfile.txt" to "newfile.txt" before listing the directory contents. 
+
+Make sure to replace "oldfile.txt" and "newfile.txt" with the actual file names relevant to your context if necessary
+

@@ -1,0 +1,20 @@
+Certainly! Here’s the modified sequence of client requests with the addition of the `PASV` and `HELP` commands in appropriate locations:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PASV
+PORT 127,0,0,1,152,193
+LIST
+HELP
+QUIT
+```
+
+In this sequence:
+- The `PASV` command is added after the `PWD` command, which is a common practice to switch to passive mode before initiating a data connection.
+- The `HELP` command is added after the `LIST` command. This placement allows the user to request help after listing the directory contents. 
+
+Feel free to adjust the placement of these commands if you have a specific order in mind!
+

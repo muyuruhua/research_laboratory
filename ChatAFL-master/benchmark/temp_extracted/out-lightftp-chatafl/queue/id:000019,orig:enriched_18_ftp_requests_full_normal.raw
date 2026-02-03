@@ -1,0 +1,21 @@
+To incorporate the CWD (Change Working Directory) and REST (Restart) client requests into the sequence you provided, we need to determine appropriate locations for these commands.
+
+Typically, the CWD command would be used after the user has logged in and before listing or creating directories. The REST command is generally used before a transfer command (like STOR or RETR) to specify a point from which to resume a transfer.
+
+Here’s a modified sequence of client requests with the CWD and REST commands added in proper locations:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+CWD /path/to/directory   ; Change to a specific directory (modify the path as needed)
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+REST 0                   ; Specify a restart point (usually before a transfer command)
+QUIT
+```
+
+Make sure to replace `/path/to/directory` with the actual directory you want to change to. The `REST 0` command is placed before any transfer command, but since there is no transfer command in your original sequence, it can be included before the QUIT command. Adjust the sequence as necessary depending on your specific use case
+

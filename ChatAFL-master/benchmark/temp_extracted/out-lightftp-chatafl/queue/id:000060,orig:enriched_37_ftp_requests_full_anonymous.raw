@@ -1,0 +1,24 @@
+To incorporate the `PASV` and `RETR` commands into the sequence of client requests, we must first understand the context in which these commands are typically used.
+
+1. **PASV**: This command is used to switch to passive mode for data transfer. It should be sent before initiating a data connection (like `LIST` or `RETR`).
+2. **RETR**: This command is used to retrieve a file from the server. It should be sent after establishing the data connection.
+
+Based on the original sequence, we will place the `PASV` command before the `LIST` command and add a `RETR` command after the `PASV` command. Here’s a modified sequence that includes both commands:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PASV
+LIST
+RETR filename.txt
+QUIT
+```
+
+In this modified sequence:
+- `PASV` is added before `LIST` to switch to passive mode.
+- `RETR filename.txt` is added after `LIST` to specify that a file named `filename.txt` should be retrieved. (You can replace `filename.txt` with the actual name of the file you want to retrieve.)
+
+If you want to retrieve a specific file after listing the directory, this sequence is appropriate. If you are retrieving a file immediately after switching to passive mode without listing, you could adjust accordingly
+

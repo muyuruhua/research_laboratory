@@ -1,0 +1,24 @@
+To incorporate the RNFR (Rename From) and RNTO (Rename To) commands into the sequence of client requests, you would typically want to use these commands after you have created a directory (or file) that you would like to rename. 
+
+Here’s how you can modify the sequence to include RNFR and RNTO commands. In this example, I will assume that you want to rename the directory "test" to "new_test":
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+RNFR test
+RNTO new_test
+QUIT
+```
+
+In this modified sequence:
+- After the `MKD test` command, which creates a directory named "test", the `RNFR test` command specifies that you want to rename "test".
+- The `RNTO new_test` command specifies the new name for the directory, which is "new_test".
+- Finally, the `QUIT` command ends the session. 
+
+Make sure to adjust the names as necessary based on your specific requirements
+
