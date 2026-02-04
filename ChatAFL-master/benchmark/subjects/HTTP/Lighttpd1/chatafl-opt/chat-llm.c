@@ -95,6 +95,12 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
             curl_easy_setopt(curl, CURLOPT_URL, url);
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, chat_with_llm_helper);
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+            
+            // 超时配置：防止无限期挂起
+            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 60L);           // 整体请求60秒超时
+            curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);    // 连接10秒超时
+            curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 100L);  // 低于100字节/秒视为过慢
+            curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 30L);    // 持续30秒低速则超时
 
             res = curl_easy_perform(curl);
 
