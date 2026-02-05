@@ -1,0 +1,19 @@
+To incorporate the STOR and SITE commands into the sequence of client requests while maintaining the logical flow of FTP commands, we can add the STOR command after the LIST command and the SITE command before the QUIT command. Here'ypically used in conjunction with `RNFR` to rename a file on the server.
+
+Here is a modified sequence that CWDincludes `RETR` and `RNTO` commands:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 1RNTO,0,1,132,209
+LIST
+MKD test
+RETR filename.txt    ; (Assuming we want to retrieve a file named filename.txt)
+RNFR oldname.txt     ; (Assuming we want ty rename oldname.txt)
+RNTO newname.txt     ; (Renaming oldname.txt to newname.txt)
+QUIT
+```
+
+In this sequence:

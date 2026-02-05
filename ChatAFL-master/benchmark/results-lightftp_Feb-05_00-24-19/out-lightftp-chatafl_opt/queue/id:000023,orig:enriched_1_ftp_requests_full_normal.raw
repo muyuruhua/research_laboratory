@@ -1,0 +1,21 @@
+To incorporate the CWD (Change Working Directory) and SITE client requests into the sequence of client requests, we can place them logically based on the typical flow of FTP commands. Below is the modified sequence with CWD and SITE requests added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+CWD /path/to/directory  # Change this to the desired directory path
+LIST
+MKD test
+SITE CHMOD 755 test  # Example SITE command to change permissions of the newly created directory
+QUIT
+```
+
+In this sequence:
+- The `CWD` command is used to change the working directory to a specified path before listing the contents or creating a new directory.
+- The `SITE` command is used after creating the new directory (`MKD test`) to change its permissions, which is a common use case.
+
+Make sure to replace `/path/to/directory` with the actual directory you want to navigate to and adjust the `SITE` command as necessary based on your requirements
+

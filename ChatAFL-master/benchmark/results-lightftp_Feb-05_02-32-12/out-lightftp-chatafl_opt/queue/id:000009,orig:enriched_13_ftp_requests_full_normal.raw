@@ -1,0 +1,26 @@
+To incorporate the `ABOR` and `ALLO` commands into the provided sequence of client requests, we need to consider where these commands would logically fit within a typical FTP session.
+
+- `ABOR` is used to abort a command in progress. It usually comes after a command that might take some time to execute, such as `LIST`, but before the next command that relies on the result of the previous command.
+- `ALLO` is used to allocate space on the server for a file. It is typically used before uploading a file, so it might come right after the `MKD` command if we assume the user is preparing to upload a file to the newly created directory.
+
+Here’s a modified sequence of client requests with `ABOR` and `ALLO` added in appropriate locations:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+ABOR
+MKD test
+ALLO 1024
+QUIT
+```
+
+In this modified sequence:
+- `ABOR` is added after `LIST` to indicate that we're aborting any potential ongoing data transfer related to that command.
+- `ALLO 1024` is added after `MKD test` to allocate space for a file that might be uploaded to the new directory. The size `1024` is just an example and can be adjusted based on actual needs. 
+
+This sequence maintains logical flow while incorporating the requested commands
+

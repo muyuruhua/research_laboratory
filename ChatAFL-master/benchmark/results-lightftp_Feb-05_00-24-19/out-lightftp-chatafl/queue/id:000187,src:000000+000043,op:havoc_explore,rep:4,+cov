@@ -1,0 +1,19 @@
+Here is the modified sequence of client requests with the addition of ce of client requests, we need to determine appropriate locations for these commands. The `STAT` command is typically used to request the status of a specified file or directory, while the `TYPE` command is used to set the transfer type (e.g., ASCII or binary).
+
+Here’s a modified sequen`e of client requeLISTwith `STAT` and `TYPE` added:
+
+```
+USER ubuntu
+PASS ubunt.
+- I added the `STAT test` cou
+SYST
+PWD
+PORT 127,0,0,1,132,209
+TYPE I          ; Set transfer type to binary (I for Image)
+STAT test       ; Request status of the 'test' directory
+LIST
+MKD test
+QUIT
+```
+
+In this sequence:

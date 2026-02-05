@@ -1,0 +1,24 @@
+To include the STOR (store a file) and MODE (set the data transfer mode) commands in the sequence of client requests, we need to consider where these commands logically fit within the context of an FTP session.
+
+Typically, the STOR command is used after establishing a data connection (which is often done after the PORT command) and before transferring a file. The MODE command is usually sent before transferring files to specify the transfer mode (e.g., stream, block, or compressed).
+
+Here's how the modified sequence of client requests could look:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+MODE S   ; Set mode to stream (for example)
+STOR filename.txt   ; Specify the file to store
+LIST
+QUIT
+```
+
+In this modified sequence:
+- The `MODE S` command is added after the `PORT` command to set the transfer mode to stream.
+- The `STOR filename.txt` command is added after the `MODE` command to indicate that the client wants to store a file named "filename.txt". You can replace "filename.txt" with the actual file name you intend to upload. 
+
+Please adjust the filename as necessary for your specific use case
+

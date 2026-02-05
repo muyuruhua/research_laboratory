@@ -1,0 +1,22 @@
+To incorporate the `STOR` and `ABOR` commands into the sequence of client requests, we need to consider where these commands would logically fit in a typical FTP session.
+
+Here's a modified sequence that includes `STOR` for uploading a file and `ABOR` for aborting an operation if needed:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+STOR filename.txt  ; This command is added to store/upload a file named filename.txt
+LIST
+ABOR                ; This command is added to abort the previous STOR command if necessary
+QUIT
+```
+
+In this modified sequence:
+- `STOR filename.txt` is added after the `PORT` command, indicating that the client intends to upload a file.
+- `ABOR` is added after the `LIST` command, which allows the client to abort the file transfer if needed. This placement assumes that the listing of files is happening after the upload command, although `ABOR` typically would be used to cancel ongoing commands. 
+
+Please adjust the filename in the `STOR` command as needed for your specific context
+

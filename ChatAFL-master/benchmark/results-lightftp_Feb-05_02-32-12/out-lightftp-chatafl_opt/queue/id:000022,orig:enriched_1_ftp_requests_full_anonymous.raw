@@ -1,0 +1,18 @@
+To include the STOR and SITE commands in the proper locations, we need to consider the context of FTP commands. Typically, the STOR command is used to upload a file to the server after a successful connection, while the SITE command is often used to send site-specific commands to the server.
+
+Here’s a modified sequence of client requests with STOR and SITE added:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+SITE <your_site_command_here>  # Add your specific SITE command here
+STOR <filename>                 # Specify the filename to store
+LIST
+QUIT
+```
+
+Replace `<your_site_command_here>` with the appropriate site-specific command and `<filename>` with the name of the file you wish to upload. The STOR command should come after the PORT command and before the LIST command, as it is typically used to upload a file before listing the directory contents
+

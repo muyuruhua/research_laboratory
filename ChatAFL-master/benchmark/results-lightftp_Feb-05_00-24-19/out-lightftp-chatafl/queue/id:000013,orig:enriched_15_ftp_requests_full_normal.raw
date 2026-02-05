@@ -1,0 +1,22 @@
+To incorporate the `DELE` and `SITE` commands into the sequence of client requests, we need to determine appropriate locations for these commands based on typical FTP workflows. Here’s a modified sequence that includes both `DELE` (to delete a file) and `SITE` (which can be used for various server-specific commands):
+
+1. After the `LIST` command, it's logical to perform a `DELE` command if you want to delete a file after listing the directory contents.
+2. The `SITE` command can be placed after the `MKD` command to perform some server-specific operation, such as setting permissions or other server-side configurations.
+
+Here’s the modified sequence of client requests:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+DELE filename.txt   # Assuming you want to delete 'filename.txt' after listing
+MKD test
+SITE CHMOD 755 test # Example SITE command to change permissions of the new directory
+QUIT
+```
+
+Make sure to replace `filename.txt` with the actual file you intend to delete, and adjust the `SITE` command as per your server's capabilities and your needs
+

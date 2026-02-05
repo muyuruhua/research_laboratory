@@ -69,7 +69,11 @@ afl-as: afl-as.c afl-as.h $(COMM_HDR) | test_x86
 	$(CC) $(CFLAGS) $@.c -o $@ $(LDFLAGS)
 	ln -sf afl-as as
 
-# ChatAFL-Opt object files
+# Extension Framework
+fuzzer_extension.o: fuzzer_extension.c fuzzer_extension.h
+	$(CC) $(CFLAGS) -c fuzzer_extension.c -o $@
+
+# ChatAFL-Opt Modules (5 independent modules)
 hypothesis.o: hypothesis.c hypothesis.h chat-llm.h
 	$(CC) $(CFLAGS) -c hypothesis.c -o $@
 
@@ -85,8 +89,13 @@ state_scheduler.o: state_scheduler.c state_scheduler.h hypothesis.h verifier.h c
 chatafl_opt.o: chatafl_opt.c chatafl_opt.h hypothesis.h verifier.h cegar.h state_scheduler.h
 	$(CC) $(CFLAGS) -c chatafl_opt.c -o $@
 
-afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet.o aflnet.h chat-llm.o chat-llm.h hypothesis.o verifier.o cegar.o state_scheduler.o chatafl_opt.o | test_x86
-	$(CC) $(CFLAGS) $@.c aflnet.o chat-llm.o hypothesis.o verifier.o cegar.o state_scheduler.o chatafl_opt.o -o $@ $(LDFLAGS) -lcurl -ljson-c -lpcre2-8
+# ChatAFL-Opt Extension (pluggable implementation)
+chatafl_opt_extension.o: chatafl_opt_extension.c chatafl_opt_extension.h fuzzer_extension.h hypothesis.h verifier.h cegar.h state_scheduler.h
+	$(CC) $(CFLAGS) -c chatafl_opt_extension.c -o $@
+
+# AFL Fuzzer with Extension Support
+afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet.o aflnet.h chat-llm.o chat-llm.h fuzzer_extension.o hypothesis.o verifier.o cegar.o state_scheduler.o chatafl_opt.o chatafl_opt_extension.o | test_x86
+	$(CC) $(CFLAGS) $@.c aflnet.o chat-llm.o fuzzer_extension.o hypothesis.o verifier.o cegar.o state_scheduler.o chatafl_opt.o chatafl_opt_extension.o -o $@ $(LDFLAGS) -lcurl -ljson-c -lpcre2-8
 
 afl-replay: afl-replay.c $(COMM_HDR) aflnet.o aflnet.h | test_x86
 	$(CC) $(CFLAGS) $@.c aflnet.o -o $@ $(LDFLAGS)

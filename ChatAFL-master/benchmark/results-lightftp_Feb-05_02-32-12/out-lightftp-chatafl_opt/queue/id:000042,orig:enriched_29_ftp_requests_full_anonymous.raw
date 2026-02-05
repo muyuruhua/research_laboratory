@@ -1,0 +1,24 @@
+To incorporate the RNFR and DELE commands into the FTP client request sequence, we need to follow the FTP protocol's typical usage. The RNFR command is used to specify the old name of a file that you want to rename, and it should be followed by the RNTO command to specify the new name. However, since you only asked for RNFR and DELE, we'll add them in a logical order.
+
+Here's a modified sequence of client requests with RNFR and DELE included:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+RNFR old_filename.txt   ; Specify the file to rename
+RNTO new_filename.txt   ; Specify the new name for the file
+DELE file_to_delete.txt ; Specify the file to delete
+LIST
+QUIT
+```
+
+In this sequence:
+- `RNFR old_filename.txt` specifies the file you want to rename.
+- `RNTO new_filename.txt` specifies the new name for the file (this would typically follow RNFR).
+- `DELE file_to_delete.txt` specifies the file you want to delete.
+
+Please adjust the filenames as necessary to fit your specific use case
+

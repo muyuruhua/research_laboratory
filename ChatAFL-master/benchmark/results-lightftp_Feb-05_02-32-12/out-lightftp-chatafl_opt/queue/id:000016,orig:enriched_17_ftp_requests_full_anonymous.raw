@@ -1,0 +1,22 @@
+To incorporate the RNFR (Rename From) and SITE commands into the provided sequence of client requests, we need to determine appropriate locations for these commands. Typically, the RNFR command is used to specify the source file when renaming, and the SITE command is used for server-specific commands, often related to file management.
+
+Here’s a modified sequence of client requests, placing the RNFR command after the LIST command (assuming we want to rename a file after listing the directory contents) and adding the SITE command before the QUIT command (to perform some server-specific operation before disconnecting):
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+RNFR oldfilename.txt
+SITE CHMOD 755 oldfilename.txt
+QUIT
+```
+
+In this sequence:
+- `RNFR oldfilename.txt` indicates that we want to rename a file called `oldfilename.txt`.
+- `SITE CHMOD 755 oldfilename.txt` is an example of a SITE command, which could be used to change the permissions of the file before quitting.
+
+Feel free to adjust the filenames and SITE command parameters as needed for your specific scenario
+

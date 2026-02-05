@@ -1,0 +1,26 @@
+To incorporate the `RNFR` (Rename From) and `STRU` (Structure) commands into the sequence of client requests, we need to consider where these commands logically fit within the context of FTP operations.
+
+The `RNFR` command is used to specify the source file or directory that you want to rename, and it should be issued before the `RNTO` command (which is not in your original sequence but would typically follow `RNFR`). The `STRU` command is used to set the file structure for file transfers (e.g., whether files are treated as a file stream or a record structure).
+
+Here’s a modified sequence of client requests with `RNFR` and `STRU` added in appropriate locations:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+STRU F     # Set file structure to File
+LIST
+MKD test
+RNFR test_file   # Specify the file to rename (assuming 'test_file' exists)
+# Normally, you would follow this with RNTO, but it's not in your original sequence
+QUIT
+```
+
+In this modified sequence:
+- The `STRU F` command is added after the `PORT` command to set the file structure before any file transfer commands (like `LIST` or `MKD`).
+- The `RNFR test_file` command is added after the `MKD` command to indicate that we want to rename a file called `test_file`. 
+
+Please adjust the specific file name in `RNFR` as per your use case
+

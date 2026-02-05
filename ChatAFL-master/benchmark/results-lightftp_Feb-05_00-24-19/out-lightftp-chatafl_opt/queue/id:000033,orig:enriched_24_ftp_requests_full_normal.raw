@@ -1,0 +1,23 @@
+To add the `APPE` and `MODE` client requests in the proper locations, we typically place `MODE` after the initial connection and before any file transfer commands, while `APPE` is used when you want to append data to a file. 
+
+Here's the modified sequence of client requests with the `MODE` and `APPE` commands included:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+MODE S
+LIST
+MKD test
+APPE test/file.txt
+QUIT
+```
+
+In this sequence:
+- `MODE S` is added after the `PORT` command to set the transfer mode.
+- `APPE test/file.txt` is added before `QUIT` to indicate that the client wants to append to `test/file.txt`. 
+
+Make sure to adjust the filename as needed based on your specific context
+

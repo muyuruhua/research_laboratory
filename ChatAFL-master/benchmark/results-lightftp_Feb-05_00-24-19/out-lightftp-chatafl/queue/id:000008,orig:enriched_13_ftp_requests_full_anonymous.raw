@@ -1,0 +1,16 @@
+Certainly! To insert the `STOR` and `APPE` commands into the sequence of client requests, we can place them after the `LIST` command, as they are typically used for uploading files to the server. Here's the modified sequence of client requests:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+STOR filename.txt  ; (This command is used to store a file)
+APPE filename.txt  ; (This command is used to append to a file)
+QUIT
+```
+
+In this modified sequence, I've added the `STOR` command to upload a file named `filename.txt` and the `APPE` command to append to the same file. You can replace `filename.txt` with the actual name of the file you want to upload or append to
+

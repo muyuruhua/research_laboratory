@@ -1,0 +1,20 @@
+To incorporate the `STAT` and `APPE` commands into the sequence of client requests, we need to consider where they logically fit within the FTP session. Here's a modified sequence that includes these commands:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+STAT
+LIST
+APPE <filename>  # Specify the filename to append to
+QUIT
+```
+
+In this sequence:
+- The `STAT` command is placed after the `PORT` command and before the `LIST` command. This is a logical position as it allows the client to request the status of the current connection or the current directory before listing the files.
+- The `APPE` command is placed after the `LIST` command. It is assumed that the user wants to append data to a file after viewing the list of files. You would replace `<filename>` with the actual name of the file you intend to append to.
+
+If you have a specific filename for the `APPE` command, you can replace `<filename>` with that name
+

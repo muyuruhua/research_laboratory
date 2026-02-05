@@ -1,0 +1,21 @@
+Certainly! Below is the modified sequence of client requests with the `RMD` (Remove Directory) and `RETR` (Retrieve File) commands added in appropriate locations. 
+
+Assuming you want to retrieve a file after listing the directory and create a directory before quitting, here’s how the sequence would look:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+RETR filename.txt      # Assuming you want to retrieve a file named filename.txt after listing
+MKD test
+RMD test               # Assuming you want to remove the directory named 'test' before quitting
+QUIT
+```
+
+Note:
+- Replace `filename.txt` with the actual name of the file you want to retrieve.
+- The placement of `RMD` and `RETR` can vary based on your specific requirements, so adjust them as needed
+

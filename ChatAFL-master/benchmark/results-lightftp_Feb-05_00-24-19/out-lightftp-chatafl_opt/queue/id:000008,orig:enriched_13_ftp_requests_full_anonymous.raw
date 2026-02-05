@@ -1,0 +1,22 @@
+To add the `ABOR` and `APPE` client requests to the given sequence, we need to consider where they would logically fit within the FTP command flow. The `ABOR` command is used to abort a previous command, and the `APPE` command is used to append data to a file on the server.
+
+Here's a modified sequence of client requests, incorporating `ABOR` and `APPE`:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+ABOR
+APPE filename.txt
+LIST
+QUIT
+```
+
+In this sequence:
+- `ABOR` is added after the `PORT` command, which could be used to abort any previous command if needed.
+- `APPE filename.txt` is added before the `LIST` command, indicating that the client wants to append data to a file named `filename.txt` before listing the directory contents.
+
+Feel free to adjust the placement of the commands based on your specific requirements or context!
+

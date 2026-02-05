@@ -1,0 +1,24 @@
+To incorporate the `MLST` and `RNTO` client requests into the provided sequence, we first need to understand their context. The `MLST` command is typically used to retrieve information about a specific file or directory, while `RNTO` is used in conjunction with `RNFR` to rename a file or directory.
+
+Here is a modified sequence of client requests that includes `MLST` and `RNTO` in appropriate locations:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+MLST test          # Get details about the newly created directory "test"
+RNFR test         # Specify the file/directory to rename
+RNTO new_test     # Rename "test" to "new_test"
+QUIT
+```
+
+In this sequence:
+- The `MLST` command is placed right after the `MKD test` command to get details about the newly created directory "test".
+- The `RNFR` command is added to specify that we want to rename "test", followed by the `RNTO` command to specify the new name "new_test". 
+
+Feel free to adjust the sequence based on your specific requirements or context!
+

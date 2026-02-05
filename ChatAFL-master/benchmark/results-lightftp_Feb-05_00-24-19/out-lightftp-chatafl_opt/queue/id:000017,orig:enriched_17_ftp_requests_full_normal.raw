@@ -1,0 +1,30 @@
+To include the CWD (Change Working Directory) and MODE (Transfer Mode) client requests in the proper locations, we need to consider the logical flow of FTP commands. A typical sequence would involve logging in, setting the transfer mode, changing the directory if necessary, and then performing file operations.
+
+Here's a modified sequence with CWD and MODE included:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+MODE I          # Setting the transfer mode to binary (I for Image)
+CWD /path/to/directory  # Change to the desired directory (modify the path as needed)
+LIST
+MKD test
+QUIT
+```
+
+### Explanation:
+1. **USER** and **PASS**: Authenticate the user.
+2. **SYST**: Get the system type.
+3. **PWD**: Print the current working directory.
+4. **PORT**: Specify the data connection.
+5. **MODE I**: Set the transfer mode to binary (I for Image). This is typically done before transferring files.
+6. **CWD /path/to/directory**: Change to the desired directory where you want to list or create directories. Adjust the path as necessary.
+7. **LIST**: List the files in the current directory.
+8. **MKD test**: Create a new directory named 'test'.
+9. **QUIT**: End the session.
+
+Make sure to replace `/path/to/directory` with the actual directory path you want to change to
+

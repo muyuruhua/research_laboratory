@@ -1,0 +1,25 @@
+To modify the given sequence of client requests by adding the `PASV` and `RETR` commands, we need to consider where these commands logically fit in the sequence. The `PASV` command is typically issued before a data transfer operation like `RETR` to switch the connection to passive mode. 
+
+Here is the modified sequence of client requests with the `PASV` and `RETR` commands added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PASV          ; Enter passive mode
+RETR <filename>  ; Retrieve a specific file
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+QUIT
+```
+
+### Explanation:
+1. **PASV**: This command is added after the `PWD` command to switch the connection to passive mode before a file transfer.
+2. **RETR**: The `RETR <filename>` command is included after `PASV` to retrieve a specific file. You need to replace `<filename>` with the actual name of the file you want to retrieve.
+
+### Note:
+- The `RETR` command typically occurs before the `LIST` command if you want to download a file before listing the directory contents. However, since the original sequence has `LIST` after `PORT`, I kept it in that order.
+- If you want to retrieve a file after listing the directory contents, you may want to adjust the sequence accordingly
+

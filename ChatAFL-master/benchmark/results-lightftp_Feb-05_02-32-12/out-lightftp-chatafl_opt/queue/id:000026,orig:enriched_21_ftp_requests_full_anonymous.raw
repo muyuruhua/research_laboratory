@@ -1,0 +1,33 @@
+To incorporate the `MLSD` and `SITE` commands into the provided sequence of client requests, we can place them in logical positions based on typical FTP command usage. The `SITE` command is often used to send site-specific commands to the server after authentication, and `MLSD` is used to list directory contents in a machine-readable format, typically after navigating to the desired directory.
+
+Here’s a modified sequence that includes both `MLSD` and `SITE`:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+SITE <your_site_command_here>  # Add a specific site command if needed
+MLSD
+LIST
+QUIT
+```
+
+You can replace `<your_site_command_here>` with a specific command you want to send to the server, or you can omit the `SITE` command if it's not necessary for your context. The `MLSD` command is placed before `LIST` to provide an alternative way to list directory contents. 
+
+If you don't have a specific `SITE` command to add, the sequence could look like this:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+MLSD
+LIST
+QUIT
+```
+
+This keeps the commands in a logical order while ensuring both `MLSD` and `SITE` are included in the sequence
+

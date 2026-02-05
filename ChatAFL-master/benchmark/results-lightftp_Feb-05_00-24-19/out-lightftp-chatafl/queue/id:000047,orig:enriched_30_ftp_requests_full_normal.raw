@@ -1,0 +1,19 @@
+To modify the sequence of client requests to include the `PASV` and `MLSD` commands, we need to replace the `PORT` command with `PASV` and then use `MLSD` instead of `LIST`. Here’s the modified sequence of client requests:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PASV
+MLSD
+MKD test
+QUIT
+```
+
+In this sequence:
+- `PASV` is used to switch to passive mode, which allows the server to provide the client with the address and port to connect for data transfer.
+- `MLSD` is used to list directory contents in a machine-readable format. 
+
+This sequence assumes that the server supports passive mode and that the client is prepared to handle the connection to the data port provided by the server after the `PASV` command
+

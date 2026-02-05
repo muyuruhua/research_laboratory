@@ -1,0 +1,23 @@
+To incorporate the `CWD` (Change Working Directory) and `RNTO` (Rename To) commands into the sequence of client requests, we first need to decide where these commands would logically fit. 
+
+Assuming you want to change to a directory before creating a new one and then rename it, here's how the modified sequence could look:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+CWD /path/to/directory  # Change to the desired directory (you should replace with the actual path)
+LIST
+MKD test
+RNTO new_test  # Rename the 'test' directory to 'new_test'
+QUIT
+```
+
+In this modified sequence:
+- The `CWD` command is added after the `PORT` command to change to a specific directory.
+- The `RNTO` command is added after the `MKD` command to rename the newly created directory `test` to `new_test`.
+
+Make sure to replace `/path/to/directory` with the actual path you want to change to
+

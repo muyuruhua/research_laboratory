@@ -1,0 +1,19 @@
+To add the `TYPE` and `SITE` commands to the sequence of client requests in appropriate locations, we can follow the typical FTP command structure. The `TYPE` command is usually sent after the user has successfully logged in and before any file transfer commands (like `LIST`), while the `SITE` command can be sent at any point, but is often sent after logging in as well.
+
+Here’s the modified sequence of client requests with `TYPE` and `SITE` added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+TYPE I          # Set the transfer type to binary (or ASCII, depending on needs)
+SITE example    # Example SITE command (you can replace 'example' with an actual site-specific command)
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+QUIT
+```
+
+In this example, `TYPE I` sets the transfer type to binary, which is common for file transfers, and `SITE example` is a placeholder for a site-specific command. You can replace `example` with a specific command relevant to your FTP server's capabilities
+

@@ -1,0 +1,23 @@
+To include the `STOR` and `MLSD` commands in the sequence of client requests you provided, we need to determine appropriate locations for these commands. Typically, `STOR` is used to upload a file to the server, and `MLSD` is used to list directory contents in a machine-readable format.
+
+Here is a modified sequence of client requests that includes `STOR` and `MLSD`:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+MLSD
+LIST
+MKD test
+STOR <filename>  # Replace <filename> with the actual file name you want to upload
+QUIT
+```
+
+In this sequence:
+- `MLSD` is placed after the `PORT` command, which is typically when the client is ready to list directory contents in a machine-readable format.
+- `STOR` is placed after the `MKD` command, which creates a new directory. After creating a directory, you might want to upload a file to that directory.
+
+Make sure to replace `<filename>` with the actual name of the file you intend to upload
+

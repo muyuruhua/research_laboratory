@@ -1,0 +1,20 @@
+To add the `STAT` and `FEAT` client requests in the proper locations, we can place them after the `SYST` and before the `LIST` commands, as these commands typically provide useful information about the server and the current state. Here’s how the modified sequence of client requests would look:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+STAT
+FEAT
+PWD
+PORT 127,0,0,1,152,193
+LIST
+QUIT
+```
+
+In this modified sequence:
+- `STAT` is added to check the status of the current session or file.
+- `FEAT` is added to retrieve the list of features supported by the FTP server. 
+
+This sequence maintains a logical flow of commands while incorporating the requested additions
+

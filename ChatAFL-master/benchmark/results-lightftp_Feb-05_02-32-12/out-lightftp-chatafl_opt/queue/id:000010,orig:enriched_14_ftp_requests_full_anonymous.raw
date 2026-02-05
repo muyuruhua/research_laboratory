@@ -1,0 +1,18 @@
+To properly integrate the `ABOR` and `MLSD` commands into the given sequence of FTP client requests, we can add `ABOR` after the `LIST` command to indicate that the client wishes to abandon the previous command if necessary. The `MLSD` command can be added before `LIST` to request a machine-readable directory listing.
+
+Here’s the modified sequence of client requests:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+MLSD
+LIST
+ABOR
+QUIT
+```
+
+This sequence first logs in and sets up the connection, requests a machine-readable directory listing with `MLSD`, then requests a standard directory listing with `LIST`, and finally uses `ABOR` to ensure that any previous command is abandoned before quitting the session
+

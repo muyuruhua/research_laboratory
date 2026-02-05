@@ -1,0 +1,25 @@
+To include the RNFR (Rename From) and APPE (Append) client requests in the sequence, we need to determine where they logically fit. The RNFR command is typically used to indicate the file that you want to rename before you use RNTO (Rename To), and APPE is used to append data to a file.
+
+Here's a modified sequence that adds RNFR and APPE in a logical manner. For this example, I'll assume you want to rename a file called "oldfile.txt" to "newfile.txt" and then append data to "newfile.txt":
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+RNFR oldfile.txt
+RNTO newfile.txt
+APPE newfile.txt
+QUIT
+```
+
+In this sequence:
+- `RNFR oldfile.txt` is used to specify the file you want to rename.
+- `RNTO newfile.txt` is used to specify the new name for the file.
+- `APPE newfile.txt` is used to append data to "newfile.txt".
+
+Please adjust the filenames and the context based on your specific requirements
+

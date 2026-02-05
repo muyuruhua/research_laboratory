@@ -96,49 +96,95 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, chat_with_llm_helper);
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
             
-            // 超时配置：防止无限期挂起
-            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 60L);           // 整体请求60秒超时
-            curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);    // 连接10秒超时
-            curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 100L);  // 低于100字节/秒视为过慢
-            curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 30L);    // 持续30秒低速则超时
+            // 优化超时配置：防止LLM请求阻塞fuzzer
+            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);           // 整体请求15秒超时（从60秒降低）
+            curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);     // 连接5秒超时（从10秒降低）
+            curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 500L);  // 低于500字节/秒视为过慢（提高阈值）
+            curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 10L);    // 持续10秒低速则超时（从30秒降低）
 
             res = curl_easy_perform(curl);
 
             if (res == CURLE_OK)
             {
                 json_object *jobj = json_tokener_parse(chunk.memory);
-
-                // Check if the "choices" key exists
-                if (json_object_object_get_ex(jobj, "choices", NULL))
-                {
-                    json_object *choices = json_object_object_get(jobj, "choices");
-                    json_object *first_choice = json_object_array_get_idx(choices, 0);
-                    const char *data;
-
-                    // The answer begins with a newline character, so we remove it
-                    if (strcmp(model, "gpt-4o") == 0)
-                    {
-                        json_object *jobj4 = json_object_object_get(first_choice, "text");
-                        data = json_object_get_string(jobj4);
-                    }
-                    else
-                    {
-                        json_object *jobj4 = json_object_object_get(first_choice, "message");
-                        json_object *jobj5 = json_object_object_get(jobj4, "content");
-                        data = json_object_get_string(jobj5);
-                    }
-                    if (data[0] == '\n')
-                        data++;
-                    answer = strdup(data);
+                
+                if (!jobj) {
+                    fprintf(stderr, "[LLM ERROR] Failed to parse JSON response: %s\n", chunk.memory);
+                    fprintf(stderr, "[LLM ERROR] Retries remaining: %d\n", tries - 1);
+                    sleep(3);
                 }
                 else
                 {
-                    fprintf(stderr, "[LLM ERROR] API returned error: %s\n", chunk.memory);
-                    fprintf(stderr, "[LLM ERROR] Request URL: %s\n", url);
-                    fprintf(stderr, "[LLM ERROR] Retries remaining: %d\n", tries - 1);
-                    sleep(3); // Sleep for a longer time to ensure that the service can recover
+                    json_object *choices = NULL;
+                    // Check if the "choices" key exists and is an array
+                    if (json_object_object_get_ex(jobj, "choices", &choices) && 
+                        json_object_is_type(choices, json_type_array) &&
+                        json_object_array_length(choices) > 0)
+                    {
+                        json_object *first_choice = json_object_array_get_idx(choices, 0);
+                        const char *data = NULL;
+
+                        if (!first_choice) {
+                            fprintf(stderr, "[LLM ERROR] choices[0] is NULL\n");
+                            fprintf(stderr, "[LLM ERROR] Full response: %s\n", chunk.memory);
+                        }
+                        else if (strcmp(model, "gpt-4o") == 0)
+                        {
+                            // GPT-4o completions format: choices[0].text
+                            json_object *jobj4 = json_object_object_get(first_choice, "text");
+                            if (jobj4) {
+                                data = json_object_get_string(jobj4);
+                            } else {
+                                fprintf(stderr, "[LLM ERROR] 'text' field not found in gpt-4o response\n");
+                            }
+                        }
+                        else
+                        {
+                            // Chat completions format: choices[0].message.content
+                            json_object *jobj4 = json_object_object_get(first_choice, "message");
+                            if (jobj4) {
+                                json_object *jobj5 = json_object_object_get(jobj4, "content");
+                                if (jobj5) {
+                                    data = json_object_get_string(jobj5);
+                                } else {
+                                    fprintf(stderr, "[LLM ERROR] 'content' field not found in message\n");
+                                }
+                            } else {
+                                fprintf(stderr, "[LLM ERROR] 'message' field not found in choice\n");
+                            }
+                        }
+                        
+                        if (data) {
+                            // Skip leading newline if present
+                            if (data[0] == '\n')
+                                data++;
+                            answer = strdup(data);
+                        } else {
+                            fprintf(stderr, "[LLM ERROR] Failed to extract data from response\n");
+                            fprintf(stderr, "[LLM ERROR] Full response: %s\n", chunk.memory);
+                        }
+                    }
+                    else
+                    {
+                        // Check for error response
+                        json_object *error_obj = NULL;
+                        if (json_object_object_get_ex(jobj, "error", &error_obj)) {
+                            const char *error_msg = json_object_get_string(json_object_object_get(error_obj, "message"));
+                            fprintf(stderr, "[LLM ERROR] API error: %s\n", error_msg ? error_msg : "unknown");
+                        } else if (!choices) {
+                            fprintf(stderr, "[LLM ERROR] 'choices' field not found in response\n");
+                        } else if (!json_object_is_type(choices, json_type_array)) {
+                            fprintf(stderr, "[LLM ERROR] 'choices' is not an array (type=%d)\n", json_object_get_type(choices));
+                        } else {
+                            fprintf(stderr, "[LLM ERROR] 'choices' array is empty\n");
+                        }
+                        fprintf(stderr, "[LLM ERROR] Full response: %s\n", chunk.memory);
+                        fprintf(stderr, "[LLM ERROR] Request URL: %s\n", url);
+                        fprintf(stderr, "[LLM ERROR] Retries remaining: %d\n", tries - 1);
+                        sleep(3); // Sleep for a longer time to ensure that the service can recover
+                    }
+                    json_object_put(jobj);
                 }
-                json_object_put(jobj);
             }
             else
             {

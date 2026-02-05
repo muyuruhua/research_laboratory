@@ -1,0 +1,23 @@
+To modify the sequence of client requests by adding the `STOR` (Store) and `APPE` (Append) commands, we need to determine where they would logically fit in the sequence. Typically, the `STOR` command is used to upload a file to the server, while the `APPE` command is used to append data to an existing file.
+
+Here’s a modified sequence of client requests including `STOR` and `APPE` commands:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+STOR filename.txt   ; Use STOR to upload a file
+APPE filename.txt   ; Use APPE to append to the existing file
+LIST
+QUIT
+```
+
+In this sequence:
+- The `STOR` command is placed after the `PORT` command, as you typically need to specify the data connection before transferring files.
+- The `APPE` command follows the `STOR` command, allowing for appending data to the file after it has been uploaded.
+- The `LIST` command is placed after the file transfer commands to list the files after the operations have been completed.
+
+Make sure to replace `filename.txt` with the actual name of the file you intend to upload or append to
+

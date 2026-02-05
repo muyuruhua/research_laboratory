@@ -1,0 +1,23 @@
+To modify the sequence of client requests by adding the `RETR` and `RNTO` commands, we need to ensure that they are placed logically within the context of FTP operations. The `RETR` command is used to retrieve a file from the server, while `RNTO` is used to rename a file.
+
+Here’s a possible modified sequence of client requests with `RETR` and `RNTO` added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+RETR filename.txt  ; This command is added to retrieve a file named 'filename.txt'
+RNTO new_filename.txt ; This command is added to rename the retrieved file to 'new_filename.txt'
+QUIT
+```
+
+In this sequence:
+- `RETR filename.txt` is used to retrieve a file named `filename.txt` from the server.
+- `RNTO new_filename.txt` is used to rename the previously retrieved file to `new_filename.txt`.
+
+Make sure to replace `filename.txt` and `new_filename.txt` with the actual file names you intend to use
+

@@ -1,0 +1,31 @@
+To include the `ABOR` and `TYPE` commands in the proper locations within the original sequence of client requests, we can consider the logical flow of FTP commands. The `TYPE` command is typically sent after the initial login commands and before any data transfer commands (like `LIST`), while `ABOR` can be sent at any point to abort the current operation.
+
+Here’s how the modified sequence of client requests would look:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+TYPE I           # Set the transfer type to binary (or ASCII, depending on the requirement)
+PORT 127,0,0,1,152,193
+LIST
+ABOR            # This can be added here if you want to ensure that any previous LIST command is aborted
+QUIT
+```
+
+If you want to keep it simple and just add `TYPE` without `ABOR`, it would look like this:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+TYPE I           # Set the transfer type to binary (or ASCII, depending on the requirement)
+PORT 127,0,0,1,152,193
+LIST
+QUIT
+```
+
+Feel free to adjust the `TYPE` command depending on whether you want binary (`TYPE I`) or ASCII (`TYPE A`) transfer. If you want to include `ABOR`, it can be placed after `LIST` or anywhere appropriate in the flow
+

@@ -1,0 +1,21 @@
+To include the STRU (structure) and TYPE (data type) commands in the proper locations within the FTP client request sequence, we typically place these commands after the initial authentication and before any data transfer commands (like LIST or MKD). Here’s a modified sequence of client requests with the STRU and TYPE commands added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+STRU F    # Setting file structure to file (default)
+TYPE I    # Setting type to image (binary mode)
+LIST
+MKD test
+QUIT
+```
+
+In this modified sequence:
+- `STRU F` sets the structure to file, which is a common setting for file transfers.
+- `TYPE I` sets the transfer type to binary, which is often necessary for transferring files correctly.
+
+You can adjust the STRU and TYPE commands based on your specific requirements for file handling
+

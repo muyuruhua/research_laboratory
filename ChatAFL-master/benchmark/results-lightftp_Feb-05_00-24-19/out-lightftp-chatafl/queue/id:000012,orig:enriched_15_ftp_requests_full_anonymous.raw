@@ -1,0 +1,22 @@
+To incorporate the STOR and RNTO commands into the sequence of client requests, we need to consider where these commands logically fit within the typical FTP session flow. The STOR command is used to upload a file to the server, and RNTO is used to rename a file.
+
+Here is a modified sequence of client requests that includes the STOR and RNTO commands:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+STOR filename.txt  # Command to store (upload) a file named filename.txt
+RNTO newfilename.txt  # Command to rename the uploaded file to newfilename.txt
+QUIT
+```
+
+In this sequence:
+1. After the LIST command, we add the STOR command to upload a file.
+2. Following the STOR command, we add the RNTO command to rename the uploaded file.
+
+Make sure to replace "filename.txt" and "newfilename.txt" with the actual names you intend to use for the file operations
+

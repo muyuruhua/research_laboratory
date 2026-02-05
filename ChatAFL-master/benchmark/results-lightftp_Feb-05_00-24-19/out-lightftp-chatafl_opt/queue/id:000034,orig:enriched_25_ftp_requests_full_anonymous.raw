@@ -1,0 +1,22 @@
+To incorporate the `STAT` and `MODE` commands into the given sequence of client requests, we need to determine appropriate locations for them. The `STAT` command is typically used to get the status of a file or directory, and `MODE` is used to set the transfer mode (like binary or ASCII).
+
+Here's a modified sequence of client requests with `STAT` and `MODE` added in logical places:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+MODE I          # Set transfer mode to binary
+STAT            # Get status of the current directory or previous command
+LIST
+QUIT
+```
+
+In this modified sequence:
+- The `MODE I` command is placed after the `PORT` command to set the transfer mode before initiating a file transfer with `LIST`.
+- The `STAT` command is placed before the `LIST` command to check the status of the current directory or the previous command before listing its contents. 
+
+Feel free to adjust the placement based on your specific requirements or context!
+

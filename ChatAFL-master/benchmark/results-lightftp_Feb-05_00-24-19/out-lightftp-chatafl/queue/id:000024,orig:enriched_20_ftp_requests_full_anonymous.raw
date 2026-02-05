@@ -1,0 +1,22 @@
+To modify the sequence of client requests to include the `ABOR` and `APPE` commands, we need to determine appropriate locations for these commands. Generally, `ABOR` is used to abort a previous command, and `APPE` is used to append data to a file on the server.
+
+Here's a modified sequence of client requests that includes `ABOR` and `APPE`:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+ABOR          ; Abort any previous command if necessary (optional)
+APPE filename ; Append data to 'filename' (specify the actual filename)
+LIST
+QUIT
+```
+
+In this modified sequence:
+- `ABOR` is added after the `PORT` command, which allows the client to abort any ongoing command if needed.
+- `APPE filename` is included before the `LIST` command, where 'filename' should be replaced with the actual name of the file you want to append data to.
+
+Please adjust 'filename' to the specific file you intend to append data to
+

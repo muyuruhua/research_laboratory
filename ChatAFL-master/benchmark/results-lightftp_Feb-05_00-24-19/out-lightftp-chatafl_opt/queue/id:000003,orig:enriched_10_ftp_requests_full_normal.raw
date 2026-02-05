@@ -1,0 +1,25 @@
+To incorporate the `RNFR` (Rename From) and `MODE` commands into the sequence of client requests, we first need to understand where these commands would logically fit in. 
+
+1. The `RNFR` command is typically used when you want to rename a file or directory, and it should precede the `RNTO` (Rename To) command. However, since you only requested to add `RNFR`, we will assume that you want to rename something after the `MKD test` command.
+
+2. The `MODE` command is used to set the transfer mode (e.g., stream, block, or compressed). It can be placed after the `SYST` command or before file transfer commands like `LIST` or `PORT`.
+
+Here is the modified sequence of client requests with `RNFR` and `MODE` added in appropriate places:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+MODE S
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+RNFR test
+QUIT
+```
+
+In this modification:
+- `MODE S` is added after `SYST` to set the transfer mode to stream.
+- `RNFR test` is added after `MKD test` to indicate that we want to rename the newly created directory (or file) called `test`
+

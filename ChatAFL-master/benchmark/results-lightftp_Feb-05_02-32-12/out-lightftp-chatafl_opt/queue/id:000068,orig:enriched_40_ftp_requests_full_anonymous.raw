@@ -1,0 +1,22 @@
+To incorporate the `ALLO` and `FEAT` commands into the sequence of client requests, we can place them in logical positions based on typical FTP command flow. The `ALLO` command is used to allocate sufficient disk space for a file transfer, and `FEAT` is used to request a list of features supported by the server.
+
+Here’s a modified sequence of client requests with `ALLO` and `FEAT` included:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+FEAT                     ; Request server features
+PWD
+PORT 127,0,0,1,152,193
+ALLO 0                   ; Allocate space for the file (size can be specified)
+LIST
+QUIT
+```
+
+In this modified sequence:
+- `FEAT` is placed after `SYST`, which is a common practice to check server capabilities right after establishing the connection.
+- `ALLO` is placed before `LIST`, indicating that the client is ready to allocate space before listing the directory contents. The argument `0` is used to indicate that no specific size is being requested, which is common if the client just wants to ensure space is allocated. 
+
+Feel free to adjust the size parameter in the `ALLO` command based on your specific needs
+

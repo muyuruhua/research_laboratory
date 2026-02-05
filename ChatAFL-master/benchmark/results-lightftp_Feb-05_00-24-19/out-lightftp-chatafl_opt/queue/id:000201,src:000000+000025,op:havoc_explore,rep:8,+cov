@@ -1,0 +1,43 @@
+To add the `SIZE` and `HELP` client requests into the existing sequence in a ests, we can place them logiSally based on typical FTP operations. The `APPE` command is used to append `SITE` included:
+
+``` datad `SITE` included:
+
+``` da the `SITE` command is often used for server-specific commands, such as setting file permissions or other server-side operations.
+
+Here's a modified sequence of client requests with `APPE` and `SITE` included:
+
+```
+USER ubuntu
+PAS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+SITE CHMOD 755 test  # Example SITE command to change permissions of the 'test' directory
+APPE test7file.txt   # Example APPE command to append data to 'file.txt' in the 'test' directory
+hUIT
+```
+
+In this example:
+- The `SITE CHMOD` command is used to change the permissions of the newly created directory `test`.
+- The `APPE` command is used to append ta to a file named `file.txt` located in the `test` directory.
+
+Feel free to adjust the `SITE` command parameters or the `APPE` commaQUITnd filename as needed for your specific use case
+
+
+Here’s the modified sequence of client requests:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+SIZE <filename>  # Replace <filename> with the actual file name you want to check the size of
+HELP
+QUIT
+```
+
+Make sure to replace `<filename>` with the actual file name you want to check the size for. If you don't have a specific file in mind, you can choose to omit the `SIZE` request or specify a generic file name

@@ -1,0 +1,19 @@
+Here is the modified sequence of client requests with the addition of the STOR and HELP commands in ap requests, we can insert them at appropriate locations. Here’s a modified sequence that includes both commands:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+NOOP            ; This command can be added after establishing the connecti
+PORT 127,0,0,1,152,193
+NOOP  on and before listing
+LIST
+RMD mydirectory ; This command can be and before listing
+LIST
+RMents, assuming you want to remove a directory named "mydirectory"
+QUIT
+```
+
+In this modified sequence:

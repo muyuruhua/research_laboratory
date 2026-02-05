@@ -1,0 +1,23 @@
+To incorporate the `STRU` (structure) and `RNTO` (rename to) commands into the sequence of client requests, we need to place them logically based on typical FTP operations. 
+
+Here's a modified version of the original sequence with `STRU` and `RNTO` added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+STRU F  # Set the file structure to file (F)
+RNTO new_test  # Rename the directory "test" to "new_test"
+QUIT
+```
+
+In this modified sequence:
+- `STRU F` is added after the `MKD` command to set the structure type (for example, to file).
+- `RNTO new_test` is added after the `STRU` command to rename the newly created directory "test" to "new_test".
+
+Make sure that the sequence of commands makes sense in the context of your FTP operations. Adjust the placement of `STRU` and `RNTO` as necessary based on your specific use case
+

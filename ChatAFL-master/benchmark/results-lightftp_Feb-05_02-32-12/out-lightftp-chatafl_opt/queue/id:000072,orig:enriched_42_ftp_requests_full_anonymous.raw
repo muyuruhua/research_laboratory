@@ -1,0 +1,19 @@
+Certainly! In the context of FTP (File Transfer Protocol), the MLSD command is used to list directory contents in a machine-readable format, and the FEAT command is used to request a list of features supported by the server.
+
+Here’s the modified sequence of client requests including the MLSD and FEAT commands in appropriate locations:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+FEAT          ; Request features supported by the server
+PWD
+PORT 127,0,0,1,152,193
+MLSD          ; Request a machine-readable listing of the directory
+QUIT
+```
+
+In this modified sequence:
+- The FEAT command is added after the SYST command to check what features the server supports.
+- The MLSD command is added after the PORT command to get a detailed listing of the directory contents in a structured format
+

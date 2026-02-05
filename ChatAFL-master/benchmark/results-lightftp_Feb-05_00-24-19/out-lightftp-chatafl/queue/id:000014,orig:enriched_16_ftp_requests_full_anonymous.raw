@@ -1,0 +1,18 @@
+To include the `STOR` and `TYPE` commands in the sequence of client requests, we need to determine appropriate placements for these commands. The `TYPE` command is typically sent before transferring files to set the transfer mode, and the `STOR` command is used to upload a file to the server.
+
+Here's a modified sequence of client requests including `STOR` and `TYPE`:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+TYPE I         # Setting the transfer type to binary (I for Image)
+STOR filename  # Command to store a file named 'filename' on the server
+LIST
+QUIT
+```
+
+In this sequence, `TYPE I` is added after the `PORT` command to set the transfer type to binary before the `STOR` command, which is used to upload the file. Note that you should replace `filename` with the actual name of the file you intend to upload
+

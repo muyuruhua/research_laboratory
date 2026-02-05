@@ -1,0 +1,34 @@
+To include the `RETR` (Retrieve) and `TYPE` (Set Transfer Type) client requests in the proper locations, we typically place the `TYPE` command before the `RETR` command to specify the type of transfer (ASCII or Binary) before retrieving a file. 
+
+Assuming you want to retrieve a file after the directory listing and the creation of a new directory, here is the modified sequence of client requests:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+TYPE I           ; Set transfer type to binary (for example, if you are retrieving a binary file)
+RETR filename    ; Replace 'filename' with the actual name of the file you want to retrieve
+QUIT
+```
+
+If you want to retrieve a text file instead, you can change `TYPE I` to `TYPE A` for ASCII mode:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+TYPE A           ; Set transfer type to ASCII (if retrieving a text file)
+RETR filename    ; Replace 'filename' with the actual name of the file you want to retrieve
+QUIT
+```
+
+Make sure to replace `filename` with the actual name of the file you intend to retrieve
+

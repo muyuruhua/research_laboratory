@@ -1,0 +1,23 @@
+To incorporate the `FEAT` and `MODE` commands into the sequence of client requests, we can place them in logical positions based on typical FTP command flow. The `FEAT` command is used to request a list of features supported by the server, while the `MODE` command is used to set the transfer mode (e.g., stream, block, or compressed).
+
+Here’s a modified version of your sequence with `FEAT` and `MODE` added in appropriate locations:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+FEAT
+MODE S
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+QUIT
+```
+
+In this sequence:
+- The `FEAT` command is placed after the `SYST` command, which is a common practice since it helps the client understand what features the server supports before proceeding with other commands.
+- The `MODE S` command is added after the `FEAT` command, setting the transfer mode to stream before listing the directory and creating a new directory. 
+
+This sequence maintains a logical flow of commands in an FTP session
+

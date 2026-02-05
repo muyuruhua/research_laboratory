@@ -1,0 +1,20 @@
+To incorporate the `ABOR` and `DELE` commands into the sequence of client requests, we typically want to place `ABOR` after a data transfer command (like `LIST`) if we want to abort that operation, and `DELE` should be placed before the `QUIT` command to delete a specified file.
+
+Here’s a modified sequence of client requests with `ABOR` and `DELE` included:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+ABOR
+DELE filename.txt
+QUIT
+```
+
+In this modified sequence:
+- `ABOR` is placed after `LIST` to indicate that we may want to abort the data transfer if it was in progress.
+- `DELE filename.txt` is added to delete a file named `filename.txt` before ending the session with `QUIT`. You can replace `filename.txt` with the actual name of the file you intend to delete
+

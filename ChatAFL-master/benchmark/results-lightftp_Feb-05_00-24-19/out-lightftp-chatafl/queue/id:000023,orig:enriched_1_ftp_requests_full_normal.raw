@@ -1,0 +1,23 @@
+To incorporate the `STOR` and `CWD` client requests into the sequence, we need to determine appropriate locations for them based on typical FTP operations. The `CWD` (Change Working Directory) command is typically used to change to a directory before transferring files, and `STOR` (Store a file) is used to upload a file to the server.
+
+Here’s a modified sequence of client requests with `CWD` and `STOR` added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+CWD test          # Change to the 'test' directory
+STOR myfile.txt   # Store (upload) a file named 'myfile.txt'
+LIST
+MKD test
+QUIT
+```
+
+In this modified sequence:
+- The `CWD test` command is placed before the `STOR` command to change the current working directory to the 'test' directory where the file will be uploaded.
+- The `STOR myfile.txt` command is added to upload a file named `myfile.txt` to the server. 
+
+Please adjust the filename as necessary based on the actual file you intend to upload
+

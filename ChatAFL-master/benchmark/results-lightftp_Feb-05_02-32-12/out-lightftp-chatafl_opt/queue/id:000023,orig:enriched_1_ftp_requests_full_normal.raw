@@ -1,0 +1,20 @@
+To include the `MLST` and `CWD` client requests in the proper locations within the original sequence of client requests, we’ll need to place `CWD` after the `PWD` command to change the working directory, and `MLST` can be placed after `LIST` to get detailed information about the listed files.
+
+Here is the modified sequence of client requests:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+CWD test
+PORT 127,0,0,1,132,209
+LIST
+MLST *
+QUIT
+```
+
+In this sequence:
+- `CWD test` is added to change to the `test` directory after confirming the current directory with `PWD`.
+- `MLST *` is added after `LIST` to retrieve detailed information about the files listed
+

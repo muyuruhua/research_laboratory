@@ -1,0 +1,22 @@
+To incorporate the STOR (to upload a file) and DELE (to delete a file) commands into the sequence of client requests you provided, we can add them after the LIST command. The STOR command should typically come after establishing a connection and before quitting, and DELE can be placed before or after STOR depending on the intended workflow.
+
+Here’s a modified sequence of client requests with STOR and DELE added:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+STOR filename.txt  # Replace 'filename.txt' with the actual file name to upload
+DELE filename.txt   # Replace 'filename.txt' with the actual file name to delete
+QUIT
+```
+
+In this sequence:
+- `STOR filename.txt` is used to upload a file named `filename.txt`.
+- `DELE filename.txt` is used to delete the same file.
+
+Make sure to replace `filename.txt` with the actual name of the file you intend to upload or delete
+

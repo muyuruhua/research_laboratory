@@ -1,0 +1,24 @@
+To incorporate the `ABOR` and `STAT` commands into the sequence of client requests, we need to consider where these commands would logically fit in the flow of an FTP session. 
+
+The `ABOR` command is typically used to abort a file transfer in progress, while the `STAT` command is used to request status information about the server or a specific file.
+
+Here’s a modified sequence of client requests that includes `ABOR` and `STAT` commands:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+STAT
+ABOR
+QUIT
+```
+
+In this modified sequence:
+- `STAT` is placed after the `LIST` command to check the status after listing the directory.
+- `ABOR` is placed after `STAT`, assuming that there might be an ongoing transfer or operation that could be aborted (although in this specific case, there’s no transfer initiated, but it demonstrates the command's placement).
+
+If you have a specific context or need for the `ABOR` command to be placed differently, please let me know!
+

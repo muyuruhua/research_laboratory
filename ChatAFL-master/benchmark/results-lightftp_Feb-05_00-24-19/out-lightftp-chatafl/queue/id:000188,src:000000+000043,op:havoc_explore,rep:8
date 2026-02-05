@@ -1,0 +1,18 @@
+Here is the modified sequence of client requests with the addition of ce of client requests, we need to determine appropriateThe `STAT` command is typically used to request the status of a specified file or directory, while the `mYPE` command is used to set the transfer type (e.g., ASCII or binary).
+
+Here’s a modified sequence of client requests with `STAT` and `TYPE` added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+TYPE I          ; Set transfer type to binary (I for Image)
+STAT test       ; Request status of the 'test' directQUIT
+LIST
+MKD test
+QUIT
+```
+
+In this sequence:

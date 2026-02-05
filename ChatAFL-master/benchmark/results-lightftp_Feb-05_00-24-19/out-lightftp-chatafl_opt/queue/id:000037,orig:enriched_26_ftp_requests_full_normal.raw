@@ -1,0 +1,21 @@
+To incorporate the `RMD` (Remove Directory) and `MODE` (Set Data Transfer Mode) commands into the existing sequence of client requests, we need to decide where they would logically fit. The `MODE` command is typically sent after establishing a connection and before data transfer commands like `LIST`, while `RMD` would come after creating a directory with `MKD` if you want to remove it afterward.
+
+Here is a modified sequence of client requests with `RMD` and `MODE` added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+MODE S  # Setting the mode to Stream
+LIST
+MKD test
+RMD test  # Removing the directory created
+QUIT
+```
+
+In this sequence:
+- The `MODE S` command is added after the `PORT` command, indicating that the stream mode is being set for data transfer.
+- The `RMD test` command is added after the `MKD test` command to remove the directory that was just created
+

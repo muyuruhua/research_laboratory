@@ -1,0 +1,22 @@
+To incorporate the MLSD and ALLO commands into the sequence of client requests, we can place them in logical positions based on typical FTP operations. The ALLO command is generally used before a data transfer to allocate sufficient space for a file on the server, and the MLSD command is used to list directory contents in a machine-readable format.
+
+Here’s a modified sequence of client requests with MLSD and ALLO included:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+ALLO 0  # Allocate space for the upcoming data transfer
+MLSD  # List directory contents in machine-readable format
+LIST  # List directory contents
+QUIT
+```
+
+In this modified sequence:
+- The `ALLO 0` command is added after the `PORT` command, which indicates that we want to allocate space for a file transfer.
+- The `MLSD` command is added before the `LIST` command to provide a machine-readable format of the directory contents. 
+
+This order maintains the logical flow of FTP commands while incorporating the requested changes
+

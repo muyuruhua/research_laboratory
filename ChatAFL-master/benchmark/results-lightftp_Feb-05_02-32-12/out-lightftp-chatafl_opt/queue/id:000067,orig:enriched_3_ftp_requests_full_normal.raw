@@ -1,0 +1,26 @@
+To incorporate the MLST and APPE commands into the sequence of client requests, we need to consider their typical usage in the context of FTP operations. 
+
+1. **MLST** (Machine List) is usually used to retrieve detailed information about a specific file or directory.
+2. **APPE** (Append) is used to append data to a file on the server.
+
+Here’s a modified sequence of client requests with MLST and APPE added in appropriate locations:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MLST test            # Added MLST to get details about the 'test' directory
+MKD test
+APPE test/file.txt   # Added APPE to append data to a file named 'file.txt' in the 'test' directory
+QUIT
+```
+
+In this sequence:
+- The `MLST test` command is placed after the `LIST` command to get details of the newly created directory `test`.
+- The `APPE test/file.txt` command is placed after `MKD test`, assuming you want to append data to a file in the newly created directory. 
+
+Make sure to adjust the filename and directory structure according to your specific needs
+

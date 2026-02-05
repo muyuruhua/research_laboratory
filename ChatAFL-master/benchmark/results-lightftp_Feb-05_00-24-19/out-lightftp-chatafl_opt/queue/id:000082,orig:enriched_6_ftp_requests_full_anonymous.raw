@@ -1,0 +1,22 @@
+To incorporate the STOR and STRU commands into the sequence of client requests, we need to consider the appropriate locations for these commands. The STOR command is typically used to upload a file to the server, and the STRU command is used to specify the structure of the file transfer (e.g., file structure types such as "F" for file, "R" for record, and "P" for page).
+
+Here's a modified sequence including the STOR and STRU commands:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+STRU F            # Set the structure to file
+STOR filename.txt # Store a file named filename.txt
+LIST
+QUIT
+```
+
+In this modified sequence:
+- The `STRU F` command is placed before the `STOR` command to set the file structure for the upcoming file transfer.
+- The `STOR filename.txt` command is added to indicate that the client intends to upload a file named "filename.txt" to the server. You can replace "filename.txt" with the actual name of the file you wish to store. 
+
+Feel free to adjust the filename or the structure type as needed for your specific use case
+

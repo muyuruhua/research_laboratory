@@ -1,0 +1,22 @@
+To integrate the `APPE` and `MLSD` commands into the sequence of client requests you provided, we should consider where they logically fit within the FTP protocol flow. The `MLSD` command is typically used to list directory contents in a machine-readable format, and `APPE` is used to append data to a file on the server.
+
+Here’s a modified version of your sequence with the `APPE` and `MLSD` commands added:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+MLSD
+LIST
+APPE myfile.txt
+QUIT
+```
+
+In this modified sequence:
+- `MLSD` is placed after the `PORT` command and before the `LIST` command, allowing the client to retrieve a machine-readable directory listing.
+- `APPE myfile.txt` is added after the `LIST` command, indicating that the client wants to append data to `myfile.txt` on the server.
+
+Feel free to adjust the placement of the commands based on your specific needs or the context of your FTP operations
+

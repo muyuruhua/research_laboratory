@@ -1,0 +1,22 @@
+To properly integrate the `APPE` (Append) and `RMD` (Remove Directory) commands into the existing sequence of client requests, we need to consider the logical flow of FTP operations. The `APPE` command is typically used to append data to a file on the server, and the `RMD` command is used to remove a directory from the server.
+
+Here is a modified sequence of client requests that includes both the `APPE` and `RMD` commands in appropriate locations:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+APPE filename.txt  # Append data to the file 'filename.txt'
+RMD directoryname   # Remove the directory 'directoryname'
+QUIT
+```
+
+In this sequence:
+- The `APPE` command is placed after the `LIST` command, assuming that the user wants to append data to a file after listing files.
+- The `RMD` command is placed after the `APPE` command, assuming that the user wants to remove a directory after appending data to a file.
+
+Feel free to adjust the filenames and directory names as needed for your specific use case
+

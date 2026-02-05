@@ -1,0 +1,26 @@
+To incorporate the `ALLO` and `RNTO` commands into the existing sequence of client requests, we need to identify appropriate locations for these commands based on typical FTP operations.
+
+The `ALLO` command is used to allocate sufficient disk space for a file and is often used before a file transfer. The `RNTO` command is used to rename a file after the `RNFR` (rename from) command has been issued.
+
+Assuming you want to allocate space before creating a directory and then rename it afterward, here's how the modified sequence could look:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+ALLO 0  # Allocate space (the number can be adjusted based on the file size expected)
+MKD test
+RNFR test  # Rename from 'test' (assuming we want to rename it)
+RNTO new_test  # Rename to 'new_test'
+QUIT
+```
+
+In this modified sequence:
+- The `ALLO` command is placed before the `MKD` command to allocate space for the directory (or file).
+- The `RNFR` command is added before the `RNTO` command to specify the source name for renaming.
+
+Please adjust the specifics of the `ALLO` command and the names in the `RNFR` and `RNTO` commands based on your actual requirements
+

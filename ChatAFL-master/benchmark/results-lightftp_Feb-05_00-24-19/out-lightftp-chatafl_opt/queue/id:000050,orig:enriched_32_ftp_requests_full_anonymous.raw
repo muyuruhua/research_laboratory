@@ -1,0 +1,22 @@
+To incorporate the `STRU` and `NOOP` commands into the sequence of client requests, we need to place them in logical locations based on typical FTP command flow.
+
+Here’s a modified sequence including the `STRU` and `NOOP` commands:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+NOOP                ; Optional: Keep the connection alive
+PWD
+PORT 127,0,0,1,152,193
+STRU F             ; Set the file structure to file
+LIST
+QUIT
+```
+
+In this modified sequence:
+- The `NOOP` command is added right after the `SYST` command to keep the connection alive.
+- The `STRU` command is added before the `LIST` command to set the file structure before listing the files. 
+
+Feel free to adjust the placement based on specific requirements or preferences!
+

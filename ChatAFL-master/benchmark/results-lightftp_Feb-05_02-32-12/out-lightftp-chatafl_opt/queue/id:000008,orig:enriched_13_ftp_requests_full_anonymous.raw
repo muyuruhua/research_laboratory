@@ -1,0 +1,23 @@
+To incorporate the `ABOR` and `ALLO` commands into the sequence of FTP client requests, we need to understand their typical usage:
+
+- `ABOR` is used to abort a previous command, often used when a transfer is in progress.
+- `ALLO` is used to allocate space for a file on the server, specifying the size and other parameters.
+
+Given the original sequence of requests, a logical place to add `ALLO` would be before the `LIST` command, as you might want to allocate space before listing files. The `ABOR` command can be added after a command that may require aborting, such as after `LIST` if you want to ensure that you can stop any ongoing processes after that.
+
+Here’s the modified sequence of client requests with `ALLO` and `ABOR` added:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+ALLO 1024  ; Allocate space for a file, for example, 1024 bytes
+LIST
+ABOR  ; Abort the previous command if needed
+QUIT
+```
+
+This sequence now includes the `ALLO` command before the `LIST` command and the `ABOR` command after the `LIST` command
+

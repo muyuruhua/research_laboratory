@@ -1,0 +1,24 @@
+To include the `STAT` and `RNTO` commands in the sequence of client requests, we need to determine logical placements for these commands. The `STAT` command is typically used to request the status of a file or directory, while `RNTO` is used in conjunction with the `RNFR` command to rename a file or directory.
+
+Here is a modified version of the original sequence with `STAT` and `RNTO` added in appropriate locations:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+STAT test       ; Added to check the status of the 'test' directory
+MKD test
+RNFR test       ; Prepare to rename 'test'
+RNTO new_test   ; Rename 'test' to 'new_test'
+QUIT
+```
+
+In this modified sequence:
+- The `STAT test` command is added after the `LIST` command to check the status of the `test` directory before it is created.
+- The `RNFR test` command is added before `RNTO new_test` to indicate that we are renaming the `test` directory to `new_test`. 
+
+This sequence assumes that you want to check the status of the directory before creating it and then rename it afterward. Adjust the placement of these commands as needed based on your specific requirements
+

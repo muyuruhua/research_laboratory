@@ -1,0 +1,22 @@
+To incorporate the STOR (store a file) and APPE (append to a file) commands into the provided sequence of FTP client requests, we need to determine appropriate locations for them. Typically, the STOR command is used to upload a file to the server, while the APPE command is used to append data to an existing file.
+
+Here’s a modified sequence of client requests that includes both STOR and APPE commands:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+STOR filename.txt      # Command to store a file named 'filename.txt'
+LIST
+APPE filename.txt      # Command to append data to 'filename.txt'
+QUIT
+```
+
+In this sequence:
+- The `STOR` command is placed before the `LIST` command, as you would typically upload data before listing the directory contents.
+- The `APPE` command is placed after the `LIST` command, which makes sense if you want to see the files in the directory before appending data to one of them.
+
+Make sure to replace `filename.txt` with the actual name of the file you want to store or append to
+

@@ -1,0 +1,24 @@
+To include the `MLSD` and `RNTO` commands in the proper locations, we need to consider the context in which these commands are typically used. The `MLSD` command is used to list directory contents in a machine-readable format, while `RNTO` is used to rename a file or directory after a `RNFR` (rename from) command.
+
+Here’s a modified version of your sequence with `MLSD` and `RNTO` added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MLSD
+MKD test
+RNFR test
+RNTO new_test
+QUIT
+```
+
+In this sequence:
+- `MLSD` is added after `LIST` to provide a machine-readable listing of the directory contents.
+- `RNFR test` is added before `RNTO new_test` to indicate that we want to rename the directory `test` to `new_test`. 
+
+This sequence assumes that the directory `test` exists after the `MKD test` command, and the rename operation is intended to follow that creation
+

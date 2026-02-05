@@ -43,6 +43,8 @@
 #include "alloc-inl.h"
 #include "hash.h"
 #include "chat-llm.h"
+#include "fuzzer_extension.h"
+#include "chatafl_opt_extension.h"
 
 #include <stdio.h>
 #include <unistd.h>
@@ -430,6 +432,9 @@ char *protocol_name;
 // Reward fields - To be used
 u32 reward_random;
 u32 reward_grammar;
+
+/* Extension manager for pluggable functionality */
+static extension_manager_t *ext_mgr = NULL;
 
 void setup_llm_grammars()
 {
@@ -5039,6 +5044,34 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
 #else
     fprintf(f, "peak_rss_mb       : %zu\n", usage.ru_maxrss >> 10);
 #endif /* ^__APPLE__ */
+  }
+
+  /* Append ChatAFL-Opt extension statistics if enabled */
+  if (ext_mgr && ext_mgr->extensions) {
+    fuzzer_extension_t *ext = ext_mgr->extensions;
+    while (ext) {
+      if (ext->enabled && strcmp(ext->name, "ChatAFL-Opt") == 0) {
+        chatafl_opt_private_t *priv = (chatafl_opt_private_t*)ext_mgr->global_ctx->extension_private;
+        if (priv) {
+          fprintf(f, "\n# ChatAFL-Opt Extension Statistics\n");
+          fprintf(f, "chatafl_hypotheses_generated : %u\n", priv->hypotheses_generated);
+          fprintf(f, "chatafl_verifications_performed : %u\n", priv->verifications_performed);
+          fprintf(f, "chatafl_refinements_applied : %u\n", priv->refinements_applied);
+          fprintf(f, "chatafl_state_updates : %u\n", priv->state_updates);
+          fprintf(f, "chatafl_llm_assists : %u\n", priv->llm_assists);
+          fprintf(f, "chatafl_time_verification_ms : %.2f\n", priv->time_in_verification_us / 1000.0);
+          fprintf(f, "chatafl_time_cegar_ms : %.2f\n", priv->time_in_cegar_us / 1000.0);
+          fprintf(f, "chatafl_time_scheduler_ms : %.2f\n", priv->time_in_scheduler_us / 1000.0);
+          fprintf(f, "chatafl_time_hypothesis_ms : %.2f\n", priv->time_in_hypothesis_us / 1000.0);
+          if (priv->scheduler_ctx && priv->scheduler_ctx->stt) {
+            fprintf(f, "chatafl_states_discovered : %d\n", priv->scheduler_ctx->stt->total_states);
+            fprintf(f, "chatafl_transitions_recorded : %d\n", priv->scheduler_ctx->stt->total_transitions);
+          }
+        }
+        break;
+      }
+      ext = ext->next;
+    }
   }
 
   fclose(f);
@@ -10625,6 +10658,23 @@ int main(int argc, char **argv)
   setup_signal_handlers();
   check_asan_opts();
 
+  /* Initialize extension framework */
+  ext_mgr = init_extension_manager();
+  if (ext_mgr && protocol_name) {
+    ext_mgr->global_ctx->protocol_name = protocol_name;
+    ext_mgr->global_ctx->sut_host = "127.0.0.1"; // Default, will be updated if netinfo available
+    ext_mgr->global_ctx->sut_port = 0;
+
+    /* Register ChatAFL-Opt extension if enabled */
+    if (getenv("AFL_ENABLE_CHATAFL_OPT")) {
+      ACTF("Registering ChatAFL-Opt extension");
+      register_extension(ext_mgr, get_chatafl_opt_extension());
+    }
+
+    /* Trigger startup hook */
+    trigger_hook(ext_mgr, HOOK_BEFORE_FUZZING_START);
+  }
+
   if (sync_id)
     fix_up_sync();
 
@@ -10939,6 +10989,13 @@ stop_fuzzing:
   destroy_ipsm();
 
   alloc_report();
+
+
+  /* Cleanup extensions */
+  if (ext_mgr) {
+    trigger_hook(ext_mgr, HOOK_BEFORE_FUZZING_END);
+    cleanup_extensions(ext_mgr);
+  }
 
   OKF("We're done here. Have a nice day!\n");
 

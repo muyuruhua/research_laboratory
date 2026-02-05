@@ -1,0 +1,28 @@
+To include the `APPE` and `RNTO` commands in the appropriate locations within the sequence of client requests, we need to understand what each command does:
+
+- `APPE` (Append) is used to append data to a file on the server.
+- `RNTO` (Rename To) is used to rename a file or directory.
+
+Given the original sequence of commands, we can add the `APPE` command after the `MKD` command (if we want to append data to a file after creating a directory) and the `RNTO` command after the `LIST` command (if we want to rename a file after listing). However, the exact placement can vary based on the context of the operations.
+
+Here’s one possible modified sequence of client requests with the `APPE` and `RNTO` commands added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+APPE myfile.txt  # Append data to myfile.txt
+RNTO newfile.txt  # Rename the file to newfile.txt
+MKD test
+QUIT
+```
+
+In this modification:
+- The `APPE myfile.txt` command is added to indicate that we are appending to a file named `myfile.txt`.
+- The `RNTO newfile.txt` command is added to rename the file to `newfile.txt`.
+
+You can adjust the specific files and commands based on your requirements
+

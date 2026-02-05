@@ -1,0 +1,23 @@
+To incorporate the `STOR` and `SITE` commands into the sequence of client requests, we need to consider the typical usage of these commands in an FTP session. The `STOR` command is used to upload a file to the server, and the `SITE` command is often used to send site-specific commands to the server.
+
+Here’s a modified sequence of client requests with `STOR` and `SITE` added in appropriate locations:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+SITE CHMOD 755 test  # Example of a SITE command to change permissions on the new directory
+STOR testfile.txt     # Example of STOR command to upload a file named testfile.txt
+QUIT
+```
+
+In this sequence:
+- The `SITE CHMOD 755 test` command is added after creating the directory (`MKD test`) to set permissions for the newly created directory.
+- The `STOR testfile.txt` command is added after the `SITE` command to upload a file named `testfile.txt` to the current directory.
+
+Feel free to adjust the parameters of the `SITE` and `STOR` commands as necessary for your specific use case
+

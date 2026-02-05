@@ -1,0 +1,22 @@
+Sure! The `STAT` command is used to retrieve the status of a specified file or directory, while `MLSD` is used to list directory contents in a machine-readable format. Based on the standard FTP command sequence, I will insert these commands appropriately.
+
+Here is the modified sequence of client requests with `STAT` and `MLSD` included:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+STAT
+MLSD
+LIST
+QUIT
+```
+
+In this sequence:
+- `STAT` is added after the `PORT` command to check the status of the current directory or a specified file/directory.
+- `MLSD` follows `STAT` to retrieve a machine-readable listing of the directory contents.
+
+This order maintains a logical flow in the FTP session
+

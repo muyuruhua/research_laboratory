@@ -1,0 +1,22 @@
+To add the `ABOR` and `FEAT` client requests in the proper locations, we should consider where these commands typically fit in a sequence of FTP commands.
+
+Here’s a modified sequence of client requests with `ABOR` and `FEAT` included:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+FEAT
+PWD
+PORT 127,0,0,1,152,193
+LIST
+ABOR
+QUIT
+```
+
+In this sequence:
+- `FEAT` is added after the `SYST` command to inquire about the features supported by the server.
+- `ABOR` is added before the `QUIT` command. This is typically used to abort the previous command if needed, but its placement can vary based on specific use cases. 
+
+Feel free to adjust the placement of `ABOR` according to your specific needs or context!
+

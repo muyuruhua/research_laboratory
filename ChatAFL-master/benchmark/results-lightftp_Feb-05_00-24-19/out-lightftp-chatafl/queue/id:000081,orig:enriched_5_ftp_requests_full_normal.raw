@@ -1,0 +1,23 @@
+To incorporate the STOR (to upload a file) and RETR (to download a file) commands into the client requests sequence, we need to determine suitable locations for these commands. Typically, STOR is used after a successful connection and directory change, while RETR can be used after listing the files or navigating to the appropriate directory.
+
+Here's a modified sequence of client requests with STOR and RETR added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+STOR myfile.txt        ; (Upload a file named myfile.txt)
+MKD test
+RETR myfile.txt        ; (Download the file named myfile.txt)
+QUIT
+```
+
+In this sequence:
+- `STOR myfile.txt` is added after the `LIST` command, assuming you want to upload a file after listing the contents.
+- `RETR myfile.txt` is added after creating the directory `test`, assuming you want to retrieve the same file after creating a new directory.
+
+Feel free to adjust the filenames or the order based on your specific use case
+

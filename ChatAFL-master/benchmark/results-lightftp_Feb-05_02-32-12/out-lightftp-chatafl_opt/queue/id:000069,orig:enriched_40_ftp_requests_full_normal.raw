@@ -1,0 +1,23 @@
+To modify the sequence of client requests by adding the `RETR` and `ALLO` commands in appropriate locations, we need to consider where these commands would logically fit in the sequence of FTP operations.
+
+Here’s a modified version of the original sequence with the `RETR` and `ALLO` commands added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+ALLO 1024  # This command can be used to allocate storage space for the transfer
+RETR filename.txt  # This command retrieves a file from the server
+MKD test
+QUIT
+```
+
+### Explanation of Changes:
+1. **ALLO**: The `ALLO` command is typically used to allocate storage space on the server for a file transfer. It can be placed before the `RETR` command to ensure that there is enough space allocated before retrieving a file.
+2. **RETR**: The `RETR` command is used to retrieve a file from the server. It is placed after the `LIST` command (which lists files) and before the `MKD` command (which creates a directory) to ensure that the file retrieval happens before any directory creation.
+
+Make sure to replace `filename.txt` with the actual name of the file you intend to retrieve
+

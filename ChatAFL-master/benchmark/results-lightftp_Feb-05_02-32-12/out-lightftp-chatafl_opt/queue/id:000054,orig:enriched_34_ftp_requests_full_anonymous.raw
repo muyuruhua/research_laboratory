@@ -1,0 +1,28 @@
+To incorporate the `STAT` and `DELE` commands into the sequence of client requests, we need to determine appropriate locations for these commands based on typical FTP usage. 
+
+Here's a modified sequence that includes `STAT` and `DELE`:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+STAT
+DELE <filename>  ; (Replace <filename> with the actual file you want to delete)
+QUIT
+```
+
+### Explanation:
+1. **USER** and **PASS**: These commands are used to authenticate the user.
+2. **SYST**: This command is used to get the system type of the remote FTP server.
+3. **PWD**: This command is used to print the current working directory.
+4. **PORT**: This command specifies the IP address and port for the data connection.
+5. **LIST**: This command lists the files in the current directory.
+6. **STAT**: This command can be used to get the status of a specific file or the current directory. It is placed after the `LIST` command, which is logical as you might want to check the status of files after listing them.
+7. **DELE**: This command is used to delete a specified file. It is placed after `STAT`, assuming you want to check the status before deciding to delete a file. You would replace `<filename>` with the actual name of the file you wish to delete.
+8. **QUIT**: This command is used to terminate the FTP session.
+
+Make sure to replace `<filename>` with the actual name of the file you want to delete in the `DELE` command
+

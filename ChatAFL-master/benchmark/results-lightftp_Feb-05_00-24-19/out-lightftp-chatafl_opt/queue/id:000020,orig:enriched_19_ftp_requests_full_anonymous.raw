@@ -1,0 +1,22 @@
+To incorporate the `MODE` and `SITE` commands into the sequence of client requests, we need to consider where these commands typically fit in the context of an FTP session.
+
+Here’s a modified version of your sequence with `MODE` and `SITE` added in appropriate locations:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+MODE S
+PWD
+PORT 127,0,0,1,152,193
+SITE CHMOD 755 somefile.txt  # Example SITE command
+LIST
+QUIT
+```
+
+### Explanation of Changes:
+1. **MODE S**: The `MODE` command is usually sent after authentication and before data transfer commands. In this case, I've added `MODE S` which sets the transfer mode to stream.
+2. **SITE CHMOD 755 somefile.txt**: The `SITE` command is often used for server-specific commands, such as changing file permissions. I've included an example command here, but you would replace `somefile.txt` with the actual file you want to modify.
+
+Feel free to adjust the `SITE` command based on your specific needs or server capabilities
+

@@ -1,0 +1,16 @@
+´
+Hereâ€™s the modified sequence of client requests:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+SIZE <filename>  # Replace <filename> with the actual file name you want to check the size of
+HELP
+QUIT
+```
+
+Make sure to replace `<filename>` with the actual file name you want to check the size for. If you don't have a specific file in mind, you can choose to omit the `SIZE` request or specify a generic file name

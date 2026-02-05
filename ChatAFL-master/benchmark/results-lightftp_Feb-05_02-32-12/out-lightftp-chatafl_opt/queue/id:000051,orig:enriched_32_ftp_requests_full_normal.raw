@@ -1,0 +1,23 @@
+To incorporate the `APPE` (Append) and `MLSD` (Machine List Directory) commands into the sequence of client requests, we need to consider where these commands would logically fit. The `MLSD` command is typically used to list directory contents in a machine-readable format, and `APPE` is used to append data to a file on the server.
+
+Here's a modified sequence of client requests that includes `MLSD` after the `MKD` command (to list the contents of the directory after creating it) and `APPE` before the `QUIT` command (to append data to a file):
+
+```plaintext
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+MLSD
+APPE test/file.txt
+QUIT
+```
+
+In this sequence:
+- `MLSD` is added after `MKD test` to list the contents of the newly created directory.
+- `APPE test/file.txt` is added before `QUIT` to append data to a specified file. You may need to specify the data to be appended in a real scenario, but it is not shown here. 
+
+Feel free to adjust the file name in the `APPE` command as necessary
+

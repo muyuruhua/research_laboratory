@@ -1,0 +1,31 @@
+To incorporate the `CWD` (Change Working Directory) and `RMD` (Remove Directory) commands into the sequence of client requests, we need to determine the appropriate locations for these commands based on typical FTP operations.
+
+Here's a modified sequence of client requests that includes `CWD` and `RMD`:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+CWD test          # Change to the directory 'test'
+LIST
+MKD test2        # Create a new directory 'test2'
+CWD test2        # Change to the newly created directory 'test2'
+RMD test2        # Remove the directory 'test2'
+CWD ..           # Change back to the parent directory
+RMD test         # Remove the directory 'test'
+QUIT
+```
+
+In this modified sequence:
+1. After logging in and setting up the data connection, we change to the `test` directory.
+2. We list the contents of `test`.
+3. We create a new directory called `test2`.
+4. We change into `test2` to perform operations (in this case, removing it).
+5. We remove `test2`.
+6. We navigate back to the parent directory using `CWD ..` before removing the `test` directory.
+7. Finally, we remove the `test` directory and quit.
+
+Feel free to adjust the specific commands based on your exact requirements!
+

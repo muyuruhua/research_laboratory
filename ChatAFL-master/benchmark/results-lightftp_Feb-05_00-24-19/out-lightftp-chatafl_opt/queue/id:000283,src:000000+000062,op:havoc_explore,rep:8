@@ -1,0 +1,37 @@
+To add the `SIZE` and `HELP` client requests into the existing sequence in a logical manner, we can place the `SIZE` request after the `LIST` command (as it typically pertains to a specific file or directory listing) and the `HELP` request before the `QUIT` command (as it usually serves to provide information about commands before ending the session). 
+
+Here’s the modified sequence of client requests:
+
+```
+USER anonymous
+PASS unly! Below is the moPASSdified sequence of client requests,+with the `DELE` APPEand `MODE` commands added in appropriate locations:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+MODE S
+DELE filename.txt
+LIST
+QUIT`MODE S` is added after setting the PRT, which is a logical place to set the transfer mode before list
+```
+
+In this sequence:
+- `MODE S` is added after setting the PRT, which is a logical place to set the transfer mode before listing files.
+- `DELE fE S
+DELE filename.txilen after setting the PRT, which is a logical place to set the transfer mode before listing files.lace `filename.txt` with the actual filename you wish to delete) before listing the remaining files..
+
+Feel free to adjust the filename in the `DELE` command as needed!
+
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+SIZE <filename>  # Replace <filename> with the actual file name you want to check the size of
+HELP
+QUIT
+```
+
+Make sure to replace `<filename>` with the actual file name you want to check the size for. If you don't have a specific file in mind, you can choose to omit the `SIZE` request or specify a generic file name

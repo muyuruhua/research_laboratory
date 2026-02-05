@@ -1,0 +1,23 @@
+To add the `RETR` and `SITE` client requests to the existing sequence of client requests, we need to determine appropriate locations for these commands based on typical FTP operations. 
+
+Here’s a modified sequence including `RETR` and `SITE`:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+SITE CHMOD 755 test  # Example SITE command to change permissions of the 'test' directory
+MKD test
+RETR test/file.txt    # Example RETR command to retrieve a file from the 'test' directory
+QUIT
+```
+
+In this modified sequence:
+- The `SITE` command is added before the `MKD` command to set permissions for the directory before creating it. This is just an example; the exact use of `SITE` may depend on your specific needs.
+- The `RETR` command is added after the `MKD` command to retrieve a file from the newly created directory. Adjust the file path as necessary for your use case. 
+
+Feel free to modify the parameters of the `SITE` and `RETR` commands as per your requirements
+

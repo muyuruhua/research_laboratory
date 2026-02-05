@@ -1,0 +1,22 @@
+To incorporate the `STOR` and `FEAT` commands into the sequence of client requests, we need to determine appropriate locations for these commands based on typical FTP interactions. The `FEAT` command is generally sent after the user has logged in to check for supported features of the FTP server, while the `STOR` command is used to upload a file and should be placed after establishing a data connection (which happens after the `PORT` command).
+
+Here’s the modified sequence of client requests with `STOR` and `FEAT` added in appropriate locations:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+FEAT
+PWD
+PORT 127,0,0,1,152,193
+LIST
+STOR filename.txt
+QUIT
+```
+
+In this sequence:
+- `FEAT` is placed after the login commands (`USER` and `PASS`) to check for server features.
+- `STOR filename.txt` is added after the `LIST` command, which is typically used to list files on the server. It assumes that the user wants to upload a file named `filename.txt` after listing files. 
+
+Feel free to adjust the filename in the `STOR` command as necessary for your specific use case
+

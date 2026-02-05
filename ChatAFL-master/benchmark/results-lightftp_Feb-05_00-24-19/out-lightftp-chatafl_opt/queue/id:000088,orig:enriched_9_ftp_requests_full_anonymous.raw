@@ -1,0 +1,18 @@
+To properly add the `ABOR` and `SITE` client requests into the sequence, we need to determine appropriate locations for them. The `ABOR` command is typically used to abort an ongoing file transfer, so it should be placed after a command that initiates such a transfer. The `SITE` command is often used to send site-specific commands to the server, and it can be placed after the `SYST` command or before the `QUIT` command.
+
+Here is a modified sequence of client requests with `ABOR` and `SITE` added:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+SITE <site-command>  ; (replace <site-command> with an actual command if needed)
+PWD
+PORT 127,0,0,1,152,193
+LIST
+ABOR  ; (This is added here to abort any transfer if needed)
+QUIT
+```
+
+Note: Replace `<site-command>` with the actual site-specific command you want to send. The `ABOR` command is placed after `LIST`, assuming it is meant to abort a transfer that might be occurring. If no transfer is happening, you may choose to leave it out, as it may not be necessary
+

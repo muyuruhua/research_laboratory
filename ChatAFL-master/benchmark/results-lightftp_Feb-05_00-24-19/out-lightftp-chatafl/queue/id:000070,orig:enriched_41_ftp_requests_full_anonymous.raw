@@ -1,0 +1,22 @@
+To incorporate the `APPE` and `TYPE` client requests into the provided sequence, we need to consider the logical flow of FTP commands. The `TYPE` command is typically sent to set the data transfer type (e.g., ASCII or binary) before transferring files, and the `APPE` command is used to append data to a file on the server.
+
+Here’s a modified sequence of client requests that includes both `APPE` and `TYPE` commands:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+TYPE I            ; Set transfer type to binary (I for Image)
+APPE filename.txt  ; Append data to filename.txt
+LIST
+QUIT
+```
+
+In this modified sequence:
+- `TYPE I` is added after establishing the connection and before the `APPE` command to specify that we want to transfer binary data.
+- `APPE filename.txt` is included to indicate that we want to append data to a file named `filename.txt` on the server. You can replace `filename.txt` with the actual name of the file you intend to append to. 
+
+Feel free to adjust the filename as needed!
+

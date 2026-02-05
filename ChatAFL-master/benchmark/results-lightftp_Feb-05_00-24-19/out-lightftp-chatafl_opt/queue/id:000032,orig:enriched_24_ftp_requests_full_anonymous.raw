@@ -1,0 +1,16 @@
+Here is the modified sequence of client requests, with the `STAT` and `NOOP` commands added in appropriate locations:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+STAT
+NOOP
+LIST
+QUIT
+```
+
+In this sequence, the `STAT` command is placed after the `PORT` command, which is a logical position as it often checks the status of the connection or the current session. The `NOOP` command is added after `STAT`, as it can be used to keep the connection alive or check if the server is still responsive before proceeding to the `LIST` command
+

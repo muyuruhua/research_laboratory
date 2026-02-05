@@ -1,0 +1,23 @@
+To incorporate the `STAT` and `RETR` commands into the sequence of client requests, we need to consider where these commands logically fit. The `STAT` command is typically used to request status information about a file or directory, while the `RETR` command is used to retrieve a file from the server.
+
+Here's a modified version of your sequence with `STAT` and `RETR` added in appropriate locations:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+STAT test  # Check the status of the 'test' directory
+MKD test
+RETR test/file.txt  # Retrieve a specific file from the 'test' directory
+QUIT
+```
+
+In this sequence:
+- The `STAT test` command is placed after the `LIST` command to check the status of the newly created directory `test`.
+- The `RETR test/file.txt` command is added after the `MKD test` command, assuming you want to retrieve a file named `file.txt` from the `test` directory after it has been created.
+
+Feel free to adjust the filename in the `RETR` command to match the actual file you intend to retrieve
+

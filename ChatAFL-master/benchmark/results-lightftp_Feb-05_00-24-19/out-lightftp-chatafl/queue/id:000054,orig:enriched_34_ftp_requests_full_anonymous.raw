@@ -1,0 +1,16 @@
+To incorporate the `PASV` and `TYPE` commands into the client request sequence, we typically want to set the transfer mode and establish a passive data connection before listing the directory contents. Here’s how the modified sequence would look:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+TYPE I              # Set transfer type to binary (I for image, A for ASCII)
+PASV                 # Enter passive mode for data transfer
+PORT 127,0,0,1,152,193  # This line can be omitted as PASV is used
+LIST
+QUIT
+```
+
+In this modified sequence, the `TYPE I` command is added after the `PWD` command to set the transfer type to binary, and the `PASV` command follows it to prepare for a passive data connection. The `PORT` command is typically not needed after `PASV` since they are alternative methods for establishing a data connection. You can choose to keep or remove the `PORT` command based on the context. If you're using `PASV`, you should not need `PORT`
+

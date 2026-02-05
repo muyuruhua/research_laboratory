@@ -114,7 +114,7 @@ bool verify_acceptability(verification_context_t *ctx,
     inet_pton(AF_INET, ctx->sut_host, &server_addr.sin_addr);
     
     struct timeval timeout;
-    timeout.tv_sec = 5;
+    timeout.tv_sec = 2;  // 降低到2秒超时（从5秒降低，减少验证阻塞）
     timeout.tv_usec = 0;
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
     

@@ -1,0 +1,25 @@
+To incorporate the ABOR and CWD client requests into the sequence of client requests you provided, we need to determine appropriate locations for these commands. 
+
+Typically, the ABOR command is used to abort a previous command, and the CWD command is used to change the working directory on the server. 
+
+Here’s a modified sequence with the ABOR and CWD commands added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+CWD /new_directory  ; Here, you can specify the directory you want to change to.
+LIST
+ABOR  ; This command can be used if you want to abort the LIST command.
+MKD test
+QUIT
+```
+
+In this example:
+- The CWD command is added after the PORT command to change the working directory before listing the contents.
+- The ABOR command is added after the LIST command to demonstrate how you might abort it if needed.
+
+You can adjust the directory path in the CWD command as necessary based on your specific requirements
+

@@ -1,0 +1,27 @@
+To incorporate the `TYPE` and `RNTO` commands into the provided sequence of client requests, we need to consider where these commands would logically fit in the context of an FTP session.
+
+The `TYPE` command is typically used to set the file transfer type (e.g., ASCII or binary) before transferring files. The `RNTO` command is used in conjunction with `RNFR` to rename a file on the server.
+
+Here’s a modified sequence of client requests that includes both commands:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+TYPE I          ; Setting transfer type to binary (I for Image)
+LIST
+MKD test
+RNFR test      ; Rename 'test' directory to something else (e.g., 'test_renamed')
+RNTO test_renamed
+QUIT
+```
+
+### Explanation of Changes:
+1. **TYPE I**: This command is added after the `PORT` command to set the transfer type to binary. This is a common practice before transferring files or listing directories, especially if binary data might be involved.
+2. **RNFR test**: This command is included before the `RNTO` command to indicate the file or directory to be renamed. This is necessary as `RNTO` requires a preceding `RNFR` command to specify the original name.
+3. **RNTO test_renamed**: This command is added to complete the renaming process.
+
+Please adjust the `RNFR` and `RNTO` commands according to the actual files or directories you intend to rename, as this is just an illustrative example
+

@@ -1,0 +1,18 @@
+To incorporate the NOOP and DELE commands into the provided sequence of FTP client requests, we can place the NOOP command after the PORT command, as it is often used to keep the connection alive. The DELE command is typically used to delete a specific file, so we can place it after the LIST command, assuming that the user wants to delete a file after listing the directory contents.
+
+Here's the modified sequence of client requests:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+NOOP
+LIST
+DELE filename.txt
+QUIT
+```
+
+In this sequence, replace `filename.txt` with the actual name of the file you wish to delete. If you have a specific file in mind or if the context suggests a different location for the DELE command, please let me know!
+

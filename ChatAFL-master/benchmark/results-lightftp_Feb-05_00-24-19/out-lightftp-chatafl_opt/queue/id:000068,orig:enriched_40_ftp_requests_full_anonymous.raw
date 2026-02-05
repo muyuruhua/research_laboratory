@@ -1,0 +1,18 @@
+To incorporate the `APPE` (Append) and `RMD` (Remove Directory) client requests into the sequence while maintaining logical flow, we can add `RMD` after the `PWD` command and `APPE` before the `LIST` command. 
+
+Here is the modified sequence of client requests:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+RMD directory_name  # Replace 'directory_name' with the actual directory you want to remove
+PORT 127,0,0,1,152,193
+APPE filename  # Replace 'filename' with the actual file you want to append to
+LIST
+QUIT
+```
+
+Make sure to replace `directory_name` and `filename` with the actual names you intend to use in your FTP session
+

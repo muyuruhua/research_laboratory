@@ -1,0 +1,22 @@
+To include the STOR and STAT commands in the sequence of client requests, we need to determine where they would logically fit within the standard FTP command flow. Typically, STOR is used to upload a file, and STAT is used to retrieve the status of a file or directory.
+
+Here’s a modified sequence of client requests that includes the STOR and STAT commands:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+STAT /path/to/file.txt  ; (Assuming we want to check the status of a specific file before uploading)
+STOR /path/to/file.txt  ; (Uploading a file after checking its status)
+LIST
+QUIT
+```
+
+In this sequence:
+- **STAT /path/to/file.txt** is used to check the status of a file before uploading it.
+- **STOR /path/to/file.txt** is used to upload the file after checking its status.
+
+Make sure to replace `/path/to/file.txt` with the actual path of the file you intend to check and upload
+

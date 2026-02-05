@@ -1,0 +1,16 @@
+To incorporate the `STAT` and `HELP` client requests into the existing sequence, we can add `HELP` after the `SYST` command and `STAT` after the `PWD` command. Here is the modified sequence of client requests:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+HELP
+PWD
+STAT
+PORT 127,0,0,1,152,193
+LIST
+QUIT
+```
+
+This sequence maintains the logical flow of commands while including the requested `STAT` and `HELP` commands in appropriate places
+

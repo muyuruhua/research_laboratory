@@ -1,0 +1,106 @@
+For the FTP protocol, the client request templates typically include commands for various operations. Here are some common FTP client request templates:
+
+1. **USER Command**: Used to send the username to the FTP server.
+   ```
+   USER: ["USER <<VALUE>>\r\n"]
+   ```
+
+2. **PASS Command**: Used to send the password to the FTP server.
+   ```
+   PASS: ["PASS <<VALUE>>\r\n"]
+   ```
+
+3. **LIST Command**: Used to list files in the current directory.
+   ```
+   LIST: ["LIST <<VALUE>>\r\n"]
+   ```
+
+4. **RETR Command**: Used to retrieve a file from the server.
+   ```
+   RETR: ["RETR <<VALUE>>\r\n"]
+   ```
+
+5. **STOR Command**: Used to store a file on the server.
+   ```
+   STOR: ["STOR <<VALUE>>\r\n"]
+   ```
+
+6. **CWD Command**: Used to change the working directory on the server.
+   ```
+   CWD: ["CWD <<VALUE>>\r\n"]
+   ```
+
+7. **PWD Command**: Used to print the current working directory.
+   ```
+   PWD: ["PWD\r\n"]
+   ```
+
+8. **QUIT Command**: Used to terminate the session.
+   ```
+   QUIT: ["QUIT\r\n"]
+   ```
+
+These templates can be used as a basis for constructing FTP client requests, substituting `<<VALUE>>` with the appropriate parameters for each command.
+In addition to the basic FTP commands I previously mentioned, there are several other FTP client request templates that can be used for various operations. Here are some additional common FTP commands:
+
+1. **MKD Command**: Used to create a new directory on the server.
+   ```
+   MKD: ["MKD <<VALUE>>\r\n"]
+   ```
+
+2. **RMD Command**: Used to remove a directory on the server.
+   ```
+   RMD: ["RMD <<VALUE>>\r\n"]
+   ```
+
+3. **DELE Command**: Used to delete a file on the server.
+   ```
+   DELE: ["DELE <<VALUE>>\r\n"]
+   ```
+
+4. **RNFR Command**: Used to specify the old name of a file to be renamed.
+   ```
+   RNFR: ["RNFR <<VALUE>>\r\n"]
+   ```
+
+5. **RNTO Command**: Used to specify the new name of a file after it has been specified with RNFR.
+   ```
+   RNTO: ["RNTO <<VALUE>>\r\n"]
+   ```
+
+6. **APPE Command**: Used to append data to an existing file on the server.
+   ```
+   APPE: ["APPE <<VALUE>>\r\n"]
+   ```
+
+7. **SITE Command**: Used to send site-specific commands to the server.
+   ```
+   SITE: ["SITE <<VALUE>>\r\n"]
+   ```
+
+8. **SYST Command**: Used to get the system type of the server.
+   ```
+   SYST: ["SYST\r\n"]
+   ```
+
+9. **STAT Command**: Used to get the status of the server or a specific file.
+   ```
+   STAT: ["STAT <<VALUE>>\r\n"]
+   ```
+
+10. **NOOP Command**: Used to send a no-operation command to the server, often used to keep the connection alive.
+    ```
+    NOOP: ["NOOP\r\n"]
+    ```
+
+11. **FEAT Command**: Used to list the features supported by the server.
+    ```
+    FEAT: ["FEAT\r\n"]
+    ```
+
+12. **HELP Command**: Used to get help information about FTP commands.
+    ```
+    HELP: ["HELP\r\n"]
+    ```
+
+These templates provide a more comprehensive set of commands that can be used in an FTP client to interact with an FTP server. As before, `<<VALUE>>` should be replaced with the appropriate parameters when constructing actual requests.

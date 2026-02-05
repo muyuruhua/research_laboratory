@@ -1,0 +1,37 @@
+To include the RNTO (Rename To) and SITE commands in the proper locations, we need to consider the context of the FTP commands. The RNTO command is typically used after a RNFR (Rename From) command to specify the new name for a file or directory. The SITE command is often used for server-specific commands, but its placement depends on the specific action you want to take.
+
+Assuming you want to rename a directory after creating it and possibly use the SITE command to set some parameters or perform a server-specific function, a common sequence might look like this:
+
+1. The user connects and logs in.
+2. The user requests the system type and current directory.
+3. The user sets up a data connection.
+4. The user lists the current directory.
+5. The user creates a new directory.
+6. The user renames the newly created directory.
+7. Optionally, the user sends a SITE command.
+8. Finally, the user quits.
+
+Here’s how the modified sequence of client requests could look:
+
+```plaintext
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+RNFR test
+RNTO new_test
+SITE some_command
+QUIT
+```
+
+In this modified sequence:
+- After creating the directory `test`, we use `RNFR test` to indicate we want to rename `test`.
+- Then we use `RNTO new_test` to rename it to `new_test`.
+- The `SITE some_command` can be replaced with an actual SITE command as needed.
+- Finally, we quit the session. 
+
+Make sure to replace `some_command` with the actual command you intend to use with the SITE command
+

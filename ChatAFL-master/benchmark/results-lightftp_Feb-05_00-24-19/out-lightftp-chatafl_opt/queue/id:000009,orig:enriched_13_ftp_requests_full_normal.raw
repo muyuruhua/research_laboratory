@@ -1,0 +1,23 @@
+To modify the sequence of client requests by adding the `RNFR` (Rename From) and `RMD` (Remove Directory) commands in the proper locations, we need to consider the typical usage of these commands in an FTP session.
+
+Here's a modified sequence of client requests that includes `RNFR` and `RMD`:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+RNFR test
+RMD test
+QUIT
+```
+
+In this sequence:
+- After creating the directory `test` with `MKD test`, we use `RNFR test` to specify the directory we want to rename or remove.
+- Then, we use `RMD test` to remove the directory `test`.
+
+Please adjust the commands based on your specific needs if the context changes
+

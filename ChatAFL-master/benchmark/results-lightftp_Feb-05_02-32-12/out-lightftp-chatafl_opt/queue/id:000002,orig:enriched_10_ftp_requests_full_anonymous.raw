@@ -1,0 +1,22 @@
+To incorporate the `ABOR` and `RNFR` commands into the sequence of client requests, we need to consider where they would logically fit. Typically, `RNFR` (Rename From) is used when you want to rename a file, and it must be followed by `RNTO` (Rename To) to complete the renaming process. The `ABOR` command is used to abort a previous command in progress.
+
+Here’s a modified sequence of client requests that includes both `ABOR` and `RNFR` in appropriate locations:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+RNFR example.txt       ; Specify the file to rename
+ABOR                   ; Abort any ongoing command or operation (if needed)
+QUIT
+```
+
+In this sequence:
+- `RNFR example.txt` is added after the `LIST` command to indicate the file you want to rename.
+- `ABOR` is placed after `RNFR`, but before `QUIT`, to demonstrate that you may want to abort the renaming process if needed.
+
+Please adjust the file name in `RNFR` as per your requirement, and ensure that the context of using `ABOR` makes sense in your specific scenario
+

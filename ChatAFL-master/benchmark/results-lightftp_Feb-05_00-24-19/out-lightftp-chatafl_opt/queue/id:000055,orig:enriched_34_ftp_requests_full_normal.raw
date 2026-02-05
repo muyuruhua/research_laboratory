@@ -1,0 +1,23 @@
+To incorporate the `APPE` and `TYPE` commands into the provided sequence of client requests, we can insert them at appropriate locations based on a typical FTP session flow. The `TYPE` command is usually sent after logging in but before transferring files, and the `APPE` command is used to append data to an existing file.
+
+Here is the modified sequence of client requests with `TYPE` and `APPE` added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+TYPE I      # Set transfer type to binary (I for Image)
+APPE testfile.txt  # Append data to 'testfile.txt'
+LIST
+MKD test
+QUIT
+```
+
+In this modified sequence:
+- `TYPE I` is added after the `PORT` command to set the transfer type to binary before any data transfer operations.
+- `APPE testfile.txt` is added before the `LIST` command, indicating that we want to append data to a file named `testfile.txt`. 
+
+You can adjust the filename in the `APPE` command based on your specific needs
+

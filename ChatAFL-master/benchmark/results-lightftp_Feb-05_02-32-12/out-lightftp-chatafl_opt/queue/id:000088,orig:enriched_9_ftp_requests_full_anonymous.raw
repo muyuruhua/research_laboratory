@@ -1,0 +1,22 @@
+To incorporate the `ABOR` and `SITE` client requests into the provided sequence, we need to consider the typical flow of FTP commands. The `ABOR` command is used to abort a previous command, and the `SITE` command is used to send site-specific commands to the server.
+
+Here’s a modified sequence that includes `ABOR` and `SITE` in appropriate locations:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+SITE <your_site_command>  ; (Replace <your_site_command> with an actual site command, if needed)
+LIST
+ABOR
+QUIT
+```
+
+In this sequence:
+- The `SITE` command is placed after the `PORT` command, which is a logical place to send site-specific commands before initiating the data transfer with `LIST`.
+- The `ABOR` command follows the `LIST` command, which is a common practice to ensure that any ongoing data transfer can be aborted if necessary. However, if you want to abort a specific command, you might want to place it immediately after that command.
+
+If you have a specific site command you want to use, please replace `<your_site_command>` with that command. If not, you can simply leave it as is or remove it
+

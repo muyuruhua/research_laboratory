@@ -1,0 +1,24 @@
+To incorporate the `RMD` (Remove Directory) and `DELE` (Delete File) client requests into the existing sequence, we need to determine appropriate locations for these commands based on typical FTP operations. 
+
+A logical sequence might be to delete a file after listing the contents of the directory and to remove a directory after ensuring it is empty (which would typically happen after listing). 
+
+Here’s a modified version of your sequence including `RMD` and `DELE`:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+DELE example.txt    # Assuming you want to delete a file named example.txt
+RMD example_dir     # Assuming you want to remove a directory named example_dir
+QUIT
+```
+
+In this modified sequence:
+- `DELE example.txt` is added after the `LIST` command, indicating that the user wants to delete a specific file after viewing the directory contents.
+- `RMD example_dir` is added after the `DELE` command, indicating that the user wants to remove a directory after the file has been deleted. 
+
+Make sure to replace `example.txt` and `example_dir` with the actual file and directory names you intend to delete
+

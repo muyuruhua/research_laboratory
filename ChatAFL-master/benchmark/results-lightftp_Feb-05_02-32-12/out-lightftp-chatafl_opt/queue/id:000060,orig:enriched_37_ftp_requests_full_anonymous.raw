@@ -1,0 +1,20 @@
+To incorporate the `APPE` (Append) and `FEAT` (Features) commands into the sequence of client requests, we need to determine appropriate locations for these commands. Typically, the `FEAT` command is sent after establishing the connection and before any file transfer commands to inquire about the features supported by the server. The `APPE` command is used to append data to a file, so it should be placed before the data transfer commands like `LIST`.
+
+Here's the modified sequence of client requests with `APPE` and `FEAT` added:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+FEAT
+PORT 127,0,0,1,152,193
+APPE filename.txt
+LIST
+QUIT
+```
+
+In this modified sequence:
+- The `FEAT` command is added after the `PWD` command to check for supported features of the server.
+- The `APPE filename.txt` command is added before the `LIST` command to indicate that we want to append data to `filename.txt`. Replace `filename.txt` with the actual name of the file you wish to append to
+

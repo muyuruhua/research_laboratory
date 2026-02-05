@@ -1,0 +1,18 @@
+To incorporate the ABOR and NOOP commands into the given sequence of FTP client requests, we can add the NOOP command after the PORT command and the ABOR command after the LIST command. This placement is logical as NOOP can be used to keep the connection alive, and ABOR can be used to abort a command if needed.
+
+Here is the modified sequence of client requests:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+NOOP
+LIST
+ABOR
+QUIT
+```
+
+This sequence ensures that the NOOP command is sent to keep the connection alive after establishing the data port, and the ABOR command is sent after the LIST command, which can be used to abort the LIST operation if necessary
+

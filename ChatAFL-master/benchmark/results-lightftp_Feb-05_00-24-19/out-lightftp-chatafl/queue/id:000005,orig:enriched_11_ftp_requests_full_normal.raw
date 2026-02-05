@@ -1,0 +1,35 @@
+To incorporate the `PASV` and `SITE` commands into the sequence of client requests, we need to place them in logical locations based on typical FTP command flow. The `PASV` command is used to switch the FTP connection to passive mode, which is often done before initiating data transfer commands like `LIST`. The `SITE` command can be used to send site-specific commands to the FTP server, and it can be placed before or after certain commands depending on the specific use case.
+
+Here’s a modified sequence of client requests with `PASV` and `SITE` added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PASV                   # Switch to passive mode
+PORT 127,0,0,1,132,209 # This command is typically not used after PASV, so it can be removed.
+LIST                   # List the directory contents
+SITE CHMOD 755 test    # Example of a SITE command to change permissions on the new directory
+MKD test               # Create a new directory
+QUIT
+```
+
+In this modified sequence, the `PASV` command is placed before the `LIST` command to ensure that the data connection is established in passive mode. The `SITE` command is added after the `LIST` command to perform an action related to the newly created directory, assuming that the intention is to change permissions after listing. 
+
+If you prefer the `SITE` command to be executed before creating the directory, you can adjust the order accordingly. Here’s another version:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PASV                   # Switch to passive mode
+LIST                   # List the directory contents
+MKD test               # Create a new directory
+SITE CHMOD 755 test    # Example of a SITE command to change permissions on the new directory
+QUIT
+```
+
+In this version, the `SITE` command is intended to modify the newly created directory after it has been created. Adjust the sequence based on the specific actions you wish to perform with the `SITE` command
+

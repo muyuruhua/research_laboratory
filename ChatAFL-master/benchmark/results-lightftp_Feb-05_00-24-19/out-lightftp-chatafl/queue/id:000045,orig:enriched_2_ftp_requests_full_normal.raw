@@ -1,0 +1,19 @@
+To incorporate the STOR (store a file) and STAT (statistical information about a file or directory) commands into the sequence of client requests, we will need to place them in logical locations based on typical FTP operations.
+
+Here’s a modified sequence of client requests with the STOR and STAT commands included:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+STAT test  # This command checks the status of the newly created directory 'test'
+STOR testfile.txt  # This command stores a file named 'testfile.txt' in the current directory
+QUIT
+```
+
+In this sequence, the `STAT` command is used after creating the directory `test`, allowing you to check its status before attempting to store a file. The `STOR` command follows, indicating that a file named `testfile.txt` is being uploaded to the server
+

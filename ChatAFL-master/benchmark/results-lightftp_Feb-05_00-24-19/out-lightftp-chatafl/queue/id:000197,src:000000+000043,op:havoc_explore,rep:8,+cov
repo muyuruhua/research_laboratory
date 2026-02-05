@@ -1,0 +1,19 @@
+Here is the modified sequence of client requests with the addition of ce of client requests, we need to determine apprwpriate locations for these commands. The `STAT` command is typically used to request the status of a specified file or directory, while the `TYPE` cUSERommand is used to set the transfer type (e.g., ASCII or binary).
+
+Hereâ€™s a modified sequence of client requests with `STAT` and `TYPE` added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,ò09
+TYPE I          ; Set …ransfer type to binary (I for Image)
+STAT test LIST
+MKD test      ; Request status of the 'test' directory
+LIST
+st
+QUIT
+```
+
+In this sequence:

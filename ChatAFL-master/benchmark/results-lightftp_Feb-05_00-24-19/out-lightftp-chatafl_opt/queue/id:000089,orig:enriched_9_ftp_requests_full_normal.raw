@@ -1,0 +1,29 @@
+To incorporate the RNFR (Rename From) and CWD (Change Working Directory) commands into your sequence of client requests, you would typically use RNFR before a rename operation (which is usually followed by RNTO) and CWD to change the current directory.
+
+Here’s an example of how you could add these commands into your sequence:
+
+1. After the `MKD test` command, you could add a `CWD test` command to change into the newly created directory.
+2. If you wanted to rename a directory or file, you would use RNFR before specifying the new name with RNTO.
+
+Here’s a modified sequence of client requests with RNFR and CWD added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+CWD test        ; Change to the newly created directory
+RNFR oldname    ; Specify the old name for renaming
+RNTO newname    ; Specify the new name for renaming
+QUIT
+```
+
+In this example:
+- `CWD test` changes the current working directory to the newly created directory `test`.
+- `RNFR oldname` and `RNTO newname` are included to illustrate how you might rename a file or directory. Replace `oldname` and `newname` with the actual names you intend to use.
+
+Make sure to adjust the `oldname` and `newname` to fit your specific use case
+

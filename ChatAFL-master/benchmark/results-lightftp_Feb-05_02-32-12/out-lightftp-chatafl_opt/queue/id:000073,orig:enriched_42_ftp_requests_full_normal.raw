@@ -1,0 +1,19 @@
+To incorporate the `MLSD` and `RETR` commands into the given sequence of client requests, we can place them after the `LIST` command and before the `QUIT` command. The `MLSD` command is typically used to list directory contents in a machine-readable format, while the `RETR` command is used to retrieve a file from the server.
+
+Here is the modified sequence of client requests with the `MLSD` and `RETR` commands added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MLSD
+RETR filename.txt  # Replace 'filename.txt' with the actual file name you want to retrieve
+MKD test
+QUIT
+```
+
+Make sure to replace `filename.txt` with the actual name of the file you wish to retrieve from the server
+

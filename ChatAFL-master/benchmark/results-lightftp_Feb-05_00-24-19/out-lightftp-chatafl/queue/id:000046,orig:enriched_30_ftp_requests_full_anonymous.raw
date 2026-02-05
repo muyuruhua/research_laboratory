@@ -1,0 +1,22 @@
+To incorporate the PASV and NOOP commands into the sequence of client requests, we need to consider where these commands would logically fit in the FTP session. The PASV command is typically used to switch the connection to passive mode, and the NOOP command is often used to keep the connection alive.
+
+Here is the modified sequence of client requests with PASV and NOOP added:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PASV
+PORT 127,0,0,1,152,193
+NOOP
+LIST
+QUIT
+```
+
+In this modified sequence:
+- The PASV command is added after the PWD command to switch to passive mode before attempting to establish a data connection for the LIST command.
+- The NOOP command is added after the PORT command to keep the connection alive before executing the LIST command. 
+
+This ensures that the commands flow logically within the FTP session
+

@@ -1,0 +1,17 @@
+To properly insert the `ABOR` and `PASV` commands into the sequence of client requests, we can place `PASV` before the `LIST` command to switch to passive mode and `ABOR` after the `LIST` command to abort the previous command if needed. Here’s the modified sequence of client requests:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+PASV
+LIST
+ABOR
+MKD test
+QUIT
+```
+
+This sequence ensures that the client enters passive mode before listing the directory and has the option to abort the `LIST` command if necessary
+

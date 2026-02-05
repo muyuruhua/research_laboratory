@@ -18,7 +18,12 @@ cids=()
 
 #create one container for each run
 for i in $(seq 1 $RUNS); do
-  id=$(docker run --cpus=1 -e KEY="$KEY" -d -it $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
+  # 为 chatafl-opt 启用扩展
+  if [[ $FUZZER == "chatafl-opt" ]]; then
+    id=$(docker run --cpus=1 -e KEY="$KEY" -e AFL_ENABLE_CHATAFL_OPT=1 -d -it $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
+  else
+    id=$(docker run --cpus=1 -e KEY="$KEY" -d -it $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
+  fi
   cids+=(${id::12}) #store only the first 12 characters of a container ID
 done
 

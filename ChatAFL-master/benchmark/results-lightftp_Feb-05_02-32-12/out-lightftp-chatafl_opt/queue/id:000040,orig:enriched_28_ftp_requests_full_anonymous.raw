@@ -1,0 +1,22 @@
+To incorporate the RNFR (Rename From) and FEAT (Features) commands into the sequence of client requests, we need to place them logically within the context of FTP commands. The RNFR command is used to specify the file to rename before using the RNTO command (Rename To), while the FEAT command is used to request a list of features supported by the server.
+
+Here’s a modified sequence of client requests with RNFR and FEAT included:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+FEAT
+RNFR filename.txt
+LIST
+QUIT
+```
+
+In this sequence:
+- The FEAT command is placed after the PORT command but before the LIST command, which is a logical place to check for supported features before performing file operations.
+- The RNFR command is included before the LIST command, assuming you intend to rename a file before listing the directory contents. Replace "filename.txt" with the actual file name you want to rename. 
+
+If you need to rename a file, you would typically follow RNFR with RNTO, but since RNTO is not mentioned in your original request, it has not been added
+

@@ -1,0 +1,37 @@
+To add the `STAT` and `RNTO` commands to the provided sequence of client requests, we need to consider where these commands fit logically within the FTP session.
+
+Here is the modified sequence with `STAT` and `RNTO` added:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+STAT
+LIST
+RNTO <new_filename>  ; (Replace <new_filename> with the actual filename you want to rename to)
+QUIT
+```
+
+In this sequence:
+- `STAT` can be placed after establishing the connection and before listing the directory contents, as it typically asks for status information about a specified file or directory.
+- `RNTO` is used after a `RNFR` (rename from) command, which is not shown here. It should be noted that `RNTO` is part of the rename operation, and you usually have to specify a file to rename before issuing `RNTO`. If you want to keep the context of the commands, it would be good to include `RNFR <old_filename>` before `RNTO`.
+
+Here's how it might look with `RNFR` included:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+STAT
+LIST
+RNFR <old_filename>  ; (Replace <old_filename> with the actual filename you want to rename from)
+RNTO <new_filename>   ; (Replace <new_filename> with the actual filename you want to rename to)
+QUIT
+```
+
+Make sure to replace `<old_filename>` and `<new_filename>` with the actual filenames you intend to use
+

@@ -1,0 +1,23 @@
+To incorporate the `MLST` and `RMD` commands into the sequence of client requests, we need to place them appropriately. The `MLST` command is typically used to retrieve information about a specific file or directory, and it usually follows a `LIST` or `PWD` command to ensure that the context is set correctly. The `RMD` command is used to remove a directory and should follow the `MKD` command if we want to remove the directory we just created.
+
+Here’s the modified sequence of client requests including `MLST` and `RMD`:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MLST test
+MKD test
+RMD test
+QUIT
+```
+
+In this modified sequence:
+- `MLST test` is added after the `LIST` command to retrieve information about the directory we are about to create.
+- `RMD test` is added after the `MKD test` command to remove the directory we just created. 
+
+This sequence keeps the logical flow of FTP commands while including the requested commands
+

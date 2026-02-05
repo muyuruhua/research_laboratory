@@ -1,0 +1,23 @@
+To add the STRU (structure) and MODE (mode) client requests into the provided FTP command sequence, we need to consider where they logically fit into the FTP command flow. The STRU command is typically used to specify the file structure (e.g., file, record, page) before transferring files, and the MODE command specifies the transfer mode (e.g., stream, block, compressed).
+
+Here's the modified sequence of client requests with STRU and MODE added in appropriate locations:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+STRU F      ; Set file structure to file (default)
+MODE S      ; Set transfer mode to stream (default)
+LIST
+MKD test
+QUIT
+```
+
+### Explanation:
+1. **STRU F**: This command is added before the LIST command to specify that the file structure is a flat file (which is the default in most FTP sessions).
+2. **MODE S**: This command is added after STRU to set the transfer mode to stream, which is commonly used for data transfer.
+
+This sequence maintains the logical flow of an FTP session while ensuring that the necessary structure and mode settings are included
+

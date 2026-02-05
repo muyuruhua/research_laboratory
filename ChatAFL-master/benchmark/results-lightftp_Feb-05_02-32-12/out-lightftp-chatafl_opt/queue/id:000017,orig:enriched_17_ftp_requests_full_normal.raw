@@ -1,0 +1,35 @@
+To include the CWD (Change Working Directory) and PASV (Passive Mode) commands in the sequence of client requests, we can place them in logical positions. Typically, you would want to enter PASV mode before sending a LIST command, and you might want to change the working directory (CWD) before listing its contents or creating a new directory (MKD).
+
+Here’s the modified sequence of client requests, including the CWD and PASV commands:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+CWD /path/to/directory  # Specify the directory you want to change to
+PASV                     # Switch to passive mode
+PORT 127,0,0,1,132,209   # This command is typically not needed in PASV mode
+LIST
+MKD test
+QUIT
+```
+
+In this example, replace `/path/to/directory` with the actual directory you want to change to. Note that the PORT command is not typically used after entering PASV mode, as the server will provide the client with the necessary information for the data connection. Depending on how you want to structure the commands, you may choose to omit the PORT command entirely. 
+
+Here’s an alternative modified sequence without the PORT command, assuming you are using PASV mode for the data transfer:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+CWD /path/to/directory  # Specify the directory you want to change to
+PASV                     # Switch to passive mode
+LIST
+MKD test
+QUIT
+```
+
+This version makes more sense for a typical FTP session when using PASV
+

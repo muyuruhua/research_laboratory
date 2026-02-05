@@ -1,0 +1,23 @@
+To incorporate the `RMD` (Remove Directory) and `ALLO` (Allocate space) commands into the sequence of client requests, we need to identify appropriate locations for these commands based on typical FTP command flow. 
+
+Here's a modified sequence with `RMD` and `ALLO` commands added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+ALLO 1024  // Allocate space (for example, 1024 bytes)
+RMD test   // Remove the directory created above
+QUIT
+```
+
+In this sequence:
+- The `ALLO` command is placed after the `MKD` command to allocate space for a file or directory. 
+- The `RMD` command is placed after the `MKD` command to remove the newly created directory. 
+
+Feel free to adjust the parameters of the `ALLO` command based on your specific requirements
+

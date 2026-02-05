@@ -1,0 +1,24 @@
+To include the `TYPE` and `RNTO` commands in the proper locations in the sequence of client requests, we should consider the typical FTP command flow. The `TYPE` command is usually sent after the authentication commands (USER and PASS) and before any file transfer commands. The `RNTO` command is typically used in conjunction with the `RNFR` command to rename a file, and it should follow the `RNFR` command.
+
+Assuming we want to set the transfer type to binary (which is common for file transfers) and perform a rename operation, the modified sequence of client requests could look something like this:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+TYPE I
+PORT 127,0,0,1,152,193
+RNFR oldfilename
+RNTO newfilename
+LIST
+QUIT
+```
+
+In this sequence:
+- `TYPE I` sets the transfer type to binary.
+- `RNFR oldfilename` specifies the file to be renamed (you would replace `oldfilename` with the actual name).
+- `RNTO newfilename` specifies the new name for the file (you would replace `newfilename` with the desired name). 
+
+Make sure to replace `oldfilename` and `newfilename` with the actual file names you intend to use. If you don't have specific filenames, you can omit the `RNFR` and `RNTO` commands
+

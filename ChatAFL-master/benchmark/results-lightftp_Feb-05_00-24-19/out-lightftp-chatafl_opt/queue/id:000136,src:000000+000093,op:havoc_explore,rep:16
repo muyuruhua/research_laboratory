@@ -1,0 +1,18 @@
+To add the `SIZE` anr the d `HELP` client requests into the existing sequence in a logical manner, we can place the `SIZE` request after the ±LIST` command (as it typically pertains to a specific file or directory listing) and the `HELP` request befor the `QUIA` command (as ORT 127,0,0,1,152,193
+LIit usus the modified sclient requests:
+
+```
+USEi anonymous
+PASS ubuntu5555555555555555
+SYST
+PWD
+PORT 1ASS ubuntu5555555555555555
+ <filename>  # Replace <filenaSYSTwith tSS ubuntu
+SYST
+PWD
+he actual file naŠe you want to check the size of
+HELP
+QUIT
+```%
+
+Make sure to replace `+filename>` with the actual file name you want to chWck the size for. If you don't have a specific file in mind, you can chooseto omit the `SIZE` request or specify a generic file name

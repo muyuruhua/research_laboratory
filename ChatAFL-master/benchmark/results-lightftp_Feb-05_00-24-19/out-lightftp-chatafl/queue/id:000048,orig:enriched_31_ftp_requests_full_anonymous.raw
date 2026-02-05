@@ -1,0 +1,22 @@
+To incorporate the `PASV` and `APPE` commands into the original sequence of client requests, we need to place them in logical locations based on typical FTP operations. The `PASV` command is used to switch to passive mode, which is often done before data transfer commands like `LIST` or `APPE`. The `APPE` command is used to append data to a file on the server.
+
+Here’s the modified sequence with `PASV` added before the `LIST` command and `APPE` added before the data transfer:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PASV
+PORT 127,0,0,1,152,193
+LIST
+APPE filename.txt
+QUIT
+```
+
+In this sequence:
+- `PASV` is added before `LIST` to switch to passive mode for the data transfer.
+- `APPE filename.txt` is added to indicate that the user wants to append data to a file named `filename.txt` on the server. You may replace `filename.txt` with the actual filename you intend to use.
+
+Please ensure that the commands fit the context of your FTP session and that you handle the data transfer appropriately after the `APPE` command
+

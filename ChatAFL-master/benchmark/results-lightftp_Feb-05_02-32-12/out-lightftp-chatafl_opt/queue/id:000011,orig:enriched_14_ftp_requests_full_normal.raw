@@ -1,0 +1,21 @@
+To incorporate the `ABOR` and `MLSD` commands into the sequence of client requests you provided, we can place `ABOR` right after the `LIST` command. This is a common practice to handle any potential interruptions during the data transfer. The `MLSD` command can be placed after the `MKD` command to list the directory contents in a machine-readable format.
+
+Here is the modified sequence of client requests with the added commands:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+ABOR
+MKD test
+MLSD
+QUIT
+```
+
+In this sequence:
+- `ABOR` is used after `LIST` to abort any ongoing data transfer if necessary.
+- `MLSD` is used after `MKD test` to list the contents of the current directory in a structured format
+

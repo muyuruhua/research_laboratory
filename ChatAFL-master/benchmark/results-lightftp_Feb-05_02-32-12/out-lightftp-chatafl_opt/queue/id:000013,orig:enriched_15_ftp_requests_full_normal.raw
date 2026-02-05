@@ -1,0 +1,19 @@
+To incorporate the `ABOR` and `RETR` client requests into the existing sequence of FTP commands, we need to consider the typical flow of FTP commands. The `ABOR` command is used to abort a previous command, while the `RETR` command is used to retrieve a file from the server.
+
+Here’s a modified sequence of client requests with `ABOR` and `RETR` added in appropriate locations:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+RETR filename.txt  # Assuming we want to retrieve a file named 'filename.txt'
+ABOR  # This would be used if we want to abort the retrieval for some reason
+MKD test
+QUIT
+```
+
+This sequence assumes that you want to retrieve a file after listing the directory contents. The `ABOR` command is placed after `RETR`, which would be appropriate if you decided to abort the retrieval process. If you need to adjust the placement further based on specific requirements or context, please let me know!
+

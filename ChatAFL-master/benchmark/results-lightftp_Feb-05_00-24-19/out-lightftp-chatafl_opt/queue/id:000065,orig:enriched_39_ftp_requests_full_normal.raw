@@ -1,0 +1,17 @@
+Here is the modified sequence of client requests with the added `RMD` and `FEAT` commands in appropriate locations:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+RMD test  # Added RMD command to remove the directory 'test'
+FEAT      # Added FEAT command to request features supported by the server
+QUIT
+```
+
+In this sequence, the `RMD` command is added after the `MKD` command to remove the directory created, and the `FEAT` command is added before the `QUIT` command to check for server capabilities
+

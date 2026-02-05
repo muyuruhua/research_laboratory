@@ -1,0 +1,25 @@
+To incorporate the STRU and SITE commands into the provided sequence of FTP client requests, we can place them in logical locations based on typical FTP operations. 
+
+The STRU command is used to set the file structure for transfers, and it is usually sent after the user has logged in and before file transfer commands. The SITE command is often used to send site-specific commands to the server, which can also be sent after logging in.
+
+Here’s the modified sequence of client requests with STRU and SITE included:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+STRU F    # Set file structure to File
+SITE CHMOD 755 test  # Example site-specific command to change permissions on the 'test' directory
+LIST
+MKD test
+QUIT
+```
+
+In this sequence:
+- The `STRU F` command sets the file structure to "File" after the user has logged in.
+- The `SITE CHMOD 755 test` command is an example of a site-specific command that could be executed after the `PORT` command and before any file transfer operations. Adjust this command as necessary for your specific use case or server capabilities. 
+
+Feel free to modify the SITE command based on the specific requirements of your FTP server
+

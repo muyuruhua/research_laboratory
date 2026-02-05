@@ -1,0 +1,45 @@
+To add the `APPE` and `SITE` client requests in the proper locations, we need to consider where these commands typically fit in an FTP session. The `APPE` command is used to append data to a file on the server, and the `SITE` command is used to send site-specific commands to the server.
+
+A typical FTP session might look like this:
+
+1. Authenticate the user (USER and PASS).
+2. Get system information (SYST).
+3. Check the current directory (PWD).
+4. Set up a data connection (PORT).
+5. List files (LIST).
+6. Optionally, you might want to use `SITE` to set certain parameters or configurations before or after listing.
+7. Use `APPE` to append data to a file.
+8. Finally, close the connection (QUIT).
+
+Here’s a modified sequence of client requests with `APPE` and `SITE` included:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+SITE <site-specific-command>  # This is where you might want to add a specific site command
+LIST
+APPE <filename>  # Specify the file you want to append data to
+QUIT
+```
+
+Replace `<site-specific-command>` with the actual command you want to send to the server, and `<filename>` with the name of the file you want to append to.
+
+The final modified sequence of client requests could look like this:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+SITE CHMOD 755 example.txt  # Example of a site-specific command
+LIST
+APPE example.txt  # Appending data to example.txt
+QUIT
+```
+
+Make sure to replace the placeholders with actual commands relevant to your FTP server and the file you are working with
+

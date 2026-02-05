@@ -1,0 +1,23 @@
+To include the `CWD` (Change Working Directory) and `RMD` (Remove Directory) client requests in the proper locations, we can assume that the `CWD` request should be made after creating the directory with `MKD`, and the `RMD` request should be made after listing the directories or changing into the directory we created.
+
+Here’s a modified sequence of client requests with `CWD` and `RMD` added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+CWD test
+RMD test
+QUIT
+```
+
+In this modified sequence:
+- After the `MKD test` command, we add `CWD test` to change into the newly created directory.
+- After that, we add `RMD test` to remove the directory we just created. 
+
+This sequence ensures that the commands are in a logical order and follow typical FTP operations
+

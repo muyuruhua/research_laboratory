@@ -1,0 +1,25 @@
+To incorporate the `RMD` (Remove Directory) and `SITE` commands into the sequence of client requests, we need to determine appropriate locations for these commands. 
+
+Typically, the `SITE` command is used for server-specific commands, and it can be placed after the user has logged in and before file operations. The `RMD` command should logically follow after creating a directory or before quitting if you want to remove it.
+
+Here’s a modified sequence of client requests including both `RMD` and `SITE`:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+SITE CHMOD 755 test  # Example SITE command to change permissions of the newly created directory
+RMD test              # Example RMD command to remove the directory created earlier
+QUIT
+```
+
+In this modified sequence:
+- The `SITE` command is added after `MKD test` to set permissions on the newly created directory.
+- The `RMD test` command is added after the `SITE` command to remove the directory `test`. 
+
+Feel free to adjust the `SITE` command according to your specific needs
+

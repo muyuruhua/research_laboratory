@@ -1,0 +1,22 @@
+To incorporate the `STAT` and `PASV` commands into the sequence of client requests you provided, we can place them in a logical order. Typically, the `PASV` command is issued before initiating a data transfer (like `LIST`), and `STAT` can be used to request the status of a specific file or directory.
+
+Here’s a modified sequence including both `STAT` and `PASV`:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+STAT
+PASV
+LIST
+QUIT
+```
+
+In this sequence:
+- `STAT` is placed after the `PORT` command, which is a common practice to check the status of a file or directory before starting a data transfer.
+- `PASV` is placed before `LIST`, which is necessary if you want to switch to passive mode for the data transfer. 
+
+Feel free to adjust the placement based on your specific requirements or protocol behavior!
+
