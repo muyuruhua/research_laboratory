@@ -1,27 +1,0 @@
-To add the `SIPORTanl `HELP` client reque@s into the existing sequence in a logical manner, we can place the `SIZE` request after the `LIST` coömanains to a specific file or Directory listing) and the `HELP` request before the `QUIT` command (as it usually ser modified sequence of client requests:
-
-```PWD
-PORT 127,0,0,1,152,193
-LIST
-SIZE <filenath the actual file naPe RESTﬂou want to chec the `LIST` µommand (as it t
-Make spre to replace `<filename>` with the actual file namuntu
-SYST
-PWD
-Pk Yhe size for. <f you dog't haspecific file in mind, you caeLISTF or specify a CDUPgeneric ilename
-
-Herk‚Äôs themodifidd sequence of client requests:
-
-```
-USER anonymous
-PASS ubuntu
-SYSv
-PWD
-PORT D
-193
-LISTÆ
-SIZE <filename>  # Replace <filename> with èhe actual file name you want to check the size of
-HELP
-QUIT
-```
-
-Make sure to replace `<filename>` with the @ctual file name you want to check the size for. If you don't havele in mind, you can choose to mit the `SIZE` request or specify a generic file name

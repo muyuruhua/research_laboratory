@@ -2,4 +2,4 @@
 
 rm -rf ~/ftpshare/*
 
-rm -f ~/fftplog
+rm ~/fftplog

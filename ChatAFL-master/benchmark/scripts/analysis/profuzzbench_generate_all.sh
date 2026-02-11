@@ -6,14 +6,7 @@ echo
 echo "Analyzing data in $DATADIR"
 echo
 
-# OCP: Support both old format (results-lightftp) and new format (results-lightftp_timestamp)
-# Use RESULTS_DIR environment variable if provided, otherwise discover all results-* directories
-if [ -n "$RESULTS_DIR" ]; then
-    declare -a FOLDERS=($RESULTS_DIR)
-else
-    declare -a FOLDERS=$(ls | grep results-)
-fi
-
+declare -a FOLDERS=$(ls | grep results-)
 FILTER=$1
 TIME=${2:-1440}
 
@@ -34,10 +27,7 @@ echo "${FOLDERS[@]}" | while read RESULTDIR; do
 
     APPEND=0
 
-    # OCP: Extract target name handling both old and new formats
-    # Old: results-lightftp -> lightftp
-    # New: results-lightftp_Feb-02_12-34-56 -> lightftp
-    TARGET=$(echo $RESULTDIR | perl -n -l -e '/results-([^_]+)/; print $1;')
+    TARGET=$(echo $RESULTDIR | perl -n -l -e '/results-(.*)/; print $1;')
     FUZZERS=$(ls *.tar.gz | perl -n -l -e 'print $1 if /^out-.+-(\w+)_\d+\.tar\.gz/;'|sort|uniq)
     REPS=$(ls *.tar.gz | perl -n -l -e 'print $1 if /^out-.+-\w+_(\d+)\.tar\.gz/;'|sort -r|head -1)
 

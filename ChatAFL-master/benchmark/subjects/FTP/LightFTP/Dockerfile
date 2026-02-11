@@ -2,7 +2,6 @@ FROM ubuntu:20.04
 
 # Install common dependencies
 ENV DEBIAN_FRONTEND=noninteractive
-
 RUN apt-get -y update && \
     apt-get -y install sudo \ 
     apt-utils \
@@ -26,10 +25,6 @@ RUN apt-get -y update && \
     libpcre2-dev \
     libpcre2-8-0 \
     libcurl4-openssl-dev \
-    curl \
-    ca-certificates \
-    dnsutils \
-    iputils-ping \
     libjson-c-dev \
     wget
 
@@ -66,16 +61,6 @@ RUN cd chatafl-cl1 && \
 
 COPY --chown=ubuntu:ubuntu chatafl-cl2 chatafl-cl2
 RUN cd chatafl-cl2 && \
-    make clean all $MAKE_OPT && \
-    cd llvm_mode && make $MAKE_OPT
-
-# COPY --chown=ubuntu:ubuntu chatafl-enhanced chatafl-enhanced
-# RUN cd chatafl-enhanced && \
-#     make -f Makefile.plugin clean all CHATAFL_ENHANCED=1 $MAKE_OPT && \
-#     cd llvm_mode && make $MAKE_OPT
-
-COPY --chown=ubuntu:ubuntu chatafl-opt chatafl-opt
-RUN cd chatafl-opt && \
     make clean all $MAKE_OPT && \
     cd llvm_mode && make $MAKE_OPT
 

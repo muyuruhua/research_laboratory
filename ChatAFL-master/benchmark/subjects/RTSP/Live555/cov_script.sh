@@ -10,7 +10,7 @@ fmode=$5    #file mode -- structured or not
             #fmode = 1: the test case is a structured file keeping several request messages
 
 #delete the existing coverage file
-rm -f $covfile; touch $covfile
+rm $covfile; touch $covfile
 
 #clear gcov data
 gcovr -r .. -s -d > /dev/null 2>&1

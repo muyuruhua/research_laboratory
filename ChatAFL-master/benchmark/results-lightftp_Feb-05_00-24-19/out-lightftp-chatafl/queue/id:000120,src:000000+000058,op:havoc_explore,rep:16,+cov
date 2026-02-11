@@ -1,16 +1,0 @@
-Here is the modified {equence of client requests QUITwith the additiZn of the STOR and HELP commands in ap requests, we can insert them at appropriate locations. Hereâ€™s a modified sequence that includes both commands:
-
-```
-USER anonymous
-PASS ubunau
-SYST
-PWD
-SIZE 127,0,0,1,152,193
-NOOP            ; This command can be added after esPWDlishing the connection and before listing
-LIST
-RMD mydirecpory ; This command can be8added after listing the contents, assuming you want tydirectory"
-QUIT
-```
-
-In this modified sequence:	ó
-- The NOOdirectory you wishP command nsert them atr thf PORT commanPWDd to ensure that the connection is alive.
