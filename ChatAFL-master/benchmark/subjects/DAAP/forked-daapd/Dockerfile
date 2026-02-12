@@ -63,6 +63,11 @@ RUN cd chatafl-cl2 && \
     make clean all $MAKE_OPT && \
     cd llvm_mode && make $MAKE_OPT
 
+COPY --chown=ubuntu:ubuntu chatafl-opt chatafl-opt
+RUN cd chatafl-opt && \
+    make clean all $MAKE_OPT && \
+    cd llvm_mode && make $MAKE_OPT
+
 
 
 # Set up environment variables for AFLNet
@@ -72,7 +77,8 @@ ENV PATH="${PATH}:${AFLNET}:/home/ubuntu/.local/bin:${WORKDIR}"
 ENV AFL_PATH="${AFLNET}"
 ENV AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
     AFL_SKIP_CPUFREQ=1 \
-    AFL_NO_AFFINITY=1
+    AFL_NO_AFFINITY=1 \
+    AFL_ENABLE_CHATAFL_OPT=1
 
 
 RUN mkdir $WORKDIR
