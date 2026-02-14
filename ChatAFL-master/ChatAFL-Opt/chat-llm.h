@@ -19,7 +19,8 @@ Similarly 1700 is for the example request in the seed enrichment
 #define HISTORY_PROMPT_LENGTH 1300
 #define EXAMPLE_SEQUENCE_PROMPT_LENGTH 1700
 
-#define TEMPLATE_CONSISTENCY_COUNT 5
+// TEMPORARY: Reduced from 5 to 3 to avoid heap corruption in iteration 3+
+#define TEMPLATE_CONSISTENCY_COUNT 3
 
 // Maximum amount of retries for the state stall
 #define STALL_RETRIES 2
@@ -48,7 +49,7 @@ Similarly 1700 is for the example request in the seed enrichment
 #include <pcre2.h>
 
 // Init KLIST with JSON object
-#define __grammar_t_free(x)
+#define __grammar_t_free(x) json_object_put(x)
 #define __rang_t_free(x)
 #define __khash_t_free(x) 
 KHASH_SET_INIT_STR(strSet);

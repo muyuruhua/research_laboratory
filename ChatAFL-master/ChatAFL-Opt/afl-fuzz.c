@@ -45,6 +45,7 @@
 #include "chat-llm.h"
 #include "grammar-hypothesis.h"
 
+#include <curl/curl.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -445,25 +446,46 @@ void setup_llm_grammars()
 {
 
   ACTF("Getting grammars from LLM...");
+  fprintf(stderr, "[DEBUG] setup_llm_grammars: START\n");
+
+  // CRITICAL FIX: curl_global_init must be called once before any curl operations
+  curl_global_init(CURL_GLOBAL_DEFAULT);
 
   khash_t(consistency_table) *const_table = kh_init(consistency_table);
   char *first_question;
   char *templates_prompt = construct_prompt_for_templates(protocol_name, &first_question);
+  fprintf(stderr, "[DEBUG] setup_llm_grammars: constructed prompt\n");
 
   for (int iter = 0; iter < TEMPLATE_CONSISTENCY_COUNT; iter++)
   {
+    fprintf(stderr, "[DEBUG] setup_llm_grammars: iteration %d\n", iter);
+    fprintf(stderr, "[DEBUG] setup_llm_grammars: templates_prompt=%p, first_question=%p\n", 
+            (void*)templates_prompt, (void*)first_question);
     klist_t(gram) *grammar_list = kl_init(gram);
 
+    fprintf(stderr, "[DEBUG] setup_llm_grammars: calling chat_with_llm for templates...\n");
     char *templates_answer = chat_with_llm(templates_prompt, "gpt-4o-mini", GRAMMAR_RETRIES, 0.5);
-    if (templates_answer == NULL)
-      goto free_templates_answer;
+    fprintf(stderr, "[DEBUG] setup_llm_grammars: got templates_answer=%p\n", (void*)templates_answer);
+    if (templates_answer == NULL) {
+      fprintf(stderr, "[DEBUG] setup_llm_grammars: templates_answer is NULL, skipping iteration %d\n", iter);
+      kl_destroy_gram(grammar_list);
+      continue;
+    }
 
     // printf("## Answer from LLM:\n %s\n", templates_answer);
+    fprintf(stderr, "[DEBUG] setup_llm_grammars: constructing remaining_prompt...\n");
     char *remaining_prompt = construct_prompt_for_remaining_templates(protocol_name, first_question, templates_answer);
     // printf("remaining prompt is:\n %s\n", remaining_prompt);
+    fprintf(stderr, "[DEBUG] setup_llm_grammars: calling chat_with_llm for remaining_templates...\n");
     char *remaining_templates = chat_with_llm(remaining_prompt, "gpt-4o-mini", GRAMMAR_RETRIES, 0.5);
-    if (remaining_templates == NULL)
-      goto free_remaining;
+    fprintf(stderr, "[DEBUG] setup_llm_grammars: got remaining_templates=%p\n", (void*)remaining_templates);
+    if (remaining_templates == NULL) {
+      fprintf(stderr, "[DEBUG] setup_llm_grammars: remaining_templates is NULL, cleaning up iteration %d\n", iter);
+      free(remaining_prompt);
+      free(templates_answer);
+      kl_destroy_gram(grammar_list);
+      continue;
+    }
 
     // printf("## Remaining templates:\n %s\n", remaining_templates);
 
@@ -478,20 +500,25 @@ void setup_llm_grammars()
     close(grammar_output_fd);
     ck_free(grammar_output_path);
 
+    fprintf(stderr, "[DEBUG] setup_llm_grammars: calling extract_message_grammars...\n");
     extract_message_grammars(combined_templates, grammar_list);
+    fprintf(stderr, "[DEBUG] setup_llm_grammars: extract_message_grammars done, grammar_list size=%zu\n", 
+            (size_t)(kl_end(grammar_list) - kl_begin(grammar_list)));
 
-    kliter_t(gram) * iter;
-    for (iter = kl_begin(grammar_list); iter != kl_end(grammar_list); iter = kl_next(iter))
+    kliter_t(gram) * grammar_iter;
+    for (grammar_iter = kl_begin(grammar_list); grammar_iter != kl_end(grammar_list); grammar_iter = kl_next(grammar_iter))
     {
-      json_object *jobj = kl_val(iter);
+      json_object *jobj = kl_val(grammar_iter);
 
       json_object *header = json_object_array_get_idx(jobj, 0);
 
       int absent;
 
       const char *header_str = json_object_get_string(header);
+      // CRITICAL FIX: strdup because jobj will be freed and header_str will become invalid
+      char *header_str_copy = ck_strdup((u8*)header_str);
 
-      khiter_t k = kh_put(consistency_table, const_table, header_str, &absent);
+      khiter_t k = kh_put(consistency_table, const_table, header_str_copy, &absent);
       if (absent)
       {
         khash_t(field_table) *field_table = kh_init(field_table);
@@ -501,8 +528,10 @@ void setup_llm_grammars()
       for (int i = 1; i < json_object_array_length(jobj); i++)
       {
         const char *v = json_object_get_string(json_object_array_get_idx(jobj, i));
+        // CRITICAL FIX: strdup because jobj will be freed and v will become invalid
+        char *v_copy = ck_strdup((u8*)v);
         khash_t(field_table) *field_table = kh_value(const_table, k);
-        khiter_t field_k = kh_put(field_table, field_table, v, &absent);
+        khiter_t field_k = kh_put(field_table, field_table, v_copy, &absent);
         if (absent)
         {
           kh_value(field_table, field_k) = 0;
@@ -510,16 +539,20 @@ void setup_llm_grammars()
         kh_value(field_table, field_k)++;
       }
     }
+    fprintf(stderr, "[DEBUG] setup_llm_grammars: finished processing grammars, calling kl_destroy_gram...\n");
     kl_destroy_gram(grammar_list);
+    fprintf(stderr, "[DEBUG] setup_llm_grammars: kl_destroy_gram completed\n");
 
+    // Clean up iteration resources
+    fprintf(stderr, "[DEBUG] setup_llm_grammars: freeing combined_templates=%p\n", (void*)combined_templates);
     free(combined_templates);
+    fprintf(stderr, "[DEBUG] setup_llm_grammars: freeing remaining_templates=%p\n", (void*)remaining_templates);
     free(remaining_templates);
-
-  free_remaining:
+    fprintf(stderr, "[DEBUG] setup_llm_grammars: freeing remaining_prompt=%p\n", (void*)remaining_prompt);
     free(remaining_prompt);
-
-  free_templates_answer:
+    fprintf(stderr, "[DEBUG] setup_llm_grammars: freeing templates_answer=%p\n", (void*)templates_answer);
     free(templates_answer);
+    fprintf(stderr, "[DEBUG] setup_llm_grammars: iteration %d completed successfully\n", iter);
   }
 
   int pattern_index = 0;
@@ -555,6 +588,9 @@ void setup_llm_grammars()
 
   free(first_question);
   free(templates_prompt);
+  
+  // CRITICAL FIX: cleanup curl after all LLM operations complete
+  curl_global_cleanup();
 }
 
 range_list parse_buffer(char *buf, size_t buf_len)
@@ -2774,7 +2810,14 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
     } 
 
     kh_destroy(strSet, messages);
+    free(nl_file_content);  // CRITICAL FIX: Free the file content buffer
   }
+  
+  // CRITICAL FIX: Free nl_files array allocated by scandir
+  for (int i = 0; i < nl_cnt; i++) {
+    free(nl_files[i]);
+  }
+  free(nl_files);
 }
 
 /* Enrich the testcases before startup */

@@ -18,7 +18,8 @@
 #include "alloc-inl.h"
 
 #define MAX_HYPOTHESIS_PROMPT 65536  // 64KB for large RFC content
-#define MAX_RFC_CHARS 20000             // Default RFC extraction limit
+#define MAX_RFC_CHARS 50000             // RFC extraction limit - increased for better context
+#define SAFE_RFC_LIMIT 50000            // Hard limit to prevent heap corruption
 #define MAX_PCAP_SAMPLES 20             // Maximum PCAP samples to include
 #define MAX_REFINEMENT_COUNTEREXAMPLES 10
 #define FITNESS_THRESHOLD 0.7
@@ -33,31 +34,68 @@ hypothesis_context_t* init_hypothesis_context(
     char **pcap_samples,
     size_t pcap_count
 ) {
-    hypothesis_context_t *ctx = ck_alloc(sizeof(hypothesis_context_t));
+    // Defensive: Validate critical parameters
+    if (!protocol_name) {
+        fprintf(stderr, "[!] init_hypothesis_context: protocol_name is NULL\n");
+        return NULL;
+    }
+    
+    hypothesis_context_t *ctx = (hypothesis_context_t*)ck_alloc(sizeof(hypothesis_context_t));
+    memset(ctx, 0, sizeof(hypothesis_context_t));  // Initialize all fields to 0/NULL
     
     ctx->protocol_name = (char*)ck_strdup((u8*)protocol_name);
     
     // RFC Knowledge Enhancement: Auto-fetch if not provided
     if (rfc_text) {
-        ctx->rfc_text = (char*)ck_strdup((u8*)rfc_text);
+        size_t rfc_len = strlen(rfc_text);
+        fprintf(stderr, "[DEBUG] Provided RFC text length: %zu bytes\n", rfc_len);
+        
+        // CRITICAL: Limit RFC size to prevent AFL allocator heap corruption
+        if (rfc_len > SAFE_RFC_LIMIT) {
+            fprintf(stderr, "[!] WARNING: RFC text too large (%zu bytes), truncating to %d\n", 
+                    rfc_len, SAFE_RFC_LIMIT);
+            char *truncated = (char*)ck_alloc(SAFE_RFC_LIMIT + 1);
+            memcpy(truncated, rfc_text, SAFE_RFC_LIMIT);
+            truncated[SAFE_RFC_LIMIT] = '\0';
+            ctx->rfc_text = truncated;
+        } else {
+            ctx->rfc_text = (char*)ck_strdup((u8*)rfc_text);
+        }
     } else {
         // Attempt to fetch RFC text from database
         printf("[*] RFC text not provided, attempting auto-fetch for %s...\n", protocol_name);
-        ctx->rfc_text = fetch_rfc_text(protocol_name);
+        char *fetched_rfc = fetch_rfc_text(protocol_name);  // Returns malloc'ed memory
         
-        if (ctx->rfc_text) {
+        if (fetched_rfc) {
+            size_t rfc_len = strlen(fetched_rfc);
             printf("[+] Successfully fetched RFC for %s (%zu bytes)\n", 
-                   protocol_name, strlen(ctx->rfc_text));
+                   protocol_name, rfc_len);
+            
+            // CRITICAL: Limit RFC size to prevent heap corruption
+            if (rfc_len > SAFE_RFC_LIMIT) {
+                fprintf(stderr, "[!] WARNING: Fetched RFC too large (%zu bytes), truncating to %d\n", 
+                        rfc_len, SAFE_RFC_LIMIT);
+                fetched_rfc[SAFE_RFC_LIMIT] = '\0';
+                rfc_len = SAFE_RFC_LIMIT;
+            }
+            
+            // Copy to ck_alloc'ed memory for consistency
+            ctx->rfc_text = (char*)ck_strdup((u8*)fetched_rfc);
+            fprintf(stderr, "[DEBUG] Allocated rfc_text at %p (%zu bytes)\n", 
+                    (void*)ctx->rfc_text, rfc_len);
+            free(fetched_rfc);  // Free the malloc'ed memory from fetch_rfc_text
         } else {
             printf("[!] Could not fetch RFC for %s, proceeding without RFC knowledge\n", 
                    protocol_name);
+            ctx->rfc_text = NULL;
         }
     }
     
     // Copy PCAP samples
     ctx->pcap_count = pcap_count;
     if (pcap_count > 0) {
-        ctx->pcap_samples = ck_alloc(pcap_count * sizeof(char*));
+        ctx->pcap_samples = (char**)ck_alloc(pcap_count * sizeof(char*));
+        memset(ctx->pcap_samples, 0, pcap_count * sizeof(char*));  // Initialize to NULL
         for (size_t i = 0; i < pcap_count; i++) {
             ctx->pcap_samples[i] = (char*)ck_strdup((u8*)pcap_samples[i]);
         }
@@ -101,7 +139,8 @@ char* extract_rfc_key_sections(const char *rfc_text, size_t max_chars) {
     }
     
     // Smart extraction: find key sections
-    char *extracted = ck_alloc(max_chars + 1);
+    char *extracted = (char*)ck_alloc(max_chars + 1);
+    memset(extracted, 0, max_chars + 1);  // Initialize buffer to prevent garbage
     size_t extracted_len = 0;
     
     // Section markers to prioritize
@@ -124,7 +163,7 @@ char* extract_rfc_key_sections(const char *rfc_text, size_t max_chars) {
     for (int i = 0; priority_markers[i] && extracted_len < max_chars - 1000; i++) {
         const char *marker = strcasestr(rfc_text, priority_markers[i]);
         if (marker) {
-            // Extract 2000 chars around this marker
+            // Extract up to 2000 chars around this marker
             const char *start = marker - 500;
             if (start < rfc_text) start = rfc_text;
             
@@ -133,35 +172,62 @@ char* extract_rfc_key_sections(const char *rfc_text, size_t max_chars) {
                 extract_size = max_chars - extracted_len;
             }
             
-            if (extract_size > 0 && start + extract_size <= rfc_text + rfc_len) {
-                snprintf(extracted + extracted_len, extract_size + 1,
+            // Ensure we don't read beyond RFC text
+            size_t available = rfc_len - (start - rfc_text);
+            if (extract_size > available) {
+                extract_size = available;
+            }
+            
+            // Ensure we have space for header + content + safety margin
+            if (extract_size > 50 && extracted_len + extract_size + 100 < max_chars) {
+                int written = snprintf(extracted + extracted_len, max_chars - extracted_len,
                          "\n[--- %s Section ---]\n%.*s\n",
                          priority_markers[i], (int)(extract_size - 50), start);
-                extracted_len = strlen(extracted);
+                if (written > 0 && written < (int)(max_chars - extracted_len)) {
+                    extracted_len += written;
+                }
             }
         }
     }
     
     // If no priority sections found, take first max_chars
     if (extracted_len < 1000) {
-        snprintf(extracted, max_chars + 1, "%.*s", (int)max_chars, rfc_text);
+        int written = snprintf(extracted, max_chars + 1, "%.*s", (int)max_chars, rfc_text);
+        if (written > 0 && written < (int)(max_chars + 1)) {
+            extracted_len = written;
+        }
     }
+    extracted[max_chars] = '\0';  // Ensure null termination
     
     return extracted;
 }
 
 /* JSON escape helper - escape special characters for JSON strings */
 static char* json_escape_string(const char *str, size_t max_len) {
-    if (!str) return NULL;
+    if (!str) {
+        // Return empty string instead of NULL to prevent crashes
+        char *empty = (char*)ck_alloc(1);
+        empty[0] = '\0';
+        return empty;
+    }
     
     // Worst case: every character needs escaping (e.g., all quotes)
     size_t src_len = strlen(str);
     if (src_len > max_len) src_len = max_len;
     
-    char *escaped = ck_alloc(src_len * 2 + 1);
+    // Allocate enough for worst case: every char becomes 2 chars + null terminator
+    // Add extra space for safety (6x for unicode escape sequences if needed)
+    size_t buf_size = src_len * 6 + 1;
+    char *escaped = (char*)ck_alloc(buf_size);
+    memset(escaped, 0, buf_size);  // Initialize buffer
     size_t j = 0;
     
     for (size_t i = 0; i < src_len && str[i] != '\0'; i++) {
+        // Safety check to prevent buffer overflow
+        if (j >= buf_size - 7) {  // Reserve 7 bytes for worst case escape + null
+            break;
+        }
+        
         switch (str[i]) {
             case '"':  escaped[j++] = '\\'; escaped[j++] = '"'; break;
             case '\\': escaped[j++] = '\\'; escaped[j++] = '\\'; break;
@@ -209,7 +275,13 @@ int should_include_pcap_sample(
 }
 
 char* construct_hypothesis_generation_prompt(hypothesis_context_t *ctx) {
-    char *prompt = ck_alloc(MAX_HYPOTHESIS_PROMPT);
+    if (!ctx) {
+        fprintf(stderr, "[!] construct_hypothesis_generation_prompt: ctx is NULL\n");
+        return NULL;
+    }
+    
+    char *prompt = (char*)ck_alloc(MAX_HYPOTHESIS_PROMPT);
+    memset(prompt, 0, MAX_HYPOTHESIS_PROMPT);  // Initialize buffer
     int offset = 0;
     int written;
     
@@ -249,8 +321,8 @@ char* construct_hypothesis_generation_prompt(hypothesis_context_t *ctx) {
                 "RFC Specification (%zu characters):\\n%s\\n\\n",
                 extract_len, escaped_rfc);
             
-            ck_free(rfc_extract);
             ck_free(escaped_rfc);
+            ck_free(rfc_extract);
             
             if (written < 0 || written >= MAX_HYPOTHESIS_PROMPT - offset) {
                 fprintf(stderr, "[!] Prompt buffer overflow at RFC content\n");
@@ -268,7 +340,7 @@ char* construct_hypothesis_generation_prompt(hypothesis_context_t *ctx) {
             "Example Messages (from initial seeds):\\n");
         if (written < 0 || written >= MAX_HYPOTHESIS_PROMPT - offset) {
             fprintf(stderr, "[!] Prompt buffer overflow at PCAP header\n");
-            goto finalize_prompt;
+            goto finalize_prompt;  // Safe: selected_samples not yet allocated
         }
         offset += written;
         
@@ -276,7 +348,8 @@ char* construct_hypothesis_generation_prompt(hypothesis_context_t *ctx) {
         size_t sample_limit = ctx->pcap_count < MAX_PCAP_SAMPLES ? 
                               ctx->pcap_count : MAX_PCAP_SAMPLES;
         
-        char **selected_samples = ck_alloc(sample_limit * sizeof(char*));
+        char **selected_samples = (char**)ck_alloc(sample_limit * sizeof(char*));
+        memset(selected_samples, 0, sample_limit * sizeof(char*));  // Initialize to NULL
         size_t selected_count = 0;
         
         // Select diverse samples
@@ -284,7 +357,10 @@ char* construct_hypothesis_generation_prompt(hypothesis_context_t *ctx) {
             if (should_include_pcap_sample(ctx->pcap_samples[i], 
                                           selected_samples, 
                                           selected_count)) {
-                selected_samples[selected_count++] = ctx->pcap_samples[i];
+                // Double-check bounds before adding (defensive programming)
+                if (selected_count < sample_limit) {
+                    selected_samples[selected_count++] = ctx->pcap_samples[i];
+                }
             }
         }
         
@@ -338,6 +414,15 @@ finalize_prompt:
     offset += written;
     
     printf("[+] Constructed LLM prompt (%d bytes total)\n", offset);
+    
+    // Debug: Save prompt to file for inspection
+    FILE *debug_fp = fopen("/tmp/hypothesis_prompt_debug.json", "w");
+    if (debug_fp) {
+        fwrite(prompt, 1, offset, debug_fp);
+        fclose(debug_fp);
+        printf("[DEBUG] Prompt saved to /tmp/hypothesis_prompt_debug.json\n");
+    }
+    
     return prompt;
 }
 
@@ -345,15 +430,23 @@ char* construct_hypothesis_refinement_prompt(
     grammar_hypothesis_t *hyp,
     const char *protocol_name
 ) {
-    char *prompt = ck_alloc(MAX_HYPOTHESIS_PROMPT);
+    char *prompt = (char*)ck_alloc(MAX_HYPOTHESIS_PROMPT);
+    memset(prompt, 0, MAX_HYPOTHESIS_PROMPT);  // Initialize buffer
     int offset = 0;
+    int written;
     
-    offset += snprintf(prompt + offset, MAX_HYPOTHESIS_PROMPT - offset,
+    written = snprintf(prompt + offset, MAX_HYPOTHESIS_PROMPT - offset,
         "[{\"role\": \"system\", \"content\": \"You are refining protocol grammar hypotheses "
         "based on counterexamples.\"},"
         "{\"role\": \"user\", \"content\": \"");
+    if (written < 0 || written >= MAX_HYPOTHESIS_PROMPT - offset) {
+        fprintf(stderr, "[!] Refinement prompt buffer overflow at header\n");
+        ck_free(prompt);
+        return NULL;
+    }
+    offset += written;
     
-    offset += snprintf(prompt + offset, MAX_HYPOTHESIS_PROMPT - offset,
+    written = snprintf(prompt + offset, MAX_HYPOTHESIS_PROMPT - offset,
         "Protocol: %s\\n"
         "Message Type: %s\\n\\n"
         "Current Hypothesis:\\n"
@@ -364,22 +457,44 @@ char* construct_hypothesis_refinement_prompt(
         hyp->description,
         json_object_to_json_string_ext(hyp->schema, JSON_C_TO_STRING_PRETTY)
     );
+    if (written < 0 || written >= MAX_HYPOTHESIS_PROMPT - offset) {
+        fprintf(stderr, "[!] Refinement prompt buffer overflow at hypothesis details\n");
+        ck_free(prompt);
+        return NULL;
+    }
+    offset += written;
     
     // Add counterexamples
-    offset += snprintf(prompt + offset, MAX_HYPOTHESIS_PROMPT - offset,
+    written = snprintf(prompt + offset, MAX_HYPOTHESIS_PROMPT - offset,
         "Counterexamples (messages that violated the hypothesis):\\n");
+    if (written < 0 || written >= MAX_HYPOTHESIS_PROMPT - offset) {
+        fprintf(stderr, "[!] Refinement prompt buffer overflow at counterexamples header\n");
+        ck_free(prompt);
+        return NULL;
+    }
+    offset += written;
     
     size_t ce_limit = hyp->counterexample_count < MAX_REFINEMENT_COUNTEREXAMPLES ? 
                       hyp->counterexample_count : MAX_REFINEMENT_COUNTEREXAMPLES;
     
     for (size_t i = 0; i < ce_limit; i++) {
-        offset += snprintf(prompt + offset, MAX_HYPOTHESIS_PROMPT - offset,
+        written = snprintf(prompt + offset, MAX_HYPOTHESIS_PROMPT - offset,
             "%zu. %s\\n", i + 1, hyp->counterexamples[i]);
+        if (written < 0 || written >= MAX_HYPOTHESIS_PROMPT - offset) {
+            fprintf(stderr, "[!] Refinement prompt buffer overflow at counterexample %zu\n", i);
+            break;  // Stop adding counterexamples but continue with what we have
+        }
+        offset += written;
     }
     
-    offset += snprintf(prompt + offset, MAX_HYPOTHESIS_PROMPT - offset,
+    written = snprintf(prompt + offset, MAX_HYPOTHESIS_PROMPT - offset,
         "\\nPlease revise the grammar hypothesis to accommodate these counterexamples. "
         "Return the updated hypothesis in the same JSON format as before.\"}]");
+    if (written < 0 || written >= MAX_HYPOTHESIS_PROMPT - offset) {
+        fprintf(stderr, "[!] Refinement prompt buffer overflow at footer\n");
+        // Keep what we have, just add closing
+        snprintf(prompt + offset, MAX_HYPOTHESIS_PROMPT - offset, "\"}]");
+    }
     
     return prompt;
 }
@@ -389,6 +504,11 @@ char* construct_hypothesis_refinement_prompt(
  * ============================================ */
 
 int generate_grammar_hypotheses(hypothesis_context_t *ctx, int max_hypotheses) {
+    if (!ctx) {
+        fprintf(stderr, "[!] generate_grammar_hypotheses: ctx is NULL\n");
+        return 0;
+    }
+    
     char *prompt = construct_hypothesis_generation_prompt(ctx);
     
     if (!prompt) {
@@ -401,38 +521,119 @@ int generate_grammar_hypotheses(hypothesis_context_t *ctx, int max_hypotheses) {
     ck_free(prompt);
     
     if (!response) {
-        fprintf(stderr, "[!] Failed to generate hypotheses from LLM\n");
+        fprintf(stderr, "[!] Failed to generate hypotheses from LLM (NULL response)\n");
+        ctx->hypotheses = NULL;
+        ctx->hypothesis_count = 0;
         return 0;
     }
     
+    fprintf(stderr, "[DEBUG] LLM response length: %zu bytes\n", strlen(response));
+    fprintf(stderr, "[DEBUG] LLM response first 200 chars: %.200s\n", response);
+    
+    // Remove markdown code block markers if present (```json ... ```)
+    char *json_start = response;
+    if (strncmp(response, "```json", 7) == 0) {
+        json_start = strchr(response + 7, '\n');
+        if (json_start) {
+            json_start++; // Skip the newline
+            char *json_end = strstr(json_start, "```");
+            if (json_end) {
+                *json_end = '\0'; // Truncate at closing ```
+            }
+        } else {
+            json_start = response; // Fallback if no newline found
+        }
+    } else if (strncmp(response, "```", 3) == 0) {
+        json_start = strchr(response + 3, '\n');
+        if (json_start) {
+            json_start++;
+            char *json_end = strstr(json_start, "```");
+            if (json_end) {
+                *json_end = '\0';
+            }
+        } else {
+            json_start = response;
+        }
+    }
+    
+    fprintf(stderr, "[DEBUG] Parsing JSON starting at offset: %td\n", json_start - response);
+    fprintf(stderr, "[DEBUG] JSON to parse (first 200 chars): %.200s\n", json_start);
+    
     // Parse LLM response into hypotheses
-    json_object *response_json = json_tokener_parse(response);
-    if (!response_json || !json_object_is_type(response_json, json_type_array)) {
-        fprintf(stderr, "[!] Invalid JSON response from LLM\n");
+    json_object *response_json = json_tokener_parse(json_start);
+    
+    if (!response_json) {
+        fprintf(stderr, "[!] Failed to parse JSON response (json_tokener_parse returned NULL)\n");
+        FILE *debug_file = fopen("/tmp/failed_llm_response_parse_null.txt", "w");
+        if (debug_file) {
+            fprintf(debug_file, "Full response:\n%s\n\nJSON start:\n%s\n", response, json_start);
+            fclose(debug_file);
+        }
         free(response);
+        ctx->hypotheses = NULL;
+        ctx->hypothesis_count = 0;
         return 0;
     }
+    
+    if (!json_object_is_type(response_json, json_type_array)) {
+        fprintf(stderr, "[!] Invalid JSON response from LLM (not an array, type=%s)\n",
+                json_type_to_name(json_object_get_type(response_json)));
+        FILE *debug_file = fopen("/tmp/failed_llm_response_not_array.txt", "w");
+        if (debug_file) {
+            fprintf(debug_file, "Full response:\n%s\n\nParsed JSON:\n%s\n", 
+                   response, json_object_to_json_string_ext(response_json, JSON_C_TO_STRING_PRETTY));
+            fclose(debug_file);
+        }
+        json_object_put(response_json);
+        free(response);
+        ctx->hypotheses = NULL;
+        ctx->hypothesis_count = 0;
+        return 0;
+    }
+    
+    fprintf(stderr, "[DEBUG] Successfully parsed JSON array with %zu elements\n", 
+           json_object_array_length(response_json));
     
     size_t hyp_count = json_object_array_length(response_json);
     if (hyp_count > (size_t)max_hypotheses) {
         hyp_count = max_hypotheses;
     }
     
-    ctx->hypotheses = ck_alloc(hyp_count * sizeof(grammar_hypothesis_t*));
+    ctx->hypotheses = (grammar_hypothesis_t**)ck_alloc(hyp_count * sizeof(grammar_hypothesis_t*));
+    memset(ctx->hypotheses, 0, hyp_count * sizeof(grammar_hypothesis_t*));  // Initialize to NULL
     ctx->hypothesis_count = 0;
     
     for (size_t i = 0; i < hyp_count; i++) {
         json_object *hyp_json = json_object_array_get_idx(response_json, i);
-        grammar_hypothesis_t *hyp = parse_llm_hypothesis_response(
-            json_object_to_json_string(hyp_json)
-        );
+        if (!hyp_json) {
+            fprintf(stderr, "[!] Warning: hypothesis %zu is NULL in response array\n", i);
+            continue;
+        }
         
-        if (hyp) {
+        // CRITICAL FIX: Copy the JSON string because json_object_to_json_string returns internal buffer
+        const char *json_str_ptr = json_object_to_json_string(hyp_json);
+        if (!json_str_ptr) {
+            fprintf(stderr, "[!] Warning: failed to serialize hypothesis %zu to JSON string\n", i);
+            continue;
+        }
+        char *json_str_copy = strdup(json_str_ptr);
+        
+        grammar_hypothesis_t *hyp = parse_llm_hypothesis_response(json_str_copy);
+        free(json_str_copy);  // Safe to free after parsing
+        
+        if (hyp && ctx->hypothesis_count < hyp_count) {  // Bounds check
             hyp->hypothesis_id = (unsigned long long)time(NULL) * 1000 + i;
             hyp->created_at = time(NULL);
             hyp->last_updated = time(NULL);
             
             ctx->hypotheses[ctx->hypothesis_count++] = hyp;
+            fprintf(stderr, "[DEBUG] Successfully parsed hypothesis %zu (id=%llu)\n", i, hyp->hypothesis_id);
+        } else if (hyp && ctx->hypothesis_count >= hyp_count) {
+            // Array full but parse succeeded - free the orphaned hypothesis
+            fprintf(stderr, "[!] Warning: hypothesis array full, discarding hypothesis %zu\n", i);
+            free_grammar_hypothesis(hyp);
+        } else {
+            fprintf(stderr, "[!] Warning: failed to parse hypothesis %zu\n", i);
         }
     }
     
@@ -444,22 +645,37 @@ int generate_grammar_hypotheses(hypothesis_context_t *ctx, int max_hypotheses) {
 }
 
 grammar_hypothesis_t* parse_llm_hypothesis_response(const char *llm_response) {
-    json_object *jobj = json_tokener_parse(llm_response);
-    if (!jobj) return NULL;
+    if (!llm_response) {
+        fprintf(stderr, "[!] parse_llm_hypothesis_response: NULL response\n");
+        return NULL;
+    }
     
-    grammar_hypothesis_t *hyp = ck_alloc(sizeof(grammar_hypothesis_t));
+    json_object *jobj = json_tokener_parse(llm_response);
+    if (!jobj) {
+        fprintf(stderr, "[!] parse_llm_hypothesis_response: Failed to parse JSON\n");
+        fprintf(stderr, "[!] Response was: %.200s\n", llm_response);
+        return NULL;
+    }
+    
+    grammar_hypothesis_t *hyp = (grammar_hypothesis_t*)ck_alloc(sizeof(grammar_hypothesis_t));
     memset(hyp, 0, sizeof(grammar_hypothesis_t));
     
     // Extract message_type
     json_object *msg_type_obj;
     if (json_object_object_get_ex(jobj, "message_type", &msg_type_obj)) {
-        hyp->message_type = (char*)ck_strdup((u8*)json_object_get_string(msg_type_obj));
+        const char *msg_type_str = json_object_get_string(msg_type_obj);
+        if (msg_type_str) {
+            hyp->message_type = (char*)ck_strdup((u8*)msg_type_str);
+        }
     }
     
     // Extract description
     json_object *desc_obj;
     if (json_object_object_get_ex(jobj, "description", &desc_obj)) {
-        hyp->description = (char*)ck_strdup((u8*)json_object_get_string(desc_obj));
+        const char *desc_str = json_object_get_string(desc_obj);
+        if (desc_str) {
+            hyp->description = (char*)ck_strdup((u8*)desc_str);
+        }
     }
     
     // Extract schema
@@ -474,11 +690,17 @@ grammar_hypothesis_t* parse_llm_hypothesis_response(const char *llm_response) {
     if (json_object_object_get_ex(jobj, "production_rules", &rules_obj)) {
         if (json_object_is_type(rules_obj, json_type_array)) {
             hyp->rule_count = json_object_array_length(rules_obj);
-            hyp->production_rules = ck_alloc(hyp->rule_count * sizeof(char*));
+            hyp->production_rules = (char**)ck_alloc(hyp->rule_count * sizeof(char*));
+            memset(hyp->production_rules, 0, hyp->rule_count * sizeof(char*));  // Initialize to NULL
             
             for (size_t i = 0; i < hyp->rule_count; i++) {
                 json_object *rule = json_object_array_get_idx(rules_obj, i);
-                hyp->production_rules[i] = (char*)ck_strdup((u8*)json_object_get_string(rule));
+                if (rule) {
+                    const char *rule_str = json_object_get_string(rule);
+                    if (rule_str) {
+                        hyp->production_rules[i] = (char*)ck_strdup((u8*)rule_str);
+                    }
+                }
             }
         }
     }
@@ -505,7 +727,9 @@ void extract_constraints_from_schema(grammar_hypothesis_t *hyp, json_object *sch
     
     // Count properties to allocate constraints
     size_t prop_count = json_object_object_length(properties);
-    hyp->constraints = ck_alloc(prop_count * 10 * sizeof(field_constraint_t*));  // Over-allocate
+    size_t max_constraints = prop_count * 10;  // Over-allocate for multiple constraints per field
+    hyp->constraints = (field_constraint_t**)ck_alloc(max_constraints * sizeof(field_constraint_t*));
+    memset(hyp->constraints, 0, max_constraints * sizeof(field_constraint_t*));  // Initialize to NULL
     hyp->constraint_count = 0;
     
     json_object_object_foreach(properties, field_name, field_schema) {
@@ -514,7 +738,8 @@ void extract_constraints_from_schema(grammar_hypothesis_t *hyp, json_object *sch
         if (json_object_object_get_ex(field_schema, "minLength", &min_len) ||
             json_object_object_get_ex(field_schema, "maxLength", &max_len)) {
             
-            field_constraint_t *constraint = ck_alloc(sizeof(field_constraint_t));
+            field_constraint_t *constraint = (field_constraint_t*)ck_alloc(sizeof(field_constraint_t));
+            memset(constraint, 0, sizeof(field_constraint_t));
             constraint->type = CONSTRAINT_LENGTH;
             constraint->field_name = (char*)ck_strdup((u8*)field_name);
             constraint->data.length.min = min_len ? json_object_get_int64(min_len) : 0;
@@ -523,20 +748,28 @@ void extract_constraints_from_schema(grammar_hypothesis_t *hyp, json_object *sch
             constraint->validations = 0;
             constraint->confidence = 1.0;
             
-            hyp->constraints[hyp->constraint_count++] = constraint;
+            if (hyp->constraint_count < max_constraints) {
+                hyp->constraints[hyp->constraint_count++] = constraint;
+            } else {
+                fprintf(stderr, "[!] Warning: Max constraints reached, discarding LENGTH constraint\n");
+                ck_free(constraint->field_name);
+                ck_free(constraint);
+            }
         }
         
         // Enum constraints
         json_object *enum_obj;
         if (json_object_object_get_ex(field_schema, "enum", &enum_obj)) {
             if (json_object_is_type(enum_obj, json_type_array)) {
-                field_constraint_t *constraint = ck_alloc(sizeof(field_constraint_t));
+                field_constraint_t *constraint = (field_constraint_t*)ck_alloc(sizeof(field_constraint_t));
+                memset(constraint, 0, sizeof(field_constraint_t));
                 constraint->type = CONSTRAINT_ENUM;
                 constraint->field_name = (char*)ck_strdup((u8*)field_name);
                 
                 size_t enum_count = json_object_array_length(enum_obj);
                 constraint->data.enumeration.count = enum_count;
-                constraint->data.enumeration.values = ck_alloc(enum_count * sizeof(char*));
+                constraint->data.enumeration.values = (char**)ck_alloc(enum_count * sizeof(char*));
+                memset(constraint->data.enumeration.values, 0, enum_count * sizeof(char*));  // Initialize to NULL
                 
                 for (size_t i = 0; i < enum_count; i++) {
                     json_object *val = json_object_array_get_idx(enum_obj, i);
@@ -547,14 +780,25 @@ void extract_constraints_from_schema(grammar_hypothesis_t *hyp, json_object *sch
                 constraint->validations = 0;
                 constraint->confidence = 1.0;
                 
-                hyp->constraints[hyp->constraint_count++] = constraint;
+                if (hyp->constraint_count < max_constraints) {
+                    hyp->constraints[hyp->constraint_count++] = constraint;
+                } else {
+                    fprintf(stderr, "[!] Warning: Max constraints reached, discarding constraint\n");
+                    for (size_t k = 0; k < constraint->data.enumeration.count; k++) {
+                        ck_free(constraint->data.enumeration.values[k]);
+                    }
+                    ck_free(constraint->data.enumeration.values);
+                    ck_free(constraint->field_name);
+                    ck_free(constraint);
+                }
             }
         }
         
         // Pattern (regex) constraints
         json_object *pattern_obj;
         if (json_object_object_get_ex(field_schema, "pattern", &pattern_obj)) {
-            field_constraint_t *constraint = ck_alloc(sizeof(field_constraint_t));
+            field_constraint_t *constraint = (field_constraint_t*)ck_alloc(sizeof(field_constraint_t));
+            memset(constraint, 0, sizeof(field_constraint_t));
             constraint->type = CONSTRAINT_REGEX;
             constraint->field_name = (char*)ck_strdup((u8*)field_name);
             constraint->data.regex.pattern = (char*)ck_strdup((u8*)json_object_get_string(pattern_obj));
@@ -562,7 +806,14 @@ void extract_constraints_from_schema(grammar_hypothesis_t *hyp, json_object *sch
             constraint->validations = 0;
             constraint->confidence = 1.0;
             
-            hyp->constraints[hyp->constraint_count++] = constraint;
+            if (hyp->constraint_count < max_constraints) {
+                hyp->constraints[hyp->constraint_count++] = constraint;
+            } else {
+                fprintf(stderr, "[!] Warning: Max constraints reached, discarding REGEX constraint\n");
+                ck_free(constraint->data.regex.pattern);
+                ck_free(constraint->field_name);
+                ck_free(constraint);
+            }
         }
         
         // Numeric range constraints
@@ -570,7 +821,8 @@ void extract_constraints_from_schema(grammar_hypothesis_t *hyp, json_object *sch
         if (json_object_object_get_ex(field_schema, "minimum", &minimum) ||
             json_object_object_get_ex(field_schema, "maximum", &maximum)) {
             
-            field_constraint_t *constraint = ck_alloc(sizeof(field_constraint_t));
+            field_constraint_t *constraint = (field_constraint_t*)ck_alloc(sizeof(field_constraint_t));
+            memset(constraint, 0, sizeof(field_constraint_t));
             constraint->type = CONSTRAINT_NUMERIC;
             constraint->field_name = (char*)ck_strdup((u8*)field_name);
             constraint->data.numeric.min = minimum ? json_object_get_int64(minimum) : LLONG_MIN;
@@ -579,7 +831,13 @@ void extract_constraints_from_schema(grammar_hypothesis_t *hyp, json_object *sch
             constraint->validations = 0;
             constraint->confidence = 1.0;
             
-            hyp->constraints[hyp->constraint_count++] = constraint;
+            if (hyp->constraint_count < max_constraints) {
+                hyp->constraints[hyp->constraint_count++] = constraint;
+            } else {
+                fprintf(stderr, "[!] Warning: Max constraints reached, discarding NUMERIC constraint\n");
+                ck_free(constraint->field_name);
+                ck_free(constraint);
+            }
         }
     }
 }
@@ -593,6 +851,10 @@ int validate_message_against_hypothesis(
     const unsigned char *message,
     size_t len
 ) {
+    if (!hyp || !message) {
+        return 0;  // Invalid parameters
+    }
+    
     // Simple validation: check if message can be parsed according to schema
     // In a full implementation, this would parse the message and validate each field
     
@@ -697,10 +959,10 @@ void add_counterexample(
     const char *error_reason
 ) {
     // Add counterexample
-    hyp->counterexamples = ck_realloc(hyp->counterexamples, 
+    hyp->counterexamples = (char**)ck_realloc(hyp->counterexamples, 
                                       (hyp->counterexample_count + 1) * sizeof(char*));
     
-    char *ce = ck_alloc(len + 256);  // Message + error reason
+    char *ce = (char*)ck_alloc(len + 256);  // Message + error reason
     snprintf(ce, len + 256, "%.*s [Reason: %s]", (int)len, message, error_reason);
     
     hyp->counterexamples[hyp->counterexample_count++] = ce;
@@ -736,20 +998,58 @@ int refine_hypothesis_with_counterexamples(
     }
     
     // Update existing hypothesis with refined data
+    
+    // Transfer message_type
+    ck_free(hyp->message_type);
+    hyp->message_type = refined_hyp->message_type;
+    refined_hyp->message_type = NULL;  // Transfer ownership
+    
+    // Transfer description
+    ck_free(hyp->description);
+    hyp->description = refined_hyp->description;
+    refined_hyp->description = NULL;  // Transfer ownership
+    
+    // Transfer schema
     if (hyp->schema) json_object_put(hyp->schema);
     hyp->schema = refined_hyp->schema;
     refined_hyp->schema = NULL;  // Transfer ownership
     
-    // Update constraints
+    // Transfer production_rules
+    for (size_t i = 0; i < hyp->rule_count; i++) {
+        ck_free(hyp->production_rules[i]);
+    }
+    ck_free(hyp->production_rules);
+    hyp->production_rules = refined_hyp->production_rules;
+    hyp->rule_count = refined_hyp->rule_count;
+    refined_hyp->production_rules = NULL;  // Transfer ownership
+    refined_hyp->rule_count = 0;
+    
+    // Update constraints - properly free old constraints with nested data
     for (size_t i = 0; i < hyp->constraint_count; i++) {
-        ck_free(hyp->constraints[i]->field_name);
-        ck_free(hyp->constraints[i]);
+        field_constraint_t *c = hyp->constraints[i];
+        ck_free(c->field_name);
+        
+        // Free constraint-specific data
+        if (c->type == CONSTRAINT_ENUM) {
+            for (size_t j = 0; j < c->data.enumeration.count; j++) {
+                ck_free(c->data.enumeration.values[j]);
+            }
+            ck_free(c->data.enumeration.values);
+        } else if (c->type == CONSTRAINT_REGEX) {
+            ck_free(c->data.regex.pattern);
+        } else if (c->type == CONSTRAINT_DEPENDENCY) {
+            ck_free(c->data.dependency.target_field);
+            ck_free(c->data.dependency.condition);
+        }
+        
+        ck_free(c);
     }
     ck_free(hyp->constraints);
     
     hyp->constraints = refined_hyp->constraints;
     hyp->constraint_count = refined_hyp->constraint_count;
     refined_hyp->constraints = NULL;  // Transfer ownership
+    refined_hyp->constraint_count = 0;
     
     // Clear counterexamples after refinement
     for (size_t i = 0; i < hyp->counterexample_count; i++) {
@@ -797,14 +1097,38 @@ grammar_hypothesis_t* select_best_hypothesis(
  * ============================================ */
 
 int save_hypothesis_to_file(grammar_hypothesis_t *hyp, const char *filepath) {
+    // Defensive NULL checks
+    if (!hyp) {
+        fprintf(stderr, "[!] save_hypothesis_to_file: hyp is NULL\n");
+        return 0;
+    }
+    if (!filepath) {
+        fprintf(stderr, "[!] save_hypothesis_to_file: filepath is NULL\n");
+        return 0;
+    }
+    
     FILE *f = fopen(filepath, "w");
-    if (!f) return 0;
+    if (!f) {
+        fprintf(stderr, "[!] save_hypothesis_to_file: failed to open %s\n", filepath);
+        return 0;
+    }
     
     json_object *jobj = json_object_new_object();
     json_object_object_add(jobj, "hypothesis_id", json_object_new_int64(hyp->hypothesis_id));
-    json_object_object_add(jobj, "message_type", json_object_new_string(hyp->message_type));
-    json_object_object_add(jobj, "description", json_object_new_string(hyp->description));
-    json_object_object_add(jobj, "schema", json_object_get(hyp->schema));
+    
+    // CRITICAL: NULL-safe string handling for JSON
+    json_object_object_add(jobj, "message_type", 
+        hyp->message_type ? json_object_new_string(hyp->message_type) : json_object_new_string("UNKNOWN"));
+    json_object_object_add(jobj, "description", 
+        hyp->description ? json_object_new_string(hyp->description) : json_object_new_string(""));
+    
+    // CRITICAL: Handle NULL schema safely
+    if (hyp->schema) {
+        json_object_object_add(jobj, "schema", json_object_get(hyp->schema));
+    } else {
+        json_object_object_add(jobj, "schema", json_object_new_object());
+    }
+    
     json_object_object_add(jobj, "parse_success", json_object_new_int(hyp->parse_success));
     json_object_object_add(jobj, "parse_failure", json_object_new_int(hyp->parse_failure));
     json_object_object_add(jobj, "fitness", json_object_new_double(hyp->fitness));
@@ -826,7 +1150,8 @@ grammar_hypothesis_t* load_hypothesis_from_file(const char *filepath) {
     long fsize = ftell(f);
     fseek(f, 0, SEEK_SET);
     
-    char *content = ck_alloc(fsize + 1);
+    char *content = (char*)ck_alloc(fsize + 1);
+    memset(content, 0, fsize + 1);  // Initialize buffer
     fread(content, 1, fsize, f);
     content[fsize] = '\0';
     fclose(f);
@@ -887,25 +1212,40 @@ void free_grammar_hypothesis(grammar_hypothesis_t *hyp) {
 void free_hypothesis_context(hypothesis_context_t *ctx) {
     if (!ctx) return;
     
+    fprintf(stderr, "[DEBUG] free_hypothesis_context: ctx=%p\n", (void*)ctx);
+    fprintf(stderr, "[DEBUG] Freeing protocol_name=%p\n", (void*)ctx->protocol_name);
     ck_free(ctx->protocol_name);
-    ck_free(ctx->rfc_text);
     
+    fprintf(stderr, "[DEBUG] Freeing rfc_text=%p (size likely large)\n", (void*)ctx->rfc_text);
+    ck_free(ctx->rfc_text);  // Now consistently ck_alloc'ed
+    
+    fprintf(stderr, "[DEBUG] Freeing %zu pcap_samples\n", ctx->pcap_count);
     for (size_t i = 0; i < ctx->pcap_count; i++) {
+        fprintf(stderr, "[DEBUG]   pcap_samples[%zu]=%p\n", i, (void*)ctx->pcap_samples[i]);
         ck_free(ctx->pcap_samples[i]);
     }
+    fprintf(stderr, "[DEBUG] Freeing pcap_samples array=%p\n", (void*)ctx->pcap_samples);
     ck_free(ctx->pcap_samples);
     
+    fprintf(stderr, "[DEBUG] Freeing %zu server_responses\n", ctx->response_count);
     for (size_t i = 0; i < ctx->response_count; i++) {
+        fprintf(stderr, "[DEBUG]   server_responses[%zu]=%p\n", i, (void*)ctx->server_responses[i]);
         ck_free(ctx->server_responses[i]);
     }
+    fprintf(stderr, "[DEBUG] Freeing server_responses array=%p\n", (void*)ctx->server_responses);
     ck_free(ctx->server_responses);
     
+    fprintf(stderr, "[DEBUG] Freeing %zu hypotheses\n", ctx->hypothesis_count);
     for (size_t i = 0; i < ctx->hypothesis_count; i++) {
+        fprintf(stderr, "[DEBUG]   hypotheses[%zu]=%p\n", i, (void*)ctx->hypotheses[i]);
         free_grammar_hypothesis(ctx->hypotheses[i]);
     }
+    fprintf(stderr, "[DEBUG] Freeing hypotheses array=%p (THIS IS WHERE CRASH HAPPENS)\n", (void*)ctx->hypotheses);
     ck_free(ctx->hypotheses);
     
+    fprintf(stderr, "[DEBUG] Freeing ctx itself=%p\n", (void*)ctx);
     ck_free(ctx);
+    fprintf(stderr, "[DEBUG] free_hypothesis_context completed successfully\n");
 }
 
 /* ============================================

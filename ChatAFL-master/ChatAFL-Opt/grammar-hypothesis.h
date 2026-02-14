@@ -62,7 +62,8 @@ typedef struct grammar_hypothesis {
     char *description;            // LLM-generated description
     
     // Grammar representation (JSON Schema style)
-    json_object *schema;          // Full JSON Schema
+    json_object *schema;          // Full JSON Schema (may be NULL, use schema_str instead)
+    char *schema_str;             // Schema as string (safer than holding JSON object)
     
     // Field constraints
     field_constraint_t **constraints;
