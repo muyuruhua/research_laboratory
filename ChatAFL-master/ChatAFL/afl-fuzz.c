@@ -434,7 +434,7 @@ u32 reward_grammar;
 void setup_llm_grammars()
 {
 
-  ACTF("Getting grammars from LLM...");
+  ACTF("Getting grammars from LLM...123");
 
   khash_t(consistency_table) *const_table = kh_init(consistency_table);
   char *first_question;
