@@ -27,6 +27,11 @@ Similarly 1700 is for the example request in the seed enrichment
 // Maximum amount of tries to get the grammars
 #define GRAMMAR_RETRIES 5
 
+// LLM API timeout configuration (in seconds)
+#define LLM_API_TIMEOUT 30
+#define LLM_API_CONNECT_TIMEOUT 10
+#define LLM_API_RETRY_BACKOFF_INIT 2
+
 // Maximum amount
 #define MESSAGE_TYPE_RETRIES 5
 

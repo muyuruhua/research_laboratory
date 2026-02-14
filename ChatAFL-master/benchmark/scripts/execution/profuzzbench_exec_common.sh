@@ -18,7 +18,12 @@ cids=()
 
 #create one container for each run
 for i in $(seq 1 $RUNS); do
-  id=$(docker run --cpus=1 -d -it $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
+  # Enable Grammar Hypothesis system only for chatafl-opt
+  if [[ "$FUZZER" == "chatafl-opt" ]]; then
+    id=$(docker run --cpus=1 -e KEY="${KEY}" -e CHATAFL_HYPOTHESIS=1 -d -it $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
+  else
+    id=$(docker run --cpus=1 -e KEY="${KEY}" -d -it $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
+  fi
   cids+=(${id::12}) #store only the first 12 characters of a container ID
 done
 
@@ -29,8 +34,10 @@ done
 
 #wait until all these dockers are stopped
 printf "\n${FUZZER^^}: Fuzzing in progress ..."
-printf "\n${FUZZER^^}: Waiting for the following containers to stop: ${dlist}"
-docker wait ${dlist} > /dev/null
+printf "\n${FUZZER^^}: Waiting for the following containers to stop:${dlist}"
+if [ -n "${dlist}" ]; then
+  docker wait ${dlist} > /dev/null
+fi
 wait
 
 #collect the fuzzing results from the containers

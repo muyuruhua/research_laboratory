@@ -16,6 +16,10 @@
 #define MAX_TOKENS 2048
 #define CONFIDENT_TIMES 3
 
+// Slow connection protection: abort if speed < 1KB/s for 30 seconds
+#define LLM_API_LOW_SPEED_LIMIT 1024L
+#define LLM_API_LOW_SPEED_TIME 30L
+
 struct MemoryStruct
 {
     char *memory;
@@ -75,8 +79,18 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
         asprintf(&data, "{\"model\": \"gpt-4o-mini\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
     }
     curl_global_init(CURL_GLOBAL_DEFAULT);
+    int backoff = LLM_API_RETRY_BACKOFF_INIT;
+    int attempt = 0;
+    int should_retry = 1; // Flag to distinguish retryable vs fatal errors
     do
     {
+        if (attempt > 0) {
+            printf("[LLM] Retry attempt %d/%d after %d seconds backoff\n", attempt, tries, backoff);
+            sleep(backoff);
+            backoff *= 2; // Exponential backoff: 2 -> 4 -> 8 seconds
+        }
+        attempt++;
+        should_retry = 1; // Reset for each attempt
         struct MemoryStruct chunk;
 
         chunk.memory = malloc(1); /* will be grown as needed by the realloc above */
@@ -85,6 +99,10 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
         curl = curl_easy_init();
         if (curl)
         {
+            // CURL error buffer for detailed error messages
+            char curl_error_buffer[CURL_ERROR_SIZE];
+            curl_error_buffer[0] = '\0';
+            
             struct curl_slist *headers = NULL;
             headers = curl_slist_append(headers, auth_header);
             headers = curl_slist_append(headers, content_header);
@@ -95,6 +113,17 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
             curl_easy_setopt(curl, CURLOPT_URL, url);
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, chat_with_llm_helper);
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+            
+            // Timeout configuration
+            curl_easy_setopt(curl, CURLOPT_TIMEOUT, (long)LLM_API_TIMEOUT);
+            curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, (long)LLM_API_CONNECT_TIMEOUT);
+            
+            // Slow connection protection: abort if speed < 1KB/s for 30s
+            curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, LLM_API_LOW_SPEED_LIMIT);
+            curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, LLM_API_LOW_SPEED_TIME);
+            
+            // Enable detailed error messages
+            curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, curl_error_buffer);
 
             res = curl_easy_perform(curl);
 
@@ -134,7 +163,45 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
             }
             else
             {
-                printf("Error: %s\n", curl_easy_strerror(res));
+                // Enhanced error handling with timeout type distinction
+                if (res == CURLE_OPERATION_TIMEDOUT) {
+                    printf("[LLM] ⏱ Operation timeout after %d seconds (attempt %d/%d)\n", 
+                           LLM_API_TIMEOUT, attempt, tries);
+                    if (strlen(curl_error_buffer) > 0) {
+                        printf("[LLM] Details: %s\n", curl_error_buffer);
+                    }
+                } else if (res == CURLE_COULDNT_CONNECT) {
+                    printf("[LLM] ⚠ Connection failed after %d seconds (attempt %d/%d)\n",
+                           LLM_API_CONNECT_TIMEOUT, attempt, tries);
+                    if (strlen(curl_error_buffer) > 0) {
+                        printf("[LLM] Details: %s\n", curl_error_buffer);
+                    }
+                } else if (res == CURLE_COULDNT_RESOLVE_HOST) {
+                    printf("[LLM] ❌ Fatal: Cannot resolve API host '%s'\n", url);
+                    should_retry = 0; // DNS failure is not retryable
+                } else if (res == CURLE_OUT_OF_MEMORY) {
+                    printf("[LLM] ❌ Fatal: Out of memory\n");
+                    should_retry = 0; // Memory exhaustion is not retryable
+                } else {
+                    // Generic error with detailed message
+                    printf("[LLM] Error: %s (attempt %d/%d)\n", curl_easy_strerror(res), attempt, tries);
+                    if (strlen(curl_error_buffer) > 0) {
+                        printf("[LLM] Details: %s\n", curl_error_buffer);
+                    }
+                }
+                
+                // Check HTTP status code for non-retryable errors
+                long http_code = 0;
+                curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+                if (http_code >= 400 && http_code < 500 && http_code != 429) {
+                    // 4xx errors (except 429 Too Many Requests) are client errors, don't retry
+                    printf("[LLM] ❌ Fatal: HTTP %ld client error, retry disabled\n", http_code);
+                    should_retry = 0;
+                } else if (http_code == 429) {
+                    printf("[LLM] ⚠ HTTP 429 Rate Limited, will retry with backoff\n");
+                } else if (http_code >= 500) {
+                    printf("[LLM] ⚠ HTTP %ld server error, will retry\n", http_code);
+                }
             }
 
             curl_slist_free_all(headers);
@@ -142,7 +209,7 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
         }
 
         free(chunk.memory);
-    } while ((res != CURLE_OK || answer == NULL) && (--tries > 0));
+    } while ((res != CURLE_OK || answer == NULL) && (--tries > 0) && should_retry);
 
     if (data != NULL)
     {

@@ -10,11 +10,11 @@ states_data=$6
 #create a new file if append = 0
 if [ $append = "0" ]; then
   #echo "Trying to delete $PWD/$covfile"
-  rm "$PWD/$covfile" ; touch $covfile
+  rm "$PWD/$covfile" 2>/dev/null ; touch $covfile
   echo "time,subject,fuzzer,run,cov_type,cov" >> $covfile
 
   #echo "Trying to delete $PWD/$states_data"
-  rm $states_data ; touch $states_data
+  rm $states_data 2>/dev/null ; touch $states_data
   echo "time,subject,fuzzer,run,state_type,state" >> $states_data
 fi
 

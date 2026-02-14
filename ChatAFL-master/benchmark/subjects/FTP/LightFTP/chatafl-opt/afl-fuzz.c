@@ -4445,6 +4445,12 @@ static void init_grammar_hypothesis_system(void)
       pcap_samples,
       pcap_count);
 
+  // Free the temporary pcap_samples array (init_hypothesis_context makes a copy)
+  for (size_t i = 0; i < pcap_count; i++) {
+    ck_free(pcap_samples[i]);
+  }
+  if (pcap_samples) ck_free(pcap_samples);
+
   if (!hypothesis_ctx)
   {
     FATAL("Failed to initialize hypothesis context");
@@ -4471,24 +4477,38 @@ static void init_grammar_hypothesis_system(void)
       PFATAL("Unable to create directory '%s'", hyp_dir);
     }
 
+    fprintf(stderr, "[DEBUG] Starting to save %zu hypotheses to disk\n", hypothesis_ctx->hypothesis_count);
     for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++)
     {
       grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
+      fprintf(stderr, "[DEBUG] Saving hypothesis %zu/%zu: hyp=%p\n", i+1, hypothesis_ctx->hypothesis_count, (void*)hyp);
+      
+      // CRITICAL: Validate hypothesis pointer and fields before using
+      if (!hyp) {
+        fprintf(stderr, "[!] ERROR: hypothesis[%zu] is NULL, skipping\n", i);
+        continue;
+      }
+      if (!hyp->message_type) {
+        fprintf(stderr, "[!] ERROR: hypothesis[%zu]->message_type is NULL, skipping\n", i);
+        continue;
+      }
+      
+      fprintf(stderr, "[DEBUG]   message_type=%p (%s)\n", (void*)hyp->message_type, hyp->message_type);
+      fprintf(stderr, "[DEBUG]   description=%p\n", (void*)hyp->description);
+      
       char *hyp_file = alloc_printf("%s/hypothesis-%llu-%s.json",
                                     hyp_dir, hyp->hypothesis_id, hyp->message_type);
+      fprintf(stderr, "[DEBUG]   Calling save_hypothesis_to_file with file=%s\n", hyp_file);
       save_hypothesis_to_file(hyp, hyp_file);
+      fprintf(stderr, "[DEBUG]   save_hypothesis_to_file completed\n");
       ck_free(hyp_file);
     }
 
     ck_free(hyp_dir);
+    fprintf(stderr, "[DEBUG] All hypotheses saved successfully\n");
   }
 
-  // Cleanup PCAP samples
-  for (size_t i = 0; i < pcap_count; i++)
-  {
-    ck_free(pcap_samples[i]);
-  }
-  ck_free(pcap_samples);
+  // Note: pcap_samples already freed after init_hypothesis_context (line 4449-4452)
 
   OKF("Grammar Hypothesis System initialized.");
 }
