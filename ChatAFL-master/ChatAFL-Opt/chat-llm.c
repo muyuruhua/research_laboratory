@@ -16,10 +16,6 @@
 #define MAX_TOKENS 2048
 #define CONFIDENT_TIMES 3
 
-// Slow connection protection: abort if speed < 1KB/s for 30 seconds
-#define LLM_API_LOW_SPEED_LIMIT 1024L
-#define LLM_API_LOW_SPEED_TIME 30L
-
 struct MemoryStruct
 {
     char *memory;
@@ -78,21 +74,9 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
     {
         asprintf(&data, "{\"model\": \"gpt-4o-mini\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
     }
-    // CRITICAL FIX: curl_global_init should only be called once per program, not per function call
-    // Moved to main() or setup_llm_grammars()
-    // curl_global_init(CURL_GLOBAL_DEFAULT);
-    int backoff = LLM_API_RETRY_BACKOFF_INIT;
-    int attempt = 0;
-    int should_retry = 1; // Flag to distinguish retryable vs fatal errors
+    curl_global_init(CURL_GLOBAL_DEFAULT);
     do
     {
-        if (attempt > 0) {
-            printf("[LLM] Retry attempt %d/%d after %d seconds backoff\n", attempt, tries, backoff);
-            sleep(backoff);
-            backoff *= 2; // Exponential backoff: 2 -> 4 -> 8 seconds
-        }
-        attempt++;
-        should_retry = 1; // Reset for each attempt
         struct MemoryStruct chunk;
 
         chunk.memory = malloc(1); /* will be grown as needed by the realloc above */
@@ -101,10 +85,6 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
         curl = curl_easy_init();
         if (curl)
         {
-            // CURL error buffer for detailed error messages
-            char curl_error_buffer[CURL_ERROR_SIZE];
-            curl_error_buffer[0] = '\0';
-            
             struct curl_slist *headers = NULL;
             headers = curl_slist_append(headers, auth_header);
             headers = curl_slist_append(headers, content_header);
@@ -115,142 +95,61 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
             curl_easy_setopt(curl, CURLOPT_URL, url);
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, chat_with_llm_helper);
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
-            
-            // Timeout configuration
-            curl_easy_setopt(curl, CURLOPT_TIMEOUT, (long)LLM_API_TIMEOUT);
-            curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, (long)LLM_API_CONNECT_TIMEOUT);
-            
-            // Slow connection protection: abort if speed < 1KB/s for 30s
-            curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, LLM_API_LOW_SPEED_LIMIT);
-            curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, LLM_API_LOW_SPEED_TIME);
-            
-            // Enable detailed error messages
-            curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, curl_error_buffer);
 
             res = curl_easy_perform(curl);
 
             if (res == CURLE_OK)
             {
                 json_object *jobj = json_tokener_parse(chunk.memory);
-                
-                // CRITICAL: Check jobj is valid
-                if (!jobj) {
-                    fprintf(stderr, "[LLM] Error: Failed to parse JSON response\n");
-                    fprintf(stderr, "[LLM] Response was: %s\n", chunk.memory);
-                } else if (json_object_object_get_ex(jobj, "choices", NULL))
+
+                // Check if the "choices" key exists
+                if (json_object_object_get_ex(jobj, "choices", NULL))
                 {
                     json_object *choices = json_object_object_get(jobj, "choices");
-                    if (!choices) {
-                        fprintf(stderr, "[LLM] Error: choices is NULL\n");
-                        json_object_put(jobj);
-                        goto cleanup_chunk;
-                    }
-                    
                     json_object *first_choice = json_object_array_get_idx(choices, 0);
-                    if (!first_choice) {
-                        fprintf(stderr, "[LLM] Error: first_choice is NULL (empty choices array)\n");
-                        json_object_put(jobj);
-                        goto cleanup_chunk;
-                    }
-                    
-                    const char *data = NULL;
+                    const char *data;
 
                     // The answer begins with a newline character, so we remove it
                     if (strcmp(model, "gpt-4o") == 0)
                     {
                         json_object *jobj4 = json_object_object_get(first_choice, "text");
-                        if (jobj4) {
-                            data = json_object_get_string(jobj4);
-                        }
+                        data = json_object_get_string(jobj4);
                     }
                     else
                     {
                         json_object *jobj4 = json_object_object_get(first_choice, "message");
-                        if (jobj4) {
-                            json_object *jobj5 = json_object_object_get(jobj4, "content");
-                            if (jobj5) {
-                                data = json_object_get_string(jobj5);
-                            }
-                        }
+                        json_object *jobj5 = json_object_object_get(jobj4, "content");
+                        data = json_object_get_string(jobj5);
                     }
-                    
-                    // CRITICAL: NULL-safe data handling
-                    if (!data || strlen(data) == 0) {
-                        fprintf(stderr, "[LLM] Warning: Empty or NULL response content from API\n");
-                        answer = NULL;
-                    } else {
-                        if (data[0] == '\n')
-                            data++;
-                        answer = strdup(data);
-                    }
-                    json_object_put(jobj);
+                    if (data[0] == '\n')
+                        data++;
+                    answer = strdup(data);
                 }
                 else
                 {
                     printf("Error response is: %s\n", chunk.memory);
                     sleep(2); // Sleep for a small amount of time to ensure that the service can recover
-                    json_object_put(jobj);  // CRITICAL FIX: moved here to avoid double-free
                 }
-                // REMOVED: json_object_put(jobj); was here causing double-free!
+                json_object_put(jobj);
             }
             else
             {
-                // Enhanced error handling with timeout type distinction
-                if (res == CURLE_OPERATION_TIMEDOUT) {
-                    printf("[LLM] Operation timeout after %d seconds (attempt %d/%d)\n", 
-                           LLM_API_TIMEOUT, attempt, tries);
-                    if (strlen(curl_error_buffer) > 0) {
-                        printf("[LLM] Details: %s\n", curl_error_buffer);
-                    }
-                } else if (res == CURLE_COULDNT_CONNECT) {
-                    printf("[LLM] Connection failed after %d seconds (attempt %d/%d)\n",
-                           LLM_API_CONNECT_TIMEOUT, attempt, tries);
-                    if (strlen(curl_error_buffer) > 0) {
-                        printf("[LLM] Details: %s\n", curl_error_buffer);
-                    }
-                } else if (res == CURLE_COULDNT_RESOLVE_HOST) {
-                    printf("[LLM] Fatal: Cannot resolve API host '%s'\n", url);
-                    should_retry = 0; // DNS failure is not retryable
-                } else if (res == CURLE_OUT_OF_MEMORY) {
-                    printf("[LLM] Fatal: Out of memory\n");
-                    should_retry = 0; // Memory exhaustion is not retryable
-                } else {
-                    // Generic error with detailed message
-                    printf("[LLM] Error: %s (attempt %d/%d)\n", curl_easy_strerror(res), attempt, tries);
-                    if (strlen(curl_error_buffer) > 0) {
-                        printf("[LLM] Details: %s\n", curl_error_buffer);
-                    }
-                }
-                
-                // Check HTTP status code for non-retryable errors
-                long http_code = 0;
-                curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-                if (http_code >= 400 && http_code < 500 && http_code != 429) {
-                    // 4xx errors (except 429 Too Many Requests) are client errors, don't retry
-                    printf("[LLM] Fatal: HTTP %ld client error, retry disabled\n", http_code);
-                    should_retry = 0;
-                } else if (http_code == 429) {
-                    printf("[LLM] HTTP 429 Rate Limited, will retry with backoff\n");
-                } else if (http_code >= 500) {
-                    printf("[LLM] HTTP %ld server error, will retry\n", http_code);
-                }
+                printf("Error: %s\n", curl_easy_strerror(res));
             }
 
             curl_slist_free_all(headers);
             curl_easy_cleanup(curl);
         }
 
-cleanup_chunk:
         free(chunk.memory);
-    } while ((res != CURLE_OK || answer == NULL) && (--tries > 0) && should_retry);
+    } while ((res != CURLE_OK || answer == NULL) && (--tries > 0));
 
-    // NOTE: 'data' is a pointer from json_object_get_string(), 
-    // it's managed by json-c and should NOT be freed here.
-    // We already did strdup(data) to create 'answer', which is our responsibility to free.
+    if (data != NULL)
+    {
+        free(data);
+    }
 
-    // CRITICAL FIX: curl_global_cleanup should only be called once at program exit
-    // Not after every function call
-    // curl_global_cleanup();
+    curl_global_cleanup();
     return answer;
 }
 
@@ -501,15 +400,6 @@ void extract_message_grammars(char *answers, klist_t(gram) * grammar_list)
         char *end = strchr(start, ']');
         if (end == NULL)
             break;
-        
-        // CRITICAL: Skip if the bracket pair doesn't contain a comma
-        // This filters out non-JSON text like [USER], [SERVER], [Note], etc.
-        char *comma_check = memchr(start, ',', end - start);
-        if (comma_check == NULL) {
-            ptr = end + 1;
-            continue;
-        }
-        
         int count = end - start + 1;
         char *temp = (char *)ck_alloc(count + 1);
         strncpy(temp, start, count);
@@ -518,36 +408,6 @@ void extract_message_grammars(char *answers, klist_t(gram) * grammar_list)
 
         // conver temp to json object and save it to the list
         json_object *jobj = json_tokener_parse(temp);
-        ck_free(temp);  // Free temp after parsing
-        
-        if (jobj == NULL) {
-            fprintf(stderr, "[WARNING] Failed to parse JSON grammar, skipping\n");
-            continue;
-        }
-        
-        // CRITICAL: Validate that jobj is an array before adding to list
-        if (!json_object_is_type(jobj, json_type_array)) {
-            fprintf(stderr, "[WARNING] Parsed JSON is not an array, skipping\n");
-            json_object_put(jobj);  // Release the non-array object
-            continue;
-        }
-        
-        // CRITICAL: Validate array has at least one element
-        int array_len = json_object_array_length(jobj);
-        if (array_len == 0) {
-            fprintf(stderr, "[WARNING] Parsed JSON array is empty, skipping\n");
-            json_object_put(jobj);  // Release the empty array
-            continue;
-        }
-        
-        // CRITICAL: Validate first element is a string (should be the header)
-        json_object *first_elem = json_object_array_get_idx(jobj, 0);
-        if (!first_elem || !json_object_is_type(first_elem, json_type_string)) {
-            fprintf(stderr, "[WARNING] First element is not a string (array_len=%d), skipping\n", array_len);
-            json_object_put(jobj);  // Release invalid format
-            continue;
-        }
-        
         *kl_pushp(gram, grammar_list) = jobj;
 
         // printf("%s\n", temp);

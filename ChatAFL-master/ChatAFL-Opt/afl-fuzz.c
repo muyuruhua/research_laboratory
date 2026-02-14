@@ -43,9 +43,7 @@
 #include "alloc-inl.h"
 #include "hash.h"
 #include "chat-llm.h"
-#include "grammar-hypothesis.h"
 
-#include <curl/curl.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -242,15 +240,6 @@ static s32 cpu_aff = -1; /* Selected CPU core                */
 
 static FILE *plot_file; /* Gnuplot output file              */
 
-/* ============================================
- * ChatAFL-Opt: Grammar Hypothesis Globals
- * ============================================ */
-static hypothesis_context_t *hypothesis_ctx = NULL;  /* Global hypothesis context */
-static u8 hypothesis_mode = 0;                        /* Enable hypothesis-driven mode */
-static u32 hypothesis_refinement_interval = 100;     /* Refinement check interval */
-static u32 hypothesis_validation_count = 0;          /* Validation counter */
-/* ============================================ */
-
 struct queue_entry
 {
 
@@ -445,47 +434,26 @@ u32 reward_grammar;
 void setup_llm_grammars()
 {
 
-  ACTF("Getting grammars from LLM...");
-  fprintf(stderr, "[DEBUG] setup_llm_grammars: START\n");
-
-  // CRITICAL FIX: curl_global_init must be called once before any curl operations
-  curl_global_init(CURL_GLOBAL_DEFAULT);
+  ACTF("Getting grammars from LLM...111111111");
 
   khash_t(consistency_table) *const_table = kh_init(consistency_table);
   char *first_question;
   char *templates_prompt = construct_prompt_for_templates(protocol_name, &first_question);
-  fprintf(stderr, "[DEBUG] setup_llm_grammars: constructed prompt\n");
 
   for (int iter = 0; iter < TEMPLATE_CONSISTENCY_COUNT; iter++)
   {
-    fprintf(stderr, "[DEBUG] setup_llm_grammars: iteration %d\n", iter);
-    fprintf(stderr, "[DEBUG] setup_llm_grammars: templates_prompt=%p, first_question=%p\n", 
-            (void*)templates_prompt, (void*)first_question);
     klist_t(gram) *grammar_list = kl_init(gram);
 
-    fprintf(stderr, "[DEBUG] setup_llm_grammars: calling chat_with_llm for templates...\n");
     char *templates_answer = chat_with_llm(templates_prompt, "gpt-4o-mini", GRAMMAR_RETRIES, 0.5);
-    fprintf(stderr, "[DEBUG] setup_llm_grammars: got templates_answer=%p\n", (void*)templates_answer);
-    if (templates_answer == NULL) {
-      fprintf(stderr, "[DEBUG] setup_llm_grammars: templates_answer is NULL, skipping iteration %d\n", iter);
-      kl_destroy_gram(grammar_list);
-      continue;
-    }
+    if (templates_answer == NULL)
+      goto free_templates_answer;
 
     // printf("## Answer from LLM:\n %s\n", templates_answer);
-    fprintf(stderr, "[DEBUG] setup_llm_grammars: constructing remaining_prompt...\n");
     char *remaining_prompt = construct_prompt_for_remaining_templates(protocol_name, first_question, templates_answer);
     // printf("remaining prompt is:\n %s\n", remaining_prompt);
-    fprintf(stderr, "[DEBUG] setup_llm_grammars: calling chat_with_llm for remaining_templates...\n");
     char *remaining_templates = chat_with_llm(remaining_prompt, "gpt-4o-mini", GRAMMAR_RETRIES, 0.5);
-    fprintf(stderr, "[DEBUG] setup_llm_grammars: got remaining_templates=%p\n", (void*)remaining_templates);
-    if (remaining_templates == NULL) {
-      fprintf(stderr, "[DEBUG] setup_llm_grammars: remaining_templates is NULL, cleaning up iteration %d\n", iter);
-      free(remaining_prompt);
-      free(templates_answer);
-      kl_destroy_gram(grammar_list);
-      continue;
-    }
+    if (remaining_templates == NULL)
+      goto free_remaining;
 
     // printf("## Remaining templates:\n %s\n", remaining_templates);
 
@@ -500,25 +468,20 @@ void setup_llm_grammars()
     close(grammar_output_fd);
     ck_free(grammar_output_path);
 
-    fprintf(stderr, "[DEBUG] setup_llm_grammars: calling extract_message_grammars...\n");
     extract_message_grammars(combined_templates, grammar_list);
-    fprintf(stderr, "[DEBUG] setup_llm_grammars: extract_message_grammars done, grammar_list size=%zu\n", 
-            (size_t)(kl_end(grammar_list) - kl_begin(grammar_list)));
 
-    kliter_t(gram) * grammar_iter;
-    for (grammar_iter = kl_begin(grammar_list); grammar_iter != kl_end(grammar_list); grammar_iter = kl_next(grammar_iter))
+    kliter_t(gram) * iter;
+    for (iter = kl_begin(grammar_list); iter != kl_end(grammar_list); iter = kl_next(iter))
     {
-      json_object *jobj = kl_val(grammar_iter);
+      json_object *jobj = kl_val(iter);
 
       json_object *header = json_object_array_get_idx(jobj, 0);
 
       int absent;
 
       const char *header_str = json_object_get_string(header);
-      // CRITICAL FIX: strdup because jobj will be freed and header_str will become invalid
-      char *header_str_copy = ck_strdup((u8*)header_str);
 
-      khiter_t k = kh_put(consistency_table, const_table, header_str_copy, &absent);
+      khiter_t k = kh_put(consistency_table, const_table, header_str, &absent);
       if (absent)
       {
         khash_t(field_table) *field_table = kh_init(field_table);
@@ -528,10 +491,8 @@ void setup_llm_grammars()
       for (int i = 1; i < json_object_array_length(jobj); i++)
       {
         const char *v = json_object_get_string(json_object_array_get_idx(jobj, i));
-        // CRITICAL FIX: strdup because jobj will be freed and v will become invalid
-        char *v_copy = ck_strdup((u8*)v);
         khash_t(field_table) *field_table = kh_value(const_table, k);
-        khiter_t field_k = kh_put(field_table, field_table, v_copy, &absent);
+        khiter_t field_k = kh_put(field_table, field_table, v, &absent);
         if (absent)
         {
           kh_value(field_table, field_k) = 0;
@@ -539,20 +500,16 @@ void setup_llm_grammars()
         kh_value(field_table, field_k)++;
       }
     }
-    fprintf(stderr, "[DEBUG] setup_llm_grammars: finished processing grammars, calling kl_destroy_gram...\n");
     kl_destroy_gram(grammar_list);
-    fprintf(stderr, "[DEBUG] setup_llm_grammars: kl_destroy_gram completed\n");
 
-    // Clean up iteration resources
-    fprintf(stderr, "[DEBUG] setup_llm_grammars: freeing combined_templates=%p\n", (void*)combined_templates);
     free(combined_templates);
-    fprintf(stderr, "[DEBUG] setup_llm_grammars: freeing remaining_templates=%p\n", (void*)remaining_templates);
     free(remaining_templates);
-    fprintf(stderr, "[DEBUG] setup_llm_grammars: freeing remaining_prompt=%p\n", (void*)remaining_prompt);
+
+  free_remaining:
     free(remaining_prompt);
-    fprintf(stderr, "[DEBUG] setup_llm_grammars: freeing templates_answer=%p\n", (void*)templates_answer);
+
+  free_templates_answer:
     free(templates_answer);
-    fprintf(stderr, "[DEBUG] setup_llm_grammars: iteration %d completed successfully\n", iter);
   }
 
   int pattern_index = 0;
@@ -588,9 +545,6 @@ void setup_llm_grammars()
 
   free(first_question);
   free(templates_prompt);
-  
-  // CRITICAL FIX: cleanup curl after all LLM operations complete
-  curl_global_cleanup();
 }
 
 range_list parse_buffer(char *buf, size_t buf_len)
@@ -2810,14 +2764,7 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
     } 
 
     kh_destroy(strSet, messages);
-    free(nl_file_content);  // CRITICAL FIX: Free the file content buffer
   }
-  
-  // CRITICAL FIX: Free nl_files array allocated by scandir
-  for (int i = 0; i < nl_cnt; i++) {
-    free(nl_files[i]);
-  }
-  free(nl_files);
 }
 
 /* Enrich the testcases before startup */
@@ -4443,177 +4390,6 @@ static void perform_dry_run(char **argv)
 
   OKF("All test cases processed.");
 }
-
-
-/* ============================================
- * ChatAFL-Opt: Initialize Grammar Hypothesis System
- * ============================================ */
-static void init_grammar_hypothesis_system(void)
-{
-  if (!hypothesis_mode)
-    return;
-
-  ACTF("Initializing Grammar Hypothesis System...");
-
-  // Collect PCAP samples from seed corpus
-  char **pcap_samples = NULL;
-  size_t pcap_count = 0;
-
-  struct queue_entry *q = queue;
-  while (q && pcap_count < 10)
-  { // Limit to 10 samples
-    s32 fd = open(q->fname, O_RDONLY);
-    if (fd >= 0)
-    {
-      u8 *sample = ck_alloc_nozero(q->len + 1);
-      if (read(fd, sample, q->len) == (ssize_t)q->len)
-      {
-        sample[q->len] = '\0';
-        pcap_samples = ck_realloc(pcap_samples, (pcap_count + 1) * sizeof(char *));
-        pcap_samples[pcap_count++] = (char *)sample;
-      }
-      else
-      {
-        ck_free(sample);
-      }
-      close(fd);
-    }
-    q = q->next;
-  }
-
-  // Initialize hypothesis context
-  hypothesis_ctx = init_hypothesis_context(
-      protocol_name ? protocol_name : "UNKNOWN",
-      NULL, // RFC text (would be loaded from file in production)
-      pcap_samples,
-      pcap_count);
-
-  // Free the temporary pcap_samples array (init_hypothesis_context makes a copy)
-  for (size_t i = 0; i < pcap_count; i++) {
-    ck_free(pcap_samples[i]);
-  }
-  if (pcap_samples) ck_free(pcap_samples);
-
-  if (!hypothesis_ctx)
-  {
-    FATAL("Failed to initialize hypothesis context");
-  }
-
-  // Generate initial hypotheses
-  int hyp_count = generate_grammar_hypotheses(hypothesis_ctx, 5);
-
-  if (hyp_count == 0)
-  {
-    WARNF("No grammar hypotheses generated, continuing in standard mode");
-    hypothesis_mode = 0;
-    free_hypothesis_context(hypothesis_ctx);
-    hypothesis_ctx = NULL;
-  }
-  else
-  {
-    OKF("Generated %d grammar hypotheses", hyp_count);
-
-    // Save hypotheses to disk for reproducibility
-    char *hyp_dir = alloc_printf("%s/grammar-hypotheses", out_dir);
-    if (mkdir(hyp_dir, 0700) && errno != EEXIST)
-    {
-      PFATAL("Unable to create directory '%s'", hyp_dir);
-    }
-
-    fprintf(stderr, "[DEBUG] Starting to save %zu hypotheses to disk\n", hypothesis_ctx->hypothesis_count);
-    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++)
-    {
-      grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
-      fprintf(stderr, "[DEBUG] Saving hypothesis %zu/%zu: hyp=%p\n", i+1, hypothesis_ctx->hypothesis_count, (void*)hyp);
-      
-      // CRITICAL: Validate hypothesis pointer and fields before using
-      if (!hyp) {
-        fprintf(stderr, "[!] ERROR: hypothesis[%zu] is NULL, skipping\n", i);
-        continue;
-      }
-      if (!hyp->message_type) {
-        fprintf(stderr, "[!] ERROR: hypothesis[%zu]->message_type is NULL, skipping\n", i);
-        continue;
-      }
-      
-      fprintf(stderr, "[DEBUG]   message_type=%p (%s)\n", (void*)hyp->message_type, hyp->message_type);
-      fprintf(stderr, "[DEBUG]   description=%p\n", (void*)hyp->description);
-      
-      char *hyp_file = alloc_printf("%s/hypothesis-%llu-%s.json",
-                                    hyp_dir, hyp->hypothesis_id, hyp->message_type);
-      fprintf(stderr, "[DEBUG]   Calling save_hypothesis_to_file with file=%s\n", hyp_file);
-      save_hypothesis_to_file(hyp, hyp_file);
-      fprintf(stderr, "[DEBUG]   save_hypothesis_to_file completed\n");
-      ck_free(hyp_file);
-    }
-
-    ck_free(hyp_dir);
-    fprintf(stderr, "[DEBUG] All hypotheses saved successfully\n");
-  }
-
-  // Note: pcap_samples already freed after init_hypothesis_context (line 4449-4452)
-
-  OKF("Grammar Hypothesis System initialized.");
-}
-
-/* ============================================
- * ChatAFL-Opt: Validate and Refine Hypotheses
- * Called periodically during fuzzing loop
- * ============================================ */
-static void validate_and_refine_hypotheses(u8 *buf, u32 len)
-{
-  if (!hypothesis_mode || !hypothesis_ctx)
-    return;
-
-  hypothesis_validation_count++;
-
-  // Validate against all hypotheses
-  for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++)
-  {
-    grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
-
-    int valid = validate_message_against_hypothesis(hyp, buf, len);
-
-    if (!valid && hyp->parse_failure % 10 == 0)
-    {
-      // Add as counterexample every 10th failure
-      add_counterexample(hyp, buf, len, "Validation failed");
-    }
-  }
-
-  // Periodic refinement check
-  if (hypothesis_validation_count % hypothesis_refinement_interval == 0)
-  {
-    ACTF("Checking for hypothesis refinement (validation count: %u)...",
-         hypothesis_validation_count);
-
-    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++)
-    {
-      grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
-
-      // Refine if fitness is low and we have counterexamples
-      if (hyp->fitness < FITNESS_THRESHOLD && hyp->counterexample_count >= 3)
-      {
-        ACTF("Refining hypothesis for %s (fitness: %.3f, counterexamples: %zu)",
-             hyp->message_type, hyp->fitness, hyp->counterexample_count);
-
-        if (refine_hypothesis_with_counterexamples(hypothesis_ctx, hyp))
-        {
-          // Save refined hypothesis
-          char *hyp_file = alloc_printf("%s/grammar-hypotheses/hypothesis-%llu-%s-refined-%lu.json",
-                                        out_dir, hyp->hypothesis_id, hyp->message_type, time(NULL));
-          save_hypothesis_to_file(hyp, hyp_file);
-          ck_free(hyp_file);
-
-          OKF("Hypothesis refined: %s (new fitness: %.3f)",
-              hyp->message_type, hyp->fitness);
-        }
-      }
-    }
-  }
-}
-
-/* Original perform_dry_run end marker */
 
 /* Helper function: link() if possible, copy otherwise. */
 
@@ -6380,12 +6156,6 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
 {
 
   u8 fault;
-
-  /* ChatAFL-Opt: Validate message against hypotheses */
-  if (hypothesis_mode && hypothesis_ctx)
-  {
-    validate_and_refine_hypotheses(out_buf, len);
-  }
 
   if (post_handler)
   {
@@ -10942,14 +10712,6 @@ int main(int argc, char **argv)
     use_argv = argv + optind;
 
   perform_dry_run(use_argv);
-
-  /* ChatAFL-Opt: Initialize grammar hypothesis system */
-  if (getenv("CHATAFL_HYPOTHESIS"))
-  {
-    hypothesis_mode = 1;
-    OKF("Grammar Hypothesis Mode enabled (CHATAFL_HYPOTHESIS env var set)");
-    init_grammar_hypothesis_system();
-  }
 
   cull_queue();
 
