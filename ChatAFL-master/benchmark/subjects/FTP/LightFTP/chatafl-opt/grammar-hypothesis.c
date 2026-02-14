@@ -455,7 +455,7 @@ char* construct_hypothesis_refinement_prompt(
         protocol_name,
         hyp->message_type,
         hyp->description,
-        json_object_to_json_string_ext(hyp->schema, JSON_C_TO_STRING_PRETTY)
+        hyp->schema_str ? hyp->schema_str : "{}"
     );
     if (written < 0 || written >= MAX_HYPOTHESIS_PROMPT - offset) {
         fprintf(stderr, "[!] Refinement prompt buffer overflow at hypothesis details\n");
@@ -521,9 +521,14 @@ int generate_grammar_hypotheses(hypothesis_context_t *ctx, int max_hypotheses) {
     ck_free(prompt);
     
     if (!response) {
-        fprintf(stderr, "[!] Failed to generate hypotheses from LLM\n");
+        fprintf(stderr, "[!] Failed to generate hypotheses from LLM (NULL response)\n");
+        ctx->hypotheses = NULL;
+        ctx->hypothesis_count = 0;
         return 0;
     }
+    
+    fprintf(stderr, "[DEBUG] LLM response length: %zu bytes\n", strlen(response));
+    fprintf(stderr, "[DEBUG] LLM response first 200 chars: %.200s\n", response);
     
     // Remove markdown code block markers if present (```json ... ```)
     char *json_start = response;
@@ -551,25 +556,45 @@ int generate_grammar_hypotheses(hypothesis_context_t *ctx, int max_hypotheses) {
         }
     }
     
+    fprintf(stderr, "[DEBUG] Parsing JSON starting at offset: %td\n", json_start - response);
+    fprintf(stderr, "[DEBUG] JSON to parse (first 200 chars): %.200s\n", json_start);
+    
     // Parse LLM response into hypotheses
+    fprintf(stderr, "[DEBUG] About to call json_tokener_parse...\n");
     json_object *response_json = json_tokener_parse(json_start);
-    if (!response_json || !json_object_is_type(response_json, json_type_array)) {
-        fprintf(stderr, "[!] Invalid JSON response from LLM\n");
-        // Save failed response for debugging
-        FILE *debug_file = fopen("/tmp/failed_llm_response.txt", "w");
+    fprintf(stderr, "[DEBUG] json_tokener_parse returned: %p\n", (void*)response_json);
+    
+    if (!response_json) {
+        fprintf(stderr, "[!] Failed to parse JSON response (json_tokener_parse returned NULL)\n");
+        FILE *debug_file = fopen("/tmp/failed_llm_response_parse_null.txt", "w");
         if (debug_file) {
-            fprintf(debug_file, "%s", response);
+            fprintf(debug_file, "Full response:\n%s\n\nJSON start:\n%s\n", response, json_start);
             fclose(debug_file);
         }
-        if (response_json) {
-            json_object_put(response_json);
-        }
         free(response);
-        // Explicitly set hypotheses to NULL and count to 0 before returning
         ctx->hypotheses = NULL;
         ctx->hypothesis_count = 0;
         return 0;
     }
+    
+    if (!json_object_is_type(response_json, json_type_array)) {
+        fprintf(stderr, "[!] Invalid JSON response from LLM (not an array, type=%s)\n",
+                json_type_to_name(json_object_get_type(response_json)));
+        FILE *debug_file = fopen("/tmp/failed_llm_response_not_array.txt", "w");
+        if (debug_file) {
+            fprintf(debug_file, "Full response:\n%s\n\nParsed JSON:\n%s\n", 
+                   response, json_object_to_json_string_ext(response_json, JSON_C_TO_STRING_PRETTY));
+            fclose(debug_file);
+        }
+        json_object_put(response_json);
+        free(response);
+        ctx->hypotheses = NULL;
+        ctx->hypothesis_count = 0;
+        return 0;
+    }
+    
+    fprintf(stderr, "[DEBUG] Successfully parsed JSON array with %zu elements\n", 
+           json_object_array_length(response_json));
     
     size_t hyp_count = json_object_array_length(response_json);
     if (hyp_count > (size_t)max_hypotheses) {
@@ -582,9 +607,21 @@ int generate_grammar_hypotheses(hypothesis_context_t *ctx, int max_hypotheses) {
     
     for (size_t i = 0; i < hyp_count; i++) {
         json_object *hyp_json = json_object_array_get_idx(response_json, i);
-        grammar_hypothesis_t *hyp = parse_llm_hypothesis_response(
-            json_object_to_json_string(hyp_json)
-        );
+        if (!hyp_json) {
+            fprintf(stderr, "[!] Warning: hypothesis %zu is NULL in response array\n", i);
+            continue;
+        }
+        
+        // CRITICAL FIX: Copy the JSON string because json_object_to_json_string returns internal buffer
+        const char *json_str_ptr = json_object_to_json_string(hyp_json);
+        if (!json_str_ptr) {
+            fprintf(stderr, "[!] Warning: failed to serialize hypothesis %zu to JSON string\n", i);
+            continue;
+        }
+        char *json_str_copy = strdup(json_str_ptr);
+        
+        grammar_hypothesis_t *hyp = parse_llm_hypothesis_response(json_str_copy);
+        free(json_str_copy);  // Safe to free after parsing
         
         if (hyp && ctx->hypothesis_count < hyp_count) {  // Bounds check
             hyp->hypothesis_id = (unsigned long long)time(NULL) * 1000 + i;
@@ -592,13 +629,19 @@ int generate_grammar_hypotheses(hypothesis_context_t *ctx, int max_hypotheses) {
             hyp->last_updated = time(NULL);
             
             ctx->hypotheses[ctx->hypothesis_count++] = hyp;
+            fprintf(stderr, "[DEBUG] Successfully parsed hypothesis %zu (id=%llu)\n", i, hyp->hypothesis_id);
         } else if (hyp && ctx->hypothesis_count >= hyp_count) {
             // Array full but parse succeeded - free the orphaned hypothesis
+            fprintf(stderr, "[!] Warning: hypothesis array full, discarding hypothesis %zu\n", i);
             free_grammar_hypothesis(hyp);
+        } else {
+            fprintf(stderr, "[!] Warning: failed to parse hypothesis %zu\n", i);
         }
     }
     
+    fprintf(stderr, "[DEBUG] About to call json_object_put(response_json=%p) at line 640\n", (void*)response_json);
     json_object_put(response_json);
+    fprintf(stderr, "[DEBUG] Successfully released response_json\n");
     free(response);
     
     printf("[+] Generated %zu grammar hypotheses\n", ctx->hypothesis_count);
@@ -606,8 +649,19 @@ int generate_grammar_hypotheses(hypothesis_context_t *ctx, int max_hypotheses) {
 }
 
 grammar_hypothesis_t* parse_llm_hypothesis_response(const char *llm_response) {
+    if (!llm_response) {
+        fprintf(stderr, "[!] parse_llm_hypothesis_response: NULL response\n");
+        return NULL;
+    }
+    
+    fprintf(stderr, "[DEBUG] parse_llm_hypothesis_response: parsing string (len=%zu)\n", strlen(llm_response));
     json_object *jobj = json_tokener_parse(llm_response);
-    if (!jobj) return NULL;
+    fprintf(stderr, "[DEBUG] parse_llm_hypothesis_response: jobj=%p\n", (void*)jobj);
+    if (!jobj) {
+        fprintf(stderr, "[!] parse_llm_hypothesis_response: Failed to parse JSON\n");
+        fprintf(stderr, "[!] Response was: %.200s\n", llm_response);
+        return NULL;
+    }
     
     grammar_hypothesis_t *hyp = (grammar_hypothesis_t*)ck_alloc(sizeof(grammar_hypothesis_t));
     memset(hyp, 0, sizeof(grammar_hypothesis_t));
@@ -615,20 +669,32 @@ grammar_hypothesis_t* parse_llm_hypothesis_response(const char *llm_response) {
     // Extract message_type
     json_object *msg_type_obj;
     if (json_object_object_get_ex(jobj, "message_type", &msg_type_obj)) {
-        hyp->message_type = (char*)ck_strdup((u8*)json_object_get_string(msg_type_obj));
+        const char *msg_type_str = json_object_get_string(msg_type_obj);
+        if (msg_type_str && strlen(msg_type_str) > 0) {
+            hyp->message_type = (char*)ck_strdup((u8*)msg_type_str);
+        }
     }
     
     // Extract description
     json_object *desc_obj;
     if (json_object_object_get_ex(jobj, "description", &desc_obj)) {
-        hyp->description = (char*)ck_strdup((u8*)json_object_get_string(desc_obj));
+        const char *desc_str = json_object_get_string(desc_obj);
+        if (desc_str && strlen(desc_str) > 0) {
+            hyp->description = (char*)ck_strdup((u8*)desc_str);
+        }
     }
     
-    // Extract schema
+    // Extract schema - store as string copy instead of JSON object to avoid ref count issues
     json_object *schema_obj;
     if (json_object_object_get_ex(jobj, "schema", &schema_obj)) {
-        hyp->schema = json_object_get(schema_obj);  // Increment ref count
+        // Store schema as a string instead of keeping the JSON object
+        const char *schema_str = json_object_to_json_string_ext(schema_obj, JSON_C_TO_STRING_PLAIN);
+        if (schema_str) {
+            hyp->schema_str = (char*)ck_strdup((u8*)schema_str);
+        }
         extract_constraints_from_schema(hyp, schema_obj);
+        // Don't store the JSON object itself to avoid reference count issues
+        hyp->schema = NULL;
     }
     
     // Extract production_rules
@@ -641,7 +707,12 @@ grammar_hypothesis_t* parse_llm_hypothesis_response(const char *llm_response) {
             
             for (size_t i = 0; i < hyp->rule_count; i++) {
                 json_object *rule = json_object_array_get_idx(rules_obj, i);
-                hyp->production_rules[i] = (char*)ck_strdup((u8*)json_object_get_string(rule));
+                if (rule) {
+                    const char *rule_str = json_object_get_string(rule);
+                    if (rule_str) {
+                        hyp->production_rules[i] = (char*)ck_strdup((u8*)rule_str);
+                    }
+                }
             }
         }
     }
@@ -655,131 +726,128 @@ grammar_hypothesis_t* parse_llm_hypothesis_response(const char *llm_response) {
     hyp->counterexamples = NULL;
     hyp->counterexample_count = 0;
     
+    fprintf(stderr, "[DEBUG] parse_llm_hypothesis_response: about to json_object_put(jobj=%p)\n", (void*)jobj);
     json_object_put(jobj);
+    fprintf(stderr, "[DEBUG] parse_llm_hypothesis_response: successfully released jobj\n");
     return hyp;
 }
 
 void extract_constraints_from_schema(grammar_hypothesis_t *hyp, json_object *schema) {
-    // Extract constraints from JSON Schema
-    json_object *properties;
-    if (!json_object_object_get_ex(schema, "properties", &properties)) {
-        return;
-    }
-    
-    // Count properties to allocate constraints
-    size_t prop_count = json_object_object_length(properties);
-    size_t max_constraints = prop_count * 10;  // Over-allocate for multiple constraints per field
+    // Fallback string-based extractor: operate on hyp->schema_str when available
+    // This avoids direct traversal of json_object internals which showed
+    // instability across different json-c usages in this environment.
+    if (!hyp || !hyp->schema_str) return;
+
+    const char *s = hyp->schema_str;
+    const char *props = strstr(s, "\"properties\"");
+    if (!props) return;
+    const char *p = strchr(props, '{');
+    if (!p) return;
+    p++; // enter properties block
+
+    // Heuristic parser: find each "fieldname" : { ... }
+    size_t max_constraints = 32;
     hyp->constraints = (field_constraint_t**)ck_alloc(max_constraints * sizeof(field_constraint_t*));
-    memset(hyp->constraints, 0, max_constraints * sizeof(field_constraint_t*));  // Initialize to NULL
+    memset(hyp->constraints, 0, max_constraints * sizeof(field_constraint_t*));
     hyp->constraint_count = 0;
-    
-    json_object_object_foreach(properties, field_name, field_schema) {
-        // Length constraints
-        json_object *min_len, *max_len;
-        if (json_object_object_get_ex(field_schema, "minLength", &min_len) ||
-            json_object_object_get_ex(field_schema, "maxLength", &max_len)) {
-            
+
+    while (1) {
+        // find next field name
+        const char *quote = strchr(p, '"');
+        if (!quote) break;
+        const char *q2 = strchr(quote + 1, '"');
+        if (!q2) break;
+        size_t fnlen = q2 - quote - 1;
+        char field_name[128];
+        if (fnlen >= sizeof(field_name)) break;
+        memcpy(field_name, quote + 1, fnlen);
+        field_name[fnlen] = '\0';
+
+        // move to the following '{'
+        const char *brace = strchr(q2, '{');
+        if (!brace) break;
+        const char *block = brace + 1;
+        // find the end of this block (simple brace matching)
+        int depth = 1;
+        const char *it = block;
+        while (*it && depth > 0) {
+            if (*it == '{') depth++; else if (*it == '}') depth--;
+            it++;
+        }
+        if (depth != 0) break;
+        size_t block_len = (size_t)(it - block - 1);
+        char *block_buf = (char*)ck_alloc(block_len + 1);
+        memcpy(block_buf, block, block_len);
+        block_buf[block_len] = '\0';
+
+        // search for minLength / maxLength
+        const char *minp = strstr(block_buf, "minLength");
+        const char *maxp = strstr(block_buf, "maxLength");
+        if (minp || maxp) {
             field_constraint_t *constraint = (field_constraint_t*)ck_alloc(sizeof(field_constraint_t));
             memset(constraint, 0, sizeof(field_constraint_t));
             constraint->type = CONSTRAINT_LENGTH;
             constraint->field_name = (char*)ck_strdup((u8*)field_name);
-            constraint->data.length.min = min_len ? json_object_get_int64(min_len) : 0;
-            constraint->data.length.max = max_len ? json_object_get_int64(max_len) : SIZE_MAX;
-            constraint->violations = 0;
-            constraint->validations = 0;
-            constraint->confidence = 1.0;
-            
+            constraint->data.length.min = 0;
+            constraint->data.length.max = SIZE_MAX;
+
+            if (minp) {
+                long long v = 0;
+                // Simple digit scanner for minLength value
+                const char *d = minp;
+                while (*d && !isdigit((unsigned char)*d)) d++;
+                if (*d) v = strtoll(d, NULL, 10);
+                constraint->data.length.min = (size_t)(v > 0 ? v : 0);
+            }
+            if (maxp) {
+                long long v = 0;
+                // Simple digit scanner for maxLength value
+                const char *d = maxp;
+                while (*d && !isdigit((unsigned char)*d)) d++;
+                if (*d) v = strtoll(d, NULL, 10);
+                constraint->data.length.max = (size_t)(v > 0 ? v : SIZE_MAX);
+            }
+
             if (hyp->constraint_count < max_constraints) {
                 hyp->constraints[hyp->constraint_count++] = constraint;
             } else {
-                fprintf(stderr, "[!] Warning: Max constraints reached, discarding LENGTH constraint\n");
                 ck_free(constraint->field_name);
                 ck_free(constraint);
             }
         }
-        
-        // Enum constraints
-        json_object *enum_obj;
-        if (json_object_object_get_ex(field_schema, "enum", &enum_obj)) {
-            if (json_object_is_type(enum_obj, json_type_array)) {
-                field_constraint_t *constraint = (field_constraint_t*)ck_alloc(sizeof(field_constraint_t));
-                memset(constraint, 0, sizeof(field_constraint_t));
-                constraint->type = CONSTRAINT_ENUM;
-                constraint->field_name = (char*)ck_strdup((u8*)field_name);
-                
-                size_t enum_count = json_object_array_length(enum_obj);
-                constraint->data.enumeration.count = enum_count;
-                constraint->data.enumeration.values = (char**)ck_alloc(enum_count * sizeof(char*));
-                memset(constraint->data.enumeration.values, 0, enum_count * sizeof(char*));  // Initialize to NULL
-                
-                for (size_t i = 0; i < enum_count; i++) {
-                    json_object *val = json_object_array_get_idx(enum_obj, i);
-                    constraint->data.enumeration.values[i] = (char*)ck_strdup((u8*)json_object_get_string(val));
-                }
-                
-                constraint->violations = 0;
-                constraint->validations = 0;
-                constraint->confidence = 1.0;
-                
-                if (hyp->constraint_count < max_constraints) {
-                    hyp->constraints[hyp->constraint_count++] = constraint;
-                } else {
-                    fprintf(stderr, "[!] Warning: Max constraints reached, discarding constraint\n");
-                    for (size_t k = 0; k < constraint->data.enumeration.count; k++) {
-                        ck_free(constraint->data.enumeration.values[k]);
+
+        // search for pattern
+        const char *patternp = strstr(block_buf, "\"pattern\"");
+        if (patternp) {
+            const char *start = strchr(patternp, '"');
+            if (start) {
+                start = strchr(start+1, '"');
+                if (start) {
+                    start++;
+                    const char *end = strchr(start, '"');
+                    if (end) {
+                        size_t plen = end - start;
+                        field_constraint_t *constraint = (field_constraint_t*)ck_alloc(sizeof(field_constraint_t));
+                        memset(constraint, 0, sizeof(field_constraint_t));
+                        constraint->type = CONSTRAINT_REGEX;
+                        constraint->field_name = (char*)ck_strdup((u8*)field_name);
+                        constraint->data.regex.pattern = (char*)ck_alloc(plen + 1);
+                        memcpy(constraint->data.regex.pattern, start, plen);
+                        constraint->data.regex.pattern[plen] = '\0';
+                        if (hyp->constraint_count < max_constraints) {
+                            hyp->constraints[hyp->constraint_count++] = constraint;
+                        } else {
+                            ck_free(constraint->data.regex.pattern);
+                            ck_free(constraint->field_name);
+                            ck_free(constraint);
+                        }
                     }
-                    ck_free(constraint->data.enumeration.values);
-                    ck_free(constraint->field_name);
-                    ck_free(constraint);
                 }
             }
         }
-        
-        // Pattern (regex) constraints
-        json_object *pattern_obj;
-        if (json_object_object_get_ex(field_schema, "pattern", &pattern_obj)) {
-            field_constraint_t *constraint = (field_constraint_t*)ck_alloc(sizeof(field_constraint_t));
-            memset(constraint, 0, sizeof(field_constraint_t));
-            constraint->type = CONSTRAINT_REGEX;
-            constraint->field_name = (char*)ck_strdup((u8*)field_name);
-            constraint->data.regex.pattern = (char*)ck_strdup((u8*)json_object_get_string(pattern_obj));
-            constraint->violations = 0;
-            constraint->validations = 0;
-            constraint->confidence = 1.0;
-            
-            if (hyp->constraint_count < max_constraints) {
-                hyp->constraints[hyp->constraint_count++] = constraint;
-            } else {
-                fprintf(stderr, "[!] Warning: Max constraints reached, discarding REGEX constraint\n");
-                ck_free(constraint->data.regex.pattern);
-                ck_free(constraint->field_name);
-                ck_free(constraint);
-            }
-        }
-        
-        // Numeric range constraints
-        json_object *minimum, *maximum;
-        if (json_object_object_get_ex(field_schema, "minimum", &minimum) ||
-            json_object_object_get_ex(field_schema, "maximum", &maximum)) {
-            
-            field_constraint_t *constraint = (field_constraint_t*)ck_alloc(sizeof(field_constraint_t));
-            memset(constraint, 0, sizeof(field_constraint_t));
-            constraint->type = CONSTRAINT_NUMERIC;
-            constraint->field_name = (char*)ck_strdup((u8*)field_name);
-            constraint->data.numeric.min = minimum ? json_object_get_int64(minimum) : LLONG_MIN;
-            constraint->data.numeric.max = maximum ? json_object_get_int64(maximum) : LLONG_MAX;
-            constraint->violations = 0;
-            constraint->validations = 0;
-            constraint->confidence = 1.0;
-            
-            if (hyp->constraint_count < max_constraints) {
-                hyp->constraints[hyp->constraint_count++] = constraint;
-            } else {
-                fprintf(stderr, "[!] Warning: Max constraints reached, discarding NUMERIC constraint\n");
-                ck_free(constraint->field_name);
-                ck_free(constraint);
-            }
-        }
+
+        ck_free(block_buf);
+        p = it; // advance
     }
 }
 
@@ -955,6 +1023,10 @@ int refine_hypothesis_with_counterexamples(
     hyp->schema = refined_hyp->schema;
     refined_hyp->schema = NULL;  // Transfer ownership
     
+    ck_free(hyp->schema_str);
+    hyp->schema_str = refined_hyp->schema_str;
+    refined_hyp->schema_str = NULL;  // Transfer ownership
+    
     // Transfer production_rules
     for (size_t i = 0; i < hyp->rule_count; i++) {
         ck_free(hyp->production_rules[i]);
@@ -1063,9 +1135,14 @@ int save_hypothesis_to_file(grammar_hypothesis_t *hyp, const char *filepath) {
     json_object_object_add(jobj, "description", 
         hyp->description ? json_object_new_string(hyp->description) : json_object_new_string(""));
     
-    // CRITICAL: Handle NULL schema safely
-    if (hyp->schema) {
-        json_object_object_add(jobj, "schema", json_object_get(hyp->schema));
+    // CRITICAL: Handle NULL schema safely - use schema_str instead of schema object
+    if (hyp->schema_str) {
+        json_object *schema_parsed = json_tokener_parse(hyp->schema_str);
+        if (schema_parsed) {
+            json_object_object_add(jobj, "schema", schema_parsed);
+        } else {
+            json_object_object_add(jobj, "schema", json_object_new_object());
+        }
     } else {
         json_object_object_add(jobj, "schema", json_object_new_object());
     }
@@ -1116,6 +1193,7 @@ void free_grammar_hypothesis(grammar_hypothesis_t *hyp) {
     if (hyp->schema) {
         json_object_put(hyp->schema);
     }
+    ck_free(hyp->schema_str);
     
     for (size_t i = 0; i < hyp->constraint_count; i++) {
         field_constraint_t *c = hyp->constraints[i];
