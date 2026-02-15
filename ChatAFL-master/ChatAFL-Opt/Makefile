@@ -69,8 +69,23 @@ afl-as: afl-as.c afl-as.h $(COMM_HDR) | test_x86
 	$(CC) $(CFLAGS) $@.c -o $@ $(LDFLAGS)
 	ln -sf afl-as as
 
-afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet.o aflnet.h chat-llm.o chat-llm.h | test_x86
-	$(CC) $(CFLAGS) $@.c aflnet.o chat-llm.o -o $@ $(LDFLAGS) -lcurl -ljson-c -lpcre2-8
+aflnet.o: aflnet.c aflnet.h $(COMM_HDR)
+	$(CC) $(CFLAGS) -c -o $@ aflnet.c
+
+chat-llm.o: chat-llm.c chat-llm.h $(COMM_HDR)
+	$(CC) $(CFLAGS) -c -o $@ chat-llm.c
+
+grammar-hypothesis.o: grammar-hypothesis.c grammar-hypothesis.h $(COMM_HDR)
+	$(CC) $(CFLAGS) -c grammar-hypothesis.c -o grammar-hypothesis.o
+
+hypothesis-adapter.o: hypothesis-adapter.c hypothesis-adapter.h grammar-hypothesis.h $(COMM_HDR)
+	$(CC) $(CFLAGS) -c hypothesis-adapter.c -o hypothesis-adapter.o
+
+rfc-knowledge.o: rfc-knowledge.c rfc-knowledge.h $(COMM_HDR)
+	$(CC) $(CFLAGS) -c rfc-knowledge.c -o rfc-knowledge.o
+
+afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet.o aflnet.h chat-llm.o chat-llm.h grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o | test_x86
+	$(CC) $(CFLAGS) $@.c aflnet.o chat-llm.o grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o -o $@ $(LDFLAGS) -lcurl -ljson-c -lpcre2-8
 
 afl-replay: afl-replay.c $(COMM_HDR) aflnet.o aflnet.h | test_x86
 	$(CC) $(CFLAGS) $@.c aflnet.o -o $@ $(LDFLAGS)

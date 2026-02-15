@@ -215,8 +215,7 @@ static char* json_escape_string(const char *str, size_t max_len) {
     size_t src_len = strlen(str);
     if (src_len > max_len) src_len = max_len;
     
-    // Allocate enough for worst case: every char becomes 2 chars + null terminator
-    // Add extra space for safety (6x for unicode escape sequences if needed)
+    // Allocate enough for worst case: every char becomes 6 chars (\\uXXXX) + null terminator
     size_t buf_size = src_len * 6 + 1;
     char *escaped = (char*)ck_alloc(buf_size);
     memset(escaped, 0, buf_size);  // Initialize buffer
@@ -228,7 +227,10 @@ static char* json_escape_string(const char *str, size_t max_len) {
             break;
         }
         
-        switch (str[i]) {
+        unsigned char c = (unsigned char)str[i];
+        
+        // Handle all control characters and special JSON characters
+        switch (c) {
             case '"':  escaped[j++] = '\\'; escaped[j++] = '"'; break;
             case '\\': escaped[j++] = '\\'; escaped[j++] = '\\'; break;
             case '\n': escaped[j++] = '\\'; escaped[j++] = 'n'; break;
@@ -237,11 +239,18 @@ static char* json_escape_string(const char *str, size_t max_len) {
             case '\b': escaped[j++] = '\\'; escaped[j++] = 'b'; break;
             case '\f': escaped[j++] = '\\'; escaped[j++] = 'f'; break;
             default:
-                if ((unsigned char)str[i] < 32) {
-                    // Control characters - skip them
-                    continue;
+                // Skip ALL control characters (ASCII 0-31 and 127)
+                // This includes \v (vertical tab, 0x0B), \a (bell, 0x07), etc.
+                if (c < 32 || c == 127) {
+                    // Replace with space for readability instead of skipping
+                    escaped[j++] = ' ';
+                } else if (c >= 128) {
+                    // High-bit characters: keep as-is (UTF-8 safe)
+                    escaped[j++] = c;
+                } else {
+                    // Normal printable ASCII character
+                    escaped[j++] = c;
                 }
-                escaped[j++] = str[i];
                 break;
         }
     }
@@ -530,6 +539,25 @@ int generate_grammar_hypotheses(hypothesis_context_t *ctx, int max_hypotheses) {
     fprintf(stderr, "[DEBUG] LLM response length: %zu bytes\n", strlen(response));
     fprintf(stderr, "[DEBUG] LLM response first 200 chars: %.200s\n", response);
     
+    // Check for error response from API
+    if (strstr(response, "\"error\"") && strstr(response, "\"message\"")) {
+        fprintf(stderr, "[!] LLM API returned error response\n");
+        fprintf(stderr, "[!] Error details: %.500s\n", response);
+        free(response);
+        ctx->hypotheses = NULL;
+        ctx->hypothesis_count = 0;
+        return 0;
+    }
+    
+    // Check for empty or invalid response
+    if (strlen(response) < 10) {
+        fprintf(stderr, "[!] LLM response too short (likely empty)\n");
+        free(response);
+        ctx->hypotheses = NULL;
+        ctx->hypothesis_count = 0;
+        return 0;
+    }
+    
     // Remove markdown code block markers if present (```json ... ```)
     char *json_start = response;
     if (strncmp(response, "```json", 7) == 0) {
@@ -733,139 +761,121 @@ grammar_hypothesis_t* parse_llm_hypothesis_response(const char *llm_response) {
 }
 
 void extract_constraints_from_schema(grammar_hypothesis_t *hyp, json_object *schema) {
-    // Extract constraints from JSON Schema
-    json_object *properties;
-    if (!json_object_object_get_ex(schema, "properties", &properties)) {
-        return;
-    }
-    
-    // Count properties to allocate constraints
-    size_t prop_count = json_object_object_length(properties);
-    size_t max_constraints = prop_count * 10;  // Over-allocate for multiple constraints per field
+    // Fallback string-based extractor: operate on hyp->schema_str when available
+    // This avoids direct traversal of json_object internals which showed
+    // instability across different json-c usages in this environment.
+    if (!hyp || !hyp->schema_str) return;
+
+    const char *s = hyp->schema_str;
+    const char *props = strstr(s, "\"properties\"");
+    if (!props) return;
+    const char *p = strchr(props, '{');
+    if (!p) return;
+    p++; // enter properties block
+
+    // Heuristic parser: find each "fieldname" : { ... }
+    size_t max_constraints = 32;
     hyp->constraints = (field_constraint_t**)ck_alloc(max_constraints * sizeof(field_constraint_t*));
-    memset(hyp->constraints, 0, max_constraints * sizeof(field_constraint_t*));  // Initialize to NULL
+    memset(hyp->constraints, 0, max_constraints * sizeof(field_constraint_t*));
     hyp->constraint_count = 0;
-    
-    json_object_object_foreach(properties, field_name, field_schema) {
-        // Length constraints
-        json_object *min_len, *max_len;
-        if (json_object_object_get_ex(field_schema, "minLength", &min_len) ||
-            json_object_object_get_ex(field_schema, "maxLength", &max_len)) {
-            
+
+    while (1) {
+        // find next field name
+        const char *quote = strchr(p, '"');
+        if (!quote) break;
+        const char *q2 = strchr(quote + 1, '"');
+        if (!q2) break;
+        size_t fnlen = q2 - quote - 1;
+        char field_name[128];
+        if (fnlen >= sizeof(field_name)) break;
+        memcpy(field_name, quote + 1, fnlen);
+        field_name[fnlen] = '\0';
+
+        // move to the following '{'
+        const char *brace = strchr(q2, '{');
+        if (!brace) break;
+        const char *block = brace + 1;
+        // find the end of this block (simple brace matching)
+        int depth = 1;
+        const char *it = block;
+        while (*it && depth > 0) {
+            if (*it == '{') depth++; else if (*it == '}') depth--;
+            it++;
+        }
+        if (depth != 0) break;
+        size_t block_len = (size_t)(it - block - 1);
+        char *block_buf = (char*)ck_alloc(block_len + 1);
+        memcpy(block_buf, block, block_len);
+        block_buf[block_len] = '\0';
+
+        // search for minLength / maxLength
+        const char *minp = strstr(block_buf, "minLength");
+        const char *maxp = strstr(block_buf, "maxLength");
+        if (minp || maxp) {
             field_constraint_t *constraint = (field_constraint_t*)ck_alloc(sizeof(field_constraint_t));
             memset(constraint, 0, sizeof(field_constraint_t));
             constraint->type = CONSTRAINT_LENGTH;
-            if (field_name && strlen(field_name) > 0) {
-                constraint->field_name = (char*)ck_strdup((u8*)field_name);
-            } else {
-                constraint->field_name = NULL;
+            constraint->field_name = (char*)ck_strdup((u8*)field_name);
+            constraint->data.length.min = 0;
+            constraint->data.length.max = SIZE_MAX;
+
+            if (minp) {
+                long long v = 0;
+                // Simple digit scanner for minLength value
+                const char *d = minp;
+                while (*d && !isdigit((unsigned char)*d)) d++;
+                if (*d) v = strtoll(d, NULL, 10);
+                constraint->data.length.min = (size_t)(v > 0 ? v : 0);
             }
-            constraint->data.length.min = min_len ? json_object_get_int64(min_len) : 0;
-            constraint->data.length.max = max_len ? json_object_get_int64(max_len) : SIZE_MAX;
-            constraint->violations = 0;
-            constraint->validations = 0;
-            constraint->confidence = 1.0;
-            
+            if (maxp) {
+                long long v = 0;
+                // Simple digit scanner for maxLength value
+                const char *d = maxp;
+                while (*d && !isdigit((unsigned char)*d)) d++;
+                if (*d) v = strtoll(d, NULL, 10);
+                constraint->data.length.max = (size_t)(v > 0 ? v : SIZE_MAX);
+            }
+
             if (hyp->constraint_count < max_constraints) {
                 hyp->constraints[hyp->constraint_count++] = constraint;
             } else {
-                fprintf(stderr, "[!] Warning: Max constraints reached, discarding LENGTH constraint\n");
                 ck_free(constraint->field_name);
                 ck_free(constraint);
             }
         }
-        
-        // Enum constraints
-        json_object *enum_obj;
-        if (json_object_object_get_ex(field_schema, "enum", &enum_obj)) {
-            if (json_object_is_type(enum_obj, json_type_array)) {
-                field_constraint_t *constraint = (field_constraint_t*)ck_alloc(sizeof(field_constraint_t));
-                memset(constraint, 0, sizeof(field_constraint_t));
-                constraint->type = CONSTRAINT_ENUM;
-                if (field_name && strlen(field_name) > 0) {
-                    constraint->field_name = (char*)ck_strdup((u8*)field_name);
-                } else {
-                    constraint->field_name = NULL;
-                }
-                
-                size_t enum_count = json_object_array_length(enum_obj);
-                constraint->data.enumeration.count = enum_count;
-                constraint->data.enumeration.values = (char**)ck_alloc(enum_count * sizeof(char*));
-                memset(constraint->data.enumeration.values, 0, enum_count * sizeof(char*));  // Initialize to NULL
-                
-                for (size_t i = 0; i < enum_count; i++) {
-                    json_object *val = json_object_array_get_idx(enum_obj, i);
-                    if (val) {
-                        const char *val_str = json_object_get_string(val);
-                        if (val_str && strlen(val_str) > 0) {
-                            constraint->data.enumeration.values[i] = (char*)ck_strdup((u8*)val_str);
+
+        // search for pattern
+        const char *patternp = strstr(block_buf, "\"pattern\"");
+        if (patternp) {
+            const char *start = strchr(patternp, '"');
+            if (start) {
+                start = strchr(start+1, '"');
+                if (start) {
+                    start++;
+                    const char *end = strchr(start, '"');
+                    if (end) {
+                        size_t plen = end - start;
+                        field_constraint_t *constraint = (field_constraint_t*)ck_alloc(sizeof(field_constraint_t));
+                        memset(constraint, 0, sizeof(field_constraint_t));
+                        constraint->type = CONSTRAINT_REGEX;
+                        constraint->field_name = (char*)ck_strdup((u8*)field_name);
+                        constraint->data.regex.pattern = (char*)ck_alloc(plen + 1);
+                        memcpy(constraint->data.regex.pattern, start, plen);
+                        constraint->data.regex.pattern[plen] = '\0';
+                        if (hyp->constraint_count < max_constraints) {
+                            hyp->constraints[hyp->constraint_count++] = constraint;
+                        } else {
+                            ck_free(constraint->data.regex.pattern);
+                            ck_free(constraint->field_name);
+                            ck_free(constraint);
                         }
                     }
                 }
-                
-                constraint->violations = 0;
-                constraint->validations = 0;
-                constraint->confidence = 1.0;
-                
-                if (hyp->constraint_count < max_constraints) {
-                    hyp->constraints[hyp->constraint_count++] = constraint;
-                } else {
-                    fprintf(stderr, "[!] Warning: Max constraints reached, discarding constraint\n");
-                    for (size_t k = 0; k < constraint->data.enumeration.count; k++) {
-                        ck_free(constraint->data.enumeration.values[k]);
-                    }
-                    ck_free(constraint->data.enumeration.values);
-                    ck_free(constraint->field_name);
-                    ck_free(constraint);
-                }
             }
         }
-        
-        // Pattern (regex) constraints
-        json_object *pattern_obj;
-        if (json_object_object_get_ex(field_schema, "pattern", &pattern_obj)) {
-            field_constraint_t *constraint = (field_constraint_t*)ck_alloc(sizeof(field_constraint_t));
-            memset(constraint, 0, sizeof(field_constraint_t));
-            constraint->type = CONSTRAINT_REGEX;
-            constraint->field_name = (char*)ck_strdup((u8*)field_name);
-            constraint->data.regex.pattern = (char*)ck_strdup((u8*)json_object_get_string(pattern_obj));
-            constraint->violations = 0;
-            constraint->validations = 0;
-            constraint->confidence = 1.0;
-            
-            if (hyp->constraint_count < max_constraints) {
-                hyp->constraints[hyp->constraint_count++] = constraint;
-            } else {
-                fprintf(stderr, "[!] Warning: Max constraints reached, discarding REGEX constraint\n");
-                ck_free(constraint->data.regex.pattern);
-                ck_free(constraint->field_name);
-                ck_free(constraint);
-            }
-        }
-        
-        // Numeric range constraints
-        json_object *minimum, *maximum;
-        if (json_object_object_get_ex(field_schema, "minimum", &minimum) ||
-            json_object_object_get_ex(field_schema, "maximum", &maximum)) {
-            
-            field_constraint_t *constraint = (field_constraint_t*)ck_alloc(sizeof(field_constraint_t));
-            memset(constraint, 0, sizeof(field_constraint_t));
-            constraint->type = CONSTRAINT_NUMERIC;
-            constraint->field_name = (char*)ck_strdup((u8*)field_name);
-            constraint->data.numeric.min = minimum ? json_object_get_int64(minimum) : LLONG_MIN;
-            constraint->data.numeric.max = maximum ? json_object_get_int64(maximum) : LLONG_MAX;
-            constraint->violations = 0;
-            constraint->validations = 0;
-            constraint->confidence = 1.0;
-            
-            if (hyp->constraint_count < max_constraints) {
-                hyp->constraints[hyp->constraint_count++] = constraint;
-            } else {
-                fprintf(stderr, "[!] Warning: Max constraints reached, discarding NUMERIC constraint\n");
-                ck_free(constraint->field_name);
-                ck_free(constraint);
-            }
-        }
+
+        ck_free(block_buf);
+        p = it; // advance
     }
 }
 

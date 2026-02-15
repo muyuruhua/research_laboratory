@@ -215,8 +215,7 @@ static char* json_escape_string(const char *str, size_t max_len) {
     size_t src_len = strlen(str);
     if (src_len > max_len) src_len = max_len;
     
-    // Allocate enough for worst case: every char becomes 2 chars + null terminator
-    // Add extra space for safety (6x for unicode escape sequences if needed)
+    // Allocate enough for worst case: every char becomes 6 chars (\\uXXXX) + null terminator
     size_t buf_size = src_len * 6 + 1;
     char *escaped = (char*)ck_alloc(buf_size);
     memset(escaped, 0, buf_size);  // Initialize buffer
@@ -228,7 +227,10 @@ static char* json_escape_string(const char *str, size_t max_len) {
             break;
         }
         
-        switch (str[i]) {
+        unsigned char c = (unsigned char)str[i];
+        
+        // Handle all control characters and special JSON characters
+        switch (c) {
             case '"':  escaped[j++] = '\\'; escaped[j++] = '"'; break;
             case '\\': escaped[j++] = '\\'; escaped[j++] = '\\'; break;
             case '\n': escaped[j++] = '\\'; escaped[j++] = 'n'; break;
@@ -237,11 +239,18 @@ static char* json_escape_string(const char *str, size_t max_len) {
             case '\b': escaped[j++] = '\\'; escaped[j++] = 'b'; break;
             case '\f': escaped[j++] = '\\'; escaped[j++] = 'f'; break;
             default:
-                if ((unsigned char)str[i] < 32) {
-                    // Control characters - skip them
-                    continue;
+                // Skip ALL control characters (ASCII 0-31 and 127)
+                // This includes \v (vertical tab, 0x0B), \a (bell, 0x07), etc.
+                if (c < 32 || c == 127) {
+                    // Replace with space for readability instead of skipping
+                    escaped[j++] = ' ';
+                } else if (c >= 128) {
+                    // High-bit characters: keep as-is (UTF-8 safe)
+                    escaped[j++] = c;
+                } else {
+                    // Normal printable ASCII character
+                    escaped[j++] = c;
                 }
-                escaped[j++] = str[i];
                 break;
         }
     }
@@ -529,6 +538,25 @@ int generate_grammar_hypotheses(hypothesis_context_t *ctx, int max_hypotheses) {
     
     fprintf(stderr, "[DEBUG] LLM response length: %zu bytes\n", strlen(response));
     fprintf(stderr, "[DEBUG] LLM response first 200 chars: %.200s\n", response);
+    
+    // Check for error response from API
+    if (strstr(response, "\"error\"") && strstr(response, "\"message\"")) {
+        fprintf(stderr, "[!] LLM API returned error response\n");
+        fprintf(stderr, "[!] Error details: %.500s\n", response);
+        free(response);
+        ctx->hypotheses = NULL;
+        ctx->hypothesis_count = 0;
+        return 0;
+    }
+    
+    // Check for empty or invalid response
+    if (strlen(response) < 10) {
+        fprintf(stderr, "[!] LLM response too short (likely empty)\n");
+        free(response);
+        ctx->hypotheses = NULL;
+        ctx->hypothesis_count = 0;
+        return 0;
+    }
     
     // Remove markdown code block markers if present (```json ... ```)
     char *json_start = response;

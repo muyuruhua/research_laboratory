@@ -43,6 +43,8 @@
 #include "alloc-inl.h"
 #include "hash.h"
 #include "chat-llm.h"
+#include "grammar-hypothesis.h"
+#include "hypothesis-adapter.h"
 
 #include <stdio.h>
 #include <unistd.h>
@@ -545,6 +547,27 @@ void setup_llm_grammars()
 
   free(first_question);
   free(templates_prompt);
+
+  /* New: generate richer grammar hypotheses via LLM and integrate them
+   * This keeps the original extraction code intact (open/closed): we extend
+   * the system by calling the hypothesis module and an adapter that converts
+   * hypotheses into pcre2 patterns used by the rest of the fuzzer.
+   */
+  {
+    fprintf(stderr, "[setup_llm_grammars] Invoking grammar-hypothesis generation via LLM for protocol '%s'...\n", protocol_name ? protocol_name : "(unknown)");
+    hypothesis_context_t *hctx = init_hypothesis_context(protocol_name, NULL, NULL, 0);
+    if (hctx) {
+      int num = generate_grammar_hypotheses(hctx, 32);
+      fprintf(stderr, "[setup_llm_grammars] generate_grammar_hypotheses returned %d\n", num);
+      if (num > 0) {
+        int integrated = integrate_hypotheses_into_protocol_patterns(hctx, protocol_patterns, message_types_set, out_dir);
+        fprintf(stderr, "[setup_llm_grammars] integrate_hypotheses_into_protocol_patterns integrated %d hypotheses\n", integrated);
+      }
+      free_hypothesis_context(hctx);
+    } else {
+      fprintf(stderr, "[setup_llm_grammars] Warning: failed to init hypothesis context\n");
+    }
+  }
 }
 
 range_list parse_buffer(char *buf, size_t buf_len)

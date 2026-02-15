@@ -962,7 +962,21 @@ char *enrich_sequence(char *sequence, khash_t(strSet) * missing_message_types)
     char *prompt = NULL;
     char *content = NULL;
 
-    json_object *sequence_escaped = json_object_new_string(sequence);
+    // Clean control characters from sequence before using it
+    // Replace ALL control characters (0-31, 127) with spaces to avoid LLM API errors
+    size_t seq_len = strlen(sequence);
+    char *cleaned_sequence = ck_alloc(seq_len + 1);
+    for (size_t i = 0; i < seq_len; i++) {
+        unsigned char c = (unsigned char)sequence[i];
+        if (c < 32 || c == 127) {
+            cleaned_sequence[i] = ' ';  // Replace control chars with space
+        } else {
+            cleaned_sequence[i] = c;
+        }
+    }
+    cleaned_sequence[seq_len] = '\0';
+
+    json_object *sequence_escaped = json_object_new_string(cleaned_sequence);
     const char *sequence_escaped_str = json_object_to_json_string(sequence_escaped);
     sequence_escaped_str++;
 
@@ -977,6 +991,7 @@ char *enrich_sequence(char *sequence, khash_t(strSet) * missing_message_types)
     
     free(content);
     ck_free(missing_fields_seq);
+    ck_free(cleaned_sequence);
     json_object_put(sequence_escaped);
 
     char *response = chat_with_llm(prompt, "gpt-4o-mini", ENRICHMENT_RETRIES, 0.5);
