@@ -962,37 +962,78 @@ char *enrich_sequence(char *sequence, khash_t(strSet) * missing_message_types)
     char *prompt = NULL;
     char *content = NULL;
 
-    // Clean control characters from sequence before using it
-    // Replace ALL control characters (0-31, 127) with spaces to avoid LLM API errors
+    // ULTIMATE FIX: Manually escape JSON to avoid json-c double-escaping issues
+    // This is the ONLY reliable way to handle binary fuzzer test cases
     size_t seq_len = strlen(sequence);
-    char *cleaned_sequence = ck_alloc(seq_len + 1);
-    for (size_t i = 0; i < seq_len; i++) {
+    size_t escaped_capacity = seq_len * 6 + 1;  // Worst case: each char becomes \uXXXX
+    char *manual_escaped = ck_alloc(escaped_capacity);
+    size_t out_pos = 0;
+    
+    for (size_t i = 0; i < seq_len && out_pos < escaped_capacity - 10; i++) {
         unsigned char c = (unsigned char)sequence[i];
-        if (c < 32 || c == 127) {
-            cleaned_sequence[i] = ' ';  // Replace control chars with space
+        
+        // Handle special JSON escape sequences
+        if (c == '\"') {
+            manual_escaped[out_pos++] = '\\';
+            manual_escaped[out_pos++] = '\"';
+        } else if (c == '\\') {
+            manual_escaped[out_pos++] = '\\';
+            manual_escaped[out_pos++] = '\\';
+        } else if (c == '\n') {
+            manual_escaped[out_pos++] = '\\';
+            manual_escaped[out_pos++] = 'n';
+        } else if (c == '\r') {
+            manual_escaped[out_pos++] = '\\';
+            manual_escaped[out_pos++] = 'r';
+        } else if (c == '\t') {
+            manual_escaped[out_pos++] = '\\';
+            manual_escaped[out_pos++] = 't';
+        } else if (c < 32 || c == 127) {
+            // ALL control characters as unicode escape to be 100% safe
+            snprintf(manual_escaped + out_pos, 7, "\\u%04x", c);
+            out_pos += 6;
+        } else if (c >= 32 && c <= 126) {
+            manual_escaped[out_pos++] = c;  // Printable ASCII
         } else {
-            cleaned_sequence[i] = c;
+            // Non-ASCII: use unicode escape
+            snprintf(manual_escaped + out_pos, 7, "\\u%04x", c);
+            out_pos += 6;
         }
     }
-    cleaned_sequence[seq_len] = '\0';
+    manual_escaped[out_pos] = '\0';
 
-    json_object *sequence_escaped = json_object_new_string(cleaned_sequence);
-    const char *sequence_escaped_str = json_object_to_json_string(sequence_escaped);
-    sequence_escaped_str++;
-
-    int sequence_len = strlen(sequence_escaped_str) - 1;
+    // Truncate if needed for token limit
+    int sequence_len = strlen(manual_escaped);
     int allowed_tokens = (MAX_TOKENS - strlen(prompt_template) - missing_fields_len);
-    if (sequence_len > allowed_tokens)
-    {
+    if (sequence_len > allowed_tokens) {
         sequence_len = allowed_tokens;
+        manual_escaped[sequence_len] = '\0';
     }
-    asprintf(&content, prompt_template, sequence_len, sequence_escaped_str, missing_fields_len, missing_fields_seq);
-    asprintf(&prompt, "[{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"}, {\"role\": \"user\", \"content\": \"%s\"}]", content);
+    
+    // Build content string using manual_escaped
+    asprintf(&content, prompt_template, sequence_len, manual_escaped, missing_fields_len, missing_fields_seq);
+    
+    // CRITICAL: Build final prompt without asprintf to avoid double-escaping!
+    // We must manually concatenate to preserve our carefully escaped sequence
+    const char *prompt_prefix = "[{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"}, {\"role\": \"user\", \"content\": \"";
+    const char *prompt_suffix = "\"}]";
+    
+    size_t prompt_len = strlen(prompt_prefix) + strlen(content) + strlen(prompt_suffix) + 1;
+    prompt = malloc(prompt_len);
+    if (!prompt) {
+        free(content);
+        ck_free(missing_fields_seq);
+        ck_free(manual_escaped);
+        return NULL;
+    }
+    
+    strcpy(prompt, prompt_prefix);
+    strcat(prompt, content);
+    strcat(prompt, prompt_suffix);
     
     free(content);
     ck_free(missing_fields_seq);
-    ck_free(cleaned_sequence);
-    json_object_put(sequence_escaped);
+    ck_free(manual_escaped);
 
     char *response = chat_with_llm(prompt, "gpt-4o-mini", ENRICHMENT_RETRIES, 0.5);
 
