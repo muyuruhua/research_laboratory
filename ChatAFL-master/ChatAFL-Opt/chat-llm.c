@@ -1163,9 +1163,20 @@ int min(int a, int b) {
 char *enrich_sequence(char *sequence, khash_t(strSet) * missing_message_types)
 {
     const char *prompt_template =
-        "The following is one sequence of client requests:\\n"
-        "%.*s\\n"
-        "Please add the %.*s client requests in the proper locations, and the modified sequence of client requests is:";
+        "You are a fuzzing expert testing an FTP server. Current request sequence:\\n"
+        "%.*s\\n\\n"
+        "Task: Add %.*s commands to MAXIMIZE code coverage by:\\n"
+        "1. EXPLORE new paths: Use uncommon command combinations (ALLO+STOR, REST+RETR, REIN)\\n"
+        "2. TRIGGER errors: Invalid paths (/../../etc), missing files, permission denials\\n"
+        "3. TEST boundaries: Long names (256+ chars), special chars (@#$%%^), empty args\\n"
+        "4. CREATE complexity: Nested dirs (a/b/c/d/e), rename chains, concurrent ops\\n"
+        "5. PROBE edge cases: Case variants (MKD vs mkd), repeated commands, state transitions\\n\\n"
+        "Requirements:\\n"
+        "- Generate commands that cover DIFFERENT code branches\\n"
+        "- Include both valid and INVALID scenarios\\n"
+        "- Use diverse parameters (paths, filenames, ports)\\n"
+        "- Insert commands at strategic positions to maximize state transitions\\n\\n"
+        "Output ONLY the modified command sequence (no explanations):";
 
     int missing_fields_len = 0;
     int missing_fields_capacity = 100;
