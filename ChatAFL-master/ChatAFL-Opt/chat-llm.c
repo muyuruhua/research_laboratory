@@ -74,6 +74,16 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
     {
         asprintf(&data, "{\"model\": \"gpt-4o-mini\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
     }
+    
+    // DEBUG: Print request data for hypothesis system debugging
+    if (strstr(prompt, "protocol") != NULL && strstr(prompt, "templates") != NULL) {
+        fprintf(stderr, "\n=== LLM REQUEST DEBUG ===\n");
+        fprintf(stderr, "URL: %s\n", url);
+        fprintf(stderr, "Data length: %zu bytes\n", strlen(data));
+        fprintf(stderr, "First 500 chars of data:\n%.500s\n", data);
+        fprintf(stderr, "========================\n\n");
+    }
+    
     curl_global_init(CURL_GLOBAL_DEFAULT);
     do
     {
@@ -95,6 +105,10 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
             curl_easy_setopt(curl, CURLOPT_URL, url);
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, chat_with_llm_helper);
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+            
+            // Set timeouts to prevent hanging
+            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 120L);  // Total request timeout: 120 seconds
+            curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 30L);  // Connection timeout: 30 seconds
 
             res = curl_easy_perform(curl);
 
@@ -187,6 +201,11 @@ char *construct_prompt_for_templates(char *protocol_name, char **final_msg)
     char *msg = NULL;
     asprintf(&msg, "%s\\n%s\\nFor the %s protocol, all of client request templates are :", prompt_rtsp_example, prompt_http_example, protocol_name);
     *final_msg = msg;
+    
+    // CRITICAL FIX: Use json-c to properly escape the message content
+    json_object *msg_obj = json_object_new_string(msg);
+    const char *msg_escaped = json_object_to_json_string(msg_obj);
+    
     /** Format of prompt_grammars
     prompt_grammars = [
         {"role": "system", "content": "You are a helpful assistant."},
@@ -195,7 +214,9 @@ char *construct_prompt_for_templates(char *protocol_name, char **final_msg)
      **/
     char *prompt_grammars = NULL;
 
-    asprintf(&prompt_grammars, "[{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"}, {\"role\": \"user\", \"content\": \"%s\"}]", msg);
+    asprintf(&prompt_grammars, "[{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"}, {\"role\": \"user\", \"content\": %s}]", msg_escaped);
+    
+    json_object_put(msg_obj);  // Free json object
 
     return prompt_grammars;
 }
@@ -205,24 +226,29 @@ char *construct_prompt_for_remaining_templates(char *protocol_name, char *first_
     char *second_question = NULL;
     asprintf(&second_question, "For the %s protocol, other templates of client requests are:", protocol_name);
 
+    // CRITICAL FIX: Escape all string fields properly using json-c
     json_object *answer_str = json_object_new_string(first_answer);
-    // printf("The First Question\n%s\n\n", first_question);
-    // printf("The First Answer\n%s\n\n", first_answer);
-    // printf("The Second Question\n%s\n\n", second_question);
+    json_object *first_q_obj = json_object_new_string(first_question);
+    json_object *second_q_obj = json_object_new_string(second_question);
+    
     const char *answer_str_escaped = json_object_to_json_string(answer_str);
+    const char *first_q_escaped = json_object_to_json_string(first_q_obj);
+    const char *second_q_escaped = json_object_to_json_string(second_q_obj);
 
     char *prompt = NULL;
 
     asprintf(&prompt,
              "["
              "{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"},"
-             "{\"role\": \"user\", \"content\": \"%s\"},"
+             "{\"role\": \"user\", \"content\": %s},"
              "{\"role\": \"assistant\", \"content\": %s },"
-             "{\"role\": \"user\", \"content\": \"%s\"}"
+             "{\"role\": \"user\", \"content\": %s}"
              "]",
-             first_question, answer_str_escaped, second_question);
+             first_q_escaped, answer_str_escaped, second_q_escaped);
 
     json_object_put(answer_str);
+    json_object_put(first_q_obj);
+    json_object_put(second_q_obj);
     free(second_question);
 
     return prompt;

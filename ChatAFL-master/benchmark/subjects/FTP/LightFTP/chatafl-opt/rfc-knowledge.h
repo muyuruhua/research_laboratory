@@ -149,3 +149,6 @@ char* construct_prompt_with_rfc(
 void cleanup_rfc_cache(void);
 
 #endif // __RFC_KNOWLEDGE_H
+
+// (Header end)
+

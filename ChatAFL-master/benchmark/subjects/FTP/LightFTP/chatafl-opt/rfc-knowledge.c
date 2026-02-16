@@ -1,7 +1,7 @@
 /*
  * ChatAFL-Opt: RFC Knowledge Implementation
  * =========================================
- * 
+ *
  * Implements RFC fetching, caching, and structured knowledge extraction.
  */
 

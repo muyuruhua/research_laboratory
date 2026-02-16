@@ -16,10 +16,6 @@
 #define MAX_TOKENS 2048
 #define CONFIDENT_TIMES 3
 
-// Slow connection protection: abort if speed < 1KB/s for 30 seconds
-#define LLM_API_LOW_SPEED_LIMIT 1024L
-#define LLM_API_LOW_SPEED_TIME 30L
-
 struct MemoryStruct
 {
     char *memory;
@@ -31,14 +27,13 @@ static size_t chat_with_llm_helper(void *contents, size_t size, size_t nmemb, vo
     size_t realsize = size * nmemb;
     struct MemoryStruct *mem = (struct MemoryStruct *)userp;
 
-    char *ptr = realloc(mem->memory, mem->size + realsize + 1);
-    if (ptr == NULL)
+    mem->memory = realloc(mem->memory, mem->size + realsize + 1);
+    if (mem->memory == NULL)
     {
-        /* out of memory! Don't overwrite mem->memory to avoid leak */
+        /* out of memory! */
         printf("not enough memory (realloc returned NULL)\n");
         return 0;
     }
-    mem->memory = ptr;
 
     memcpy(&(mem->memory[mem->size]), contents, realsize);
     mem->size += realsize;
@@ -80,36 +75,16 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
         asprintf(&data, "{\"model\": \"gpt-4o-mini\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
     }
     curl_global_init(CURL_GLOBAL_DEFAULT);
-    int backoff = LLM_API_RETRY_BACKOFF_INIT;
-    int attempt = 0;
-    int should_retry = 1; // Flag to distinguish retryable vs fatal errors
     do
     {
-        if (attempt > 0) {
-            printf("[LLM] Retry attempt %d/%d after %d seconds backoff\n", attempt, tries, backoff);
-            sleep(backoff);
-            backoff *= 2; // Exponential backoff: 2 -> 4 -> 8 seconds
-        }
-        attempt++;
-        should_retry = 1; // Reset for each attempt
         struct MemoryStruct chunk;
 
         chunk.memory = malloc(1); /* will be grown as needed by the realloc above */
         chunk.size = 0;           /* no data at this point */
 
         curl = curl_easy_init();
-        if (!curl)
+        if (curl)
         {
-            fprintf(stderr, "[LLM] Error: curl_easy_init() failed\n");
-            res = CURLE_FAILED_INIT;
-            goto cleanup_chunk;
-        }
-        
-        {
-            // CURL error buffer for detailed error messages
-            char curl_error_buffer[CURL_ERROR_SIZE];
-            curl_error_buffer[0] = '\0';
-            
             struct curl_slist *headers = NULL;
             headers = curl_slist_append(headers, auth_header);
             headers = curl_slist_append(headers, content_header);
@@ -121,153 +96,57 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, chat_with_llm_helper);
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
             
-            // Timeout configuration
-            curl_easy_setopt(curl, CURLOPT_TIMEOUT, (long)LLM_API_TIMEOUT);
-            curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, (long)LLM_API_CONNECT_TIMEOUT);
-            
-            // Slow connection protection: abort if speed < 1KB/s for 30s
-            curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, LLM_API_LOW_SPEED_LIMIT);
-            curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, LLM_API_LOW_SPEED_TIME);
-            
-            // Enable detailed error messages
-            curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, curl_error_buffer);
+            // Set timeouts to prevent hanging
+            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 120L);  // Total request timeout: 120 seconds
+            curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 30L);  // Connection timeout: 30 seconds
 
             res = curl_easy_perform(curl);
 
             if (res == CURLE_OK)
             {
-                fprintf(stderr, "[LLM] ✓ CURL request successful, parsing JSON response (%zu bytes)\n", chunk.size);
-                
-                // Save response for debugging
-                FILE *debug_resp = fopen("/tmp/llm_raw_response.json", "w");
-                if (debug_resp) {
-                    fwrite(chunk.memory, 1, chunk.size, debug_resp);
-                    fclose(debug_resp);
-                    fprintf(stderr, "[LLM] → Saved raw response to /tmp/llm_raw_response.json\n");
-                }
-                
                 json_object *jobj = json_tokener_parse(chunk.memory);
-                fprintf(stderr, "[LLM] → json_tokener_parse returned: %p\n", (void*)jobj);
-                
-                // CRITICAL: Check jobj is valid
-                if (!jobj) {
-                    fprintf(stderr, "[LLM] Error: Failed to parse JSON response\n");
-                    fprintf(stderr, "[LLM] Response was: %s\n", chunk.memory);
-                } else if (json_object_object_get_ex(jobj, "choices", NULL))
+
+                // Check if the "choices" key exists
+                if (json_object_object_get_ex(jobj, "choices", NULL))
                 {
                     json_object *choices = json_object_object_get(jobj, "choices");
-                    fprintf(stderr, "[LLM] → choices object: %p\n", (void*)choices);
-                    if (!choices) {
-                        fprintf(stderr, "[LLM] Error: choices is NULL\n");
-                        json_object_put(jobj);
-                        goto cleanup_chunk;
-                    }
-                    
                     json_object *first_choice = json_object_array_get_idx(choices, 0);
-                    fprintf(stderr, "[LLM] → first_choice: %p\n", (void*)first_choice);
-                    if (!first_choice) {
-                        fprintf(stderr, "[LLM] Error: first_choice is NULL (empty choices array)\n");
-                        json_object_put(jobj);
-                        goto cleanup_chunk;
-                    }
-                    
-                    const char *response_content = NULL;
+                    const char *data;
 
                     // The answer begins with a newline character, so we remove it
                     if (strcmp(model, "gpt-4o") == 0)
                     {
                         json_object *jobj4 = json_object_object_get(first_choice, "text");
-                        if (jobj4) {
-                            response_content = json_object_get_string(jobj4);
-                        }
+                        data = json_object_get_string(jobj4);
                     }
                     else
                     {
                         json_object *jobj4 = json_object_object_get(first_choice, "message");
-                        if (jobj4) {
-                            json_object *jobj5 = json_object_object_get(jobj4, "content");
-                            if (jobj5) {
-                                response_content = json_object_get_string(jobj5);
-                            }
-                        }
+                        json_object *jobj5 = json_object_object_get(jobj4, "content");
+                        data = json_object_get_string(jobj5);
                     }
-                    
-                    // CRITICAL: NULL-safe data handling
-                    fprintf(stderr, "[LLM] → response_content pointer: %p\n", (void*)response_content);
-                    if (!response_content) {
-                        fprintf(stderr, "[LLM] Warning: NULL response content from API\n");
-                        answer = NULL;
-                    } else if (strlen(response_content) == 0) {
-                        fprintf(stderr, "[LLM] Warning: Empty response content from API\n");
-                        answer = NULL;
-                    } else {
-                        fprintf(stderr, "[LLM] → response_content length: %zu\n", strlen(response_content));
-                        if (response_content[0] == '\n')
-                            response_content++;
-                        answer = strdup(response_content);
-                        fprintf(stderr, "[LLM] → answer: %p\n", (void*)answer);
-                    }
-                    json_object_put(jobj);
+                    if (data[0] == '\n')
+                        data++;
+                    answer = strdup(data);
                 }
-                else if (jobj)
+                else
                 {
-                    // Error response with valid JSON structure
                     printf("Error response is: %s\n", chunk.memory);
                     sleep(2); // Sleep for a small amount of time to ensure that the service can recover
-                    json_object_put(jobj);
                 }
-                // If jobj is NULL, it was already handled in the first if block
+                json_object_put(jobj);
             }
             else
             {
-                // Enhanced error handling with timeout type distinction
-                if (res == CURLE_OPERATION_TIMEDOUT) {
-                    printf("[LLM] ⏱ Operation timeout after %d seconds (attempt %d/%d)\n", 
-                           LLM_API_TIMEOUT, attempt, tries);
-                    if (strlen(curl_error_buffer) > 0) {
-                        printf("[LLM] Details: %s\n", curl_error_buffer);
-                    }
-                } else if (res == CURLE_COULDNT_CONNECT) {
-                    printf("[LLM] ⚠ Connection failed after %d seconds (attempt %d/%d)\n",
-                           LLM_API_CONNECT_TIMEOUT, attempt, tries);
-                    if (strlen(curl_error_buffer) > 0) {
-                        printf("[LLM] Details: %s\n", curl_error_buffer);
-                    }
-                } else if (res == CURLE_COULDNT_RESOLVE_HOST) {
-                    printf("[LLM] ❌ Fatal: Cannot resolve API host '%s'\n", url);
-                    should_retry = 0; // DNS failure is not retryable
-                } else if (res == CURLE_OUT_OF_MEMORY) {
-                    printf("[LLM] ❌ Fatal: Out of memory\n");
-                    should_retry = 0; // Memory exhaustion is not retryable
-                } else {
-                    // Generic error with detailed message
-                    printf("[LLM] Error: %s (attempt %d/%d)\n", curl_easy_strerror(res), attempt, tries);
-                    if (strlen(curl_error_buffer) > 0) {
-                        printf("[LLM] Details: %s\n", curl_error_buffer);
-                    }
-                }
-                
-                // Check HTTP status code for non-retryable errors
-                long http_code = 0;
-                curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-                if (http_code >= 400 && http_code < 500 && http_code != 429) {
-                    // 4xx errors (except 429 Too Many Requests) are client errors, don't retry
-                    printf("[LLM] ❌ Fatal: HTTP %ld client error, retry disabled\n", http_code);
-                    should_retry = 0;
-                } else if (http_code == 429) {
-                    printf("[LLM] ⚠ HTTP 429 Rate Limited, will retry with backoff\n");
-                } else if (http_code >= 500) {
-                    printf("[LLM] ⚠ HTTP %ld server error, will retry\n", http_code);
-                }
+                printf("Error: %s\n", curl_easy_strerror(res));
             }
 
             curl_slist_free_all(headers);
             curl_easy_cleanup(curl);
-        } // End of CURL initialization block
+        }
 
-cleanup_chunk:
         free(chunk.memory);
-    } while ((res != CURLE_OK || answer == NULL) && (--tries > 0) && should_retry);
+    } while ((res != CURLE_OK || answer == NULL) && (--tries > 0));
 
     if (data != NULL)
     {
@@ -312,6 +191,11 @@ char *construct_prompt_for_templates(char *protocol_name, char **final_msg)
     char *msg = NULL;
     asprintf(&msg, "%s\\n%s\\nFor the %s protocol, all of client request templates are :", prompt_rtsp_example, prompt_http_example, protocol_name);
     *final_msg = msg;
+    
+    // CRITICAL FIX: Use json-c to properly escape the message content
+    json_object *msg_obj = json_object_new_string(msg);
+    const char *msg_escaped = json_object_to_json_string(msg_obj);
+    
     /** Format of prompt_grammars
     prompt_grammars = [
         {"role": "system", "content": "You are a helpful assistant."},
@@ -320,7 +204,9 @@ char *construct_prompt_for_templates(char *protocol_name, char **final_msg)
      **/
     char *prompt_grammars = NULL;
 
-    asprintf(&prompt_grammars, "[{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"}, {\"role\": \"user\", \"content\": \"%s\"}]", msg);
+    asprintf(&prompt_grammars, "[{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"}, {\"role\": \"user\", \"content\": %s}]", msg_escaped);
+    
+    json_object_put(msg_obj);  // Free json object
 
     return prompt_grammars;
 }
@@ -330,24 +216,29 @@ char *construct_prompt_for_remaining_templates(char *protocol_name, char *first_
     char *second_question = NULL;
     asprintf(&second_question, "For the %s protocol, other templates of client requests are:", protocol_name);
 
+    // CRITICAL FIX: Escape all string fields properly using json-c
     json_object *answer_str = json_object_new_string(first_answer);
-    // printf("The First Question\n%s\n\n", first_question);
-    // printf("The First Answer\n%s\n\n", first_answer);
-    // printf("The Second Question\n%s\n\n", second_question);
+    json_object *first_q_obj = json_object_new_string(first_question);
+    json_object *second_q_obj = json_object_new_string(second_question);
+    
     const char *answer_str_escaped = json_object_to_json_string(answer_str);
+    const char *first_q_escaped = json_object_to_json_string(first_q_obj);
+    const char *second_q_escaped = json_object_to_json_string(second_q_obj);
 
     char *prompt = NULL;
 
     asprintf(&prompt,
              "["
              "{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"},"
-             "{\"role\": \"user\", \"content\": \"%s\"},"
+             "{\"role\": \"user\", \"content\": %s},"
              "{\"role\": \"assistant\", \"content\": %s },"
-             "{\"role\": \"user\", \"content\": \"%s\"}"
+             "{\"role\": \"user\", \"content\": %s}"
              "]",
-             first_question, answer_str_escaped, second_question);
+             first_q_escaped, answer_str_escaped, second_q_escaped);
 
     json_object_put(answer_str);
+    json_object_put(first_q_obj);
+    json_object_put(second_q_obj);
     free(second_question);
 
     return prompt;
@@ -1087,22 +978,78 @@ char *enrich_sequence(char *sequence, khash_t(strSet) * missing_message_types)
     char *prompt = NULL;
     char *content = NULL;
 
-    json_object *sequence_escaped = json_object_new_string(sequence);
-    const char *sequence_escaped_str = json_object_to_json_string(sequence_escaped);
-    sequence_escaped_str++;
-
-    int sequence_len = strlen(sequence_escaped_str) - 1;
-    int allowed_tokens = (MAX_TOKENS - strlen(prompt_template) - missing_fields_len);
-    if (sequence_len > allowed_tokens)
-    {
-        sequence_len = allowed_tokens;
+    // ULTIMATE FIX: Manually escape JSON to avoid json-c double-escaping issues
+    // This is the ONLY reliable way to handle binary fuzzer test cases
+    size_t seq_len = strlen(sequence);
+    size_t escaped_capacity = seq_len * 6 + 1;  // Worst case: each char becomes \uXXXX
+    char *manual_escaped = ck_alloc(escaped_capacity);
+    size_t out_pos = 0;
+    
+    for (size_t i = 0; i < seq_len && out_pos < escaped_capacity - 10; i++) {
+        unsigned char c = (unsigned char)sequence[i];
+        
+        // Handle special JSON escape sequences
+        if (c == '\"') {
+            manual_escaped[out_pos++] = '\\';
+            manual_escaped[out_pos++] = '\"';
+        } else if (c == '\\') {
+            manual_escaped[out_pos++] = '\\';
+            manual_escaped[out_pos++] = '\\';
+        } else if (c == '\n') {
+            manual_escaped[out_pos++] = '\\';
+            manual_escaped[out_pos++] = 'n';
+        } else if (c == '\r') {
+            manual_escaped[out_pos++] = '\\';
+            manual_escaped[out_pos++] = 'r';
+        } else if (c == '\t') {
+            manual_escaped[out_pos++] = '\\';
+            manual_escaped[out_pos++] = 't';
+        } else if (c < 32 || c == 127) {
+            // ALL control characters as unicode escape to be 100% safe
+            snprintf(manual_escaped + out_pos, 7, "\\u%04x", c);
+            out_pos += 6;
+        } else if (c >= 32 && c <= 126) {
+            manual_escaped[out_pos++] = c;  // Printable ASCII
+        } else {
+            // Non-ASCII: use unicode escape
+            snprintf(manual_escaped + out_pos, 7, "\\u%04x", c);
+            out_pos += 6;
+        }
     }
-    asprintf(&content, prompt_template, sequence_len, sequence_escaped_str, missing_fields_len, missing_fields_seq);
-    asprintf(&prompt, "[{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"}, {\"role\": \"user\", \"content\": \"%s\"}]", content);
+    manual_escaped[out_pos] = '\0';
+
+    // Truncate if needed for token limit
+    int sequence_len = strlen(manual_escaped);
+    int allowed_tokens = (MAX_TOKENS - strlen(prompt_template) - missing_fields_len);
+    if (sequence_len > allowed_tokens) {
+        sequence_len = allowed_tokens;
+        manual_escaped[sequence_len] = '\0';
+    }
+    
+    // Build content string using manual_escaped
+    asprintf(&content, prompt_template, sequence_len, manual_escaped, missing_fields_len, missing_fields_seq);
+    
+    // CRITICAL: Build final prompt without asprintf to avoid double-escaping!
+    // We must manually concatenate to preserve our carefully escaped sequence
+    const char *prompt_prefix = "[{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"}, {\"role\": \"user\", \"content\": \"";
+    const char *prompt_suffix = "\"}]";
+    
+    size_t prompt_len = strlen(prompt_prefix) + strlen(content) + strlen(prompt_suffix) + 1;
+    prompt = malloc(prompt_len);
+    if (!prompt) {
+        free(content);
+        ck_free(missing_fields_seq);
+        ck_free(manual_escaped);
+        return NULL;
+    }
+    
+    strcpy(prompt, prompt_prefix);
+    strcat(prompt, content);
+    strcat(prompt, prompt_suffix);
     
     free(content);
     ck_free(missing_fields_seq);
-    json_object_put(sequence_escaped);
+    ck_free(manual_escaped);
 
     char *response = chat_with_llm(prompt, "gpt-4o-mini", ENRICHMENT_RETRIES, 0.5);
 
