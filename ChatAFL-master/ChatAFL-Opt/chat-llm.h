@@ -67,6 +67,7 @@ KHASH_INIT(consistency_table, const char *, khash_t(field_table) *, 1, kh_str_ha
 char *chat_with_llm(char *prompt, char *model, int tries, float temperature);
 char *construct_prompt_for_templates(char *protocol_name, char **final_msg);
 char *construct_prompt_for_remaining_templates(char *protocol_name, char *templates_prompt, char *templates_answer);
+char *extract_protocol_commands_from_response(char *llm_response);
 char *construct_prompt_for_protocol_message_types(char *protocol_name);
 char *construct_prompt_for_requests_to_states(const char *protocol_name, const char *protocol_state, const char *example_requests);
 char *construct_prompt_stall(char *protocol_name, char *examples, char *history);

@@ -74,6 +74,16 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
     {
         asprintf(&data, "{\"model\": \"gpt-4o-mini\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
     }
+    
+    // DEBUG: Print request data for hypothesis system debugging
+    if (strstr(prompt, "protocol") != NULL && strstr(prompt, "templates") != NULL) {
+        fprintf(stderr, "\n=== LLM REQUEST DEBUG ===\n");
+        fprintf(stderr, "URL: %s\n", url);
+        fprintf(stderr, "Data length: %zu bytes\n", strlen(data));
+        fprintf(stderr, "First 500 chars of data:\n%.500s\n", data);
+        fprintf(stderr, "========================\n\n");
+    }
+    
     curl_global_init(CURL_GLOBAL_DEFAULT);
     do
     {
@@ -264,6 +274,175 @@ char *extract_stalled_message(char *message, size_t message_len)
     pcre2_code_free(extracter);
 
     return res;
+}
+
+/* Extract protocol commands from LLM's natural language response
+ * This parses markdown code blocks and extracts actual protocol commands
+ * Returns: cleaned protocol data or NULL if extraction fails
+ */
+char *extract_protocol_commands_from_response(char *llm_response)
+{
+    if (!llm_response || strlen(llm_response) == 0) {
+        return NULL;
+    }
+
+    size_t resp_len = strlen(llm_response);
+    size_t capacity = resp_len + 1;
+    char *extracted = ck_alloc(capacity);
+    size_t out_pos = 0;
+    
+    // Look for code blocks: ```...``` or just protocol commands
+    char *code_start = strstr(llm_response, "```");
+    char *code_end = NULL;
+    
+    if (code_start) {
+        // Skip past the opening ```
+        code_start += 3;
+        // Skip optional language identifier (e.g., ```ftp or ```plaintext)
+        while (*code_start && (*code_start == '\n' || *code_start == '\r' || 
+               (*code_start >= 'a' && *code_start <= 'z'))) {
+            if (*code_start == '\n') break;
+            code_start++;
+        }
+        if (*code_start == '\n') code_start++;
+        
+        // Find closing ```
+        code_end = strstr(code_start, "```");
+        if (code_end) {
+            size_t block_len = code_end - code_start;
+            
+            // Parse line by line within the code block
+            char *line_start = code_start;
+            while (line_start < code_end) {
+                // Skip leading whitespace
+                while (line_start < code_end && (*line_start == ' ' || *line_start == '\t')) {
+                    line_start++;
+                }
+                
+                // Find end of line
+                char *line_end = line_start;
+                while (line_end < code_end && *line_end != '\n' && *line_end != '\r') {
+                    line_end++;
+                }
+                
+                size_t line_len = line_end - line_start;
+                
+                // Check if this line looks like a protocol command
+                // Valid FTP commands: USER, PASS, CWD, LIST, RETR, STOR, QUIT, etc.
+                if (line_len > 0 && line_len < 1024) {
+                    // Check if line starts with common FTP commands or looks valid
+                    int is_valid = 0;
+                    const char *ftp_commands[] = {"USER", "PASS", "CWD", "PWD", "LIST", "RETR", 
+                                                   "STOR", "DELE", "MKD", "RMD", "RNFR", "RNTO",
+                                                   "QUIT", "SYST", "TYPE", "PORT", "PASV", "ABOR",
+                                                   "HELP", "NOOP", "STAT", "APPE", "REST", "SIZE",
+                                                   "MDTM", "FEAT", "OPTS", NULL};
+                    
+                    for (int i = 0; ftp_commands[i] != NULL; i++) {
+                        size_t cmd_len = strlen(ftp_commands[i]);
+                        if (line_len >= cmd_len && 
+                            strncmp(line_start, ftp_commands[i], cmd_len) == 0 &&
+                            (line_len == cmd_len || line_start[cmd_len] == ' ' || line_start[cmd_len] == '\r')) {
+                            is_valid = 1;
+                            break;
+                        }
+                    }
+                    
+                    // Skip comment lines (starting with # or ; or //)
+                    if (line_len > 0 && (line_start[0] == '#' || line_start[0] == ';' || 
+                        (line_len > 1 && line_start[0] == '/' && line_start[1] == '/'))) {
+                        is_valid = 0;
+                    }
+                    
+                    if (is_valid) {
+                        // Ensure we have space
+                        if (out_pos + line_len + 2 >= capacity) {
+                            capacity = (out_pos + line_len + 100) * 2;
+                            extracted = ck_realloc(extracted, capacity);
+                        }
+                        
+                        // Copy the line
+                        memcpy(extracted + out_pos, line_start, line_len);
+                        out_pos += line_len;
+                        
+                        // Add newline if not present
+                        if (out_pos > 0 && extracted[out_pos-1] != '\n') {
+                            extracted[out_pos++] = '\n';
+                        }
+                    }
+                }
+                
+                // Move to next line
+                line_start = line_end;
+                while (line_start < code_end && (*line_start == '\n' || *line_start == '\r')) {
+                    line_start++;
+                }
+            }
+        }
+    }
+    
+    // If no code block found or extraction failed, try to extract commands from entire response
+    if (out_pos == 0) {
+        char *line_start = llm_response;
+        char *response_end = llm_response + resp_len;
+        
+        while (line_start < response_end) {
+            // Skip leading whitespace
+            while (line_start < response_end && (*line_start == ' ' || *line_start == '\t')) {
+                line_start++;
+            }
+            
+            char *line_end = line_start;
+            while (line_end < response_end && *line_end != '\n' && *line_end != '\r') {
+                line_end++;
+            }
+            
+            size_t line_len = line_end - line_start;
+            
+            if (line_len > 0 && line_len < 1024) {
+                // Check for FTP command at start of line
+                const char *ftp_commands[] = {"USER", "PASS", "CWD", "PWD", "LIST", "RETR", 
+                                               "STOR", "DELE", "MKD", "RMD", "RNFR", "RNTO",
+                                               "QUIT", "SYST", "TYPE", "PORT", "PASV", "ABOR",
+                                               "HELP", "NOOP", "STAT", "APPE", "REST", "SIZE",
+                                               "MDTM", "FEAT", "OPTS", NULL};
+                
+                for (int i = 0; ftp_commands[i] != NULL; i++) {
+                    size_t cmd_len = strlen(ftp_commands[i]);
+                    if (line_len >= cmd_len && 
+                        strncmp(line_start, ftp_commands[i], cmd_len) == 0 &&
+                        (line_len == cmd_len || line_start[cmd_len] == ' ' || line_start[cmd_len] == '\r')) {
+                        
+                        if (out_pos + line_len + 2 >= capacity) {
+                            capacity = (out_pos + line_len + 100) * 2;
+                            extracted = ck_realloc(extracted, capacity);
+                        }
+                        
+                        memcpy(extracted + out_pos, line_start, line_len);
+                        out_pos += line_len;
+                        if (out_pos > 0 && extracted[out_pos-1] != '\n') {
+                            extracted[out_pos++] = '\n';
+                        }
+                        break;
+                    }
+                }
+            }
+            
+            line_start = line_end;
+            while (line_start < response_end && (*line_start == '\n' || *line_start == '\r')) {
+                line_start++;
+            }
+        }
+    }
+    
+    // Null terminate and return
+    if (out_pos > 0) {
+        extracted[out_pos] = '\0';
+        return extracted;
+    } else {
+        ck_free(extracted);
+        return NULL;
+    }
 }
 
 char *format_request_message(char *message)
@@ -1054,6 +1233,17 @@ char *enrich_sequence(char *sequence, khash_t(strSet) * missing_message_types)
     char *response = chat_with_llm(prompt, "gpt-4o-mini", ENRICHMENT_RETRIES, 0.5);
 
     free(prompt);
+
+    // CRITICAL FIX: Extract actual protocol commands from LLM's natural language response
+    if (response) {
+        char *extracted_commands = extract_protocol_commands_from_response(response);
+        if (extracted_commands) {
+            free(response);
+            return extracted_commands;
+        }
+        // If extraction failed, return original (fallback)
+        fprintf(stderr, "[WARNING] Failed to extract protocol commands from LLM response, using raw response\n");
+    }
 
     return response;
 }

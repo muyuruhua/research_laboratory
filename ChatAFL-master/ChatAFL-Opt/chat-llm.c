@@ -276,6 +276,217 @@ char *extract_stalled_message(char *message, size_t message_len)
     return res;
 }
 
+/* Extract protocol commands from LLM's natural language response
+ * This parses markdown code blocks and extracts actual protocol commands
+ * Filters control characters (0x00-0x1F and 0x7F, except \r\n\t)
+ * Returns: cleaned protocol data or NULL if extraction fails
+ */
+char *extract_protocol_commands_from_response(char *llm_response)
+{
+    if (!llm_response || strlen(llm_response) == 0) {
+        return NULL;
+    }
+
+    size_t resp_len = strlen(llm_response);
+    size_t capacity = resp_len + 1;
+    char *extracted = ck_alloc(capacity);
+    size_t out_pos = 0;
+    
+    // Look for code blocks: ```...``` or just protocol commands
+    char *code_start = strstr(llm_response, "```");
+    char *code_end = NULL;
+    
+    if (code_start) {
+        // Skip past the opening ```
+        code_start += 3;
+        // Skip optional language identifier (e.g., ```ftp or ```plaintext)
+        while (*code_start && (*code_start == '\n' || *code_start == '\r' || 
+               (*code_start >= 'a' && *code_start <= 'z'))) {
+            if (*code_start == '\n') break;
+            code_start++;
+        }
+        if (*code_start == '\n') code_start++;
+        
+        // Find closing ```
+        code_end = strstr(code_start, "```");
+        if (code_end) {
+            // Parse line by line within the code block
+            char *line_start = code_start;
+            while (line_start < code_end) {
+                // Skip leading whitespace
+                while (line_start < code_end && (*line_start == ' ' || *line_start == '\t')) {
+                    line_start++;
+                }
+                
+                // Find end of line
+                char *line_end = line_start;
+                while (line_end < code_end && *line_end != '\n' && *line_end != '\r') {
+                    line_end++;
+                }
+                
+                size_t line_len = line_end - line_start;
+                
+                // Check if this line looks like a protocol command
+                if (line_len > 0 && line_len < 1024) {
+                    int is_valid = 0;
+                    const char *ftp_commands[] = {"USER", "PASS", "CWD", "PWD", "LIST", "RETR", 
+                                                   "STOR", "DELE", "MKD", "RMD", "RNFR", "RNTO",
+                                                   "QUIT", "SYST", "TYPE", "PORT", "PASV", "ABOR",
+                                                   "HELP", "NOOP", "STAT", "APPE", "REST", "SIZE",
+                                                   "MDTM", "FEAT", "OPTS", NULL};
+                    
+                    for (int i = 0; ftp_commands[i] != NULL; i++) {
+                        size_t cmd_len = strlen(ftp_commands[i]);
+                        if (line_len >= cmd_len && 
+                            strncmp(line_start, ftp_commands[i], cmd_len) == 0 &&
+                            (line_len == cmd_len || line_start[cmd_len] == ' ' || line_start[cmd_len] == '\r')) {
+                            is_valid = 1;
+                            break;
+                        }
+                    }
+                    
+                    // Skip comment lines (starting with # or ; or //)
+                    if (line_len > 0 && (line_start[0] == '#' || line_start[0] == ';' || 
+                        (line_len > 1 && line_start[0] == '/' && line_start[1] == '/'))) {
+                        is_valid = 0;
+                    }
+                    
+                    if (is_valid) {
+                        // Ensure we have space
+                        if (out_pos + line_len + 2 >= capacity) {
+                            capacity = (out_pos + line_len + 100) * 2;
+                            extracted = ck_realloc(extracted, capacity);
+                        }
+                        
+                        // Copy the line byte-by-byte, filtering control chars and comments
+                        for (size_t j = 0; j < line_len; j++) {
+                            unsigned char byte = (unsigned char)line_start[j];
+                            
+                            // Check for inline comments (;, #, //)
+                            if (byte == ';' || byte == '#' ||
+                                (j + 1 < line_len && byte == '/' && line_start[j+1] == '/')) {
+                                // Stop at comment - don't copy anything after this
+                                break;
+                            }
+                            
+                            // Filter control characters (0x00-0x1F and 0x7F)
+                            // BUT keep \r (0x0D), \n (0x0A), \t (0x09)
+                            if ((byte < 0x20 && byte != '\r' && byte != '\n' && byte != '\t') || byte == 0x7F) {
+                                // Skip control characters like \x01, \x02, etc.
+                                continue;
+                            }
+                            
+                            extracted[out_pos++] = byte;
+                        }
+                        
+                        // Trim trailing whitespace
+                        while (out_pos > 0 && (extracted[out_pos-1] == ' ' || extracted[out_pos-1] == '\t')) {
+                            out_pos--;
+                        }
+                        
+                        // Add newline if not present
+                        if (out_pos > 0 && extracted[out_pos-1] != '\n') {
+                            extracted[out_pos++] = '\n';
+                        }
+                    }
+                }
+                
+                // Move to next line
+                line_start = line_end;
+                while (line_start < code_end && (*line_start == '\n' || *line_start == '\r')) {
+                    line_start++;
+                }
+            }
+        }
+    }
+    
+    // If no code block found or extraction failed, try to extract commands from entire response
+    if (out_pos == 0) {
+        char *line_start = llm_response;
+        char *response_end = llm_response + resp_len;
+        
+        while (line_start < response_end) {
+            // Skip leading whitespace
+            while (line_start < response_end && (*line_start == ' ' || *line_start == '\t')) {
+                line_start++;
+            }
+            
+            char *line_end = line_start;
+            while (line_end < response_end && *line_end != '\n' && *line_end != '\r') {
+                line_end++;
+            }
+            
+            size_t line_len = line_end - line_start;
+            
+            if (line_len > 0 && line_len < 1024) {
+                // Check for FTP command at start of line
+                const char *ftp_commands[] = {"USER", "PASS", "CWD", "PWD", "LIST", "RETR", 
+                                               "STOR", "DELE", "MKD", "RMD", "RNFR", "RNTO",
+                                               "QUIT", "SYST", "TYPE", "PORT", "PASV", "ABOR",
+                                               "HELP", "NOOP", "STAT", "APPE", "REST", "SIZE",
+                                               "MDTM", "FEAT", "OPTS", NULL};
+                
+                for (int i = 0; ftp_commands[i] != NULL; i++) {
+                    size_t cmd_len = strlen(ftp_commands[i]);
+                    if (line_len >= cmd_len && 
+                        strncmp(line_start, ftp_commands[i], cmd_len) == 0 &&
+                        (line_len == cmd_len || line_start[cmd_len] == ' ' || line_start[cmd_len] == '\r')) {
+                        
+                        if (out_pos + line_len + 2 >= capacity) {
+                            capacity = (out_pos + line_len + 100) * 2;
+                            extracted = ck_realloc(extracted, capacity);
+                        }
+                        
+                        // Copy byte-by-byte with control character filtering
+                        for (size_t j = 0; j < line_len; j++) {
+                            unsigned char byte = (unsigned char)line_start[j];
+                            
+                            // Check for inline comments
+                            if (byte == ';' || byte == '#' ||
+                                (j + 1 < line_len && byte == '/' && line_start[j+1] == '/')) {
+                                break;
+                            }
+                            
+                            // Filter control characters (keep \r, \n, \t only)
+                            if ((byte < 0x20 && byte != '\r' && byte != '\n' && byte != '\t') || byte == 0x7F) {
+                                continue;
+                            }
+                            
+                            extracted[out_pos++] = byte;
+                        }
+                        
+                        // Trim trailing whitespace
+                        while (out_pos > 0 && (extracted[out_pos-1] == ' ' || extracted[out_pos-1] == '\t')) {
+                            out_pos--;
+                        }
+                        
+                        // Add newline if not present
+                        if (out_pos > 0 && extracted[out_pos-1] != '\n') {
+                            extracted[out_pos++] = '\n';
+                        }
+                        break;
+                    }
+                }
+            }
+            
+            // Move to next line
+            line_start = line_end;
+            while (line_start < response_end && (*line_start == '\n' || *line_start == '\r')) {
+                line_start++;
+            }
+        }
+    }
+    
+    // Finalize the result
+    if (out_pos == 0) {
+        free(extracted);
+        return NULL;
+    }
+    
+    extracted[out_pos] = '\0';
+    return extracted;
+}
+
 char *format_request_message(char *message)
 {
 
@@ -1064,6 +1275,17 @@ char *enrich_sequence(char *sequence, khash_t(strSet) * missing_message_types)
     char *response = chat_with_llm(prompt, "gpt-4o-mini", ENRICHMENT_RETRIES, 0.5);
 
     free(prompt);
+
+    // Extract protocol commands from LLM's natural language response
+    if (response) {
+        char *extracted_commands = extract_protocol_commands_from_response(response);
+        if (extracted_commands) {
+            free(response);
+            return extracted_commands;
+        }
+        // If extraction fails, log warning but return original response as fallback
+        fprintf(stderr, "[WARNING] Failed to extract protocol commands from LLM response, using raw response\\n");
+    }
 
     return response;
 }
