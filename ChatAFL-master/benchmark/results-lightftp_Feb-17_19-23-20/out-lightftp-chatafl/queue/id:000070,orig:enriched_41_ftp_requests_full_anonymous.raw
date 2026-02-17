@@ -1,0 +1,22 @@
+To incorporate the `STAT` and `DELE` commands into the existing sequence of FTP client requests, we need to consider where these commands would logically fit. Typically, `STAT` is used to retrieve the status of a file or directory, and `DELE` is used to delete a specified file.
+
+Here's a modified sequence that includes both `STAT` and `DELE` commands:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+STAT filename.txt   # Assuming 'filename.txt' is the file we want to check the status of
+DELE filename.txt   # Assuming we want to delete 'filename.txt'
+QUIT
+```
+
+In this sequence:
+- `STAT filename.txt` is added after the `LIST` command to check the status of a specific file before potentially deleting it.
+- `DELE filename.txt` follows the `STAT` command to delete the same file.
+
+Make sure to replace `filename.txt` with the actual filename you intend to check and delete
+

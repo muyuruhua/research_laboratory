@@ -73,7 +73,7 @@
 
 /* The threshold to select the mutation based on grammars */
 #define EPSILON_CHOICE      0.5
-#define UNINTERESTING_THRESHOLD  512
+#define UNINTERESTING_THRESHOLD  100  // Lowered from 512 to allow stall mechanism to trigger
 #define CHATTING_THRESHOLD  64
 
 /* Number of calibration cycles per every new test case (and for test

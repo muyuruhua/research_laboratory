@@ -1,0 +1,13 @@
+USER anonymous
+PASS ubuntu
+SYER anonymous
+PASS ubuntu'
+Salidÿ€le.txt
+REST 0
+RETR validfile.txt
+MKD /newdir
+DELE /newdir/nonexistentfile.txt
+CWD /
+QUIT
+
+PWD

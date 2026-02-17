@@ -1,0 +1,17 @@
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+RNFR test
+RNTO new_test
+MKD test
+MKD a/b/c/d/e
+RETR /../../etc/passwd
+RETR non_existent_file
+RETR test
+REST 100
+STOR test_file
+QUIT
+

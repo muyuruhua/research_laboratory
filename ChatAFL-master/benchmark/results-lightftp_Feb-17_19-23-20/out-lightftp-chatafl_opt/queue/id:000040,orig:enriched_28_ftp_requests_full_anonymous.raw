@@ -1,0 +1,26 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+RNFR /valid/path/to/file.txt
+DELE /valid/path/to/file.txt
+RNFR /invalid/path/../../etc/passwd
+DELE /invalid/path/to/nonexistentfile.txt
+RNFR /valid/long/path/with/256/characters/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.txt
+DELE /valid/long/path/with/256/characters/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.txt
+RNFR /valid/path/with/special/char/@
+DELE /valid/path/with/special/char/@
+RNFR /valid/nested/dir/a/b/c/d/e/filename.txt
+DELE /valid/nested/dir/a/b/c/d/e/filename.txt
+RNFR /valid/path/to/rename/first.txt
+RNFR /valid/path/to/rename/second.txt
+DELE /valid/path/to/rename/first.txt
+DELE /valid/path/to/rename/second.txt
+RNFR /valid/path/to/mkd
+MKD /valid/path/to/mkd
+RNFR /valid/path/to/mkd
+REST 0
+RETR /valid/path/to/file.txt
+QUIT
+

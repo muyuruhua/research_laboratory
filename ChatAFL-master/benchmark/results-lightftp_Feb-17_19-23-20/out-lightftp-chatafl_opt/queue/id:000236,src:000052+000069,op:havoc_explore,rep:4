@@ -1,0 +1,47 @@
+USER anonymous
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+PASV
+LIST
+MKD test
+STOR testfile
+REST 0
+RETR testfile
+MKD /../../etc
+MKD test/long_directory_name_exceeding_the_normal_length_limit_256_characters_abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz
+MKD test/@
+MKD test/dir1
+MKD test/dir1/dir2
+MKD TYPEtest/dir1/dir2/dir3
+MKD tes
+PASS ubuntu
+SYST
+PWD
+PORt/dir1/dir2¡dir3/dir4
+MKD test/dir1/dir2/dir3/dir4/dir5
+RNTO testfile_resamed
+RNTO testfile_renamed_again
+LIST
+QUIT
+
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+APPE /largefile.txt
+DELE /nonexistentfile.txt
+STOR /validfile.txt
+REST 0
+RETR /validfile.txt
+DELE /../../etc/passwd
+APPE /path/with/special@
+DELE /path/with/longname/`12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890`
+MKD /nested/dir/a/b/c/d/e
+RNFR /validfile.txt
+RNTO /renamedfile.txt
+LIST
+QUIT
+

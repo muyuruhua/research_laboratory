@@ -1,0 +1,21 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+TYPE I
+LIST
+STOR testfile.txt
+RNTO renamedfile.txt
+REST 0
+RETR testfile.txt
+RNTO /../../etc/passwd
+MKD /nested/dir1
+MKD /nested/dir1/dir2
+MKD /nested/dir1/dir2/dir3
+RNTO /nested/dir1/dir2/dir3/dir4
+LIST /nonexistentfile
+TYPE A
+LIST
+QUIT
+

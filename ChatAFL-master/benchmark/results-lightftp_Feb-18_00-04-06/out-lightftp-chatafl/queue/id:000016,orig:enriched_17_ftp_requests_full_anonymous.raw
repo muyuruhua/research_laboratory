@@ -1,0 +1,22 @@
+To incorporate the `STOR` and `ABOR` commands into the sequence of client requests, we need to consider where these commands logically fit in the sequence of operations.
+
+Typically, the `STOR` command is used to upload a file to the server after the client has established a connection and specified the data transfer mode. The `ABOR` command is used to abort the previous command and is usually issued if there's an error or if the user decides to cancel an operation.
+
+Here’s a modified sequence of client requests that includes both `STOR` and `ABOR`:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+STOR filename.txt  ; This command is used to store a file on the server.
+ABOR                ; This command is used to abort the previous STOR command if needed.
+LIST
+QUIT
+```
+
+In this example, `STOR filename.txt` is added after the `PORT` command to indicate that the client wants to upload a file named `filename.txt`. The `ABOR` command follows the `STOR` command, indicating that the client may want to cancel the file upload operation. 
+
+Please adjust the filename as necessary based on your specific use case
+

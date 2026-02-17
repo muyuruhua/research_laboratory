@@ -1,0 +1,19 @@
+To include the `MLSD` and `NOOP` commands in the appropriate locations of the FTP client request sequence, we can add `NOOP` after the `PASS` command to keep the connection alive, and we can add `MLSD` after the `LIST` command to retrieve a machine-readable list of the directory contents.
+
+Here is the modified sequence of client requests:
+
+```
+USER ubuntu
+PASS ubuntu
+NOOP
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MLSD
+MKD test
+QUIT
+```
+
+This sequence maintains the logical flow of the FTP commands while incorporating the `NOOP` and `MLSD` commands as requested
+

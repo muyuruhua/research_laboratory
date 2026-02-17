@@ -1,0 +1,17 @@
+To include the `ABOR` and `DELE` commands in the sequence of client requests, we should place `ABOR` after the `LIST` command and place `DELE` after the `MKD` command, assuming we want to delete the directory created by `MKD`. Here’s the modified sequence:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+ABOR
+MKD test
+DELE test
+QUIT
+```
+
+This sequence includes the `ABOR` command after `LIST`, which is typically used to abort a previous command if it is still in progress. The `DELE` command is added after `MKD test`, assuming you want to delete the newly created directory named `test`. Adjust the placement based on your specific needs
+

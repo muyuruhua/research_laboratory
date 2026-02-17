@@ -1,0 +1,23 @@
+To incorporate the `ABOR` and `RNTO` commands into the sequence of client requests, we need to place them in appropriate locations based on typical FTP command flow. The `ABOR` command is used to abort the current command, and `RNTO` is used to rename a file or directory.
+
+Here is a modified sequence of client requests with the `ABOR` and `RNTO` commands added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+ABOR
+RNTO new_test
+QUIT
+```
+
+In this modified sequence:
+- `ABOR` is placed after `MKD test`, which could be used to abort any ongoing operation before renaming.
+- `RNTO new_test` is added to indicate a rename operation that follows the abort command.
+
+Please adjust the sequence according to your specific needs or operational context if necessary
+

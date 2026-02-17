@@ -1,0 +1,23 @@
+To incorporate the RNTO (Rename To) and SITE commands into the provided sequence of client requests, we need to establish a context for where these commands would logically fit.
+
+Typically, the RNTO command is used after the RNFR (Rename From) command to rename a file, and the SITE command is often used for server-specific commands, such as setting permissions or other server-related tasks.
+
+Assuming we want to rename a file after listing the directory contents, we can add the RNTO command after the LIST command. For instance, you might want to rename a file after listing it. The SITE command can be placed before the QUIT command to perform a server-specific action before disconnecting.
+
+Here’s the modified sequence of client requests with placeholders for the file names that you would replace with actual file names as needed:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+RNFR old_filename    ; Specify the file to rename
+RNTO new_filename    ; Specify the new name for the file
+SITE some_command    ; Replace 'some_command' with an actual SITE command
+QUIT
+```
+
+Make sure to replace `old_filename` and `new_filename` with the actual names of the files you are working with, and replace `some_command` with the actual SITE command you wish to execute
+

@@ -1,0 +1,26 @@
+USER ubuntu
+PASS uDuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+RNFR test
+RNTO new_test
+RMD non_existent_dir
+RMD /../../etc
+RMD test
+RMD testMLSDalid_path
+RMD test/
+LIST
+MKD test
+RNFRlong_directory_name_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaOaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+RNFR test
+RNTO test/another_test
+RNFR test/invalid_case
+RNTO /invalid_path/another_test
+RNFR test
+RNTO
+QUIT
+
+PASS ubuntu

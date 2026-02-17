@@ -1,0 +1,23 @@
+To incorporate the `RETR` (retrieve) and `FEAT` (features) client requests into the provided sequence, we need to decide where these requests logically fit within the FTP protocol flow. Typically, `FEAT` is sent after authentication to check the features supported by the server, and `RETR` is used to retrieve a file after the appropriate directory context is established.
+
+Here’s a modified sequence of client requests with `FEAT` placed after the initial authentication and before the `LIST` command, and `RETR` added after creating the directory, assuming you want to retrieve a file from the server:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+FEAT
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+RETR filename.txt
+QUIT
+```
+
+In this sequence:
+- `FEAT` is added after the `PWD` command to check the features of the server.
+- `RETR filename.txt` is added after `MKD test`, where `filename.txt` should be replaced with the actual name of the file you wish to retrieve from the server.
+
+Make sure to adjust `filename.txt` to the actual file you intend to retrieve
+

@@ -1,0 +1,25 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+RNFR /path/to/oldname
+RNTO /path/to/newname
+TYPE I
+STOR /path/to/file.txt
+REST 0
+RETR /path/to/file.txt
+RNFR /../../etc/passwd
+RNTO /invalidpath
+TYPE A
+LIST
+MKD /nested/dir1
+MKD /nested/dir1/dir2
+MKD /nested/dir1/dir2/dir3
+RNFR /nested/dir1/dir2
+RNTO /nested/dir1/dir2_renamed
+LIST
+TYPE I
+LIST /path/to/nonexistentfile
+QUIT
+

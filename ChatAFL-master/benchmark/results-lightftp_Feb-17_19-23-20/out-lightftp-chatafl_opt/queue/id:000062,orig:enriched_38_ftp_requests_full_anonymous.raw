@@ -1,0 +1,26 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+CWD /valid/path
+CWD /../../etc
+CWD /invalid/path
+CWD /valid/path/long_directory_name_exceeding_the_normal_limit_of_two_hundred_fifty_six_characters_to_test_the_boundary_conditions_of_the_ftp_server_functionality
+CWD /valid/path/@
+PORT 127,0,0,1,152,193
+TYPE I
+TYPE A
+STOR file.txt
+REST 0
+RETR file.txt
+LIST
+MKD /newdir
+CWD newdir
+CWD /newdir/anotherdir
+RNFR /newdir/file.txt
+RNTO /newdir/renamed_file.txt
+CWD /valid/path
+CWD /valid/path/empty/
+CWD /empty/
+QUIT
+

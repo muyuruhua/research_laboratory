@@ -1,0 +1,23 @@
+To include the `STAT` and `NOOP` client requests in the sequence of client requests, we can place them in logical positions. The `STAT` command can be used to get the status of the connection or the current working directory, and the `NOOP` command can be used to keep the connection alive.
+
+Here’s a modified version of your sequence with `STAT` and `NOOP` added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+STAT
+PWD
+PORT 127,0,0,1,132,209
+NOOP
+LIST
+MKD test
+QUIT
+```
+
+In this version:
+- `STAT` is placed after the `SYST` command to check the status immediately after establishing the connection.
+- `NOOP` is placed after the `PORT` command to keep the connection alive before proceeding with the `LIST` command. 
+
+Feel free to adjust the placement based on your specific requirements!
+

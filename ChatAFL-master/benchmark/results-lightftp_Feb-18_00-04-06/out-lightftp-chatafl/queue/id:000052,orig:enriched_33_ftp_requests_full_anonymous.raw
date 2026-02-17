@@ -1,0 +1,31 @@
+To properly incorporate the RNFR (Rename From) and ALLO (Allocate) commands into the provided sequence of FTP client requests, we need to consider their typical usage:
+
+1. **RNFR** is used to specify the source file that you want to rename. It must be issued before the RNTO (Rename To) command to indicate which file you are renaming.
+2. **ALLO** is used to allocate storage space for a file on the server, typically before uploading a file.
+
+Based on the initial sequence of requests, we can add RNFR and ALLO in a logical manner. Let's assume that the user wants to rename a file before performing the LIST command, and allocate space before uploading a file.
+
+Here’s the modified sequence of client requests:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+RNFR /path/to/source/file.txt   ; Specify the file to rename
+RNTO /path/to/destination/file.txt ; Specify the new name for the file
+ALLO 1024                       ; Allocate space for a file (e.g., 1024 bytes)
+LIST
+QUIT
+```
+
+In this modified sequence:
+- The **RNFR** command specifies the file to rename.
+- The **RNTO** command specifies the new name for that file.
+- The **ALLO** command is included to allocate space for a file, assuming an upload is intended (the size is just an example).
+- The **LIST** command remains to list the contents of the current directory.
+- Finally, the **QUIT** command ends the session.
+
+Make sure to replace `/path/to/source/file.txt` and `/path/to/destination/file.txt` with the actual file paths as needed
+

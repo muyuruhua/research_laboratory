@@ -1,0 +1,25 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+RNFR /valid/path
+RNTO /valid/path/renamed
+MKD /new/directory
+MKD /new/directory/../invalid_directory
+RNFR /nonexistent/file
+RNTO /new/directory/renamed_file
+LIST
+STOR /new/directory/file_to_store
+REST 0
+RETR /new/directory/file_to_store
+QUIT
+MKD /long_directory_name_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+MKD /special_chars/@
+RNFR /valid/path
+RNTO /another/valid/path
+RNFR /../../etc/passwd
+RNTO /invalid/rename
+LIST
+QUIT
+

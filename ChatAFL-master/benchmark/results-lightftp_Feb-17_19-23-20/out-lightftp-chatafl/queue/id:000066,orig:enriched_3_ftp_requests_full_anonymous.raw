@@ -1,0 +1,25 @@
+Certainly! The NOOP (no operation) command is often used to keep the connection alive, and the SITE command is used for server-specific commands. Here’s an updated sequence of client requests with NOOP and SITE added in appropriate locations:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+NOOP
+PWD
+NOOP
+PORT 127,0,0,1,152,193
+SITE <your_command_here>  // Replace <your_command_here> with the specific SITE command you want to use
+NOOP
+LIST
+NOOP
+QUIT
+```
+
+In this modified sequence:
+- A NOOP command is added after the SYST command to keep the connection alive.
+- Another NOOP is added after the PWD command.
+- A SITE command is added after the PORT command (you can specify the actual command you want to use).
+- A final NOOP is added before the QUIT command to ensure the connection remains active until the end. 
+
+Feel free to replace `<your_command_here>` with the specific SITE command you intend to use
+

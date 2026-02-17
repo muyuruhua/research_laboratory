@@ -1,0 +1,21 @@
+To incorporate the `RETR` and `ALLO` client requests into the sequence you provided, we will place these commands in logical locations based on standard FTP operations.
+
+Here’s the modified sequence of client requests:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+ALLO 0
+RETR <filename>   # Replace <filename> with the actual file name you want to retrieve
+LIST
+QUIT
+```
+
+### Explanation:
+- `ALLO` is typically used to allocate sufficient storage space for a file transfer, but it can be placed before the `RETR` command to ensure that the server is prepared for the incoming data.
+- `RETR` is used to retrieve a file from the server, and it should be placed before the `LIST` command if you want to download a specific file before listing the directory contents.
+- Make sure to replace `<filename>` with the actual name of the file you intend to retrieve
+

@@ -1,0 +1,23 @@
+To integrate the `CWD` (Change Working Directory) and `TYPE` (Set Transfer Type) commands into the provided sequence of client requests, we will add them at appropriate locations. Typically, the `CWD` command is used after the `PWD` command to change the directory, and the `TYPE` command is usually set before transferring files (like before `LIST`).
+
+Here’s a modified sequence of client requests with `CWD` and `TYPE` added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+CWD test          # Change to the 'test' directory after checking the current directory
+TYPE I            # Set transfer type to Image (binary) before listing files
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+QUIT
+```
+
+### Explanation:
+1. **CWD test**: This command is added after `PWD` to change the current working directory to `test`. This assumes you want to create the directory `test` inside the current directory.
+2. **TYPE I**: This command is added before `LIST` to set the transfer type to binary (Image). If you want ASCII mode, you could replace `I` with `A`.
+
+Make sure to adjust the `CWD` command according to your directory structure and needs
+

@@ -1,0 +1,22 @@
+To incorporate the `MLST` and `RMD` commands into the sequence of client requests, we need to consider where these commands would logically fit based on typical FTP operations.
+
+Here's a modified sequence that includes `MLST` and `RMD`:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+MLST <filename>  ; Assuming you want to get the details of a specific file
+LIST
+RMD <directory_name>  ; Assuming you want to remove a specific directory
+QUIT
+```
+
+In this modified sequence:
+- `MLST <filename>` is added after the `PORT` command to retrieve details about a specific file (you would replace `<filename>` with the actual file name).
+- `RMD <directory_name>` is added before the `QUIT` command to remove a specified directory (you would replace `<directory_name>` with the actual directory name).
+
+If you have specific filenames or directory names in mind, please replace `<filename>` and `<directory_name>` with those actual names
+

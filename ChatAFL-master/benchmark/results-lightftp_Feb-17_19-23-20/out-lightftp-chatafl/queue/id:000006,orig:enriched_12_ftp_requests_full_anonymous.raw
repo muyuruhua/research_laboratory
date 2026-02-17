@@ -1,0 +1,22 @@
+To incorporate the `ABOR` and `RMD` commands into the existing sequence of client requests, we need to determine appropriate locations for these commands. The `ABOR` command is typically used to abort a command in progress, while `RMD` is used to remove a directory.
+
+Here's a modified sequence that includes both commands:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+ABOR
+RMD directory_name  ; (replace 'directory_name' with the actual name of the directory you wish to remove)
+QUIT
+```
+
+In this sequence:
+- The `ABOR` command is placed after the `LIST` command, assuming that we want to abort the `LIST` operation if needed.
+- The `RMD` command is added after the `ABOR` command, where you would specify the directory you want to remove.
+
+Make sure to replace `directory_name` with the actual name of the directory you wish to remove
+

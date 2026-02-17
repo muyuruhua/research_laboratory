@@ -1,0 +1,20 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+MKD /testdir
+MKD /testdir/nesteddir
+LIST
+STOR /testdir/file.txt
+REST 0
+RETR /testdir/file.txt
+MKD /../../etc
+MKD /testdir/invalid/../../etc
+MKD /testdir/special@
+MKD /testdir/longname_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+MKD /testdir/rename
+RNFR /testdir/rename
+RNTO /testdir/renamed
+QUIT
+

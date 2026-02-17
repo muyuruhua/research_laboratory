@@ -1,0 +1,23 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+RNFR /path/to/oldfile
+RNTO /path/to/newfile
+LIST
+STOR largefile.dat
+REST 0
+RETR largefile.dat
+RNFR /../../etc/passwd
+RNTO /invalid/path
+MKD /nested/dir/a/b/c/d/e
+RMD /nested/dir/a/b/c/d/e
+LIST /missingfile
+LIST /path/to/permission_denied
+RNFR /path/to/file_with_special_chars/@
+RNTO /path/to/renamedfile
+FEAT
+LIST
+QUIT
+

@@ -1,0 +1,23 @@
+USER ubuntu
+PASS ubutu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD t¬st
+RNFR tesd
+RNTO new_test
+RMDstent_dir
+RMD /../../etc
+st/
+RNFR tesRMD test
+RMD test/gnaaaaaaaRESTaaaaaaaaaaaaaaavalid_path
+RMD test/lonoGdirectory_name_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaRESTaaaaaaaaaaaaaaaaaaaaaaaaaaaaaHaaaaaaaaaaaaaagaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+RNFR test
+RNTO test/
+RNFR test/invalid_case
+RNTO invalid_path/wnother_test
+RNFR test
+QUIT
+
+PASS ubuntu

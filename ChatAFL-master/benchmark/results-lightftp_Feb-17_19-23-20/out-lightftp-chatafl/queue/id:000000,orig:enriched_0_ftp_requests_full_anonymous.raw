@@ -1,0 +1,22 @@
+Certainly! To incorporate the `ABOR` and `NOOP` commands into the sequence of client requests, we can strategically place them after the `LIST` command and before the `QUIT` command. 
+
+Here's the modified sequence of client requests:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+NOOP
+ABOR
+QUIT
+```
+
+In this sequence:
+- `NOOP` is often used as a keep-alive command to maintain the connection.
+- `ABOR` is used to abort the previous command, which can be useful if the `LIST` command takes too long or if the client needs to cancel it for any reason.
+
+This maintains the logical flow of the commands while ensuring that the additional requests are included
+

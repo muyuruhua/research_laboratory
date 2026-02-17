@@ -1,0 +1,23 @@
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+RMD test
+STOR testfile
+REST 0
+RETR testfile
+RMD /../../etc
+RMD non_existent_dir
+RMD test/invalid_path
+MKD test_dir_with_long_name_12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890
+MKD test_dir_with_special_chars_@
+MKD
+RMD test/nested/dir1/dir2/dir3
+RMD test_dir_with_case_variants
+MKD test_dir
+RMD TEST_DIR
+QUIT
+

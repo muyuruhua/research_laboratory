@@ -1,0 +1,20 @@
+USER anonymous
+PASS ubuntuous
+PASS ubu¼tu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+APPE /path/to/file.txt
+RNFR /path to/file.txt
+RNTO /pAPPEath/to/renamed_e_fPBSZELE
+REST 100
+REuR /newrdir
+MKD /new_dir/nested_dir
+RNFR /new_diÿnested_dir
+RNTO /new_dir/rnameaaaaaaaaaaaaaaaaaaaaaaa`aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaZaaaath/../../etd_nested_dir
+LIST /invalid/path/../../etc
+S/to/long_filename_aaaaaaaaaaaaaXaaaaaaQaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaƒaaaaaaaaaaaáaaaaaaaaaaaaaaaaaaaaaath/../../etc
+STOR /path/to/long_filename_aaaaaaaaaaaaaXaaaaaaaaaaa!aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaRNFR SITE_diÿnesteial_char_file_@
+QUIT
+
+SYST

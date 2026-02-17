@@ -1,0 +1,20 @@
+To integrate the STOR and NOOP commands into the given sequence of client requests, we need to consider where these commands would logically fit within the FTP session flow. Here's an updated version of the sequence:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+NOOP
+STOR <filename>  // You should replace <filename> with the actual filename you want to store
+LIST
+QUIT
+```
+
+In this modified sequence:
+- The NOOP command is placed after the PORT command, which is a common practice to keep the connection alive.
+- The STOR command is placed before the LIST command, as it is typically used to upload a file to the server before listing the directory contents.
+
+Make sure to replace `<filename>` with the actual name of the file you wish to upload
+

@@ -1,0 +1,23 @@
+To include the `STOR` (store a file) and `RNTO` (rename a file) commands in the proper locations within the sequence of client requests, we need to consider the typical flow of FTP commands. 
+
+Here’s a modified version of your sequence, which includes the `STOR` command to upload a file and the `RNTO` command to rename a file after it has been uploaded:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+STOR testfile.txt  # Command to store a file named 'testfile.txt'
+RNTO newfile.txt    # Command to rename 'testfile.txt' to 'newfile.txt'
+QUIT
+```
+
+In this modified sequence:
+- The `STOR` command is added after the `MKD` command to upload a file named `testfile.txt` to the server.
+- The `RNTO` command is added right after the `STOR` command to rename the uploaded file to `newfile.txt`. 
+
+Make sure to replace `testfile.txt` and `newfile.txt` with the actual filenames you intend to use in your context
+

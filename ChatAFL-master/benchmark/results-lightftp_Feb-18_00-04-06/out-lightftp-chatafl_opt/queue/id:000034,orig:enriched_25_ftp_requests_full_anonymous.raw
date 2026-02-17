@@ -1,0 +1,19 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+STOR /valid/file.txt
+REST 0
+RETR /valid/file.txt
+MKD /nested/dir
+MKD /nested/dir/another
+MKD /nested/dir/another/deep
+RNFR /nested/dir/another/file.txt
+RNTO /nested/dir/renamed_file.txt
+LIST /missing/file.txt
+LIST /valid/path/with/special/chars/@
+LIST /very_long_directory_name_exceeding_the_normal_length_limit_12345678901234567890123456789012345678901234567890123456789012345678901234567890
+QUIT
+

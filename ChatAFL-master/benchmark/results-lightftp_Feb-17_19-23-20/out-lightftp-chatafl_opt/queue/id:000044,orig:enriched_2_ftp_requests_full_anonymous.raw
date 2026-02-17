@@ -1,0 +1,23 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+RNFR /valid/path/to/rename
+RNTO /new/path/to/rename
+NOOP
+LIST
+STOR /valid/path/to/store/file.txt
+REST 500
+RETR /valid/path/to/retrieve/file.txt
+LIST /../../etc
+LIST /nonexistent/file.txt
+MKD /valid/dir
+MKD /invalid/dir/../../etc
+MKD /nested/dir/a/b/c/d/e
+RNFR /nested/dir/a/b/c/d/e
+RNTO /nested/dir/a/b/c/d/e/renamed
+NOOP
+LIST
+QUIT
+

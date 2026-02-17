@@ -1,0 +1,22 @@
+To incorporate the `ABOR` and `RNFR` commands into the sequence of client requests while maintaining a logical flow, we can place `RNFR` before a file operation (like `LIST`), and `ABOR` can be used to abort an operation if needed. 
+
+Here is a modified version of the sequence with `RNFR` added before `LIST` and `ABOR` after it, in case we want to abort that operation:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+RNFR somefile.txt  ; This command specifies the file we are referring to for a rename
+LIST
+ABOR                ; This command aborts the previous operation if needed
+QUIT
+```
+
+In this modified sequence:
+- `RNFR somefile.txt` is added to indicate a request to rename a file (you would replace `somefile.txt` with the actual file name).
+- `ABOR` is added after the `LIST` command, which can be used to abort the operation if necessary before quitting. 
+
+If you have a specific context for where to place these commands or what files to refer to, please provide that for a more tailored modification
+

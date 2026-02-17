@@ -1,0 +1,26 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+RNFR /valid/path/oldname.txt
+RNTO /valid/path/newname.txt
+LIST
+RNFR /invalid/path/../../etc/passwd
+RNTO /invalid/path/newname.txt
+RNFR /another/valid/path/file.txt
+RNTO /another/valid/path/
+RNFR /long/path/with/a/very/long/name/that/exceeds/the/typical/limit/and/should/test/the/boundaries.txt
+RNTO /long/path/with/a/very/long/name/that/exceeds/the/typical/limit/and/should/test/the/boundaries_renamed.txt
+RNFR /valid/path/special_chars_@
+RNTO /valid/path/special_chars_renamed.txt
+RNFR /empty/path/
+RNTO /empty/path/newfile.txt
+RNFR /nested/dir/a/b/c/d/e/oldname.txt
+RNTO /nested/dir/a/b/c/d/e/newname.txt
+RNFR /case/variant/MKD
+RNTO /case/variant/mkd
+RNFR /repeated/command/test.txt
+RNTO /repeated/command/test.txt
+QUIT
+

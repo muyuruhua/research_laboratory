@@ -1,0 +1,26 @@
+To incorporate the `STOR` (store a file) and `DELE` (delete a file) commands into the provided sequence of client requests, we need to consider a logical flow of operations. Typically, you would `STOR` a file after establishing a connection and possibly after listing or creating a directory. You would `DELE` a file after it has been created or uploaded.
+
+Here’s a modified sequence of client requests that includes `STOR` and `DELE` commands:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+CWD test
+STOR example.txt  (Storing a file named example.txt in the 'test' directory)
+DELE example.txt  (Deleting the file example.txt)
+QUIT
+```
+
+In this modified sequence:
+- After creating the directory `test` with `MKD`, we change into that directory with `CWD test`.
+- We then use `STOR example.txt` to upload a file named `example.txt`.
+- Following that, we use `DELE example.txt` to delete the file we just uploaded.
+- Finally, we end the session with `QUIT`. 
+
+Feel free to adjust the filenames or commands as necessary for your specific use case!
+

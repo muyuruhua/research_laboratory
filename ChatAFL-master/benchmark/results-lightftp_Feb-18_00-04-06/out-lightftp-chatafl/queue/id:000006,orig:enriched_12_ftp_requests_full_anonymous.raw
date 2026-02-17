@@ -1,0 +1,20 @@
+To incorporate the `CWD` (Change Working Directory) and `HELP` client requests into the given sequence of FTP commands, we can place them logically based on the typical flow of FTP commands. The `CWD` command is usually issued after logging in and before listing the directory contents. The `HELP` command can be issued at any point to request information about available commands.
+
+Here’s a modified sequence of client requests that includes `CWD` and `HELP`:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+CWD /desired/directory  # Assuming you want to change to a specific directory
+PORT 127,0,0,1,152,193
+LIST
+HELP  # This can be placed here or before the LIST command
+QUIT
+```
+
+In this example, I placed the `CWD` command after the `PWD` command and before the `LIST` command, assuming you want to change to a specific directory before listing its contents. The `HELP` command can be placed after the `LIST` command, but it can also be placed earlier in the sequence if you want to get help before proceeding with listing the directory. 
+
+Feel free to adjust the path in the `CWD` command and the position of the `HELP` command as per your specific requirements
+

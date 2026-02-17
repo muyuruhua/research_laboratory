@@ -1,0 +1,25 @@
+To incorporate the `RMD` (Remove Directory) and `FEAT` (Feature) client requests into the provided sequence of FTP commands, we need to determine appropriate locations for these commands.
+
+The `FEAT` command is typically used to request a list of features supported by the server, and it can be placed after the `SYST` command, as it makes sense to inquire about features after determining the system type.
+
+The `RMD` command is used to remove a directory and would logically come after the `MKD` (Make Directory) command, assuming you want to create a directory and then remove it immediately after.
+
+Here is the modified sequence of client requests with `RMD` and `FEAT` added in the appropriate locations:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+FEAT
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+RMD test
+QUIT
+```
+
+In this sequence:
+- `FEAT` is added right after `SYST` to inquire about the server's features.
+- `RMD test` is added right after `MKD test` to remove the newly created directory
+

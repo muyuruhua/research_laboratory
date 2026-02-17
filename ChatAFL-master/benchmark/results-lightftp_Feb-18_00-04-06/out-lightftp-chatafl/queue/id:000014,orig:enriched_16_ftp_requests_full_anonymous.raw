@@ -1,0 +1,22 @@
+To incorporate the `HELP` and `RETR` commands into the sequence of client requests, we should consider the typical flow of FTP commands. The `HELP` command is often used to inquire about available commands, and the `RETR` command is used to retrieve a file from the server. 
+
+Here’s a modified sequence that includes both commands:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+HELP       ; Added to inquire about available commands
+LIST
+RETR filename.txt  ; Added to retrieve a specific file (replace with actual filename)
+QUIT
+```
+
+In this sequence:
+- The `HELP` command is placed after the `PORT` command, as it makes sense to ask for help after establishing the connection.
+- The `RETR` command is placed after the `LIST` command, assuming the user would want to list files before deciding to retrieve a specific one. You would replace `filename.txt` with the actual name of the file you wish to retrieve.
+
+This modified sequence maintains a logical flow of FTP commands
+

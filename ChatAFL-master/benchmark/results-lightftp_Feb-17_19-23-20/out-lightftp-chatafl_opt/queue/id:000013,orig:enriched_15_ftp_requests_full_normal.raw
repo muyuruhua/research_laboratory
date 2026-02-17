@@ -1,0 +1,19 @@
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+RNFR test
+RNTO new_test
+LIST
+MKD test
+MKD a/b/c/d/e
+STOR file.txt
+REST 0
+RETR file.txt
+MKD /../../etc
+MKD /invalid_path
+MKD test@
+MKD long_directory_name_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+QUIT
+

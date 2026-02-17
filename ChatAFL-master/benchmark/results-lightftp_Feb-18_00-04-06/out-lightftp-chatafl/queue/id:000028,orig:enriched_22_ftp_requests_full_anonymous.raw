@@ -1,0 +1,27 @@
+To incorporate the `STOR` and `ALLO` commands into the sequence of client requests, we need to place them in a logical order. Typically, `ALLO` is used to allocate sufficient space for a file before transferring it with `STOR`. The `STOR` command is used to upload a file to the server.
+
+Here’s how we can modify the original sequence:
+
+1. After the `PORT` command, we should send the `ALLO` command to allocate space for the file.
+2. The `STOR` command should follow the `ALLO` command, specifying the name of the file to be stored.
+
+Here’s the modified sequence of client requests:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+ALLO 1024       ; Assuming we want to allocate 1024 bytes for the file
+STOR myfile.txt ; Replace 'myfile.txt' with the actual filename you want to store
+LIST
+QUIT
+```
+
+In this sequence:
+- `ALLO 1024` is used to allocate 1024 bytes of space for the file.
+- `STOR myfile.txt` is used to upload a file named `myfile.txt`. You can replace `myfile.txt` with the actual name of the file you want to upload. 
+
+Make sure to adjust the size in the `ALLO` command as needed based on the expected file size
+

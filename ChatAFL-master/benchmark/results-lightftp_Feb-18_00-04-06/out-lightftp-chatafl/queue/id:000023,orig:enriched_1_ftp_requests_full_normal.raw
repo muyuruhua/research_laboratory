@@ -1,0 +1,21 @@
+To incorporate the `REST` and `HELP` commands into the given sequence of client requests, we can add them at logical points in the interaction. The `REST` command is typically used to specify a restart point for data transfer, and the `HELP` command can be used to request help information from the server.
+
+Here’s a modified sequence of client requests with `REST` and `HELP` added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+HELP           ; Request help information from the server
+LIST
+MKD test
+REST 100      ; Specify a restart point for a data transfer (example value)
+QUIT
+```
+
+In this modified sequence:
+- The `HELP` command is placed after establishing the connection and before the `LIST` command, as it is a good practice to understand available commands before proceeding with file operations.
+- The `REST` command is added after `MKD test`, assuming that it might be relevant to a subsequent data transfer operation that could occur after creating a directory. The value `100` is just an example; you can adjust this based on your specific needs
+

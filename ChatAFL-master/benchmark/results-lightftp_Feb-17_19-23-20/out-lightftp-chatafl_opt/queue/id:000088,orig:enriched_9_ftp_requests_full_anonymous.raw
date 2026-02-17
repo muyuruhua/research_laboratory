@@ -1,0 +1,16 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+MKD /valid_dir
+MKD /invalid_dir/../../etc
+LIST
+MKD /long_directory_name_which_exceeds_the_normal_length_limit_of_two_hundred_and_fifty_six_characters_abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz
+MKD /special_chars/@
+MKD
+STOR file.txt
+REST 100
+RETR file.txt
+QUIT
+

@@ -1,0 +1,25 @@
+To incorporate the `FEAT` and `RNTO` commands into the provided sequence of client requests, we need to identify appropriate locations for these commands. The `FEAT` command is typically sent after the initial connection to request a list of features supported by the server. The `RNTO` command is used in conjunction with the `RNFR` command to rename a file or directory.
+
+Here’s how the modified sequence of client requests could look:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+FEAT
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+RNFR test
+RNTO new_test
+QUIT
+```
+
+In this modified sequence:
+1. The `FEAT` command is added right after the `SYST` command to request server features.
+2. The `RNFR` command is added before `RNTO` to specify the file or directory to be renamed (in this case, `test`).
+3. The `RNTO` command is added to specify the new name for the directory (`new_test`).
+
+Make sure to adjust the names as necessary based on your specific use case
+

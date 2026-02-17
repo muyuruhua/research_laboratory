@@ -1,0 +1,23 @@
+To incorporate the `RMD` (Remove Directory) and `TYPE` commands into the existing sequence of client requests, we need to determine where these commands logically fit. Typically, the `TYPE` command is used to set the transfer mode (e.g., ASCII or binary) and is usually sent before file transfers, while `RMD` is used to remove a directory and can be sent after creating a directory with `MKD`.
+
+Here is a modified version of the original sequence with `TYPE` and `RMD` added in appropriate locations:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+TYPE I          # Set transfer mode to binary (for example)
+LIST
+MKD test
+RMD test       # Remove the directory named 'test'
+QUIT
+```
+
+In this modified sequence:
+- The `TYPE I` command is added after the `PORT` command to set the transfer mode before listing files.
+- The `RMD test` command is added after `MKD test`, which creates the directory, to remove it immediately afterward. 
+
+You can adjust the `TYPE` command to `TYPE A` for ASCII mode if that's more suitable for your context
+

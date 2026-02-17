@@ -1,0 +1,22 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+STOR testfile.txt
+REST 0
+RETR testfile.txt
+APPE testfile.txt
+DELE non_existent_file.txt
+DELE /../../etc/passwd
+LIST
+MKD /nested/dir
+MKD /nested/dir/another
+LIST
+PORT 127,0,0,1,152,194
+LIST /invalid/path
+LIST /nested/dir/../../etc
+LIST /nested/dir/longname_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+LIST /nested/dir/@
+QUIT
+

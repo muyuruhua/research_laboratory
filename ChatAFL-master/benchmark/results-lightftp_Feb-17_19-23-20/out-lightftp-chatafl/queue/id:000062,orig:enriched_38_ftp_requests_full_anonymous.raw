@@ -1,0 +1,22 @@
+To incorporate the `RMD` (Remove Directory) and `DELE` (Delete File) commands into the sequence of client requests, we need to consider a logical flow. Typically, you would want to delete a file before listing the contents or after ensuring the directory is in the correct state. 
+
+Here’s a modified version of your sequence that includes the `RMD` and `DELE` commands:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+DELE filename.txt     ; (Assuming you want to delete a file named filename.txt)
+RMD directoryname     ; (Assuming you want to remove a directory named directoryname)
+LIST
+QUIT
+```
+
+In this sequence:
+- The `DELE` command is placed before the `LIST` command to ensure that the file is deleted prior to listing the directory contents.
+- The `RMD` command is included after the `DELE` command to remove a directory after any necessary file deletions.
+
+Make sure to replace `filename.txt` and `directoryname` with the actual names of the file and directory you intend to delete
+

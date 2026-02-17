@@ -1,0 +1,18 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+RNTO /invalid/path
+STOR file.txt
+REST 0
+RETR file.txt
+RNTO /../../etc/passwd
+MKD /nested/dir
+RNTO /nested/dir/another/dir
+LIST
+RNTO /path/to/nonexistent/file
+RNTO /path/with/special/chars/@
+RNTO /path/to/longname/`echo $(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c 260)`
+QUIT
+

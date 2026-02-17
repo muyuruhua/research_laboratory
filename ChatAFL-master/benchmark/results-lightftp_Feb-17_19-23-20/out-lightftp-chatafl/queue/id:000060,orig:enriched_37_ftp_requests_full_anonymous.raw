@@ -1,0 +1,26 @@
+To include the `RMD` (Remove Directory) and `RNTO` (Rename To) commands in the sequence of client requests, we need to consider where these commands would logically fit in the flow of an FTP session. 
+
+Assuming we want to remove a directory and rename a file or directory, we can place the `RMD` command after the `LIST` command, and the `RNTO` command can be placed after the `PWD` command or after the `LIST` command depending on the context.
+
+Here is one possible modified sequence of client requests:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+RMD directory_name   # Replace 'directory_name' with the actual directory you want to remove
+PORT 127,0,0,1,152,193
+LIST
+RNTO new_name       # Replace 'new_name' with the actual new name you want to use
+QUIT
+```
+
+In this modified sequence:
+- The `RMD` command is added after `PWD` to remove a specified directory.
+- The `RNTO` command is added after `LIST` to rename a file or directory, but it would typically follow an `RNFR` (Rename From) command as part of the rename operation.
+
+If you have specific names for the directory and new name, you can replace `directory_name` and `new_name` with those values. 
+
+Let me know if you need further adjustments or clarifications!
+

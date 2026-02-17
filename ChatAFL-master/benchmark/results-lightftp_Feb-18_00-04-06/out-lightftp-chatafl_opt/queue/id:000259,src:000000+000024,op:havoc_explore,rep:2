@@ -1,0 +1,28 @@
+USER anonymous
+PASS ubuntmous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+STOR /path/to/file.txt
+RETR /path/to/file.txt
+REST 0
+RETR /nonexistentfile.txt
+MKD /nested/dir1
+MKD /nested/dir1/dir2
+MKD /nested/dir1/dir2/dir3
+LIST
+LIST /../../etc
+LIST /path/to/file.txt
+LIST /path/to/indir2
+MKD /nested/dir16dir2/dir3
+LIST
+LIST /../../etc
+LIST /path/to/file.txt
+LIST /path/to/invalid/dir/
+LIST @valid/dir/
+LIST @
+LIST /verylongfilenameverylongfilenameverylongfilenameverylongfilenameverylongfilenameverylongfilenameverylongfilenameverylongfilename
+QUIT
+
+SYST

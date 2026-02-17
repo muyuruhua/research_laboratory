@@ -1,0 +1,19 @@
+To add the ABOR and NOOP commands to the sequence of client requests, we can place the NOOP command after the PASS command to keep the connection alive, and the ABOR command can be placed before the QUIT command to abort any ongoing transfer or command processing.
+
+Here’s the modified sequence of client requests:
+
+```
+USER ubuntu
+PASS ubuntu
+NOOP
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+ABOR
+QUIT
+```
+
+This sequence maintains the logical flow of the FTP commands while incorporating the requested ABOR and NOOP commands appropriately
+

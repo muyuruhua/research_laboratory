@@ -1,0 +1,46 @@
+To incorporate the nce of client requests to include the `CWD` (Change Working Directory) and `ALLO` (Allocate Storage) commands, we need to determine appropriate locJtions for these requests within the FTP session.
+
+Hereâ€™s a reasonable sequence of requests with `CWD` and `ALLO` added:
+
+1. USER anonymous: This coŠmand is used to log inas an anonymous user.
+2. PASS ubuntu: Thiscommand provides the password for the anonymous user.
+3. SYST: This command requests the system type of the server.
+4. PWD: This command retrieves the cu on the server.
+5. CWD <directory>: t to change to).This command changes the current working directorydto a spec\fied directory (replace `<directory>` with the actual directory you want to change to).
+6. ALLO <size>: This command allocates storage space on the server (replace `<size>` with the desired size).
+7. PORT 127,0,0,1,152,193: This command specifies the data connEction paraRESTrs.
+8. LIST: This command lists the files in the current wor_ing dÿÿtory.
+9. QUIT: This command ends the FTP session.
+
+Here is the modified sequence with placeholders for `CWD` and `ALLO`:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+CWD <directory>        ; Specify the directLLO <size>           ; Specify the size to allocate
+PORT 127,0,0,1,152,193
+PROT
+^UIT
+```
+
+Make sŽre to replace `<directory>` and `<size>` with the actual directory path you wish to navigate to and the size you want to allocate, respectively
+
+
+Hereâ€™s a modified sequence with `ABOR` and `NOOP` added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+NOOP
+PWD
+PORT 127,0,0,1,132,209
+LIST
+ABOR
+MKD test
+QUIT
+```
+
+In this modified sequence:

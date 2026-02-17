@@ -1,0 +1,24 @@
+To incorporate the `REST` and `ALLO` commands into the sequence of client requests, we need to consider the context in which these commands are typically used in an FTP session.
+
+The `REST` command is used to restart a file transfer at a specific point, while the `ALLO` command is used to allocate space for a file on the server.
+
+Here’s a modified sequence of client requests that includes the `REST` and `ALLO` commands in appropriate locations:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+ALLO 0           # Allocate space for a file (size can be specified, here we use 0 as an example)
+REST 0           # Restart the transfer from the beginning (0 is the offset)
+LIST
+QUIT
+```
+
+In this sequence:
+- `ALLO` is placed after establishing the data connection with `PORT` and before the `LIST` command, which is common as you might want to allocate space before listing files.
+- `REST` is placed before `LIST` as well, as you may want to specify a restart point before performing data transfer operations like listing or downloading files. 
+
+Feel free to adjust the parameters of `ALLO` and `REST` as needed for your specific use case
+

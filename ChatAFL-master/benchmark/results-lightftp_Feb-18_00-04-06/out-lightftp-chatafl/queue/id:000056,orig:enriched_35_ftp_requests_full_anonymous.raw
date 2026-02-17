@@ -1,0 +1,22 @@
+To modify the sequence of client requests to include the CWD (Change Working Directory) and REST (Restart) commands, we need to determine appropriate locations for these commands.
+
+Typically, the CWD command is used after the user has successfully logged in (after the USER and PASS commands) and before any file operations like LIST. The REST command is often used before a transfer command to specify a position in a file transfer, but since we are not performing any transfer in this sequence, we can place it before a hypothetical transfer command.
+
+Here is the modified sequence of client requests with CWD and REST included:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+CWD /path/to/directory  # Change this to the desired directory
+PORT 127,0,0,1,152,193
+REST 0  # This specifies the restart position (0 means start from the beginning)
+LIST
+QUIT
+```
+
+In this sequence:
+- The CWD command is added after the PWD command to change the working directory.
+- The REST command is added before the LIST command, which is a typical place for it if we were to perform a transfer (although LIST does not typically use REST). You could also omit REST if you are not performing a transfer
+

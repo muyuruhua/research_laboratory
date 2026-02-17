@@ -1,0 +1,23 @@
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+CWD /valid/path
+CWD /../../etc
+CWD /invalid/path/with/long/name/that/exceeds/the/maximum/allowed/length/for/a/directory/name/which/should/cause/an/error
+CWD @
+HELP
+LIST
+MKD test
+MKD /valid/path/nested1
+MKD /valid/path/nested1/nested2
+MKD /valid/path/nested1/nested2/nested3
+MKD /valid/path/nested1/nested2/nested3/nested4
+STOR /valid/path/testfile
+REST 0
+RETR /valid/path/testfile
+RETR /invalid/path/testfile
+MKD /valid/path/testfile
+QUIT
+

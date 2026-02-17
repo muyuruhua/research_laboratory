@@ -1,0 +1,26 @@
+To incorporate the `STOR` and `RNTO` client requests into the provided sequence, we need to understand the context in which these commands are typically used in FTP (File Transfer Protocol). 
+
+The `STOR` command is used to upload a file to the server, while `RNTO` is used in conjunction with the `RNFR` command to rename a file on the server. Assuming you want to upload a file after the `LIST` command and then rename it, we can place the `STOR` command right after `LIST`, followed by the `RNFR` and `RNTO` commands.
+
+Here’s how the modified sequence of client requests would look:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+STOR filename.txt
+RNFR oldname.txt
+RNTO newname.txt
+QUIT
+```
+
+In this sequence:
+- `STOR filename.txt` indicates that a file named `filename.txt` is being uploaded.
+- `RNFR oldname.txt` specifies that the file to rename is `oldname.txt`.
+- `RNTO newname.txt` specifies the new name for the file as `newname.txt`.
+
+Make sure to replace `filename.txt`, `oldname.txt`, and `newname.txt` with the actual file names you intend to use
+

@@ -1,0 +1,16 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+NOOP
+MKD /valid/dir
+MKD /../../etc
+MKD /invalid/dir/with/long/name/that/exceeds/the/typical/limit/and/should/be/tested/for/handling/long/names/just/to/see/how/the/server/reacts
+MKD @
+LIST
+STOR /valid/file.txt
+REST 100
+RETR /missing/file.txt
+QUIT
+

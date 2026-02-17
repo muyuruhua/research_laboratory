@@ -1,0 +1,36 @@
+To incorporate the `ABOR` and `NOOP` commands into the provided sequence of client requests, ELP` right after the `SYST` command, as it is a common command toMLSD request information about the server's capabilities. The `RETR` command should be placed after the `LIST` command, as it would typically be used to rieve a  files.
+
+Here’s the modified sequence of client requests:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+HELP
+PWD
+PORT 127,0,0,1,132,209
+LIST
+RETR filename.txt  ; (Replace 'filename.txt' with the actual file you want to retrieve)
+MKD test
+QUIT�
+```
+
+Note: Make sure to replace `filename.txt` with the actual name of the file you wish to retrieve using the `RETR` command
+
+
+Here’s a modified sequence with `ABOR` and `NOOP` added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+NOOP
+PWD
+PORT 127,0,0,1,132,209
+LIST
+ABOR
+MKD test
+QUIT
+```
+
+In this modified sequence:

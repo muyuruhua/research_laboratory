@@ -1,0 +1,21 @@
+To incorporate the `ABOR` and `DELE` commands into the provided sequence of client requests, we should consider where these commands would logically fit in. The `ABOR` command is typically used to abort a previous command, while the `DELE` command is used to delete a file or directory.
+
+Here’s a modified sequence of client requests that includes `ABOR` and `DELE`:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+DELE test   ; This command is added to delete the directory 'test' after it is created.
+ABOR        ; This command is added to abort any previous commands if necessary.
+QUIT
+```
+
+In this sequence:
+- The `DELE test` command is added after creating the directory `test` to demonstrate deleting it.
+- The `ABOR` command is added afterwards, but it may not be necessary unless there is a specific reason to abort a previous command. Adjust its position based on your specific use case
+

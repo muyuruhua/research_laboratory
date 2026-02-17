@@ -1,0 +1,23 @@
+To incorporate the NOOP and RNTO commands into the provided sequence of client requests, we need to consider where these commands would logically fit. The NOOP command is often used to keep the connection alive and can be sent at any time, while the RNTO command is used to rename a file and typically follows a RNFR (rename from) command.
+
+Here’s a modified sequence of client requests that includes the NOOP and RNTO commands:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+NOOP          # Added to keep the connection alive
+LIST
+RNFR oldfilename   # Assuming we are renaming 'oldfilename'
+RNTO newfilename   # Renaming to 'newfilename'
+QUIT
+```
+
+In this modification:
+- The NOOP command is placed after the PORT command to keep the connection alive before listing the directory.
+- The RNFR and RNTO commands are included after the LIST command to rename a file, which makes sense in the context of FTP operations. You would typically specify the file you want to rename with RNFR before using RNTO to specify the new name.
+
+Please replace 'oldfilename' and 'newfilename' with the actual names you intend to use in your context
+

@@ -1,0 +1,23 @@
+To incorporate the `ABOR` and `TYPE` commands into the provided sequence of FTP client requests, we need to place them in logical positions. The `TYPE` command is typically sent after the initial connection and before any file transfer commands (like `LIST` or `MKD`). The `ABOR` command is used to abort an ongoing command, so it would typically come after a command that is taking a long time or is in progress.
+
+Here’s a modified sequence of client requests that includes both `ABOR` and `TYPE`:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+TYPE I           # Set the transfer type to binary (I) or ASCII (A)
+LIST
+ABOR             # Abort the LIST command if it is taking too long (optional)
+MKD test
+QUIT
+```
+
+In this sequence:
+- `TYPE I` is added after the `PORT` command to set the transfer type to binary (you can also use `TYPE A` for ASCII).
+- `ABOR` is included after `LIST` to demonstrate its use, but it can be omitted if the `LIST` command completes successfully and does not require an abort. 
+
+Feel free to adjust the placement of `ABOR` based on your specific requirements or scenarios
+

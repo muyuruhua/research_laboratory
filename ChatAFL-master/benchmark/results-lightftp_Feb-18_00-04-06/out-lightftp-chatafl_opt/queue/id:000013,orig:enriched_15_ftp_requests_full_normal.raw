@@ -1,0 +1,24 @@
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+ABOR
+RNTO new_test
+MKD test/dir1
+MKD test/dir1/dir2
+RNTO test/dir1/dir2/renamed
+PORT 127,0,0,1,132,210
+STOR file1.txt
+REST 100
+RETR file1.txt
+MKD test/../../etc
+MKD test/dir3
+RNTO test/dir3/dir4/renamed
+MKD test/dir3/dir4
+MKD test/dir3/dir4/long_directory_name_exceeding_the_standard_limit_of_two_hundred_fifty_six_characters_to_test_the_boundaries_of_the_ftp_server
+LIST test/dir3
+QUIT
+

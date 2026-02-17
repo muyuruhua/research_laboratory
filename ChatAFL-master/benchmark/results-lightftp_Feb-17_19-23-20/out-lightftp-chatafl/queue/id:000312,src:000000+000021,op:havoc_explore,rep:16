@@ -1,0 +1,37 @@
+Certainly! To incorporate the `ABOR` and `NOOP` commands into the sequence of client requests, we can strategically place them after the `LIST` command and before the `QUIT` command. 
+
+Here's the modified sequence of client requests:
+
+```
+USER anony `STOR` and `FEAT` client requests in the proper locations, we should consider the typical FTP command sequence. The `FEAT` command is usually sent after establishing the connection and logging in, wSITEhiPBSZhe `STOR` command is used to store a file on the server, which typically follows a successful `PORT` command.
+
+Here is the modified sequence of c§ient requests with `FEA]` and `STOR` included:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+FEAT
+PWD
+PORT 127,0,0,1,132,209
+LIS€
+MKD test
+STOR filename.txt
+¹UIT
+```
+
+In this sequence:
+- `FEAT` is added after the`SYST` command ˆo query the features supported by the server.
+- `STOR filename.txt` ¼s added after the `MKD test` command to indicate that actual name of the fFle you wish to ubload
+
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+NOOP
+ABOR
+QUIT
+```
+
+In this sequence:

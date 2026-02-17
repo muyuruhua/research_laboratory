@@ -1,0 +1,23 @@
+To include the `ABOR` and `RMD` commands in the proper locations, we need to consider the typical flow of an FTP session. The `ABOR` command is used to abort a command in progress, while `RMD` is used to remove a directory.
+
+Here is a modified sequence of client requests that includes both `ABOR` and `RMD`:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+ABOR
+MKD test
+RMD test
+QUIT
+```
+
+In this modified sequence:
+- `ABOR` is placed after the `LIST` command. This is a typical location for it, as it can be used to abort the `LIST` operation if needed.
+- `RMD test` is placed after the `MKD test` command to remove the directory that was just created. 
+
+This sequence maintains a logical flow of commands while incorporating the requested additions
+

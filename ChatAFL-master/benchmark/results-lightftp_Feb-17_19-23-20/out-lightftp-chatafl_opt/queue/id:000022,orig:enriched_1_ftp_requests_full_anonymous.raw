@@ -1,0 +1,21 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+NOOP
+STOR testfile.txt
+REST 0
+RETR testfile.txt
+LIST
+MKD /dir1
+MKD /dir1/dir2
+MKD /dir1/dir2/dir3
+LIST
+LIST /../../etc
+LIST /nonexistentfile
+LIST /path/to/forbiddenfile
+LIST /dir1/dir2/dir3/longfilename_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+LIST /dir1/dir2/dir3/specialchars_@
+QUIT
+

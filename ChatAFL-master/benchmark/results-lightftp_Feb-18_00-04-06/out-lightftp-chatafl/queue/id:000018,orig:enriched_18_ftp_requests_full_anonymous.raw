@@ -1,0 +1,24 @@
+To include the `STOR` and `RNFR` commands in the sequence of client requests, we need to consider the context of these commands. Typically, `RNFR` (Rename From) is used to specify the file that you want to rename, and `STOR` (Store) is used to upload a file to the server. 
+
+Assuming you want to rename a file before storing a new file, we can place `RNFR` before `STOR`. Here’s a modified sequence of client requests with `RNFR` and `STOR` added:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+RNFR old_filename.txt   # Specify the file to rename
+RNTO new_filename.txt    # Specify the new name for the file
+STOR new_file.txt        # Store (upload) a new file
+LIST
+QUIT
+```
+
+In this modified sequence:
+- `RNFR old_filename.txt` is added to indicate the file you want to rename.
+- `RNTO new_filename.txt` is added to specify the new name for the file.
+- `STOR new_file.txt` is added to upload a new file to the server.
+
+Please adjust the filenames as necessary to fit your specific use case
+

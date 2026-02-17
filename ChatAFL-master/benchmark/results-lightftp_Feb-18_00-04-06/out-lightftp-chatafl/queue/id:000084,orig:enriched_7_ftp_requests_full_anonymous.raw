@@ -1,0 +1,20 @@
+To incorporate the MLST and ALLO commands into the provided sequence of client requests, we need to place them in appropriate locations based on their typical usage in FTP sessions. Here's a modified sequence of client requests with MLST and ALLO added:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+ALLO 0  # Request to allocate space for the file transfer (if needed)
+MLST /path/to/file  # Request to list the details of a specific file (replace with actual file path)
+LIST
+QUIT
+```
+
+In this sequence:
+- The `ALLO` command is placed after the `PORT` command, as it generally indicates the allocation of space for a file transfer.
+- The `MLST` command is included before the `LIST` command, as it is used to obtain details about a specific file or directory.
+
+Make sure to replace `/path/to/file` in the `MLST` command with the actual path of the file you want to inquire about
+

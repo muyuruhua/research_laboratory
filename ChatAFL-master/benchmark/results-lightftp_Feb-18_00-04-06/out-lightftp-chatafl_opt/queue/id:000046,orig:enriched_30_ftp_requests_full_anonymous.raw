@@ -1,0 +1,18 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+RNFR /valid/path/to/file
+RNTO /valid/path/to/newfile
+LIST
+RNFR /another/valid/path
+RNTO /another/valid/path/renamed
+LIST /path/with/long/filename/that/exceeds/256/characters/this/is/just/a/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really/really
+REST 100
+RETR /valid/path/to/file
+STOR /valid/path/to/store/file
+MKD /nested/dir/a/b/c/d/e
+MKD /nested/dir/a/b/c/d/e/another
+QUIT
+

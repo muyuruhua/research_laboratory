@@ -44,6 +44,7 @@
 #include "hash.h"
 #include "chat-llm.h"
 #include "grammar-hypothesis.h"
+#include "hypothesis-adapter.h"
 
 #include <stdio.h>
 #include <unistd.h>
@@ -241,15 +242,6 @@ static s32 cpu_aff = -1; /* Selected CPU core                */
 
 static FILE *plot_file; /* Gnuplot output file              */
 
-/* ============================================
- * ChatAFL-Opt: Grammar Hypothesis Globals
- * ============================================ */
-static hypothesis_context_t *hypothesis_ctx = NULL;  /* Global hypothesis context */
-static u8 hypothesis_mode = 0;                        /* Enable hypothesis-driven mode */
-static u32 hypothesis_refinement_interval = 100;     /* Refinement check interval */
-static u32 hypothesis_validation_count = 0;          /* Validation counter */
-/* ============================================ */
-
 struct queue_entry
 {
 
@@ -444,7 +436,7 @@ u32 reward_grammar;
 void setup_llm_grammars()
 {
 
-  ACTF("Getting grammars from LLM...");
+  ACTF("Getting grammars from LLM...111111111");
 
   khash_t(consistency_table) *const_table = kh_init(consistency_table);
   char *first_question;
@@ -555,6 +547,27 @@ void setup_llm_grammars()
 
   free(first_question);
   free(templates_prompt);
+
+  /* New: generate richer grammar hypotheses via LLM and integrate them
+   * This keeps the original extraction code intact (open/closed): we extend
+   * the system by calling the hypothesis module and an adapter that converts
+   * hypotheses into pcre2 patterns used by the rest of the fuzzer.
+   */
+  {
+    fprintf(stderr, "[setup_llm_grammars] Invoking grammar-hypothesis generation via LLM for protocol '%s'...\n", protocol_name ? protocol_name : "(unknown)");
+    hypothesis_context_t *hctx = init_hypothesis_context(protocol_name, NULL, NULL, 0);
+    if (hctx) {
+      int num = generate_grammar_hypotheses(hctx, 32);
+      fprintf(stderr, "[setup_llm_grammars] generate_grammar_hypotheses returned %d\n", num);
+      if (num > 0) {
+        int integrated = integrate_hypotheses_into_protocol_patterns(hctx, protocol_patterns, message_types_set, out_dir);
+        fprintf(stderr, "[setup_llm_grammars] integrate_hypotheses_into_protocol_patterns integrated %d hypotheses\n", integrated);
+      }
+      free_hypothesis_context(hctx);
+    } else {
+      fprintf(stderr, "[setup_llm_grammars] Warning: failed to init hypothesis context\n");
+    }
+  }
 }
 
 range_list parse_buffer(char *buf, size_t buf_len)
@@ -4401,177 +4414,6 @@ static void perform_dry_run(char **argv)
   OKF("All test cases processed.");
 }
 
-
-/* ============================================
- * ChatAFL-Opt: Initialize Grammar Hypothesis System
- * ============================================ */
-static void init_grammar_hypothesis_system(void)
-{
-  if (!hypothesis_mode)
-    return;
-
-  ACTF("Initializing Grammar Hypothesis System...");
-
-  // Collect PCAP samples from seed corpus
-  char **pcap_samples = NULL;
-  size_t pcap_count = 0;
-
-  struct queue_entry *q = queue;
-  while (q && pcap_count < 10)
-  { // Limit to 10 samples
-    s32 fd = open(q->fname, O_RDONLY);
-    if (fd >= 0)
-    {
-      u8 *sample = ck_alloc_nozero(q->len + 1);
-      if (read(fd, sample, q->len) == (ssize_t)q->len)
-      {
-        sample[q->len] = '\0';
-        pcap_samples = ck_realloc(pcap_samples, (pcap_count + 1) * sizeof(char *));
-        pcap_samples[pcap_count++] = (char *)sample;
-      }
-      else
-      {
-        ck_free(sample);
-      }
-      close(fd);
-    }
-    q = q->next;
-  }
-
-  // Initialize hypothesis context
-  hypothesis_ctx = init_hypothesis_context(
-      protocol_name ? protocol_name : "UNKNOWN",
-      NULL, // RFC text (would be loaded from file in production)
-      pcap_samples,
-      pcap_count);
-
-  // Free the temporary pcap_samples array (init_hypothesis_context makes a copy)
-  for (size_t i = 0; i < pcap_count; i++) {
-    ck_free(pcap_samples[i]);
-  }
-  if (pcap_samples) ck_free(pcap_samples);
-
-  if (!hypothesis_ctx)
-  {
-    FATAL("Failed to initialize hypothesis context");
-  }
-
-  // Generate initial hypotheses
-  int hyp_count = generate_grammar_hypotheses(hypothesis_ctx, 5);
-
-  if (hyp_count == 0)
-  {
-    WARNF("No grammar hypotheses generated, continuing in standard mode");
-    hypothesis_mode = 0;
-    free_hypothesis_context(hypothesis_ctx);
-    hypothesis_ctx = NULL;
-  }
-  else
-  {
-    OKF("Generated %d grammar hypotheses", hyp_count);
-
-    // Save hypotheses to disk for reproducibility
-    char *hyp_dir = alloc_printf("%s/grammar-hypotheses", out_dir);
-    if (mkdir(hyp_dir, 0700) && errno != EEXIST)
-    {
-      PFATAL("Unable to create directory '%s'", hyp_dir);
-    }
-
-    fprintf(stderr, "[DEBUG] Starting to save %zu hypotheses to disk\n", hypothesis_ctx->hypothesis_count);
-    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++)
-    {
-      grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
-      fprintf(stderr, "[DEBUG] Saving hypothesis %zu/%zu: hyp=%p\n", i+1, hypothesis_ctx->hypothesis_count, (void*)hyp);
-      
-      // CRITICAL: Validate hypothesis pointer and fields before using
-      if (!hyp) {
-        fprintf(stderr, "[!] ERROR: hypothesis[%zu] is NULL, skipping\n", i);
-        continue;
-      }
-      if (!hyp->message_type) {
-        fprintf(stderr, "[!] ERROR: hypothesis[%zu]->message_type is NULL, skipping\n", i);
-        continue;
-      }
-      
-      fprintf(stderr, "[DEBUG]   message_type=%p (%s)\n", (void*)hyp->message_type, hyp->message_type);
-      fprintf(stderr, "[DEBUG]   description=%p\n", (void*)hyp->description);
-      
-      char *hyp_file = alloc_printf("%s/hypothesis-%llu-%s.json",
-                                    hyp_dir, hyp->hypothesis_id, hyp->message_type);
-      fprintf(stderr, "[DEBUG]   Calling save_hypothesis_to_file with file=%s\n", hyp_file);
-      save_hypothesis_to_file(hyp, hyp_file);
-      fprintf(stderr, "[DEBUG]   save_hypothesis_to_file completed\n");
-      ck_free(hyp_file);
-    }
-
-    ck_free(hyp_dir);
-    fprintf(stderr, "[DEBUG] All hypotheses saved successfully\n");
-  }
-
-  // Note: pcap_samples already freed after init_hypothesis_context (line 4449-4452)
-
-  OKF("Grammar Hypothesis System initialized.");
-}
-
-/* ============================================
- * ChatAFL-Opt: Validate and Refine Hypotheses
- * Called periodically during fuzzing loop
- * ============================================ */
-static void validate_and_refine_hypotheses(u8 *buf, u32 len)
-{
-  if (!hypothesis_mode || !hypothesis_ctx)
-    return;
-
-  hypothesis_validation_count++;
-
-  // Validate against all hypotheses
-  for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++)
-  {
-    grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
-
-    int valid = validate_message_against_hypothesis(hyp, buf, len);
-
-    if (!valid && hyp->parse_failure % 10 == 0)
-    {
-      // Add as counterexample every 10th failure
-      add_counterexample(hyp, buf, len, "Validation failed");
-    }
-  }
-
-  // Periodic refinement check
-  if (hypothesis_validation_count % hypothesis_refinement_interval == 0)
-  {
-    ACTF("Checking for hypothesis refinement (validation count: %u)...",
-         hypothesis_validation_count);
-
-    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++)
-    {
-      grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
-
-      // Refine if fitness is low and we have counterexamples
-      if (hyp->fitness < FITNESS_THRESHOLD && hyp->counterexample_count >= 3)
-      {
-        ACTF("Refining hypothesis for %s (fitness: %.3f, counterexamples: %zu)",
-             hyp->message_type, hyp->fitness, hyp->counterexample_count);
-
-        if (refine_hypothesis_with_counterexamples(hypothesis_ctx, hyp))
-        {
-          // Save refined hypothesis
-          char *hyp_file = alloc_printf("%s/grammar-hypotheses/hypothesis-%llu-%s-refined-%lu.json",
-                                        out_dir, hyp->hypothesis_id, hyp->message_type, time(NULL));
-          save_hypothesis_to_file(hyp, hyp_file);
-          ck_free(hyp_file);
-
-          OKF("Hypothesis refined: %s (new fitness: %.3f)",
-              hyp->message_type, hyp->fitness);
-        }
-      }
-    }
-  }
-}
-
-/* Original perform_dry_run end marker */
-
 /* Helper function: link() if possible, copy otherwise. */
 
 static void link_or_copy(u8 *old_path, u8 *new_path)
@@ -6338,12 +6180,6 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
 
   u8 fault;
 
-  /* ChatAFL-Opt: Validate message against hypotheses */
-  if (hypothesis_mode && hypothesis_ctx)
-  {
-    validate_and_refine_hypotheses(out_buf, len);
-  }
-
   if (post_handler)
   {
 
@@ -7133,7 +6969,7 @@ AFLNET_REGIONS_SELECTION:;
 
         char *stall_prompt = construct_prompt_stall(protocol_name, examples, history);
         // printf("Got prompt:\n\n%s\n",stall_prompt);
-        char *stall_response = chat_with_llm(stall_prompt, "gpt-4o-mini", STALL_RETRIES, 1.5);
+        char *stall_response = chat_with_llm(stall_prompt, "gpt-4o-mini", STALL_RETRIES, 0.5);  // Lower temperature for more consistent output
         // printf("Got response:\n\n%s\n",stall_response);
 
         {
@@ -7161,6 +6997,19 @@ AFLNET_REGIONS_SELECTION:;
         }
 
         char *stall_message = extract_stalled_message(stall_response, strlen(stall_response));
+        
+        // If extraction failed, save to garbage log for debugging
+        if (stall_message == NULL) {
+          char *garbage_path = alloc_printf("%s/stall-interactions/garbage-response-%d", out_dir, chat_times);
+          int garbage_fd = open(garbage_path, O_WRONLY | O_CREAT, 0600);
+          char *header = "=== GARBAGE RESPONSE DETECTED ===\n";
+          ck_write(garbage_fd, header, strlen(header), garbage_path);
+          ck_write(garbage_fd, stall_response, strlen(stall_response), garbage_path);
+          close(garbage_fd);
+          ck_free(garbage_path);
+          
+          OKF("LLM response failed quality validation, saved to garbage-response-%d", chat_times);
+        }
 
         if (stall_message == NULL)
           goto free_stall;
@@ -10899,14 +10748,6 @@ int main(int argc, char **argv)
     use_argv = argv + optind;
 
   perform_dry_run(use_argv);
-
-  /* ChatAFL-Opt: Initialize grammar hypothesis system */
-  if (getenv("CHATAFL_HYPOTHESIS"))
-  {
-    hypothesis_mode = 1;
-    OKF("Grammar Hypothesis Mode enabled (CHATAFL_HYPOTHESIS env var set)");
-    init_grammar_hypothesis_system();
-  }
 
   cull_queue();
 

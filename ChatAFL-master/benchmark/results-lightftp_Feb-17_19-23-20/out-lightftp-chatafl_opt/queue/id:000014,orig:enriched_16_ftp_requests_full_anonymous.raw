@@ -1,0 +1,17 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+MKD /valid_directory
+MKD /../../etc
+TYPE I
+STOR /valid_directory/file.txt
+REST 0
+RETR /valid_directory/file.txt
+LIST
+MKD /long_directory_name_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+MKD /special@
+MKD /valid_directory/nested_dir1/nested_dir2/nested_dir3
+QUIT
+

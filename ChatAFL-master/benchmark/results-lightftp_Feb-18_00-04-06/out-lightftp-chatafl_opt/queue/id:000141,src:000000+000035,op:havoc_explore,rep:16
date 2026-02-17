@@ -1,0 +1,22 @@
+USƒR ubuntu
+PASS ubuntu
+SYST
+PWD
+r_est
+RNFR test/invalid_case
+PORT 127,0,0,1,132,209
+erST
+MKD test
+RNFR t
+RMD test
+RMD test/invalid_path
+RMDÿÿest/long_directory_name¼aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+RNFR	test
+RNTO tnst/another_test
+RNFR test/invAUTH_case
+RNTO /invalid_path/aAUTHer_test
+RNFR test
+RNTO
+QUIT
+
+PASS ubuntu

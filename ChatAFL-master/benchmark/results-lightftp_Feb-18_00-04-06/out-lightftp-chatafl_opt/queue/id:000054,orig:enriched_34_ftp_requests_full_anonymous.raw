@@ -1,0 +1,22 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+RNFR /path/to/oldfile
+RNTO /path/to/newfile
+TYPE I
+STOR /path/to/file
+REST 100
+RETR /path/to/file
+LIST
+MKD /nested/dir
+MKD /nested/dir/another
+RNFR /nested/dir
+RNTO /nested/dir/renamed
+LIST /../../etc
+RETR /path/to/nonexistentfile
+STOR /path/to/file/with/long/name/that/exceeds/the/typical/limit/of/characters/for/a/filename/so/this/should/be/256/characters/long.txt
+STOR /path/to/file/with/special/chars/@
+QUIT
+

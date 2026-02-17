@@ -1,0 +1,22 @@
+To incorporate the `MLST` and `ABOR` commands into the sequence of client requests, we need to consider where these commands would logically fit in the context of an FTP session. The `MLST` command is typically used to request information about a specific file or directory, while `ABOR` is used to abort a previous command.
+
+Here's a modified sequence of client requests that includes `MLST` and `ABOR`:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+MLST <filename>  # Replace <filename> with the actual file name you want to query
+ABOR  # This command is used to abort the previous LIST command if needed
+QUIT
+```
+
+In this sequence:
+- The `MLST` command is placed after the `LIST` command, assuming the user wants to get details about a specific file after listing the directory contents.
+- The `ABOR` command is included after the `MLST` command, which could be used to abort any ongoing operation if necessary. However, if you want to ensure that `ABOR` is used only when needed, you might want to adjust its placement based on your actual use case.
+
+Make sure to replace `<filename>` with the actual name of the file you want to retrieve information about
+

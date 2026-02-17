@@ -1,0 +1,28 @@
+USER anonymous
+PAER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+ABOR
+TYPE I
+STOR file.txt
+REST 0
+RETR file.txt
+MKD /../../etc
+MKD test/.fifty_six_characters_to_test_the_boundary_conditions
+MKD test/@
+MKD test/empt0,1,132,209
+LIST
+MKD test
+ABOR
+TYPE I
+STOR file.txt
+REST 0
+Re
+RNTO test/newname
+QUIT
+
+SYST

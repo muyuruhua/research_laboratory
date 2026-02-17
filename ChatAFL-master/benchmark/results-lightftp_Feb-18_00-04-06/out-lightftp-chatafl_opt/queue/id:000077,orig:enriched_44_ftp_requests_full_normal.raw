@@ -1,0 +1,22 @@
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+TYPE I
+LIST
+STOR testfile
+REST 0
+RETR testfile
+MKD test
+RNTO newtest
+MKD test/dir1
+MKD test/dir1/dir2
+MKD test/dir1/dir2/dir3
+MKD test/dir1/dir2/dir3/dir4
+MKD test/dir1/dir2/dir3/dir4/dir5
+MKD test/dir1/dir2/dir3/dir4/dir5/dir6
+MKD test/../../etc
+MKD test/dir1/dir2/dir3/dir4/dir5/dir6/dir7/dir8/dir9/dir10/dir11/dir12/dir13/dir14/dir15/dir16/dir17/dir18/dir19/dir20/dir21/dir22/dir23/dir24/dir25/dir26/dir27/dir28/dir29/dir30/dir31/dir32/dir33/dir34/dir35/dir36/dir37/dir38/dir39/dir40/dir41/dir42/dir43/dir44/dir45/dir46/dir47/dir48/dir49/dir50
+QUIT
+

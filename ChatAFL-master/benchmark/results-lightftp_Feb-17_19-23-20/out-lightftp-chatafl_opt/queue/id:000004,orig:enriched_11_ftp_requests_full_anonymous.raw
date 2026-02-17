@@ -1,0 +1,19 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+MKD /newdir
+APPE /newdir/file.txt
+STOR /newdir/file.txt
+REST 0
+RETR /newdir/file.txt
+MKD /newdir/../../etc
+MKD /newdir/invalid_file
+MKD /newdir/long_directory_name_12345678901234567890123456789012345678901234567890123456789012345678901234567890
+MKD /newdir/special@
+LIST
+MKD /newdir/anotherdir
+LIST
+QUIT
+

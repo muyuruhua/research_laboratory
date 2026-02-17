@@ -1,0 +1,22 @@
+To incorporate the `ABOR` and `DELE` commands into the sequence of client requests, we should place them logically based on typical FTP command usage. The `ABOR` command is used to abort a previous command, and `DELE` is used to delete a specified file on the server.
+
+Here's a modified sequence of client requests that includes `ABOR` and `DELE`:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+DELE filename.txt  # Assuming you want to delete a file named 'filename.txt'
+ABOR  # This could be used if you wanted to abort the previous LIST command, for example
+QUIT
+```
+
+In this example:
+- The `DELE` command is placed after the `LIST` command, assuming you want to delete a file after listing the files.
+- The `ABOR` command is placed after `DELE`, but its placement can vary based on whether you want to abort the `LIST` command or any other command. If you want to abort the `LIST` command, you would typically do this immediately after it, but since `LIST` is a passive command that typically does not require an abort, it may be used here just for demonstration.
+
+Feel free to adjust the filename in the `DELE` command to match the actual file you wish to delete
+

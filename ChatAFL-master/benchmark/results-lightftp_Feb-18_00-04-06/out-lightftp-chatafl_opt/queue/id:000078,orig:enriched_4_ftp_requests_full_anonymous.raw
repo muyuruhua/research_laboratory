@@ -1,0 +1,20 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+ABOR
+LIST
+STOR file.txt
+REST 0
+RETR file.txt
+MKD /nested/dir
+LIST /../../etc
+STOR /invalid/path/file.txt
+DELE /missing/file.txt
+MKD /longname/`echo $(printf 'a%.0s' {1..256})`
+STOR /special_chars/@
+RETR
+RETR file.txt
+QUIT
+

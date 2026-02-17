@@ -1,0 +1,27 @@
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+APPE testfile.txt
+RETR testfile.txt
+STOR newfile.txt
+REST 100
+MKD /../../etc
+MKD test/invalid/dir/
+MKD test/longname_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+MKD test/special@
+MKD test/emptydir/
+RETR nonexistentfile.txt
+RETR test/emptydir/
+MKD test/rename1
+MKD test/rename2
+RNFR test/rename1
+RNTO test/rename2
+RNFR test/rename2
+RNTO test/rename1
+LIST
+QUIT
+

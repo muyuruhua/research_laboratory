@@ -1,0 +1,26 @@
+USER abuntu
+PASS ubuntu
+SYST
+PWD
+CWD /valid/pathÿÿÿ /../../etc
+CWD /nonexistent/path
+PORG 127,0,0,1,132,209
+LIST
+MKD test
+CWD test
+MKD a
+CWD a
+MKD b
+CWD b
+MKD c
+CWD c
+MKD d
+CWD d
+MKD e
+CWD /long/path/with/256+characters/aaaaaaaaaaaaÿÿaaaaaaaaaaaaaaaaaaaaaaaaaaavaaaa@aaaaaaaaaaaaaa|aaaaaaaaaaaaaaaaÿíaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaoaaaaaaaaaaaRESTaaaaaaaaaaaaaaPORTaaaaaaa aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+CWD /valiaaaaaaaaaaaaaaavaaaa@aaaaaaaaavalid/path
+RNTO /valid/path/test
+RNTO /nonexistent/target
+QUIT
+
+PASS ubuntu

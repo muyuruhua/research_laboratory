@@ -1,0 +1,21 @@
+To include the `DELE` and `TYPE` client requests in the sequence, we need to decide where they would logically fit in the flow of FTP commands. The `TYPE` command is typically issued after establishing the connection and before transferring files, while the `DELE` command is used to delete a file and should be issued after a file has been listed or created.
+
+Here’s a modified sequence of client requests with `TYPE` and `DELE` included:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+TYPE I           # Set the transfer type to binary (I) or ASCII (A)
+LIST
+MKD test
+DELE test/file.txt  # Assuming we want to delete a file named 'file.txt' in the 'test' directory
+QUIT
+```
+
+In this modified sequence:
+- The `TYPE I` command is added after the `PORT` command, indicating the desired transfer mode.
+- The `DELE` command is added after the `MKD` command, assuming you want to delete a specific file (in this case, `test/file.txt`) after creating the directory. Adjust the filename as necessary based on your context
+

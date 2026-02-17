@@ -1,0 +1,20 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+CWD /valid/path
+CWD /../../etc
+CWD /long/path/with/special/chars/@
+PORT 127,0,0,1,152,193
+LIST
+CWD /nonexistent/path
+CWD /valid/path
+STOR testfile.txt
+REST 0
+RETR testfile.txt
+MKD /newdir
+RMD /newdir
+CWD /nested/dir/a/b/c/d/e
+CWD /nested/dir/a/b/c/d/e/../../../../
+QUIT
+

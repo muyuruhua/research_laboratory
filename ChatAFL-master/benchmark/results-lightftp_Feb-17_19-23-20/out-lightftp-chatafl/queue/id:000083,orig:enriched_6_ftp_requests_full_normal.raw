@@ -1,0 +1,24 @@
+To add the NOOP and RNTO commands into the sequence of client requests, we need to consider where they would logically fit based on typical FTP operations. The NOOP command is often used to keep the connection alive, while RNTO (Rename To) is used to rename a file or directory.
+
+Here’s a modified sequence of client requests with NOOP and RNTO added in appropriate locations:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+NOOP
+LIST
+MKD test
+NOOP
+RNTO new_test_directory
+QUIT
+```
+
+In this sequence:
+- The first NOOP is added after establishing the data connection with the PORT command to keep the connection alive before performing the LIST command.
+- The second NOOP is added after creating the directory with MKD, before performing the RNTO command to rename the newly created directory.
+
+Please adjust the RNTO command according to your specific needs and the context of the operations you are performing
+

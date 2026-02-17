@@ -1,0 +1,18 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+RNFR /valid/path/file.txt
+RNTO /valid/path/newfile.txt
+DELE /valid/path/newfile.txt
+RNFR /invalid/path/../../etc/passwd
+RNTO /invalid/path/newfile.txt
+DELE /missing/file.txt
+RNFR /valid/path/longfilename_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.txt
+RNTO /valid/path/longfilename_renamed.txt
+RNFR /valid/path/special@
+RNTO /valid/path/special@
+LIST
+QUIT
+

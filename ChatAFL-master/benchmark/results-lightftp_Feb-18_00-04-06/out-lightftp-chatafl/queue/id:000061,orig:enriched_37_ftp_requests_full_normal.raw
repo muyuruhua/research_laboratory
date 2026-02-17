@@ -1,0 +1,23 @@
+To incorporate the `MLSD` and `DELE` commands into the provided sequence of client requests, we need to determine appropriate locations for these commands. The `MLSD` command is typically used to list directory contents in a machine-readable format, while the `DELE` command is used to delete a specified file.
+
+Here’s a modified sequence of client requests with `MLSD` and `DELE` included:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MLSD
+MKD test
+DELE filename.txt  # Assuming you want to delete a file named 'filename.txt'
+QUIT
+```
+
+In this modified sequence:
+- The `MLSD` command is placed right after `LIST`, as it serves a similar purpose of listing directory contents.
+- The `DELE` command is placed after `MKD test`, assuming the intention is to delete a specific file after creating a directory. You would replace `filename.txt` with the actual file you wish to delete. 
+
+Feel free to adjust the sequence based on your specific needs!
+

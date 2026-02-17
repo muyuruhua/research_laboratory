@@ -1,0 +1,20 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+HELP
+FEAT
+STOR file.txt
+REST 0
+RETR file.txt
+PORT 127,0,0,1,152,194
+LIST
+LIST /../../etc
+LIST missingfile.txt
+MKD longdir/`echo $(printf 'a%.0s' {1..256})`
+MKD special@
+MKD emptydir/
+LIST a/b/c/d/e
+QUIT
+

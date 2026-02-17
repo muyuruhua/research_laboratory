@@ -1,0 +1,18 @@
+To incorporate the `HELP` and `RMD` client requests into the existing sequence of commands, we can place `HELP` after the `SYST` command, as it is a good practice to check for available commands or assistance after establishing the connection. The `RMD` (Remove Directory) command should come after the `LIST` command, as it makes sense to list the contents of the current directory before attempting to remove a directory.
+
+Here’s the modified sequence of client requests:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+HELP
+PWD
+PORT 127,0,0,1,152,193
+LIST
+RMD <directory_name>  ; Replace <directory_name> with the actual directory you want to remove
+QUIT
+```
+
+Make sure to replace `<directory_name>` with the actual name of the directory you wish to remove
+

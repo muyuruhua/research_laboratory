@@ -1,0 +1,22 @@
+To incorporate the `STAT` and `RMD` client requests into the existing sequence, we need to determine appropriate locations for them. The `STAT` command is typically used to retrieve the status of a specified file or directory, and the `RMD` command is used to remove a directory.
+
+Here’s a modified version of your sequence with the `STAT` and `RMD` commands added:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+STAT /path/to/directory_or_file   # Added STAT command here
+LIST
+RMD /path/to/remove_directory      # Added RMD command here
+QUIT
+```
+
+In this modification:
+- The `STAT` command is placed after the `PORT` command and before the `LIST` command, as it is logical to check the status of a file or directory before listing the contents.
+- The `RMD` command is placed after the `LIST` command, as you typically want to list the contents before removing a directory. 
+
+Make sure to replace `/path/to/directory_or_file` and `/path/to/remove_directory` with the actual paths you intend to work with
+

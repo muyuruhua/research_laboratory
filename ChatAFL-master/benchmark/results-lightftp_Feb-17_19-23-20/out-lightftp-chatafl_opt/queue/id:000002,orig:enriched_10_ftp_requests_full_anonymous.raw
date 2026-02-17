@@ -1,0 +1,17 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+RNFR /path/to/oldname
+RNTO /path/to/newname
+MKD /new_directory
+MKD /../../etc
+MKD /long_directory_name_12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234
+MKD /special@
+MKD /empty_dir/
+LIST
+REST 0
+RETR /missing_file
+QUIT
+

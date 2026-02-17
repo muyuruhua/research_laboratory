@@ -1,0 +1,20 @@
+To incorporate the `MLSD` and `TYPE` client requests into the given sequence of FTP commands, we can place the `TYPE` command after the `USER` and `PASS` commands to set the transfer type, and the `MLSD` command can be used in place of or alongside the `LIST` command to list directory contents in a machine-readable format.
+
+Here's the modified sequence of client requests:
+
+```
+USER ubuntu
+PASS ubuntu
+TYPE I
+SYST
+PWD
+PORT 127,0,0,1,132,209
+MLSD
+MKD test
+QUIT
+```
+
+In this modification:
+- `TYPE I` is added after `PASS` to set the transfer type to binary (I for Image).
+- `MLSD` is placed after the `PORT` command to list the contents of the current directory in a machine-readable format. You could replace `LIST` with `MLSD` if you prefer, but in this case, we have just added it to show both commands
+

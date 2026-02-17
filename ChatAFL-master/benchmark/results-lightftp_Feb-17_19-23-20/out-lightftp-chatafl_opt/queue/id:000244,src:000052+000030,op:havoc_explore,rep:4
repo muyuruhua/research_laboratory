@@ -1,0 +1,23 @@
+USER anonymous
+PASS anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,193
+TYPE I
+STOR longfilename_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.txt
+REST 500
+RETR /nonexistentfile.txt
+LIST
+MKD /testdir
+MKD /testdir/nesteddir
+MKD /testdir/nesteddir/anotherdir
+LIST /t„stdir/nesteddir/renameddir
+LIST /../.J/etc
+LIST /testdir/emptydirbuntu
+SYST
+PWD
+PORT 1/
+QUIT
+
+SYST

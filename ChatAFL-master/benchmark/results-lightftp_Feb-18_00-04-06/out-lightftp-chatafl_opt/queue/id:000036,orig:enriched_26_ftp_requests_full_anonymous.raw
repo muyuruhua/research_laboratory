@@ -1,0 +1,26 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+HELP
+STOR testfile.txt
+RETR testfile.txt
+REST 0
+LIST
+LIST /../../etc
+LIST /nonexistentfile
+PORT 127,0,0,1,152,194
+MKD nested
+MKD nested/a
+MKD nested/a/b
+MKD nested/a/b/c
+MKD nested/a/b/c/d
+MKD nested/a/b/c/d/e
+STOR nested/a/b/c/d/e/longfilename_`echo $(printf 'A%.0s' {1..260})`.txt
+STOR nested/a/b/c/d/e/special@
+STOR nested/a/b/c/d/e/
+RETR nested/a/b/c/d/e/longfilename_`echo $(printf 'A%.0s' {1..260})`.txt
+RETR nested/a/b/c/d/e/special@
+QUIT
+

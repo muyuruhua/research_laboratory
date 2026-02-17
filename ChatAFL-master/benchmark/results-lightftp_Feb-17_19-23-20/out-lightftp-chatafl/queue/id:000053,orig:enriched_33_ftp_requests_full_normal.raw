@@ -1,0 +1,27 @@
+To incorporate the `CWD` (Change Working Directory) and `DELE` (Delete File) client requests into the sequence you provided, we need to determine appropriate locations for these commands.
+
+Here’s a modified sequence of client requests that includes both `CWD` and `DELE`:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+CWD test            # Change to the newly created directory 'test'
+LIST                # List the contents of the 'test' directory
+MKD test2          # Create a new directory 'test2' inside 'test'
+CWD test2          # Change to the 'test2' directory
+DELE somefile.txt   # Delete 'somefile.txt' in 'test2' (assuming it exists)
+QUIT
+```
+
+In this modified sequence:
+- After creating the directory `test` with `MKD`, we change into that directory using `CWD test`.
+- We then list the contents of the `test` directory.
+- We create another directory `test2` inside `test` using `MKD test2`.
+- We change into the `test2` directory using `CWD test2`.
+- Finally, we perform a delete operation with `DELE somefile.txt`, which is assumed to be a file that exists in the `test2` directory. 
+
+Feel free to adjust the filenames or directories as necessary based on your specific requirements
+

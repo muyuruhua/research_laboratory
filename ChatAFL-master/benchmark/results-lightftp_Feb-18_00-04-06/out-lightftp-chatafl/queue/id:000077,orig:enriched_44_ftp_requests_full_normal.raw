@@ -1,0 +1,21 @@
+To incorporate the DELE and TYPE commands into the sequence of client requests, we need to determine appropriate locations for these commands. The DELE command is typically used to delete a file on the server, and it should be placed after a file has been created or listed. The TYPE command is usually sent to set the transfer type (ASCII or binary) and can be placed after the user has logged in but before any file operations.
+
+Here is a modified sequence of client requests with the DELE and TYPE commands added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+TYPE I           # Setting transfer type to binary (I for Image)
+LIST
+MKD test
+DELE testfile   # Assuming 'testfile' is a file we want to delete
+QUIT
+```
+
+In this modified sequence:
+- The TYPE command is placed after the PORT command to set the transfer type before any file operations.
+- The DELE command is placed after the MKD command, assuming that we want to delete a file named 'testfile' after creating the directory 'test'. Adjust the filename as needed based on your context
+

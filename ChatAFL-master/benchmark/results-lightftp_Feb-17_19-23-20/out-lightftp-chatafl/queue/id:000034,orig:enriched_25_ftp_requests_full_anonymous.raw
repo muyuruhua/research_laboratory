@@ -1,0 +1,23 @@
+To incorporate the RMD (Remove Directory) and MKD (Make Directory) commands into the sequence of client requests, we need to place them in logical positions. Typically, you would want to create a directory (MKD) before listing its contents or performing operations, and you would remove a directory (RMD) after you are done with it.
+
+Here’s a modified sequence of client requests that includes both RMD and MKD:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+MKD new_directory       # Create a new directory
+LIST new_directory      # List the contents of the new directory (which should be empty)
+RMD new_directory       # Remove the new directory
+QUIT
+```
+
+In this modified sequence:
+1. **MKD new_directory** is added after the PORT command to create a new directory.
+2. **LIST new_directory** is included to list the contents of the newly created directory.
+3. **RMD new_directory** is added to remove the directory after its contents have been listed. 
+
+This order maintains logical flow in FTP operations
+

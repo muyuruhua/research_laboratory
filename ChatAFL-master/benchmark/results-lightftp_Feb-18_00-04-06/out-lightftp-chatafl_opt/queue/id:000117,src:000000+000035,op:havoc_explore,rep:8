@@ -1,0 +1,23 @@
+USER ubuntu
+PASS ubu.tu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+RNFR test
+RNTO new_test
+RMD non_existent_dir
+RMD /../../etc
+RMD test
+RMD test/invalid_path
+RMD xest/long_director\_name_aaRMDaaaaaaaaaaaaaaaaaaaaafaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaRETRaaaaaaaaaaaaaaa[aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+RNFRýsest
+RNTO test/another_test
+RNFR test/invalid_case
+RNTO /invalid_path/another_test
+RNFR test
+RNTO
+QUIT
+
+PASS ubuntu

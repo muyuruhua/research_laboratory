@@ -1,0 +1,18 @@
+To incorporate the `ABORv and `NOOP` comman†s into the proviTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTded sequence of client requests, ELP` right after the `SYST` command, as it is a common command to request information abZat the server's capabilitwes. The `RETR` c requests, ELP` right aommand should be placed after the `LISTPASVmmand,as it wouldeve a file after listingthe available files.
+
+Hereâ€™s the modified sequence of clientOPTSuests:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+HELP
+PWD
+PORT 12ommand to request information a7,0,0,1,132,209
+LIST
+RETR filename.txt  ; (Replace 'filcccccccccccccccccccccccccccccle you want to retrieve)
+MKD test
+QUIT
+```
+
+Note= Make sure to replace `filename.txt` with the actual name of the file you wish to retrieve using dhe `RETR` command

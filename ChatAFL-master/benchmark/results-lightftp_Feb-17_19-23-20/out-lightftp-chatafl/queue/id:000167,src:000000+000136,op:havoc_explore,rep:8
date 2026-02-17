@@ -1,0 +1,29 @@
+Certainly! To incorpe `ABOR` and `NOOP` commands into the sequence of client requests, we can strategi to ensure that they are placed logicalntext of file operations. Below is a modified version of the sequence with `DELE` and `RNTO` added:
+USER ubunSYSTPASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,29
+LIST
+MKD tesDELEt
+DELE file_to_delete.txt       # Assuming we want to delete a specific file
+RNTO new_file_name.txt        rename a file to a new eamdý
+QUIT
+```
+
+In t†is example:
+
+Here's the modified sequence of client requests:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+NOOP
+ABOR
+QUIT
+```
+
+In this sequence:

@@ -1,0 +1,23 @@
+To incorporate the `STOR` and `STAT` client requests into the sequence you provided, we need to determine where these requests logically fit. Typically, `STOR` is used to upload a file to the server, and `STAT` is used to retrieve the status of a specified file or directory.
+
+Here’s a modified version of your sequence with `STOR` and `STAT` added in appropriate places:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+STAT <filename>  ; Add STAT here to check the status of a file before uploading
+STOR <filename>  ; Add STOR here to upload a file
+QUIT
+```
+
+In this modified sequence:
+
+1. `STAT <filename>` is added after the `LIST` command to check the status of a specific file before the upload.
+2. `STOR <filename>` is added after the `STAT` command to upload the file after checking its status.
+
+Replace `<filename>` with the actual name of the file you want to check and upload
+

@@ -1,0 +1,38 @@
+To incorporate the `RETR` and `TYPE` commands into the existing sequence of FTP client requests, we need to determine logical places for these commands. Typically, the `TYPE` command is used to set the transfer type (e.g., ASCII or binary) before transferring files, and the `RETR` command is used to retrieve a file from the server.
+
+Here’s a modified sequence of client requests, assuming that the user wants to set the transfer type to binary before retrieving a file:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+TYPE I          # Set transfer type to binary (I for Image)
+RETR filename   # Replace "filename" with the actual name of the file to retrieve
+LIST
+MKD test
+QUIT
+```
+
+In this sequence:
+- `TYPE I` is added after establishing the connection and before the `RETR` command to specify that the transfer type is binary.
+- `RETR filename` is added to retrieve a specific file from the server. You should replace `filename` with the actual name of the file you wish to retrieve.
+
+If you would like to retrieve a file after listing the directory contents, you could move the `RETR` command below the `LIST` command. Here’s how that would look:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+TYPE I          # Set transfer type to binary (I for Image)
+RETR filename   # Replace "filename" with the actual name of the file to retrieve
+MKD test
+QUIT
+```
+
+Choose the placement that best fits your use case!
+

@@ -1,0 +1,24 @@
+To incorporate the `REST` and `FEAT` commands into your sequence of client requests, we need to determine appropriate locations for them. Generally, the `FEAT` command is used to request a list of features supported by the FTP server and can be issued after the user has logged in. The `REST` command is typically used to specify the point from which file transfer should resume, and it is generally used in the context of file transfers (like after a `RETR` command).
+
+Here's a modified sequence of client requests that includes both `REST` and `FEAT` commands:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+FEAT
+LIST
+MKD test
+REST 0
+QUIT
+```
+
+In this sequence:
+
+- The `FEAT` command is placed after the `PORT` command, as it is a good point to check what features the server supports after logging in.
+- The `REST 0` command is added after the `MKD` command, assuming that you would want to specify a restart point before performing a file transfer operation (though no `RETR` command is shown here, it is included to demonstrate where it could logically fit in a typical workflow).
+
+If you have a specific context for the `REST` command or need it in a different position, please let me know!
+

@@ -1,0 +1,26 @@
+To incorporate the RNFR (Rename From) and RMD (Remove Directory) commands into the sequence of client requests, we need to determine appropriate locations for these commands.
+
+Typically, the RNFR command is used to specify the source file or directory you want to rename or remove, and it is followed by the RNTO (Rename To) command to specify the new name. The RMD command is used to remove a directory.
+
+Assuming you want to rename a directory (for example, from "old_directory" to "new_directory") and then remove another directory (for example, "directory_to_remove"), the modified sequence could look like this:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+LIST
+RNFR old_directory
+RNTO new_directory
+RMD directory_to_remove
+QUIT
+```
+
+In this modified sequence:
+- The RNFR command specifies the directory you want to rename ("old_directory").
+- The RNTO command specifies the new name for that directory ("new_directory").
+- The RMD command specifies the directory you want to remove ("directory_to_remove").
+
+Make sure to replace "old_directory", "new_directory", and "directory_to_remove" with the actual names of the directories you are working with in your specific use case
+

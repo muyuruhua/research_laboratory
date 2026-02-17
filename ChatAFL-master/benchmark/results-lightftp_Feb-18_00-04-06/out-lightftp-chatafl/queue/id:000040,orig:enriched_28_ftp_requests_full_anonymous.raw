@@ -1,0 +1,22 @@
+To incorporate the ABOR and ALLO commands into the given sequence of client requests, we need to identify appropriate locations for these commands.
+
+The ABOR command is typically used to abort a previous command that is in progress, and it should come after a command that could potentially be long-running (like LIST). The ALLO command is used to allocate space for a file on the server, and it is usually sent before any file transfer commands (like STOR). 
+
+In this case, we can place the ALLO command before the LIST command to allocate space for the listing, and we can place the ABOR command after the LIST command to allow for the possibility of aborting the LIST command if needed.
+
+Here’s the modified sequence of client requests:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+ALLO 0  # Allocate space for the file transfer
+LIST
+ABOR  # Abort the LIST command if needed
+QUIT
+```
+
+This sequence now includes both the ABOR and ALLO commands in appropriate locations
+

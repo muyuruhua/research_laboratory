@@ -1,0 +1,16 @@
+Here is the modified sequence of client requests with the NOOP and MKD commands added in appropriate locations:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+NOOP
+PWD
+PORT 127,0,0,1,152,193
+MKD new_directory
+LIST
+QUIT
+```
+
+In this modified sequence, the NOOP command is added after the SYST command, and the MKD command is added before the LIST command to create a new directory before listing its contents
+

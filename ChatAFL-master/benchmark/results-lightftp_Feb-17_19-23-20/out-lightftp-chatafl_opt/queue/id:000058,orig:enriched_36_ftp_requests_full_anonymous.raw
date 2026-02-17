@@ -1,0 +1,21 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+CWD /valid/path
+PORT 127,0,0,1,152,193
+LIST
+CWD /../../etc
+RNTO invalid_file_name
+CWD /valid/long_directory_name_with_special_chars_@
+RNTO /another/valid/path
+CWD /nonexistent_directory
+RNTO /valid/renamed_file
+CWD /valid/nested/dir/a/b/c/d/e
+RNTO /valid/nested/dir/a/b/c/d/e/renamed_file
+CWD /valid/path
+CWD /valid/path
+REST 100
+RETR valid_file
+QUIT
+

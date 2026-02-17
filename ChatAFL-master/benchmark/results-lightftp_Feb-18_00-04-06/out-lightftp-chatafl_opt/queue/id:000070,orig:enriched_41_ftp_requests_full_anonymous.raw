@@ -1,0 +1,21 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+TYPE I
+RETR valid_file.txt
+RETR /../../etc/passwd
+RETR non_existent_file.txt
+STOR another_file.txt
+REST 100
+LIST
+MKD a
+MKD a/b
+MKD a/b/c
+MKD a/b/c/d
+MKD a/b/c/d/e
+LIST a/b/c/d/e
+LIST /invalid/path
+QUIT
+

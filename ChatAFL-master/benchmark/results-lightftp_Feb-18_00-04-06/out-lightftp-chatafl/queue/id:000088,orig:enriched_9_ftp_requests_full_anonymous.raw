@@ -1,0 +1,18 @@
+Here is the modified sequence of client requests with the `STOR` and `HELP` commands added in appropriate locations:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+HELP
+PWD
+PORT 127,0,0,1,152,193
+LIST
+STOR <filename>
+QUIT
+```
+
+In this sequence:
+- The `HELP` command is placed after the `SYST` command to provide the user with assistance before performing file operations.
+- The `STOR` command is added before the `QUIT` command, indicating that the client wants to upload a file before ending the session. Replace `<filename>` with the actual name of the file you wish to store
+

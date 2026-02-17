@@ -1,0 +1,24 @@
+To incorporate the `RMD` (remove directory) and `DELE` (delete file) commands into the sequence of client requests, we need to consider the appropriate locations based on typical FTP operations. Typically, you would want to delete a file before removing a directory, and you might want to create the directory before trying to delete it.
+
+Here’s a modified sequence of client requests that includes `RMD` and `DELE`:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+DELE somefile.txt        # Assuming you want to delete a file named 'somefile.txt'
+RMD test                 # Now remove the directory 'test' that was created
+QUIT
+```
+
+In this sequence:
+- `MKD test` creates a directory named 'test'.
+- `DELE somefile.txt` deletes a file named 'somefile.txt' (you would need to ensure that this file exists on the server).
+- `RMD test` then removes the directory 'test'.
+
+Make sure to adjust the file name in the `DELE` command according to your actual use case
+

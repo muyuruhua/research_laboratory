@@ -1,0 +1,19 @@
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+PASV
+RETR valid_file.txt
+RETR /../../etc/passwd
+RETR missing_file.txt
+RETR permission_denied_file.txt
+MKD a/b/c/d/e
+MKD test_with_long_name_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+MKD special_chars_@
+REST 0
+STOR valid_file.txt
+QUIT
+

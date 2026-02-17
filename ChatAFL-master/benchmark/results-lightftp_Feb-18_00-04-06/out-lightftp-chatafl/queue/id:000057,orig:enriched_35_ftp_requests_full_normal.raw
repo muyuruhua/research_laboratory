@@ -1,0 +1,19 @@
+To incorporate the `MLSD` and `RETR` client requests into the sequence you provided, we need to consider where they logically fit based on typical FTP operations. The `MLSD` command is used to list directory contents in a machine-readable format, while `RETR` is used to retrieve a file from the server.
+
+Here’s a modified sequence of client requests, with `MLSD` added after the `LIST` command and `RETR` added after the `MKD` command (assuming we want to retrieve a file after creating a directory):
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MLSD
+MKD test
+RETR <filename>  ; (replace <filename> with the actual file name you want to retrieve)
+QUIT
+```
+
+Make sure to replace `<filename>` with the actual name of the file you want to retrieve after creating the directory. If you have a specific file in mind, please let me know, and I can update that for you!
+

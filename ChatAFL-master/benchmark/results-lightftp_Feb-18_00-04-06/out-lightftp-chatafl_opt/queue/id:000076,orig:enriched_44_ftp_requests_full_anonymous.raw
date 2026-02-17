@@ -1,0 +1,18 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+TYPE I
+STOR testfile.txt
+REST 0
+RETR testfile.txt
+DELE /../../etc/passwd
+DELE non_existent_file.txt
+DELE /home/user/forbidden_file.txt
+LIST
+MKD a/b/c/d/e
+MKD long_directory_name_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+LIST
+QUIT
+

@@ -1,0 +1,20 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+HELP
+MKD /newdir
+MKD /newdir/../invaliddir
+MKD /newdir/longname_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+STOR testfile.txt
+REST 100
+RETR testfile.txt
+LIST
+MKD /newdir/@
+MKD /newdir/emptydir/
+MKD /newdir/./nested1/nested2/nested3
+LIST
+PORT 127,0,0,1,152,194
+QUIT
+

@@ -1,0 +1,22 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+NOOP
+PORT 127,0,0,1,152,193
+LIST
+STOR testfile.txt
+REST 100
+RETR testfile.txt
+MKD /../../etc
+MKD /valid/dir
+LIST /valid/dir
+LIST /nonexistent/dir
+DELE /valid/dir/nonexistentfile.txt
+RNFR /valid/dir/file.txt
+RNTO /valid/dir/renamedfile.txt
+PORT 127,0,0,1,152,194
+LIST
+NOOP
+QUIT
+

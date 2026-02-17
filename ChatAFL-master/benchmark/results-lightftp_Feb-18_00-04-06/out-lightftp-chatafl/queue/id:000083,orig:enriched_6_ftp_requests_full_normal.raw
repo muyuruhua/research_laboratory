@@ -1,0 +1,17 @@
+To include the `HELP` and `FEAT` client requests in the proper locations, we can add `HELP` after the initial connection commands and `FEAT` before the `LIST` command. Here’s the modified sequence of client requests:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+HELP
+FEAT
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+QUIT
+```
+
+This sequence maintains a logical flow while incorporating the `HELP` and `FEAT` commands appropriately
+

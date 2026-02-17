@@ -13,7 +13,7 @@
 // -lcurl -ljson-c -lpcre2-8
 // apt install libcurl4-openssl-dev libjson-c-dev libpcre2-dev libpcre2-8-0
 
-#define MAX_TOKENS 2048
+#define MAX_TOKENS 4096
 #define CONFIDENT_TIMES 3
 
 struct MemoryStruct
@@ -169,17 +169,37 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
 
 char *construct_prompt_stall(char *protocol_name, char *examples, char *history)
 {
-    char *template = "In the %s protocol, the communication history between the %s client and the %s server is as follows."
-                     "The next proper client request that can affect the server's state are:\\n\\n"
-                     "Desired format of real client requests:\\n%sCommunication History:\\n\\\"\\\"\\\"\\n%s\\\"\\\"\\\"";
+    char *template = "You are analyzing the %s protocol. Based on the communication history below, "
+                     "suggest the next client request that could trigger new server behaviors or explore untested code paths.\n\n"
+                     "Communication History:\n\"\"\"%s\"\"\"\n\n"
+                     "Example request format:\n%s\n\n"
+                     "IMPORTANT: Return your response ONLY as valid JSON in this exact format:\n"
+                     "{\n"
+                     "  \"analysis\": \"brief explanation of why the server might be stuck or what to try next\",\n"
+                     "  \"suggested_request\": \"COMMAND argument\\r\\n\"\n"
+                     "}\n\n"
+                     "Do NOT include markdown formatting, code blocks, or any text outside the JSON structure.";
 
     char *prompt = NULL;
-    asprintf(&prompt, template, protocol_name, protocol_name, protocol_name, examples, history);
+    asprintf(&prompt, template, protocol_name, history, examples);
 
-    char *final_prompt = NULL;
-
-    asprintf(&final_prompt, "[{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"}, {\"role\": \"user\", \"content\": \"%s\"}]", prompt);
-
+    // FIXED: Use json-c library to build complete JSON array with proper escaping
+    struct json_object *messages_array = json_object_new_array();
+    
+    struct json_object *system_msg = json_object_new_object();
+    json_object_object_add(system_msg, "role", json_object_new_string("system"));
+    json_object_object_add(system_msg, "content", json_object_new_string("You are a protocol fuzzing assistant that returns only valid JSON."));
+    json_object_array_add(messages_array, system_msg);
+    
+    struct json_object *user_msg = json_object_new_object();
+    json_object_object_add(user_msg, "role", json_object_new_string("user"));
+    json_object_object_add(user_msg, "content", json_object_new_string(prompt));
+    json_object_array_add(messages_array, user_msg);
+    
+    const char *json_str = json_object_to_json_string(messages_array);
+    char *final_prompt = strdup(json_str);
+    
+    json_object_put(messages_array);
     free(prompt);
 
     return final_prompt;
@@ -202,21 +222,23 @@ char *construct_prompt_for_templates(char *protocol_name, char **final_msg)
     asprintf(&msg, "%s\\n%s\\nFor the %s protocol, all of client request templates are :", prompt_rtsp_example, prompt_http_example, protocol_name);
     *final_msg = msg;
     
-    // CRITICAL FIX: Use json-c to properly escape the message content
-    json_object *msg_obj = json_object_new_string(msg);
-    const char *msg_escaped = json_object_to_json_string(msg_obj);
+    // FIXED: Use json-c library to build complete JSON array with proper escaping
+    struct json_object *messages_array = json_object_new_array();
     
-    /** Format of prompt_grammars
-    prompt_grammars = [
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": msg}
-    ]
-     **/
-    char *prompt_grammars = NULL;
-
-    asprintf(&prompt_grammars, "[{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"}, {\"role\": \"user\", \"content\": %s}]", msg_escaped);
+    struct json_object *system_msg = json_object_new_object();
+    json_object_object_add(system_msg, "role", json_object_new_string("system"));
+    json_object_object_add(system_msg, "content", json_object_new_string("You are a helpful assistant."));
+    json_object_array_add(messages_array, system_msg);
     
-    json_object_put(msg_obj);  // Free json object
+    struct json_object *user_msg = json_object_new_object();
+    json_object_object_add(user_msg, "role", json_object_new_string("user"));
+    json_object_object_add(user_msg, "content", json_object_new_string(msg));
+    json_object_array_add(messages_array, user_msg);
+    
+    const char *json_str = json_object_to_json_string(messages_array);
+    char *prompt_grammars = strdup(json_str);
+    
+    json_object_put(messages_array);
 
     return prompt_grammars;
 }
@@ -226,37 +248,182 @@ char *construct_prompt_for_remaining_templates(char *protocol_name, char *first_
     char *second_question = NULL;
     asprintf(&second_question, "For the %s protocol, other templates of client requests are:", protocol_name);
 
-    // CRITICAL FIX: Escape all string fields properly using json-c
-    json_object *answer_str = json_object_new_string(first_answer);
-    json_object *first_q_obj = json_object_new_string(first_question);
-    json_object *second_q_obj = json_object_new_string(second_question);
+    // FIXED: Use json-c library to build complete JSON array with proper escaping
+    struct json_object *messages_array = json_object_new_array();
     
-    const char *answer_str_escaped = json_object_to_json_string(answer_str);
-    const char *first_q_escaped = json_object_to_json_string(first_q_obj);
-    const char *second_q_escaped = json_object_to_json_string(second_q_obj);
-
-    char *prompt = NULL;
-
-    asprintf(&prompt,
-             "["
-             "{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"},"
-             "{\"role\": \"user\", \"content\": %s},"
-             "{\"role\": \"assistant\", \"content\": %s },"
-             "{\"role\": \"user\", \"content\": %s}"
-             "]",
-             first_q_escaped, answer_str_escaped, second_q_escaped);
-
-    json_object_put(answer_str);
-    json_object_put(first_q_obj);
-    json_object_put(second_q_obj);
+    // System message
+    struct json_object *system_msg = json_object_new_object();
+    json_object_object_add(system_msg, "role", json_object_new_string("system"));
+    json_object_object_add(system_msg, "content", json_object_new_string("You are a helpful assistant."));
+    json_object_array_add(messages_array, system_msg);
+    
+    // First user question
+    struct json_object *user_msg1 = json_object_new_object();
+    json_object_object_add(user_msg1, "role", json_object_new_string("user"));
+    json_object_object_add(user_msg1, "content", json_object_new_string(first_question));
+    json_object_array_add(messages_array, user_msg1);
+    
+    // Assistant answer
+    struct json_object *assistant_msg = json_object_new_object();
+    json_object_object_add(assistant_msg, "role", json_object_new_string("assistant"));
+    json_object_object_add(assistant_msg, "content", json_object_new_string(first_answer));
+    json_object_array_add(messages_array, assistant_msg);
+    
+    // Second user question
+    struct json_object *user_msg2 = json_object_new_object();
+    json_object_object_add(user_msg2, "role", json_object_new_string("user"));
+    json_object_object_add(user_msg2, "content", json_object_new_string(second_question));
+    json_object_array_add(messages_array, user_msg2);
+    
+    const char *json_str = json_object_to_json_string(messages_array);
+    char *prompt = strdup(json_str);
+    
+    json_object_put(messages_array);
     free(second_question);
 
     return prompt;
 }
 
+/* Check if a string is valid UTF-8 */
+static int is_valid_utf8(const char *str, size_t len) {
+    size_t i = 0;
+    while (i < len) {
+        unsigned char c = str[i];
+        int bytes = 0;
+        
+        if (c <= 0x7F) {
+            bytes = 1;
+        } else if ((c & 0xE0) == 0xC0) {
+            bytes = 2;
+        } else if ((c & 0xF0) == 0xE0) {
+            bytes = 3;
+        } else if ((c & 0xF8) == 0xF0) {
+            bytes = 4;
+        } else {
+            return 0; // Invalid UTF-8 start byte
+        }
+        
+        // Check continuation bytes
+        for (int j = 1; j < bytes; j++) {
+            if (i + j >= len || (str[i + j] & 0xC0) != 0x80) {
+                return 0; // Invalid continuation byte
+            }
+        }
+        
+        i += bytes;
+    }
+    return 1;
+}
+
+/* Count non-ASCII characters in a string */
+static size_t count_non_ascii(const char *str, size_t len) {
+    size_t count = 0;
+    for (size_t i = 0; i < len; i++) {
+        if ((unsigned char)str[i] > 127) {
+            count++;
+        }
+    }
+    return count;
+}
+
+/* Check if LLM response appears to be garbage */
+static int is_garbage_response(const char *response, size_t len) {
+    if (!response || len == 0) return 1;
+    
+    // Check 1: Must be valid UTF-8
+    if (!is_valid_utf8(response, len)) {
+        fprintf(stderr, "[!] Response validation failed: Invalid UTF-8 encoding\n");
+        return 1;
+    }
+    
+    // Check 2: Non-ASCII ratio shouldn't exceed 40%
+    size_t non_ascii = count_non_ascii(response, len);
+    float non_ascii_ratio = (float)non_ascii / len;
+    if (non_ascii_ratio > 0.4) {
+        fprintf(stderr, "[!] Response validation failed: Too many non-ASCII characters (%.1f%%)\n", 
+                non_ascii_ratio * 100);
+        return 1;
+    }
+    
+    // Check 3: Should not be too short (less than 10 chars)
+    if (len < 10) {
+        fprintf(stderr, "[!] Response validation failed: Too short (%zu bytes)\n", len);
+        return 1;
+    }
+    
+    // Check 4: For JSON responses, check basic structure
+    if (response[0] == '{' || response[0] == '[') {
+        // Count braces
+        int open_braces = 0, close_braces = 0;
+        int open_brackets = 0, close_brackets = 0;
+        for (size_t i = 0; i < len; i++) {
+            if (response[i] == '{') open_braces++;
+            if (response[i] == '}') close_braces++;
+            if (response[i] == '[') open_brackets++;
+            if (response[i] == ']') close_brackets++;
+        }
+        
+        if (open_braces != close_braces || open_brackets != close_brackets) {
+            fprintf(stderr, "[!] Response validation failed: Mismatched braces/brackets " 
+                    "({:%d/%d, [:%d/%d)\n", 
+                    open_braces, close_braces, open_brackets, close_brackets);
+            return 1;
+        }
+    }
+    
+    return 0;
+}
+
 char *extract_stalled_message(char *message, size_t message_len)
 {
-
+    if (!message || message_len == 0) {
+        fprintf(stderr, "[!] extract_stalled_message: NULL or empty message\n");
+        return NULL;
+    }
+    
+    // Step 1: Validate response quality
+    if (is_garbage_response(message, message_len)) {
+        fprintf(stderr, "[!] LLM response failed quality validation, discarding\n");
+        return NULL;
+    }
+    
+    fprintf(stderr, "[+] LLM response passed quality validation\n");
+    
+    // Step 2: Try to parse as JSON (new format)
+    json_object *jobj = json_tokener_parse(message);
+    if (jobj) {
+        fprintf(stderr, "[+] Successfully parsed LLM response as JSON\n");
+        
+        // Extract suggested_request field
+        json_object *req_obj;
+        if (json_object_object_get_ex(jobj, "suggested_request", &req_obj)) {
+            const char *req_str = json_object_get_string(req_obj);
+            if (req_str && strlen(req_str) > 0) {
+                fprintf(stderr, "[+] Extracted suggested request: %.50s...\n", req_str);
+                char *result = strdup(req_str);
+                json_object_put(jobj);
+                return result;
+            }
+        }
+        
+        // Also try "request" field for backward compatibility
+        if (json_object_object_get_ex(jobj, "request", &req_obj)) {
+            const char *req_str = json_object_get_string(req_obj);
+            if (req_str && strlen(req_str) > 0) {
+                fprintf(stderr, "[+] Extracted request: %.50s...\n", req_str);
+                char *result = strdup(req_str);
+                json_object_put(jobj);
+                return result;
+            }
+        }
+        
+        json_object_put(jobj);
+        fprintf(stderr, "[!] JSON parsed but no 'suggested_request' or 'request' field found\n");
+    }
+    
+    // Step 3: Fallback to regex extraction (old format)
+    fprintf(stderr, "[*] Falling back to regex extraction for non-JSON response\n");
+    
     int errornumber;
     size_t erroroffset;
     // After a lot of iterations, the model consistently responds with an empty line and then a line of text
@@ -268,6 +435,9 @@ char *extract_stalled_message(char *message, size_t message_len)
     {
         size_t *ovector = pcre2_get_ovector_pointer(match_data);
         res = strdup(message + ovector[1]);
+        fprintf(stderr, "[+] Regex extraction result: %.50s...\n", res);
+    } else {
+        fprintf(stderr, "[!] Regex extraction failed\n");
     }
 
     pcre2_match_data_free(match_data);
@@ -603,10 +773,11 @@ char *construct_prompt_for_requests_to_states(const char *protocol_name,
         example_request_len = EXAMPLE_SEQUENCE_PROMPT_LENGTH;
     }
 
+    // Build content string
     char *content = NULL;
     asprintf(&content,
-             "In the %s protocol, if the server just starts, to reach the INIT state, the sequence of client requests can be:\\n"
-             "%.*s\\nSimilarly, in the %s protocol, if the server just starts, to reach the %.*s state, the sequence of client requests can be:\\n",
+             "In the %s protocol, if the server just starts, to reach the INIT state, the sequence of client requests can be:\n"
+             "%.*s\nSimilarly, in the %s protocol, if the server just starts, to reach the %.*s state, the sequence of client requests can be:\n",
              protocol_name,
              example_request_len,
              example_requests_json_str + 1,
@@ -614,8 +785,23 @@ char *construct_prompt_for_requests_to_states(const char *protocol_name,
              (int)strlen(protocol_state_json_str) - 2,
              protocol_state_json_str + 1);
 
-    asprintf(&prompt, "[{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"}, {\"role\": \"user\", \"content\": \"%s\"}]", content);
+    // Use json-c to properly construct the entire JSON structure
+    json_object *messages_array = json_object_new_array();
     
+    json_object *system_msg = json_object_new_object();
+    json_object_object_add(system_msg, "role", json_object_new_string("system"));
+    json_object_object_add(system_msg, "content", json_object_new_string("You are a helpful assistant."));
+    json_object_array_add(messages_array, system_msg);
+    
+    json_object *user_msg = json_object_new_object();
+    json_object_object_add(user_msg, "role", json_object_new_string("user"));
+    json_object_object_add(user_msg, "content", json_object_new_string(content));
+    json_object_array_add(messages_array, user_msg);
+    
+    const char *json_str = json_object_to_json_string(messages_array);
+    prompt = strdup(json_str);
+    
+    json_object_put(messages_array);
     free(content);
     json_object_put(protocol_state_json);
     json_object_put(example_requests_json);
@@ -1210,78 +1396,35 @@ char *enrich_sequence(char *sequence, khash_t(strSet) * missing_message_types)
     char *prompt = NULL;
     char *content = NULL;
 
-    // ULTIMATE FIX: Manually escape JSON to avoid json-c double-escaping issues
-    // This is the ONLY reliable way to handle binary fuzzer test cases
-    size_t seq_len = strlen(sequence);
-    size_t escaped_capacity = seq_len * 6 + 1;  // Worst case: each char becomes \uXXXX
-    char *manual_escaped = ck_alloc(escaped_capacity);
-    size_t out_pos = 0;
+    // FIXED: Use json-c library properly to handle ALL escaping automatically
+    // json-c will correctly escape control characters as \uXXXX in the final JSON
     
-    for (size_t i = 0; i < seq_len && out_pos < escaped_capacity - 10; i++) {
-        unsigned char c = (unsigned char)sequence[i];
-        
-        // Handle special JSON escape sequences
-        if (c == '\"') {
-            manual_escaped[out_pos++] = '\\';
-            manual_escaped[out_pos++] = '\"';
-        } else if (c == '\\') {
-            manual_escaped[out_pos++] = '\\';
-            manual_escaped[out_pos++] = '\\';
-        } else if (c == '\n') {
-            manual_escaped[out_pos++] = '\\';
-            manual_escaped[out_pos++] = 'n';
-        } else if (c == '\r') {
-            manual_escaped[out_pos++] = '\\';
-            manual_escaped[out_pos++] = 'r';
-        } else if (c == '\t') {
-            manual_escaped[out_pos++] = '\\';
-            manual_escaped[out_pos++] = 't';
-        } else if (c < 32 || c == 127) {
-            // ALL control characters as unicode escape to be 100% safe
-            snprintf(manual_escaped + out_pos, 7, "\\u%04x", c);
-            out_pos += 6;
-        } else if (c >= 32 && c <= 126) {
-            manual_escaped[out_pos++] = c;  // Printable ASCII
-        } else {
-            // Non-ASCII: use unicode escape
-            snprintf(manual_escaped + out_pos, 7, "\\u%04x", c);
-            out_pos += 6;
-        }
-    }
-    manual_escaped[out_pos] = '\0';
-
-    // Truncate if needed for token limit
-    int sequence_len = strlen(manual_escaped);
-    int allowed_tokens = (MAX_TOKENS - strlen(prompt_template) - missing_fields_len);
-    if (sequence_len > allowed_tokens) {
-        sequence_len = allowed_tokens;
-        manual_escaped[sequence_len] = '\0';
-    }
+    // Build the content string from template
+    asprintf(&content, prompt_template, (int)strlen(sequence), sequence, missing_fields_len, missing_fields_seq);
     
-    // Build content string using manual_escaped
-    asprintf(&content, prompt_template, sequence_len, manual_escaped, missing_fields_len, missing_fields_seq);
+    // Create JSON array using json-c (this handles ALL escaping correctly)
+    struct json_object *messages_array = json_object_new_array();
     
-    // CRITICAL: Build final prompt without asprintf to avoid double-escaping!
-    // We must manually concatenate to preserve our carefully escaped sequence
-    const char *prompt_prefix = "[{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"}, {\"role\": \"user\", \"content\": \"";
-    const char *prompt_suffix = "\"}]";
+    // System message
+    struct json_object *system_msg = json_object_new_object();
+    json_object_object_add(system_msg, "role", json_object_new_string("system"));
+    json_object_object_add(system_msg, "content", json_object_new_string("You are a helpful assistant."));
+    json_object_array_add(messages_array, system_msg);
     
-    size_t prompt_len = strlen(prompt_prefix) + strlen(content) + strlen(prompt_suffix) + 1;
-    prompt = malloc(prompt_len);
-    if (!prompt) {
-        free(content);
-        ck_free(missing_fields_seq);
-        ck_free(manual_escaped);
-        return NULL;
-    }
+    // User message - json-c will automatically escape control characters
+    struct json_object *user_msg = json_object_new_object();
+    json_object_object_add(user_msg, "role", json_object_new_string("user"));
+    json_object_object_add(user_msg, "content", json_object_new_string(content));
+    json_object_array_add(messages_array, user_msg);
     
-    strcpy(prompt, prompt_prefix);
-    strcat(prompt, content);
-    strcat(prompt, prompt_suffix);
+    // Get JSON string - json-c handles all escaping including \x01, \x04, \x1e etc.
+    const char *json_str = json_object_to_json_string(messages_array);
+    prompt = strdup(json_str);
     
+    // Cleanup
+    json_object_put(messages_array);  // This frees system_msg and user_msg too
     free(content);
     ck_free(missing_fields_seq);
-    ck_free(manual_escaped);
 
     char *response = chat_with_llm(prompt, "gpt-4o-mini", ENRICHMENT_RETRIES, 0.5);
 

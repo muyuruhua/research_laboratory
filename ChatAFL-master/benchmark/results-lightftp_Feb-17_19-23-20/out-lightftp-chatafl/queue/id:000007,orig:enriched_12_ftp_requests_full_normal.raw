@@ -1,0 +1,23 @@
+To incorporate the `ABOR` and `FEAT` commands into the sequence of client requests, we should consider where these commands would logically fit in the flow of an FTP session. Typically, `FEAT` (to list the features supported by the server) can be sent after the initial connection and authentication, while `ABOR` (to abort the previous command) can be used if needed, often right before or during a data transfer operation.
+
+Here’s a modified sequence that includes both `ABOR` and `FEAT`:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+FEAT   # Added to request the features supported by the server
+PWD
+PORT 127,0,0,1,132,209
+LIST
+ABOR   # Added to abort the LIST command if necessary
+MKD test
+QUIT
+```
+
+In this sequence:
+- `FEAT` is placed after the `SYST` command to check for server capabilities.
+- `ABOR` is placed after the `LIST` command, which might be useful if the client decides to abort the listing operation for any reason. 
+
+Feel free to adjust the placement of `ABOR` as per your specific use case or if you want to simulate a scenario where it is necessary to abort a command in progress
+

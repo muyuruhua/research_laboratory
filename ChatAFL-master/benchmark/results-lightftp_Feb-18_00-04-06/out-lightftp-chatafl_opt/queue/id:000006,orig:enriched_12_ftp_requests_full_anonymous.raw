@@ -1,0 +1,16 @@
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+MKD /newdir
+STOR /newdir/file.txt
+REST 0
+RETR /newdir/file.txt
+MKD /newdir/longdirnamewithmorethan256characterslongandinvalidcharacters!@
+MKD /emptydir/
+LIST
+MKD /nested/dir1/dir2/dir3/dir4/dir5
+RNTO /nested/dir1/dir2/dir3/dir4/dir5/renameddir
+QUIT
+

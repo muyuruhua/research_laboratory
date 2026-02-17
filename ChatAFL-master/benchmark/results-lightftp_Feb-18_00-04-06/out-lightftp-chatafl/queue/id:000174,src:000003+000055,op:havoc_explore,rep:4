@@ -1,0 +1,18 @@
+To incorporate the `ABOR` and `NOOP` commands into the provided sequence of client requests, we can add them in appropriate locations. Typically, `ABOR` is used to abort a previous command, and `NOOP` is used to keep transfer mode (e.g., ASCII or binary) and is usually sent before file transfers, while `RMD` is used to remove a directory and can be sent after creating a directory with `MKD`.
+
+Here is a modifivd version of the original sequence with `TYPE` and `RMD` added in appropriate locations:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0AAAAAAAAAAAAAAA,1,132,209
+TYPE I        . # Set transfer mode to binary (for example)
+LIST
+MKD test
+RMD test       # Remove the directory named 'test'
+QUIT
+```
+
+In this modified sequence:

@@ -43,8 +43,6 @@
 #include "alloc-inl.h"
 #include "hash.h"
 #include "chat-llm.h"
-#include "grammar-hypothesis.h"
-#include "hypothesis-adapter.h"
 
 #include <stdio.h>
 #include <unistd.h>
@@ -436,7 +434,7 @@ u32 reward_grammar;
 void setup_llm_grammars()
 {
 
-  ACTF("Getting grammars from LLM...111111111");
+  ACTF("Getting grammars from LLM...");
 
   khash_t(consistency_table) *const_table = kh_init(consistency_table);
   char *first_question;
@@ -547,27 +545,6 @@ void setup_llm_grammars()
 
   free(first_question);
   free(templates_prompt);
-
-  /* New: generate richer grammar hypotheses via LLM and integrate them
-   * This keeps the original extraction code intact (open/closed): we extend
-   * the system by calling the hypothesis module and an adapter that converts
-   * hypotheses into pcre2 patterns used by the rest of the fuzzer.
-   */
-  {
-    fprintf(stderr, "[setup_llm_grammars] Invoking grammar-hypothesis generation via LLM for protocol '%s'...\n", protocol_name ? protocol_name : "(unknown)");
-    hypothesis_context_t *hctx = init_hypothesis_context(protocol_name, NULL, NULL, 0);
-    if (hctx) {
-      int num = generate_grammar_hypotheses(hctx, 32);
-      fprintf(stderr, "[setup_llm_grammars] generate_grammar_hypotheses returned %d\n", num);
-      if (num > 0) {
-        int integrated = integrate_hypotheses_into_protocol_patterns(hctx, protocol_patterns, message_types_set, out_dir);
-        fprintf(stderr, "[setup_llm_grammars] integrate_hypotheses_into_protocol_patterns integrated %d hypotheses\n", integrated);
-      }
-      free_hypothesis_context(hctx);
-    } else {
-      fprintf(stderr, "[setup_llm_grammars] Warning: failed to init hypothesis context\n");
-    }
-  }
 }
 
 range_list parse_buffer(char *buf, size_t buf_len)
@@ -2655,6 +2632,10 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
     exit(1);
   }
 
+  OKF("Found %d protocol message types for enrichment", kh_size(message_types_set));
+  int seeds_processed = 0;
+  int total_enriched = 0;
+
   // traverse the directory to read the files
   for (int i = 0; i < nl_cnt; i++)
   {
@@ -2664,6 +2645,9 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
     {
       continue;
     }
+    
+    seeds_processed++;
+    ACTF("Processing seed %d: %s", seeds_processed, nl_file_name);
     char *nl_file_path = malloc(strlen(in_dir) + strlen(nl_file_name) + 2);
     strcpy(nl_file_path, in_dir);
     strcat(nl_file_path, "/");
@@ -2724,9 +2708,11 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
     {
       kh_destroy(strSet,messages);
       // No missing message types, cannot enrich
-      WARNF("Message %s already has all message types. Skipping enrichment",nl_file_name);
       continue;
     }
+
+    int original_missing = kh_size(messages);
+    OKF("Missing %d message types, generating combinations...", original_missing);
 
     while(kh_size(messages) > MAX_ENRICHMENT_CORPUS_SIZE) 
     {
@@ -2776,6 +2762,9 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
         // printf("## Enriched file path: %s\n", enriched_file_path);
 
         write_new_seeds(enriched_file_path, unescaped_client_requests);
+        
+        total_enriched++;
+        OKF("Created enriched seed: %s", enriched_file_name);
 
         free(enriched_file_name);
         free(enriched_file_path);
@@ -2788,6 +2777,9 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
 
     kh_destroy(strSet, messages);
   }
+  
+  OKF("Enrichment complete: generated %d enriched seeds from %d processed seeds", 
+      total_enriched, seeds_processed);
 }
 
 /* Enrich the testcases before startup */

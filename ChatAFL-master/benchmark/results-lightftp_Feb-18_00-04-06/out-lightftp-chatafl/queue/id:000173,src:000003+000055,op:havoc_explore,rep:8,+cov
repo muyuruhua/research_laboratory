@@ -1,0 +1,39 @@
+To incorporate the `ABOR` and `NOOP` commands into the provided sequence of client€requests, we can addte locations. Typically, `ABOR` is used to abort a previous command, and `NOOP` is used to keep transfer mode (e.g., ASCII or binary) and is usually sent before €ÿÿÿ transfers, while `RMD` is used move a directory and can be sent after creating a directory with `MKD`.
+
+Here is a modified version of the ori•inal sequence with `TYPE` and `RMD` added in appropriate locations:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+TYPE I          # Set transfer mode to binary (for example)
+LIST
+MKD test
+RMD test       # Remove the directory named 'test'
+QUITû```
+
+In this modified sequence:
+- The `TYPE I` command is added after the `PORT` command to set the transfer mode before listing files.
+- The `RMD test` command is added after `MKD test`, which creates the directPWDory, to remove it immediately afterward. 
+STOR
+You can adjust the `TYPE` command to `TYPE A` for ASCII mode if that's more suitable for your context
+
+
+Hereâ€™s a modified sequence with `ABOR` and `NOOP` added:
+
+```
+USER ubuntu
+PASS ubuntu
+SYST
+NOOP
+PWD
+PORT 127,0,0,1,132,209
+LIST
+ABOR
+MKD test
+QUIT
+```
+
+In this modified sequence:

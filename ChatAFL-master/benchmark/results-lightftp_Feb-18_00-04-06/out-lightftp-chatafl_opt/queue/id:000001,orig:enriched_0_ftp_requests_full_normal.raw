@@ -1,0 +1,24 @@
+USER ubuntu
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,132,209
+LIST
+MKD test
+STOR validfile.txt
+STOR validfile.txt
+REST 0
+RETR validfile.txt
+MKD test2
+STOR /../../etc/passwd
+STOR test/invalid_file_name_with_special_chars_@
+STOR test/$(echo "long_filename_$(printf 'A%.0s' {1..256})").txt
+MKD a
+MKD a/b
+MKD a/b/c
+MKD a/b/c/d
+MKD a/b/c/d/e
+RETR test/invalid_file_name
+ABOR
+QUIT
+

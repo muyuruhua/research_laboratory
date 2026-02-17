@@ -1,0 +1,36 @@
+To incorporate the `MLST` and `REST` commands into the sequence of client requests, we need to determine appropriate locations for them based on the typical FTP command flow.
+
+Here's a modified version of the original sequence that includes `MLST` and `REST`:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+MLST <filename>  # Add the MLST command to get details about a specific file
+REST <offset>     # Add the REST command to resume a transfer from a specific offset
+LIST
+QUIT
+```
+
+In this modified sequence:
+- `MLST <filename>` is added after the `PORT` command, where `<filename>` should be replaced with the actual name of the file you want to get details about.
+- `REST <offset>` is added after the `MLST` command, where `<offset>` should be replaced with the desired byte offset for resuming a transfer.
+
+The final sequence might look like this with placeholders:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+PORT 127,0,0,1,152,193
+MLST <filename>
+REST <offset>
+LIST
+QUIT
+```
+
+Make sure to replace `<filename>` and `<offset>` with actual values based on your requirements
+

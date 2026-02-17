@@ -1,0 +1,24 @@
+To include the `RMD` (Remove Directory) and `NOOP` (No Operation) commands in the sequence of client requests, we can place them in logical positions within the FTP session. The `NOOP` command is often used to keep the connection alive, while `RMD` would typically be used after a successful `PWD` or `LIST` operation, to indicate that a directory should be removed.
+
+Here’s a modified sequence of client requests with `RMD` and `NOOP` added:
+
+```
+USER anonymous
+PASS ubuntu
+SYST
+PWD
+NOOP
+PORT 127,0,0,1,152,193
+LIST
+RMD directory_name  ; assuming 'directory_name' is the name of the directory to remove
+NOOP
+QUIT
+```
+
+In this sequence:
+- The `NOOP` command is added after the `PWD` command to keep the connection alive.
+- The `RMD` command is included after the `LIST` command, assuming you want to remove a directory after listing files. You need to replace `directory_name` with the actual name of the directory you wish to remove.
+- Another `NOOP` can be added before `QUIT` if you want to keep the connection alive until the very end. 
+
+Make sure to replace `directory_name` with the actual directory you intend to remove
+
