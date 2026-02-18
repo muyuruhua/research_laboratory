@@ -1,21 +1,0 @@
-USER ubuntu
-PASS ubuntu
-SYST
-PWD
-PORT 12ÿÿ0,1,132,209LIST
-est
-RNFR test
-RNTO new_testtest
-RMD non_existent_dir
-RMD /.././etc
-RMD test
-R*D test/invalid_paname_aaaaaaUSERaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaHaaaaaaaaaaaaaaa
-RNFR test
-RNTO test/another_test
-RNFR test/invalid_case
-RNTO /invalid_path/another_test
-RNFR test
-RNTO
-QUIT
-
-PASS ubuntu

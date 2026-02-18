@@ -1,32 +1,0 @@
-To incorporate the `ABOR` and `HELP` commands into the sequence of client requests, we can place `HELP` right after the `USER` command to get help on available commands, and we can place `ABOR` after the `LIST` command to abort any ongoing operations if necessary. 
-i]4 directory conents in a machine-rPndaBle format, Nnd the HELing both MAUTHLSD a d HELP in aption iboe HELing both MAUTHLSD a d HELP in aption abound the HELing both MAUTHLSD a d HELP in aption aboe HELrPndaBle format, Nnd the HELing both MAUTHLSD a d HELP in aption iboe HELing both NAUTHLSD a d HELP in aption abound the HELicommand to alsiate locations:
-
-```	USER ubuntu
-PASS užuntu
-SYST
-PWD
-PORT 127,0,0,1o 32,209
-I€T
-EqSVMLSD
-HELP
-MKD test
-QU[T
-```
-In this modsf€eRM<ekuence:
-- he `MLSD`Ccommand is placed after he `LIST` tttttttttttttovide;sn alternative way to get informatiot abBut available FEATcommÿds€ Hereâ€™s a modifiNd send to alSTOReating the new directory
-
-
-```
-USER ubuntu
-HELP
-PASS ubuntu
-SYST
-PWD
-PORT 127,0,0,1,132,209
-LIST
-ABOR
-MKD test
-QUIT
-```
-
-In this sequence:

@@ -169,21 +169,37 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
 
 char *construct_prompt_stall(char *protocol_name, char *examples, char *history)
 {
-    char *template = "You are analyzing the %s protocol. Based on the communication history below, "
-                     "suggest the next client request that could trigger new server behaviors or explore untested code paths.\n\n"
-                     "Communication History:\n\"\"\"%s\"\"\"\n\n"
-                     "Example request format:\n%s\n\n"
-                     "IMPORTANT: Return your response ONLY as valid JSON in this exact format:\n"
+    char *template = "You are an expert protocol fuzzing assistant analyzing the %s protocol. "
+                     "The fuzzer has reached a PLATEAU - no new code paths have been discovered recently.\n\n"
+                     "**Communication History (most recent interactions):**\n\"\"\"%s\"\"\"\n\n"
+                     "**Example Request Formats:**\n%s\n\n"
+                     "**Your Task:**\n"
+                     "1. Analyze the server's responses to identify:\n"
+                     "   - Repeated or stuck patterns\n"
+                     "   - Error messages that suggest unexplored features\n"
+                     "   - State transitions that haven't been tested\n"
+                     "   - Commands that might have optional parameters\n"
+                     "2. Suggest ONE specific request that:\n"
+                     "   - Explores a DIFFERENT code path (not just repeating recent commands)\n"
+                     "   - Tests edge cases: unusual values, boundary conditions, rare features\n"
+                     "   - Tries advanced protocol features if basic commands are exhausted\n"
+                     "   - Uses different parameter combinations or formats\n\n"
+                     "**Strategy Priorities:**\n"
+                     "- If seeing permission errors: try different authentication states or paths\n"
+                     "- If seeing parsing errors: try malformed but protocol-valid inputs\n"
+                     "- If commands succeed: try rare optional flags, extended syntax, or protocol extensions\n"
+                     "- Consider: uncommon commands, unusual sequences, protocol-specific edge cases\n\n"
+                     "**Response Format (STRICT JSON):**\n"
                      "{\n"
-                     "  \"analysis\": \"brief explanation of why the server might be stuck or what to try next\",\n"
-                     "  \"suggested_request\": \"COMMAND argument\\r\\n\"\n"
+                     "  \"analysis\": \"Identify the pattern/bottleneck and explain why this specific request should break through\",\n"
+                     "  \"suggested_request\": \"EXACT_COMMAND with_parameters\\r\\n\"\n"
                      "}\n\n"
-                     "Do NOT include markdown formatting, code blocks, or any text outside the JSON structure.";
+                     "Do NOT include markdown, code blocks, or any non-JSON text.";
 
     char *prompt = NULL;
     asprintf(&prompt, template, protocol_name, history, examples);
 
-    // FIXED: Use json-c library to build complete JSON array with proper escaping
+    // Use json-c library to build complete JSON array with proper escaping
     struct json_object *messages_array = json_object_new_array();
     
     struct json_object *system_msg = json_object_new_object();

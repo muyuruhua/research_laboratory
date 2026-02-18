@@ -11,6 +11,8 @@
 #include <strings.h>  // For strcasestr
 #include <time.h>
 #include <ctype.h>
+#include <errno.h>
+#include <sys/stat.h>
 
 #include "grammar-hypothesis.h"
 #include "chat-llm.h"
@@ -518,6 +520,12 @@ int generate_grammar_hypotheses(hypothesis_context_t *ctx, int max_hypotheses) {
         return 0;
     }
     
+    fprintf(stderr, "[DEBUG] generate_grammar_hypotheses called with max_hypotheses=%d\n", max_hypotheses);
+    fprintf(stderr, "[DEBUG] Context: protocol=%s, pcap_count=%zu, rfc_text=%s\n",
+            ctx->protocol_name ? ctx->protocol_name : "NULL",
+            ctx->pcap_count,
+            ctx->rfc_text ? "present" : "NULL");
+    
     char *prompt = construct_hypothesis_generation_prompt(ctx);
     
     if (!prompt) {
@@ -525,12 +533,21 @@ int generate_grammar_hypotheses(hypothesis_context_t *ctx, int max_hypotheses) {
         return 0;
     }
     
+    fprintf(stderr, "[DEBUG] Prompt constructed successfully, length=%zu bytes\n", strlen(prompt));
+    fprintf(stderr, "[DEBUG] Prompt first 500 chars: %.500s\n", prompt);
+    fprintf(stderr, "[DEBUG] Prompt last 200 chars: %s\n", 
+            strlen(prompt) > 200 ? prompt + strlen(prompt) - 200 : prompt);
+    
     // Call LLM with structured prompt
+    fprintf(stderr, "[DEBUG] Calling chat_with_llm(model=gpt-4o-mini, max_tokens=3, temperature=0.3)...\n");
     char *response = chat_with_llm(prompt, "gpt-4o-mini", 3, 0.3);  // Low temperature for consistency
+    fprintf(stderr, "[DEBUG] chat_with_llm returned: %p\n", (void*)response);
+    
     ck_free(prompt);
     
     if (!response) {
         fprintf(stderr, "[!] Failed to generate hypotheses from LLM (NULL response)\n");
+        fprintf(stderr, "[!] Possible causes: API key missing, network error, or LLM API failure\n");
         ctx->hypotheses = NULL;
         ctx->hypothesis_count = 0;
         return 0;
@@ -1148,11 +1165,37 @@ int save_hypothesis_to_file(grammar_hypothesis_t *hyp, const char *filepath) {
         return 0;
     }
     
+    // CRITICAL FIX: Ensure directory exists before writing
+    char *dir_path = strdup(filepath);
+    char *last_slash = strrchr(dir_path, '/');
+    if (last_slash) {
+        *last_slash = '\0';
+        // Create directory with mkdir -p behavior
+        char mkdir_cmd[2048];
+        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p \"%s\" 2>/dev/null", dir_path);
+        int mkdir_result = system(mkdir_cmd);
+        if (mkdir_result == 0) {
+            fprintf(stderr, "[+] Created/verified grammar directory: %s\n", dir_path);
+        } else {
+            fprintf(stderr, "[!] Failed to create grammar directory: %s (result=%d)\n", dir_path, mkdir_result);
+        }
+    }
+    free(dir_path);
+    
+    fprintf(stderr, "[*] Attempting to save hypothesis to: %s\n", filepath);
+    fprintf(stderr, "[*] Hypothesis details: message_type=%s, fitness=%.2f, id=%lld\n",
+            hyp->message_type ? hyp->message_type : "NULL",
+            hyp->fitness,
+            (long long)hyp->hypothesis_id);
+    
     FILE *f = fopen(filepath, "w");
     if (!f) {
-        fprintf(stderr, "[!] save_hypothesis_to_file: failed to open %s\n", filepath);
+        fprintf(stderr, "[!] save_hypothesis_to_file: failed to open %s (errno=%d: %s)\n", 
+                filepath, errno, strerror(errno));
         return 0;
     }
+    
+    fprintf(stderr, "[+] Successfully opened file for writing: %s\n", filepath);
     
     json_object *jobj = json_object_new_object();
     json_object_object_add(jobj, "hypothesis_id", json_object_new_int64(hyp->hypothesis_id));
@@ -1181,11 +1224,23 @@ int save_hypothesis_to_file(grammar_hypothesis_t *hyp, const char *filepath) {
     json_object_object_add(jobj, "created_at", json_object_new_int64(hyp->created_at));
     json_object_object_add(jobj, "last_updated", json_object_new_int64(hyp->last_updated));
     
-    fprintf(f, "%s\n", json_object_to_json_string_ext(jobj, JSON_C_TO_STRING_PRETTY));
+    const char *json_str = json_object_to_json_string_ext(jobj, JSON_C_TO_STRING_PRETTY);
+    fprintf(f, "%s\n", json_str);
+    fflush(f);  // Ensure data is written
     json_object_put(jobj);
     
     fclose(f);
-    return 1;
+    
+    // Verify file was written
+    struct stat st;
+    if (stat(filepath, &st) == 0) {
+        fprintf(stderr, "[+] Grammar hypothesis saved successfully: %s (%ld bytes)\n", 
+                filepath, (long)st.st_size);
+        return 1;
+    } else {
+        fprintf(stderr, "[!] File verification failed after write: %s\n", filepath);
+        return 0;
+    }
 }
 
 grammar_hypothesis_t* load_hypothesis_from_file(const char *filepath) {
