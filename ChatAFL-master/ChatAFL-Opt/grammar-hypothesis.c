@@ -938,8 +938,9 @@ int validate_message_against_hypothesis(
         hyp->parse_failure++;
     }
     
-    // Update fitness
+    // Update fitness (both full recalculation and dynamic adjustment)
     hyp->fitness = calculate_hypothesis_fitness(hyp);
+    update_hypothesis_fitness_dynamic(hyp, valid);
     
     return valid;
 }
@@ -1000,6 +1001,32 @@ double calculate_hypothesis_fitness(grammar_hypothesis_t *hyp) {
     
     // Combined fitness: 70% parse rate, 30% constraint confidence
     return 0.7 * parse_rate + 0.3 * avg_confidence;
+}
+
+/* ============================================
+ * Dynamic Fitness Update (Incremental)
+ * ============================================ */
+
+void update_hypothesis_fitness_dynamic(grammar_hypothesis_t *hyp, int is_success) {
+    if (!hyp) return;
+    
+    // Incremental fitness adjustment based on validation result
+    // Success: increase fitness by 0.01 (capped at 1.0)
+    // Failure: decrease fitness by 0.005 (floored at 0.0)
+    if (is_success) {
+        hyp->fitness += 0.01;
+        if (hyp->fitness > 1.0) hyp->fitness = 1.0;
+    } else {
+        hyp->fitness -= 0.005;
+        if (hyp->fitness < 0.0) hyp->fitness = 0.0;
+    }
+    
+    // Log significant fitness changes
+    if (hyp->parse_success + hyp->parse_failure > 0 && 
+        (hyp->parse_success + hyp->parse_failure) % 100 == 0) {
+        fprintf(stderr, "[hypothesis] %s: fitness=%.3f (success=%u, failure=%u)\n",
+                hyp->message_type, hyp->fitness, hyp->parse_success, hyp->parse_failure);
+    }
 }
 
 /* ============================================

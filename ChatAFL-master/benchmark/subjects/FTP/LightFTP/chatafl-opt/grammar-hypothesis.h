@@ -88,6 +88,7 @@ int save_hypothesis_to_file(grammar_hypothesis_t *hyp, const char *filepath);
 grammar_hypothesis_t* load_hypothesis_from_file(const char *filepath);
 void free_hypothesis_context(hypothesis_context_t *ctx);
 grammar_hypothesis_t* parse_llm_hypothesis_response(const char *llm_response);
+void update_hypothesis_fitness_dynamic(grammar_hypothesis_t *hyp, int is_success);
 void extract_constraints_from_schema(grammar_hypothesis_t *hyp, json_object *schema);
 int check_constraint(field_constraint_t *constraint, const char *field_value, size_t value_len);
 void log_hypothesis_event(grammar_hypothesis_t *hyp, const char *event_type, const char *details);

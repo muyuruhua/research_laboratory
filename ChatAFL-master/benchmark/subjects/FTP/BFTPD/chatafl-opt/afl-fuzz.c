@@ -412,6 +412,14 @@ u32 uninteresting_times = 0;
 /* Track how much times we ask for breaking coverage plateau */
 u32 chat_times = 0;
 
+/* ============================================
+ * Adaptive Plateau Triggering Variables
+ * ============================================ */
+static u32 last_edges_count = 0;           /* Edges count at last check */
+static u64 last_edges_check_time = 0;      /* Time of last edges check (ms) */
+static double edges_growth_rate = 0.0;     /* Edges/minute growth rate */
+static u32 adaptive_plateau_threshold = 100; /* Dynamic plateau threshold (starts at UNINTERESTING_THRESHOLD) */
+
 /* Implemented state machine */
 Agraph_t *ipsm;
 static FILE *ipsm_dot_file;
@@ -484,6 +492,20 @@ void setup_llm_grammars()
     for (iter = kl_begin(grammar_list); iter != kl_end(grammar_list); iter = kl_next(iter))
     {
       json_object *jobj = kl_val(iter);
+
+      // Check if jobj is actually an array before accessing
+      if (!json_object_is_type(jobj, json_type_array))
+      {
+        fprintf(stderr, "[!] Warning: Grammar object is not an array, skipping\n");
+        continue;
+      }
+
+      int array_len = json_object_array_length(jobj);
+      if (array_len < 1)
+      {
+        fprintf(stderr, "[!] Warning: Grammar array is empty, skipping\n");
+        continue;
+      }
 
       json_object *header = json_object_array_get_idx(jobj, 0);
 
@@ -2642,6 +2664,10 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
     exit(1);
   }
 
+  OKF("Found %d protocol message types for enrichment", kh_size(message_types_set));
+  int seeds_processed = 0;
+  int total_enriched = 0;
+
   // traverse the directory to read the files
   for (int i = 0; i < nl_cnt; i++)
   {
@@ -2651,6 +2677,9 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
     {
       continue;
     }
+    
+    seeds_processed++;
+    ACTF("Processing seed %d: %s", seeds_processed, nl_file_name);
     char *nl_file_path = malloc(strlen(in_dir) + strlen(nl_file_name) + 2);
     strcpy(nl_file_path, in_dir);
     strcat(nl_file_path, "/");
@@ -2711,9 +2740,11 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
     {
       kh_destroy(strSet,messages);
       // No missing message types, cannot enrich
-      WARNF("Message %s already has all message types. Skipping enrichment",nl_file_name);
       continue;
     }
+
+    int original_missing = kh_size(messages);
+    OKF("Missing %d message types, generating combinations...", original_missing);
 
     while(kh_size(messages) > MAX_ENRICHMENT_CORPUS_SIZE) 
     {
@@ -2763,6 +2794,9 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
         // printf("## Enriched file path: %s\n", enriched_file_path);
 
         write_new_seeds(enriched_file_path, unescaped_client_requests);
+        
+        total_enriched++;
+        OKF("Created enriched seed: %s", enriched_file_name);
 
         free(enriched_file_name);
         free(enriched_file_path);
@@ -2775,6 +2809,9 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
 
     kh_destroy(strSet, messages);
   }
+  
+  OKF("Enrichment complete: generated %d enriched seeds from %d processed seeds", 
+      total_enriched, seeds_processed);
 }
 
 /* Enrich the testcases before startup */
@@ -4168,6 +4205,213 @@ static void check_map_coverage(void)
   WARNF("Recompile binary with newer version of afl to improve coverage!");
 }
 
+/* ============================================
+ * ChatAFL-Opt: Initialize Grammar Hypothesis System
+ * ============================================ */
+static void init_grammar_hypothesis_system(void)
+{
+  if (!hypothesis_mode)
+  {
+    fprintf(stderr, "[!] init_grammar_hypothesis_system called but hypothesis_mode=0\n");
+    return;
+  }
+
+  ACTF("Initializing Grammar Hypothesis System...");
+  fprintf(stderr, "[DEBUG] Protocol: %s, Output dir: %s\n", 
+          protocol_name ? protocol_name : "UNKNOWN", out_dir);
+
+  // Collect PCAP samples from seed corpus
+  char **pcap_samples = NULL;
+  size_t pcap_count = 0;
+  size_t queue_length = 0;
+
+  struct queue_entry *q = queue;
+  
+  // Count queue entries for diagnostics
+  struct queue_entry *q_tmp = queue;
+  while (q_tmp) {
+    queue_length++;
+    q_tmp = q_tmp->next;
+  }
+  
+  fprintf(stderr, "[DEBUG] Queue has %zu entries, collecting up to 10 PCAP samples\n", queue_length);
+  
+  while (q && pcap_count < 10)
+  { // Limit to 10 samples
+    fprintf(stderr, "[DEBUG] Processing seed: %s (len=%u)\n", q->fname, q->len);
+    s32 fd = open(q->fname, O_RDONLY);
+    if (fd >= 0)
+    {
+      u8 *sample = ck_alloc_nozero(q->len + 1);
+      if (read(fd, sample, q->len) == (ssize_t)q->len)
+      {
+        sample[q->len] = '\0';
+        pcap_samples = ck_realloc(pcap_samples, (pcap_count + 1) * sizeof(char *));
+        pcap_samples[pcap_count++] = (char *)sample;
+        fprintf(stderr, "[DEBUG] Added PCAP sample %zu (len=%u)\n", pcap_count, q->len);
+      }
+      else
+      {
+        fprintf(stderr, "[!] Failed to read seed file: %s\n", q->fname);
+        ck_free(sample);
+      }
+      close(fd);
+    }
+    else
+    {
+      fprintf(stderr, "[!] Failed to open seed file: %s (errno=%d: %s)\n", 
+              q->fname, errno, strerror(errno));
+    }
+    q = q->next;
+  }
+
+  fprintf(stderr, "[DEBUG] Collected %zu PCAP samples from %zu queue entries\n", 
+          pcap_count, queue_length);
+
+  if (pcap_count == 0)
+  {
+    WARNF("No PCAP samples collected, hypothesis system disabled");
+    hypothesis_mode = 0;
+    return;
+  }
+
+  // Initialize hypothesis context
+  fprintf(stderr, "[DEBUG] Calling init_hypothesis_context with protocol=%s, pcap_count=%zu\n",
+          protocol_name ? protocol_name : "UNKNOWN", pcap_count);
+  
+  hypothesis_ctx = init_hypothesis_context(
+      protocol_name ? protocol_name : "UNKNOWN",
+      NULL, // RFC text (would be loaded from file in production)
+      pcap_samples,
+      pcap_count);
+
+  if (!hypothesis_ctx)
+  {
+    fprintf(stderr, "[!] init_hypothesis_context returned NULL\n");
+    FATAL("Failed to initialize hypothesis context");
+  }
+
+  fprintf(stderr, "[DEBUG] Hypothesis context initialized successfully\n");
+
+  // Generate initial hypotheses
+  fprintf(stderr, "[DEBUG] Calling generate_grammar_hypotheses (max=5)\n");
+  int hyp_count = generate_grammar_hypotheses(hypothesis_ctx, 5);
+  fprintf(stderr, "[DEBUG] generate_grammar_hypotheses returned %d hypotheses\n", hyp_count);
+
+  if (hyp_count == 0)
+  {
+    WARNF("No grammar hypotheses generated, continuing in standard mode");
+    hypothesis_mode = 0;
+    free_hypothesis_context(hypothesis_ctx);
+    hypothesis_ctx = NULL;
+  }
+  else
+  {
+    OKF("Generated %d grammar hypotheses", hyp_count);
+
+    // Save hypotheses to disk for reproducibility
+    char *hyp_dir = alloc_printf("%s/grammar-hypothesis", out_dir);
+    fprintf(stderr, "[DEBUG] Creating hypothesis directory: %s\n", hyp_dir);
+    
+    if (mkdir(hyp_dir, 0700) && errno != EEXIST)
+    {
+      fprintf(stderr, "[!] Failed to create directory '%s' (errno=%d: %s)\n",
+              hyp_dir, errno, strerror(errno));
+      PFATAL("Unable to create directory '%s'", hyp_dir);
+    }
+
+    fprintf(stderr, "[DEBUG] Saving %zu hypotheses to disk\n", hypothesis_ctx->hypothesis_count);
+    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++)
+    {
+      grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
+      char *hyp_file = alloc_printf("%s/hypothesis-%llu-%s.json",
+                                    hyp_dir, hyp->hypothesis_id, hyp->message_type);
+      fprintf(stderr, "[DEBUG] Saving hypothesis %zu to: %s\n", i+1, hyp_file);
+      
+      int save_result = save_hypothesis_to_file(hyp, hyp_file);
+      if (save_result)
+      {
+        fprintf(stderr, "[+] Successfully saved hypothesis: %s\n", hyp_file);
+      }
+      else
+      {
+        fprintf(stderr, "[!] Failed to save hypothesis: %s\n", hyp_file);
+      }
+      
+      ck_free(hyp_file);
+    }
+
+    ck_free(hyp_dir);
+  }
+
+  // Cleanup PCAP samples
+  fprintf(stderr, "[DEBUG] Cleaning up %zu PCAP samples\n", pcap_count);
+  for (size_t i = 0; i < pcap_count; i++)
+  {
+    ck_free(pcap_samples[i]);
+  }
+  ck_free(pcap_samples);
+
+  OKF("Grammar Hypothesis System initialized successfully.");
+}
+
+/* ============================================
+ * ChatAFL-Opt: Validate and Refine Hypotheses
+ * Called periodically during fuzzing loop
+ * ============================================ */
+static void validate_and_refine_hypotheses(u8 *buf, u32 len)
+{
+  if (!hypothesis_mode || !hypothesis_ctx)
+    return;
+
+  hypothesis_validation_count++;
+
+  // Validate against all hypotheses
+  for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++)
+  {
+    grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
+
+    int valid = validate_message_against_hypothesis(hyp, buf, len);
+
+    if (!valid && hyp->parse_failure % 10 == 0)
+    {
+      // Add as counterexample every 10th failure
+      add_counterexample(hyp, buf, len, "Validation failed");
+    }
+  }
+
+  // Periodic refinement check
+  if (hypothesis_validation_count % hypothesis_refinement_interval == 0)
+  {
+    ACTF("Checking for hypothesis refinement (validation count: %u)...",
+         hypothesis_validation_count);
+
+    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++)
+    {
+      grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
+
+      // Refine if fitness is low and we have counterexamples
+      if (hyp->fitness < FITNESS_THRESHOLD && hyp->counterexample_count >= 3)
+      {
+        ACTF("Refining hypothesis for %s (fitness: %.3f, counterexamples: %zu)",
+             hyp->message_type, hyp->fitness, hyp->counterexample_count);
+
+        if (refine_hypothesis_with_counterexamples(hypothesis_ctx, hyp))
+        {
+          // Save refined hypothesis
+          char *hyp_file = alloc_printf("%s/grammar-hypothesis/hypothesis-%llu-%s-refined-%lu.json",
+                                        out_dir, hyp->hypothesis_id, hyp->message_type, time(NULL));
+          save_hypothesis_to_file(hyp, hyp_file);
+          ck_free(hyp_file);
+
+          OKF("Hypothesis refined: %s (new fitness: %.3f)",
+              hyp->message_type, hyp->fitness);
+        }
+      }
+    }
+  }
+}
+
 /* Perform dry run of all test cases to confirm that the app is working as
    expected. This is done only for the initial inputs, and only once. */
 
@@ -4400,157 +4644,6 @@ static void perform_dry_run(char **argv)
 
   OKF("All test cases processed.");
 }
-
-
-/* ============================================
- * ChatAFL-Opt: Initialize Grammar Hypothesis System
- * ============================================ */
-static void init_grammar_hypothesis_system(void)
-{
-  if (!hypothesis_mode)
-    return;
-
-  ACTF("Initializing Grammar Hypothesis System...");
-
-  // Collect PCAP samples from seed corpus
-  char **pcap_samples = NULL;
-  size_t pcap_count = 0;
-
-  struct queue_entry *q = queue;
-  while (q && pcap_count < 10)
-  { // Limit to 10 samples
-    s32 fd = open(q->fname, O_RDONLY);
-    if (fd >= 0)
-    {
-      u8 *sample = ck_alloc_nozero(q->len + 1);
-      if (read(fd, sample, q->len) == (ssize_t)q->len)
-      {
-        sample[q->len] = '\0';
-        pcap_samples = ck_realloc(pcap_samples, (pcap_count + 1) * sizeof(char *));
-        pcap_samples[pcap_count++] = (char *)sample;
-      }
-      else
-      {
-        ck_free(sample);
-      }
-      close(fd);
-    }
-    q = q->next;
-  }
-
-  // Initialize hypothesis context
-  hypothesis_ctx = init_hypothesis_context(
-      protocol_name ? protocol_name : "UNKNOWN",
-      NULL, // RFC text (would be loaded from file in production)
-      pcap_samples,
-      pcap_count);
-
-  if (!hypothesis_ctx)
-  {
-    FATAL("Failed to initialize hypothesis context");
-  }
-
-  // Generate initial hypotheses
-  int hyp_count = generate_grammar_hypotheses(hypothesis_ctx, 5);
-
-  if (hyp_count == 0)
-  {
-    WARNF("No grammar hypotheses generated, continuing in standard mode");
-    hypothesis_mode = 0;
-    free_hypothesis_context(hypothesis_ctx);
-    hypothesis_ctx = NULL;
-  }
-  else
-  {
-    OKF("Generated %d grammar hypotheses", hyp_count);
-
-    // Save hypotheses to disk for reproducibility
-    char *hyp_dir = alloc_printf("%s/grammar-hypotheses", out_dir);
-    if (mkdir(hyp_dir, 0700) && errno != EEXIST)
-    {
-      PFATAL("Unable to create directory '%s'", hyp_dir);
-    }
-
-    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++)
-    {
-      grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
-      char *hyp_file = alloc_printf("%s/hypothesis-%llu-%s.json",
-                                    hyp_dir, hyp->hypothesis_id, hyp->message_type);
-      save_hypothesis_to_file(hyp, hyp_file);
-      ck_free(hyp_file);
-    }
-
-    ck_free(hyp_dir);
-  }
-
-  // Cleanup PCAP samples
-  for (size_t i = 0; i < pcap_count; i++)
-  {
-    ck_free(pcap_samples[i]);
-  }
-  ck_free(pcap_samples);
-
-  OKF("Grammar Hypothesis System initialized.");
-}
-
-/* ============================================
- * ChatAFL-Opt: Validate and Refine Hypotheses
- * Called periodically during fuzzing loop
- * ============================================ */
-static void validate_and_refine_hypotheses(u8 *buf, u32 len)
-{
-  if (!hypothesis_mode || !hypothesis_ctx)
-    return;
-
-  hypothesis_validation_count++;
-
-  // Validate against all hypotheses
-  for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++)
-  {
-    grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
-
-    int valid = validate_message_against_hypothesis(hyp, buf, len);
-
-    if (!valid && hyp->parse_failure % 10 == 0)
-    {
-      // Add as counterexample every 10th failure
-      add_counterexample(hyp, buf, len, "Validation failed");
-    }
-  }
-
-  // Periodic refinement check
-  if (hypothesis_validation_count % hypothesis_refinement_interval == 0)
-  {
-    ACTF("Checking for hypothesis refinement (validation count: %u)...",
-         hypothesis_validation_count);
-
-    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++)
-    {
-      grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
-
-      // Refine if fitness is low and we have counterexamples
-      if (hyp->fitness < FITNESS_THRESHOLD && hyp->counterexample_count >= 3)
-      {
-        ACTF("Refining hypothesis for %s (fitness: %.3f, counterexamples: %zu)",
-             hyp->message_type, hyp->fitness, hyp->counterexample_count);
-
-        if (refine_hypothesis_with_counterexamples(hypothesis_ctx, hyp))
-        {
-          // Save refined hypothesis
-          char *hyp_file = alloc_printf("%s/grammar-hypotheses/hypothesis-%llu-%s-refined-%lu.json",
-                                        out_dir, hyp->hypothesis_id, hyp->message_type, time(NULL));
-          save_hypothesis_to_file(hyp, hyp_file);
-          ck_free(hyp_file);
-
-          OKF("Hypothesis refined: %s (new fitness: %.3f)",
-              hyp->message_type, hyp->fitness);
-        }
-      }
-    }
-  }
-}
-
-/* Original perform_dry_run end marker */
 
 /* Helper function: link() if possible, copy otherwise. */
 
@@ -5186,6 +5279,41 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
     fprintf(f, "peak_rss_mb       : %zu\n", usage.ru_maxrss >> 10);
 #endif /* ^__APPLE__ */
   }
+
+  /* ============================================
+   * ChatAFL-Opt: Hypothesis & Plateau Statistics
+   * ============================================ */
+  if (hypothesis_ctx && hypothesis_ctx->hypothesis_count > 0) {
+    u32 total_parse_success = 0;
+    u32 total_parse_failure = 0;
+    double avg_fitness = 0.0;
+    
+    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++) {
+      grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
+      if (hyp) {
+        total_parse_success += hyp->parse_success;
+        total_parse_failure += hyp->parse_failure;
+        avg_fitness += hyp->fitness;
+      }
+    }
+    avg_fitness /= hypothesis_ctx->hypothesis_count;
+    
+    fprintf(f, "hypothesis_count   : %zu\n"
+               "hypothesis_parse_success : %u\n"
+               "hypothesis_parse_failure : %u\n"
+               "hypothesis_avg_fitness   : %0.03f\n",
+            hypothesis_ctx->hypothesis_count,
+            total_parse_success,
+            total_parse_failure,
+            avg_fitness);
+  }
+  
+  fprintf(f, "plateau_calls      : %u\n"
+             "plateau_threshold  : %u\n"
+             "edges_growth_rate  : %0.02f\n",
+          chat_times,
+          adaptive_plateau_threshold,
+          edges_growth_rate);
 
   fclose(f);
 }
@@ -6318,12 +6446,6 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
 
   u8 fault;
 
-  /* ChatAFL-Opt: Validate message against hypotheses */
-  if (hypothesis_mode && hypothesis_ctx)
-  {
-    validate_and_refine_hypotheses(out_buf, len);
-  }
-
   if (post_handler)
   {
 
@@ -6333,6 +6455,19 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
   }
 
   write_to_testcase(out_buf, len);
+
+  /* ============================================
+   * ChatAFL-Opt: Hypothesis Validation (FIXED)
+   * ============================================ */
+  if (hypothesis_ctx && hypothesis_ctx->hypothesis_count > 0) {
+    // Validate test case against all hypotheses
+    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++) {
+      grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
+      if (hyp) {
+        validate_message_against_hypothesis(hyp, out_buf, len);
+      }
+    }
+  }
 
   /* AFLNet update kl_messages linked list */
 
@@ -7010,9 +7145,43 @@ AFLNET_REGIONS_SELECTION:;
     count++;
   }
 
-  if (uninteresting_times >= UNINTERESTING_THRESHOLD && chat_times < CHATTING_THRESHOLD)
+  /* ============================================
+   * Adaptive Plateau Triggering Logic
+   * ============================================ */
+  
+  // Update edges growth rate every 60 seconds
+  u64 cur_ms = get_cur_time();
+  if (cur_ms - last_edges_check_time >= 60000) {  // 60 seconds
+    u32 current_edges = agnedges(ipsm);  // Use IPSM edges (FIXED: was count_bits)
+    if (last_edges_count > 0) {
+      double time_elapsed_min = (cur_ms - last_edges_check_time) / 60000.0;
+      double edges_gained = (double)(current_edges - last_edges_count);
+      edges_growth_rate = edges_gained / time_elapsed_min;  // edges per minute
+      
+      // Adaptive threshold adjustment:
+      // High growth (>5 edges/min): increase threshold to 150 (reduce LLM calls)
+      // Medium growth (1-5 edges/min): keep threshold at 100
+      // Low growth (<1 edge/min): decrease threshold to 50 (increase LLM calls)
+      if (edges_growth_rate > 5.0) {
+        adaptive_plateau_threshold = 150;
+      } else if (edges_growth_rate > 1.0) {
+        adaptive_plateau_threshold = 100;
+      } else {
+        adaptive_plateau_threshold = 50;
+      }
+      
+      fprintf(stderr, "[adaptive-plateau] edges_growth_rate=%.2f/min, threshold=%u\n",
+              edges_growth_rate, adaptive_plateau_threshold);
+    }
+    last_edges_count = current_edges;
+    last_edges_check_time = cur_ms;
+  }
+  
+  if (uninteresting_times >= adaptive_plateau_threshold && chat_times < CHATTING_THRESHOLD)
   {
     uninteresting_times = 0;
+    fprintf(stderr, "[plateau-trigger] Triggering LLM (growth_rate=%.2f, threshold=%u, chat_times=%u)\n",
+            edges_growth_rate, adaptive_plateau_threshold, chat_times);
     // Fuzzing is stalled - ask LLM for help by taking the current sequence and if it is has a prefix,
     // ask the LLM to generate a possibly correct next message
     u32 *response_bytes_temp = NULL;
@@ -10878,15 +11047,42 @@ int main(int argc, char **argv)
   else
     use_argv = argv + optind;
 
+  fprintf(stderr, "[DEBUG] ========== BEFORE perform_dry_run ==========\n");
+  fflush(stderr);
+  
   perform_dry_run(use_argv);
 
+  fprintf(stderr, "[DEBUG] ========== AFTER perform_dry_run ==========\n");
+  fflush(stderr);
+
   /* ChatAFL-Opt: Initialize grammar hypothesis system */
-  if (getenv("CHATAFL_HYPOTHESIS"))
+  fprintf(stderr, "[DEBUG] Checking CHATAFL_HYPOTHESIS env var...\n");
+  fflush(stderr);
+  char *hyp_env = getenv("CHATAFL_HYPOTHESIS");
+  if (hyp_env)
   {
+    fprintf(stderr, "[DEBUG] CHATAFL_HYPOTHESIS=%s, enabling hypothesis mode\n", hyp_env);
+    fflush(stderr);
     hypothesis_mode = 1;
     OKF("Grammar Hypothesis Mode enabled (CHATAFL_HYPOTHESIS env var set)");
     init_grammar_hypothesis_system();
   }
+  else
+  {
+    fprintf(stderr, "[DEBUG] CHATAFL_HYPOTHESIS not set, hypothesis mode disabled\n");
+    fflush(stderr);
+  }
+  
+  /* ============================================
+   * Initialize Adaptive Plateau Variables
+   * ============================================ */
+  last_edges_count = agnedges(ipsm);  // Use IPSM edges (FIXED: was count_bits)
+  last_edges_check_time = get_cur_time();
+  edges_growth_rate = 0.0;
+  adaptive_plateau_threshold = UNINTERESTING_THRESHOLD;  // Start with default 100
+  
+  fprintf(stderr, "[adaptive-plateau] Initialized: initial_edges=%u (IPSM), threshold=%u\n",
+          last_edges_count, adaptive_plateau_threshold);
 
   cull_queue();
 

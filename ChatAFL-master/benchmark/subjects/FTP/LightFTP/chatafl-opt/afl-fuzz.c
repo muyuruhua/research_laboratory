@@ -412,6 +412,14 @@ u32 uninteresting_times = 0;
 /* Track how much times we ask for breaking coverage plateau */
 u32 chat_times = 0;
 
+/* ============================================
+ * Adaptive Plateau Triggering Variables
+ * ============================================ */
+static u32 last_edges_count = 0;           /* Edges count at last check */
+static u64 last_edges_check_time = 0;      /* Time of last edges check (ms) */
+static double edges_growth_rate = 0.0;     /* Edges/minute growth rate */
+static u32 adaptive_plateau_threshold = 100; /* Dynamic plateau threshold (starts at UNINTERESTING_THRESHOLD) */
+
 /* Implemented state machine */
 Agraph_t *ipsm;
 static FILE *ipsm_dot_file;
@@ -5272,6 +5280,41 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
 #endif /* ^__APPLE__ */
   }
 
+  /* ============================================
+   * ChatAFL-Opt: Hypothesis & Plateau Statistics
+   * ============================================ */
+  if (hypothesis_ctx && hypothesis_ctx->hypothesis_count > 0) {
+    u32 total_parse_success = 0;
+    u32 total_parse_failure = 0;
+    double avg_fitness = 0.0;
+    
+    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++) {
+      grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
+      if (hyp) {
+        total_parse_success += hyp->parse_success;
+        total_parse_failure += hyp->parse_failure;
+        avg_fitness += hyp->fitness;
+      }
+    }
+    avg_fitness /= hypothesis_ctx->hypothesis_count;
+    
+    fprintf(f, "hypothesis_count   : %zu\n"
+               "hypothesis_parse_success : %u\n"
+               "hypothesis_parse_failure : %u\n"
+               "hypothesis_avg_fitness   : %0.03f\n",
+            hypothesis_ctx->hypothesis_count,
+            total_parse_success,
+            total_parse_failure,
+            avg_fitness);
+  }
+  
+  fprintf(f, "plateau_calls      : %u\n"
+             "plateau_threshold  : %u\n"
+             "edges_growth_rate  : %0.02f\n",
+          chat_times,
+          adaptive_plateau_threshold,
+          edges_growth_rate);
+
   fclose(f);
 }
 
@@ -6413,6 +6456,19 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
 
   write_to_testcase(out_buf, len);
 
+  /* ============================================
+   * ChatAFL-Opt: Hypothesis Validation (FIXED)
+   * ============================================ */
+  if (hypothesis_ctx && hypothesis_ctx->hypothesis_count > 0) {
+    // Validate test case against all hypotheses
+    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++) {
+      grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
+      if (hyp) {
+        validate_message_against_hypothesis(hyp, out_buf, len);
+      }
+    }
+  }
+
   /* AFLNet update kl_messages linked list */
 
   // parse the out_buf into messages
@@ -7089,9 +7145,43 @@ AFLNET_REGIONS_SELECTION:;
     count++;
   }
 
-  if (uninteresting_times >= UNINTERESTING_THRESHOLD && chat_times < CHATTING_THRESHOLD)
+  /* ============================================
+   * Adaptive Plateau Triggering Logic
+   * ============================================ */
+  
+  // Update edges growth rate every 60 seconds
+  u64 cur_ms = get_cur_time();
+  if (cur_ms - last_edges_check_time >= 60000) {  // 60 seconds
+    u32 current_edges = agnedges(ipsm);  // Use IPSM edges (FIXED: was count_bits)
+    if (last_edges_count > 0) {
+      double time_elapsed_min = (cur_ms - last_edges_check_time) / 60000.0;
+      double edges_gained = (double)(current_edges - last_edges_count);
+      edges_growth_rate = edges_gained / time_elapsed_min;  // edges per minute
+      
+      // Adaptive threshold adjustment:
+      // High growth (>5 edges/min): increase threshold to 150 (reduce LLM calls)
+      // Medium growth (1-5 edges/min): keep threshold at 100
+      // Low growth (<1 edge/min): decrease threshold to 50 (increase LLM calls)
+      if (edges_growth_rate > 5.0) {
+        adaptive_plateau_threshold = 150;
+      } else if (edges_growth_rate > 1.0) {
+        adaptive_plateau_threshold = 100;
+      } else {
+        adaptive_plateau_threshold = 50;
+      }
+      
+      fprintf(stderr, "[adaptive-plateau] edges_growth_rate=%.2f/min, threshold=%u\n",
+              edges_growth_rate, adaptive_plateau_threshold);
+    }
+    last_edges_count = current_edges;
+    last_edges_check_time = cur_ms;
+  }
+  
+  if (uninteresting_times >= adaptive_plateau_threshold && chat_times < CHATTING_THRESHOLD)
   {
     uninteresting_times = 0;
+    fprintf(stderr, "[plateau-trigger] Triggering LLM (growth_rate=%.2f, threshold=%u, chat_times=%u)\n",
+            edges_growth_rate, adaptive_plateau_threshold, chat_times);
     // Fuzzing is stalled - ask LLM for help by taking the current sequence and if it is has a prefix,
     // ask the LLM to generate a possibly correct next message
     u32 *response_bytes_temp = NULL;
@@ -10982,6 +11072,17 @@ int main(int argc, char **argv)
     fprintf(stderr, "[DEBUG] CHATAFL_HYPOTHESIS not set, hypothesis mode disabled\n");
     fflush(stderr);
   }
+  
+  /* ============================================
+   * Initialize Adaptive Plateau Variables
+   * ============================================ */
+  last_edges_count = agnedges(ipsm);  // Use IPSM edges (FIXED: was count_bits)
+  last_edges_check_time = get_cur_time();
+  edges_growth_rate = 0.0;
+  adaptive_plateau_threshold = UNINTERESTING_THRESHOLD;  // Start with default 100
+  
+  fprintf(stderr, "[adaptive-plateau] Initialized: initial_edges=%u (IPSM), threshold=%u\n",
+          last_edges_count, adaptive_plateau_threshold);
 
   cull_queue();
 
