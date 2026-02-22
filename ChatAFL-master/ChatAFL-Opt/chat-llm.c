@@ -42,6 +42,9 @@ static size_t chat_with_llm_helper(void *contents, size_t size, size_t nmemb, vo
     return realsize;
 }
 
+/* forward declaration for validator used in llm_handle_plateau */
+static int is_garbage_response(const char *response, size_t len);
+
 char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
 {
     CURL *curl;
@@ -169,6 +172,8 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
 
 char *construct_prompt_stall(char *protocol_name, char *examples, char *history)
 {
+    /* Note: state_ctx is embedded via llm_handle_plateau before calling this;
+     * this base template is kept for backward compatibility. */
     char *template = "You are an expert protocol fuzzing assistant analyzing the %s protocol. "
                      "The fuzzer has reached a PLATEAU - no new code paths have been discovered recently.\n\n"
                      "**Communication History (most recent interactions):**\n\"\"\"%s\"\"\"\n\n"
@@ -219,6 +224,126 @@ char *construct_prompt_stall(char *protocol_name, char *examples, char *history)
     free(prompt);
 
     return final_prompt;
+}
+
+/*
+ * llm_handle_plateau: state-aware plateau handler.
+ * - Builds a rich prompt embedding state coverage stats (state_ctx)
+ * - Asks LLM to return either suggested_request OR actions[]
+ * - Passes response back as raw JSON for parent-side validation
+ * state_ctx: JSON string like {"nodes":N,"edges":M,"growth_rate":X,...}, may be NULL
+ */
+char *llm_handle_plateau(const char *protocol_name, const char *examples,
+                         const char *history, const char *state_ctx) {
+    if (!protocol_name) return NULL;
+
+    /* Build state-aware prompt text */
+    char *state_section = NULL;
+    if (state_ctx && strlen(state_ctx) > 2) {
+        asprintf(&state_section,
+            "**Current Fuzzer State (IMPORTANT - use this to guide your suggestion):**\n"
+            "%s\n\n"
+            "Focus on protocol states with LOW coverage (low edge count). "
+            "If growth_rate is near 0, the fuzzer is completely stuck - be creative.\n\n",
+            state_ctx);
+    } else {
+        asprintf(&state_section, "");
+    }
+
+    /* Build the full state-aware prompt string */
+    char *raw_prompt = NULL;
+    asprintf(&raw_prompt,
+        "You are an expert protocol fuzzing assistant analyzing the %s protocol.\n"
+        "The fuzzer has reached a PLATEAU - no new code paths have been discovered recently.\n\n"
+        "%s"
+        "**STATE DATA EXPLANATION:**\n"
+        "The `states` array lists protocol states sorted by effectiveness (LOWEST first = most stuck).\n"
+        "Each state has:\n"
+        "  - id: use this exact number in set_target_state or prioritize_seeds\n"
+        "  - paths: total execution paths covering this state\n"
+        "  - paths_discovered: NEW paths found when fuzzing this state (low = stuck)\n"
+        "  - selected_times: how many times fuzzer targeted this state\n"
+        "  - fuzzs: total fuzzing attempts on this state\n"
+        "  - seed_ids: exact seed indices reachable from this state (use in prioritize_seeds)\n\n"
+        "**Communication History (most recent interactions):**\n\"\"\"%s\"\"\"\n\n"
+        "**Example Request Formats:**\n%s\n\n"
+        "**Your Task:** Choose ONE strategy and return ONLY valid JSON:\n\n"
+        "Strategy A - Send a new specific request:\n"
+        "  {\"analysis\":\"...\", \"suggested_request\":\"EXACT_CMD\\r\\n\"}\n\n"
+        "Strategy B - State-aware seed/state actions (use REAL ids from the states[] data above):\n"
+        "  {\"analysis\":\"...\", \"actions\":[\n"
+        "    {\"type\":\"set_target_state\", \"state_id\":ID},\n"
+        "    {\"type\":\"prioritize_seeds\", \"seed_ids\":[N1,N2,N3]},\n"
+        "    {\"type\":\"propose_mutations\", \"seed_id\":N, \"ops\":[\n"
+        "       {\"op\":\"flip\",\"pos\":P,\"len\":L},\n"
+        "       {\"op\":\"insert\",\"pos\":P,\"bytes_base64\":\"BASE64\"}\n"
+        "    ]}\n"
+        "  ]}\n\n"
+        "**Decision Guide:**\n"
+        "- growth_rate=0 AND states[0].paths_discovered=0: use set_target_state to switch to a DIFFERENT state\n"
+        "- One state has high selected_times but low paths_discovered: use set_target_state + prioritize_seeds for that state\n"
+        "- States with seeds_count=0: cannot be targeted, skip them\n"
+        "- Use the EXACT state id and seed_ids numbers from the states[] data — do NOT invent IDs\n"
+        "- Strategy A (suggested_request) is best when history shows unrecognized commands\n\n"
+        "Respond with ONLY valid JSON. No markdown, no code blocks, no explanation outside JSON.",
+        protocol_name,
+        state_section ? state_section : "",
+        history ? history : "",
+        examples ? examples : "");
+    free(state_section);
+    if (!raw_prompt) return NULL;
+
+    /* Wrap in messages array for chat API */
+    struct json_object *messages_array = json_object_new_array();
+    struct json_object *system_msg = json_object_new_object();
+    json_object_object_add(system_msg, "role", json_object_new_string("system"));
+    json_object_object_add(system_msg, "content", json_object_new_string("You are a helpful protocol fuzzing assistant."));
+    json_object_array_add(messages_array, system_msg);
+    struct json_object *user_msg = json_object_new_object();
+    json_object_object_add(user_msg, "role", json_object_new_string("user"));
+    json_object_object_add(user_msg, "content", json_object_new_string(raw_prompt));
+    json_object_array_add(messages_array, user_msg);
+    free(raw_prompt);
+    char *prompt = strdup(json_object_to_json_string(messages_array));
+    json_object_put(messages_array);
+    if (!prompt) return NULL;
+
+    char *resp = chat_with_llm(prompt, "gpt-4o-mini", STALL_RETRIES, 1.2);
+    free(prompt);
+    if (!resp) return NULL;
+
+    if (is_garbage_response(resp, strlen(resp))) {
+        free(resp);
+        return NULL;
+    }
+
+    /* Try to parse resp as direct JSON first (LLM returned actions[] or suggested_request) */
+    struct json_object *jtry = json_tokener_parse(resp);
+    if (jtry) {
+        /* LLM returned valid JSON directly — pass through as-is */
+        const char *raw = json_object_to_json_string(jtry);
+        char *out = strdup(raw);
+        json_object_put(jtry);
+        free(resp);
+        return out;
+    }
+
+    /* Fallback: try to extract suggested_request from plain text */
+    char *stall_message = extract_stalled_message(resp, strlen(resp));
+    free(resp);
+    if (!stall_message) return NULL;
+
+    char *formatted = format_request_message(stall_message);
+    if (!formatted) return NULL;
+
+    /* Wrap into JSON for strict parent-side validation */
+    struct json_object *jroot = json_object_new_object();
+    json_object_object_add(jroot, "suggested_request", json_object_new_string(formatted));
+    const char *json_str = json_object_to_json_string(jroot);
+    char *out = strdup(json_str);
+    json_object_put(jroot);
+    free(formatted);
+    return out;
 }
 
 char *construct_prompt_for_templates(char *protocol_name, char **final_msg)

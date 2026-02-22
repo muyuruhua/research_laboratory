@@ -72,6 +72,14 @@ char *construct_prompt_for_protocol_message_types(char *protocol_name);
 char *construct_prompt_for_requests_to_states(const char *protocol_name, const char *protocol_state, const char *example_requests);
 char *construct_prompt_stall(char *protocol_name, char *examples, char *history);
 
+/* Handle plateau: build prompt from examples/history, call LLM and
+    return a formatted request message (NULL on failure). */
+/* state_ctx: JSON string with coverage/state info, may be NULL */
+char *llm_handle_plateau(const char *protocol_name, const char *examples,
+                         const char *history, const char *state_ctx);
+/* Validator helper - returns allocated suggested_request or NULL */
+/* Parse and validate LLM JSON. Returns a new json_object* (caller must json_object_put) or NULL */
+struct json_object *validate_and_parse_llm_json(const char *json_str);
 void extract_message_grammars(char *answers, klist_t(gram) * grammar_set);
 char *extract_message_pattern(const char *header_str,
                                khash_t(field_table) * field_table,

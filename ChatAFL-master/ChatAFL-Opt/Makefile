@@ -84,8 +84,11 @@ hypothesis-adapter.o: hypothesis-adapter.c hypothesis-adapter.h grammar-hypothes
 rfc-knowledge.o: rfc-knowledge.c rfc-knowledge.h $(COMM_HDR)
 	$(CC) $(CFLAGS) -c rfc-knowledge.c -o rfc-knowledge.o
 
-afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet.o aflnet.h chat-llm.o chat-llm.h grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o | test_x86
-	$(CC) $(CFLAGS) $@.c aflnet.o chat-llm.o grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o -o $@ $(LDFLAGS) -lcurl -ljson-c -lpcre2-8
+llm-validator.o: llm-validator.c chat-llm.h $(COMM_HDR)
+	$(CC) $(CFLAGS) -c llm-validator.c -o llm-validator.o
+
+afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet.o aflnet.h chat-llm.o chat-llm.h grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o llm-validator.o | test_x86
+	$(CC) $(CFLAGS) $@.c aflnet.o chat-llm.o grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o llm-validator.o -o $@ $(LDFLAGS) -lcurl -ljson-c -lpcre2-8
 
 afl-replay: afl-replay.c $(COMM_HDR) aflnet.o aflnet.h | test_x86
 	$(CC) $(CFLAGS) $@.c aflnet.o -o $@ $(LDFLAGS)
