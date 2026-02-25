@@ -346,21 +346,90 @@ char *llm_handle_plateau(const char *protocol_name, const char *examples,
     return out;
 }
 
+/* Lookup table of per-protocol few-shot examples for grammar prompts.
+ * Each entry shows ONE representative message of that protocol using the
+ * exact <<VALUE>> template format so the LLM knows the expected output style.
+ * Format convention (same as rest of code):
+ *   \\n       -> literal \n seen by LLM
+ *   \\\"      -> literal " seen by LLM
+ *   \\\\r\\\\n -> literal \r\n seen by LLM
+ */
+typedef struct {
+    const char *name;
+    /* msg_type : short human-readable name of the示例 message type */
+    const char *msg_type;
+    /* example : the full "For the X protocol, the Y template is:\nY: [...]" string */
+    const char *example;
+} ProtocolExampleEntry;
+
+static const ProtocolExampleEntry PROTOCOL_EXAMPLE_TABLE[] = {
+    {"FTP",  "USER",
+     "For the FTP protocol, the USER client request template is:\\n"
+     "USER: [\\\"USER <<VALUE>>\\\\r\\\\n\\\"]"},
+    {"SMTP", "EHLO",
+     "For the SMTP protocol, the EHLO client request template is:\\n"
+     "EHLO: [\\\"EHLO <<VALUE>>\\\\r\\\\n\\\"]"},
+    {"RTSP", "DESCRIBE",
+     "For the RTSP protocol, the DESCRIBE client request template is:\\n"
+     "DESCRIBE: [\\\"DESCRIBE <<VALUE>>\\\\r\\\\n\\\","
+     "\\\"CSeq: <<VALUE>>\\\\r\\\\n\\\","
+     "\\\"User-Agent: <<VALUE>>\\\\r\\\\n\\\","
+     "\\\"Accept: <<VALUE>>\\\\r\\\\n\\\","
+     "\\\"\\\\r\\\\n\\\"]"},
+    {"HTTP", "GET",
+     "For the HTTP protocol, the GET client request template is:\\n"
+     "GET: [\\\"GET <<VALUE>> HTTP/1.1\\\\r\\\\n\\\","
+     "\\\"Host: <<VALUE>>\\\\r\\\\n\\\","
+     "\\\"\\\\r\\\\n\\\"]"},
+    {"SIP",  "REGISTER",
+     "For the SIP protocol, the REGISTER client request template is:\\n"
+     "REGISTER: [\\\"REGISTER sip:<<VALUE>> SIP/2.0\\\\r\\\\n\\\","
+     "\\\"Via: SIP/2.0/UDP <<VALUE>>\\\\r\\\\n\\\","
+     "\\\"From: <sip:<<VALUE>>>\\\\r\\\\n\\\","
+     "\\\"To: <sip:<<VALUE>>>\\\\r\\\\n\\\","
+     "\\\"CSeq: <<VALUE>> REGISTER\\\\r\\\\n\\\","
+     "\\\"\\\\r\\\\n\\\"]"},
+    {"DAAP", "login",
+     "For the DAAP protocol, the login client request template is:\\n"
+     "login: [\\\"GET /login?pairing-guid=<<VALUE>> HTTP/1.1\\\\r\\\\n\\\","
+     "\\\"Host: <<VALUE>>\\\\r\\\\n\\\","
+     "\\\"Client-DAAP-Version: <<VALUE>>\\\\r\\\\n\\\","
+     "\\\"\\\\r\\\\n\\\"]"},
+    {"MQTT", "CONNECT",
+     "For the MQTT protocol, the CONNECT packet template is:\\n"
+     "CONNECT: [\\\"\\\\x10<<VALUE>>\\\\x00\\\\x04MQTT\\\\x04<<VALUE>>\\\\x00\\\\x3c\\\\x00<<VALUE>>\\\"]"},
+    {"DNS",  "QUERY",
+     "For the DNS protocol, the QUERY request template is:\\n"
+     "QUERY: [\\\"<<VALUE>>\\\\x01\\\\x00\\\\x00\\\\x01\\\\x00\\\\x00\\\\x00\\\\x00\\\\x00\\\\x00<<VALUE>>\\\"]"},
+    {NULL, NULL, NULL}
+};
+
 char *construct_prompt_for_templates(char *protocol_name, char **final_msg)
 {
-    // Give one example for learning formats
-    char *prompt_rtsp_example = "For the RTSP protocol, the DESCRIBE client request template is:\\n"
-                                "DESCRIBE: [\\\"DESCRIBE <<VALUE>>\\\\r\\\\n\\\","
-                                "\\\"CSeq: <<VALUE>>\\\\r\\\\n\\\","
-                                "\\\"User-Agent: <<VALUE>>\\\\r\\\\n\\\","
-                                "\\\"Accept: <<VALUE>>\\\\r\\\\n\\\","
-                                "\\\"\\\\r\\\\n\\\"]";
-
-    char *prompt_http_example = "For the HTTP protocol, the GET client request template is:\\n"
-                                "GET: [\\\"GET <<VALUE>>\\\\r\\\\n\\\"]";
+    /* Find the same-protocol example to use as the few-shot anchor.
+     * Showing the LLM one concrete example of the TARGET protocol guides it
+     * to produce responses for the same command set rather than generic text. */
+    const char *anchor_example = NULL;
+    const char *anchor_msg_type = NULL;
+    for (int i = 0; PROTOCOL_EXAMPLE_TABLE[i].name != NULL; i++) {
+        if (strcasecmp(protocol_name, PROTOCOL_EXAMPLE_TABLE[i].name) == 0) {
+            anchor_example  = PROTOCOL_EXAMPLE_TABLE[i].example;
+            anchor_msg_type = PROTOCOL_EXAMPLE_TABLE[i].msg_type;
+            break;
+        }
+    }
+    /* Fallback for unknown protocols: use a generic format hint */
+    if (anchor_example == NULL) {
+        anchor_example  = PROTOCOL_EXAMPLE_TABLE[2].example; /* RTSP as generic shape */
+        anchor_msg_type = "request";
+    }
 
     char *msg = NULL;
-    asprintf(&msg, "%s\\n%s\\nFor the %s protocol, all of client request templates are :", prompt_rtsp_example, prompt_http_example, protocol_name);
+    asprintf(&msg,
+             "%s\\n"
+             "Following the same format above, for the %s protocol, "
+             "list ALL client request message templates (not just %s):",
+             anchor_example, protocol_name, anchor_msg_type);
     *final_msg = msg;
     
     // FIXED: Use json-c library to build complete JSON array with proper escaping
@@ -1487,23 +1556,64 @@ int min(int a, int b) {
     return a < b ? a : b;
 }
 
-char *enrich_sequence(char *sequence, khash_t(strSet) * missing_message_types)
+/* Per-protocol hints for the enrichment prompt */
+typedef struct {
+    const char *name;
+    const char *sequences;  /* typical command/message sequences to explore */
+    const char *errors;     /* error/boundary cases specific to this protocol */
+} EnrichHintEntry;
+
+static const EnrichHintEntry ENRICH_HINT_TABLE[] = {
+    {"FTP",  "ALLO+STOR, REST+RETR, REIN, PASV/PORT switches, MLSD/MLST",
+             "invalid paths (/../..), long filenames (256+ chars), permission denials, case variants (MKD vs mkd)"},
+    {"SMTP", "EHLO+MAIL+RCPT+DATA, AUTH LOGIN/PLAIN, VRFY/EXPN probing, RSET+MAIL chains",
+             "malformed addresses, oversized headers, repeated RSET, missing EHLO, bare CR/LF"},
+    {"RTSP", "DESCRIBE+SETUP+PLAY+PAUSE+TEARDOWN, interleaved channel requests, OPTIONS probing",
+             "invalid session IDs, malformed stream URIs, unsupported transport specs, bad CSeq"},
+    {"HTTP", "GET/POST/PUT/DELETE/OPTIONS/HEAD sequences, pipelining, chunked transfer, keep-alive",
+             "path traversal (/../), oversized headers, invalid methods, malformed URIs, HTTP/0.9"},
+    {"SIP",  "REGISTER+INVITE+ACK+BYE, CANCEL, OPTIONS, re-registration, forked dialogs",
+             "malformed SIP URIs, missing Via/From/To headers, invalid CSeq, loop detection"},
+    {"DAAP", "login+server-info+update+databases+items+containers sequences, session management",
+             "invalid session tokens, malformed content-codes, unexpected revision numbers"},
+    {"MQTT", "CONNECT+SUBSCRIBE+PUBLISH+UNSUBSCRIBE+DISCONNECT, PINGREQ/PINGRESP, QoS 0/1/2",
+             "oversized client IDs, invalid topic filters, will message variations, clean session"},
+    {"DNS",  "A/AAAA/MX/NS/PTR/TXT/SOA query sequences, recursive vs iterative",
+             "malformed labels, oversized names, EDNS options, DNSSEC flag variations"},
+    {NULL, NULL, NULL}
+};
+
+char *enrich_sequence(char *sequence, khash_t(strSet) *missing_message_types, const char *protocol_name)
 {
+    /* Look up protocol-specific hints */
+    const EnrichHintEntry *hint = NULL;
+    if (protocol_name) {
+        for (int i = 0; ENRICH_HINT_TABLE[i].name != NULL; i++) {
+            if (strcasecmp(protocol_name, ENRICH_HINT_TABLE[i].name) == 0) {
+                hint = &ENRICH_HINT_TABLE[i];
+                break;
+            }
+        }
+    }
+    const char *proto   = (protocol_name && *protocol_name) ? protocol_name : "network";
+    const char *seqs    = hint ? hint->sequences : "command sequences and state transitions";
+    const char *errors  = hint ? hint->errors    : "invalid parameters, oversized values, boundary inputs";
+
     const char *prompt_template =
-        "You are a fuzzing expert testing an FTP server. Current request sequence:\\n"
-        "%.*s\\n\\n"
-        "Task: Add %.*s commands to MAXIMIZE code coverage by:\\n"
-        "1. EXPLORE new paths: Use uncommon command combinations (ALLO+STOR, REST+RETR, REIN)\\n"
-        "2. TRIGGER errors: Invalid paths (/../../etc), missing files, permission denials\\n"
-        "3. TEST boundaries: Long names (256+ chars), special chars (@#$%%^), empty args\\n"
-        "4. CREATE complexity: Nested dirs (a/b/c/d/e), rename chains, concurrent ops\\n"
-        "5. PROBE edge cases: Case variants (MKD vs mkd), repeated commands, state transitions\\n\\n"
-        "Requirements:\\n"
-        "- Generate commands that cover DIFFERENT code branches\\n"
-        "- Include both valid and INVALID scenarios\\n"
-        "- Use diverse parameters (paths, filenames, ports)\\n"
-        "- Insert commands at strategic positions to maximize state transitions\\n\\n"
-        "Output ONLY the modified command sequence (no explanations):";
+        "You are a fuzzing expert testing a %s server. Current request sequence:\n"
+        "%.*s\n\n"
+        "Task: Add %.*s messages to MAXIMIZE code coverage by:\n"
+        "1. EXPLORE new paths: Use uncommon %s combinations (%s)\n"
+        "2. TRIGGER errors: %s\n"
+        "3. TEST boundaries: Long values (256+ chars), special chars (@#$%%%%^), empty args\n"
+        "4. CREATE complexity: Nested sequences, rename chains, concurrent operations\n"
+        "5. PROBE edge cases: Case variants, repeated messages, unusual state transitions\n\n"
+        "Requirements:\n"
+        "- Generate messages that cover DIFFERENT code branches\n"
+        "- Include both valid and INVALID scenarios\n"
+        "- Use diverse parameters\n"
+        "- Insert messages at strategic positions to maximize state transitions\n\n"
+        "Output ONLY the modified message sequence (no explanations):";
 
     int missing_fields_len = 0;
     int missing_fields_capacity = 100;
@@ -1539,9 +1649,14 @@ char *enrich_sequence(char *sequence, khash_t(strSet) * missing_message_types)
 
     // FIXED: Use json-c library properly to handle ALL escaping automatically
     // json-c will correctly escape control characters as \uXXXX in the final JSON
-    
-    // Build the content string from template
-    asprintf(&content, prompt_template, (int)strlen(sequence), sequence, missing_fields_len, missing_fields_seq);
+
+    // Build the content string from protocol-aware template
+    asprintf(&content, prompt_template,
+             proto,
+             (int)strlen(sequence), sequence,
+             missing_fields_len, missing_fields_seq,
+             proto, seqs,
+             errors);
     
     // Create JSON array using json-c (this handles ALL escaping correctly)
     struct json_object *messages_array = json_object_new_array();

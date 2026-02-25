@@ -2808,7 +2808,7 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
       khash_t(strSet)* subset = kv_A(message_subsets,i); 
 
       // Try enriching the sequence
-        char *client_request_answer = enrich_sequence(nl_file_content, subset);
+        char *client_request_answer = enrich_sequence(nl_file_content, subset, protocol_name);
 
         if (client_request_answer == NULL)
           continue;

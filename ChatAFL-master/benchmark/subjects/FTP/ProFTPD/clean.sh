@@ -4,4 +4,4 @@
 #cp /home/ubuntu/ftpshare/home/ubuntu/experiments/proftpd-gcov/lib/*.gcda /home/ubuntu/experiments/proftpd-gcov/lib/ > /dev/null 2>&1
 #cp /home/ubuntu/ftpshare/home/ubuntu/experiments/proftpd-gcov/modules/*.gcda /home/ubuntu/experiments/proftpd-gcov/modules/ > /dev/null 2>&1
 #cp /home/ubuntu/ftpshare/home/ubuntu/experiments/proftpd-gcov/utils/*.gcda /home/ubuntu/experiments/proftpd-gcov/utils/ > /dev/null 2>&1
-rm -rf /home/ubuntu/ftpshare/*
+find /home/ubuntu/ftpshare -mindepth 1 -delete 2>/dev/null || true
