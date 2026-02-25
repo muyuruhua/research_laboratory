@@ -342,7 +342,7 @@ char *llm_handle_plateau(const char *protocol_name, const char *examples,
     const char *json_str = json_object_to_json_string(jroot);
     char *out = strdup(json_str);
     json_object_put(jroot);
-    free(formatted);
+    ck_free(formatted);
     return out;
 }
 
@@ -709,16 +709,31 @@ char *extract_protocol_commands_from_response(char *llm_response)
                 // Check if this line looks like a protocol command
                 if (line_len > 0 && line_len < 1024) {
                     int is_valid = 0;
-                    const char *ftp_commands[] = {"USER", "PASS", "CWD", "PWD", "LIST", "RETR", 
-                                                   "STOR", "DELE", "MKD", "RMD", "RNFR", "RNTO",
-                                                   "QUIT", "SYST", "TYPE", "PORT", "PASV", "ABOR",
-                                                   "HELP", "NOOP", "STAT", "APPE", "REST", "SIZE",
-                                                   "MDTM", "FEAT", "OPTS", NULL};
-                    
-                    for (int i = 0; ftp_commands[i] != NULL; i++) {
-                        size_t cmd_len = strlen(ftp_commands[i]);
-                        if (line_len >= cmd_len && 
-                            strncmp(line_start, ftp_commands[i], cmd_len) == 0 &&
+                    /* Multi-protocol: FTP, SMTP, RTSP, SIP, HTTP, DAAP, MQTT */
+                    const char *proto_commands[] = {
+                        /* FTP */
+                        "USER","PASS","CWD","PWD","LIST","RETR","STOR","DELE",
+                        "MKD","RMD","RNFR","RNTO","QUIT","SYST","TYPE","PORT",
+                        "PASV","ABOR","HELP","NOOP","STAT","APPE","REST","SIZE",
+                        "MDTM","FEAT","OPTS","ALLO","CDUP","SMNT","REIN","STOU",
+                        "STRU","MODE","EPSV","EPRT","MLSD","MLST","SITE",
+                        /* SMTP */
+                        "EHLO","HELO","MAIL","RCPT","DATA","RSET","VRFY","EXPN",
+                        "AUTH","STARTTLS","SAML","SOML","SEND","TURN",
+                        /* RTSP */
+                        "OPTIONS","DESCRIBE","SETUP","PLAY","PAUSE","TEARDOWN",
+                        "GET_PARAMETER","SET_PARAMETER","ANNOUNCE","RECORD","REDIRECT",
+                        /* SIP */
+                        "INVITE","ACK","BYE","CANCEL","REGISTER","INFO","PRACK",
+                        "SUBSCRIBE","NOTIFY","UPDATE","REFER","MESSAGE","PUBLISH",
+                        /* HTTP */
+                        "GET","POST","PUT","DELETE","HEAD","CONNECT","TRACE","PATCH",
+                        NULL
+                    };
+                    for (int i = 0; proto_commands[i] != NULL; i++) {
+                        size_t cmd_len = strlen(proto_commands[i]);
+                        if (line_len >= cmd_len &&
+                            strncmp(line_start, proto_commands[i], cmd_len) == 0 &&
                             (line_len == cmd_len || line_start[cmd_len] == ' ' || line_start[cmd_len] == '\r')) {
                             is_valid = 1;
                             break;
@@ -799,17 +814,31 @@ char *extract_protocol_commands_from_response(char *llm_response)
             size_t line_len = line_end - line_start;
             
             if (line_len > 0 && line_len < 1024) {
-                // Check for FTP command at start of line
-                const char *ftp_commands[] = {"USER", "PASS", "CWD", "PWD", "LIST", "RETR", 
-                                               "STOR", "DELE", "MKD", "RMD", "RNFR", "RNTO",
-                                               "QUIT", "SYST", "TYPE", "PORT", "PASV", "ABOR",
-                                               "HELP", "NOOP", "STAT", "APPE", "REST", "SIZE",
-                                               "MDTM", "FEAT", "OPTS", NULL};
-                
-                for (int i = 0; ftp_commands[i] != NULL; i++) {
-                    size_t cmd_len = strlen(ftp_commands[i]);
-                    if (line_len >= cmd_len && 
-                        strncmp(line_start, ftp_commands[i], cmd_len) == 0 &&
+                /* Multi-protocol: FTP, SMTP, RTSP, SIP, HTTP, DAAP, MQTT */
+                const char *proto_commands[] = {
+                    /* FTP */
+                    "USER","PASS","CWD","PWD","LIST","RETR","STOR","DELE",
+                    "MKD","RMD","RNFR","RNTO","QUIT","SYST","TYPE","PORT",
+                    "PASV","ABOR","HELP","NOOP","STAT","APPE","REST","SIZE",
+                    "MDTM","FEAT","OPTS","ALLO","CDUP","SMNT","REIN","STOU",
+                    "STRU","MODE","EPSV","EPRT","MLSD","MLST","SITE",
+                    /* SMTP */
+                    "EHLO","HELO","MAIL","RCPT","DATA","RSET","VRFY","EXPN",
+                    "AUTH","STARTTLS","SAML","SOML","SEND","TURN",
+                    /* RTSP */
+                    "OPTIONS","DESCRIBE","SETUP","PLAY","PAUSE","TEARDOWN",
+                    "GET_PARAMETER","SET_PARAMETER","ANNOUNCE","RECORD","REDIRECT",
+                    /* SIP */
+                    "INVITE","ACK","BYE","CANCEL","REGISTER","INFO","PRACK",
+                    "SUBSCRIBE","NOTIFY","UPDATE","REFER","MESSAGE","PUBLISH",
+                    /* HTTP */
+                    "GET","POST","PUT","DELETE","HEAD","CONNECT","TRACE","PATCH",
+                    NULL
+                };
+                for (int i = 0; proto_commands[i] != NULL; i++) {
+                    size_t cmd_len = strlen(proto_commands[i]);
+                    if (line_len >= cmd_len &&
+                        strncmp(line_start, proto_commands[i], cmd_len) == 0 &&
                         (line_len == cmd_len || line_start[cmd_len] == ' ' || line_start[cmd_len] == '\r')) {
                         
                         if (out_pos + line_len + 2 >= capacity) {
@@ -859,7 +888,7 @@ char *extract_protocol_commands_from_response(char *llm_response)
     
     // Finalize the result
     if (out_pos == 0) {
-        free(extracted);
+        ck_free(extracted);
         return NULL;
     }
     
