@@ -44,11 +44,13 @@
 #include "hash.h"
 #include "chat-llm.h"
 #include "grammar-hypothesis.h"
+#include "hypothesis-adapter.h"
 
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>    /* strcasecmp */
 #include <time.h>
 #include <errno.h>
 #include <signal.h>
@@ -4388,6 +4390,20 @@ static void init_grammar_hypothesis_system(void)
     }
 
     ck_free(hyp_dir);
+
+    // ============================================
+    // Fix 1: Integrate hypotheses into protocol_patterns
+    // so parse_buffer() can use them during havoc exploit
+    // ============================================
+    if (protocol_patterns && message_types_set) {
+      int integrated = integrate_hypotheses_into_protocol_patterns(
+          hypothesis_ctx, protocol_patterns, message_types_set,
+          out_dir, protocol_name);
+      OKF("Integrated %d hypotheses into protocol_patterns", integrated);
+    } else {
+      WARNF("protocol_patterns or message_types_set not initialized, "
+            "skipping hypothesis integration");
+    }
   }
 
   // Cleanup PCAP samples
@@ -4412,17 +4428,55 @@ static void validate_and_refine_hypotheses(u8 *buf, u32 len)
 
   hypothesis_validation_count++;
 
-  // Validate against all hypotheses
-  for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++)
-  {
-    grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
+  /* ============================================
+   * Fix 3: Per-region validation for binary protocols (MQTT)
+   * Split buffer into protocol messages and validate each
+   * region against the MATCHING hypothesis only.
+   * Text protocols keep original whole-buffer behavior.
+   * ============================================ */
+  if (is_binary_protocol(protocol_name) && extract_requests) {
+    u32 region_count = 0;
+    region_t *regions = (*extract_requests)(buf, len, &region_count);
 
-    int valid = validate_message_against_hypothesis(hyp, buf, len);
+    for (u32 r = 0; r < region_count; r++) {
+      u32 rstart = regions[r].start_byte;
+      u32 rend   = regions[r].end_byte;
+      if (rend >= len) rend = len - 1;
+      u32 rlen   = rend - rstart + 1;
+      if (rlen < 2) continue;
 
-    if (!valid && hyp->parse_failure % 10 == 0)
-    {
-      // Add as counterexample every 10th failure
-      add_counterexample(hyp, buf, len, "Validation failed");
+      /* For MQTT: upper nibble of first byte identifies message type */
+      unsigned char type_nibble = (buf[rstart] >> 4) & 0x0F;
+      const char *msg_type = mqtt_type_nibble_to_name(type_nibble);
+      if (!msg_type) continue;
+
+      /* Find the matching hypothesis and validate only that region */
+      for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++) {
+        grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
+        if (!hyp->message_type) continue;
+        if (strcasecmp(hyp->message_type, msg_type) != 0) continue;
+
+        int valid = validate_message_against_hypothesis(hyp,
+                                                        buf + rstart, rlen);
+        if (!valid && hyp->parse_failure % 10 == 0) {
+          add_counterexample(hyp, buf + rstart, rlen,
+                             "Validation failed");
+        }
+        break;  /* matched — move to next region */
+      }
+    }
+    ck_free(regions);
+
+  } else {
+    /* Original behaviour for text protocols (SIP, FTP, HTTP, …) */
+    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++) {
+      grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
+
+      int valid = validate_message_against_hypothesis(hyp, buf, len);
+
+      if (!valid && hyp->parse_failure % 10 == 0) {
+        add_counterexample(hyp, buf, len, "Validation failed");
+      }
     }
   }
 
@@ -6503,17 +6557,11 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
   write_to_testcase(out_buf, len);
 
   /* ============================================
-   * ChatAFL-Opt: Hypothesis Validation (FIXED)
+   * ChatAFL-Opt: Hypothesis Validation & Refinement
+   * Uses the full validate_and_refine_hypotheses() which also
+   * collects counterexamples and periodically triggers refinement.
    * ============================================ */
-  if (hypothesis_ctx && hypothesis_ctx->hypothesis_count > 0) {
-    // Validate test case against all hypotheses
-    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++) {
-      grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
-      if (hyp) {
-        validate_message_against_hypothesis(hyp, out_buf, len);
-      }
-    }
-  }
+  validate_and_refine_hypotheses(out_buf, len);
 
   /* AFLNet update kl_messages linked list */
 
@@ -7513,7 +7561,8 @@ AFLNET_REGIONS_SELECTION:;
                     size_t decoded_len = 0;
                     unsigned char *decoded = base64_decode(b64, strlen(b64), &decoded_len);
                     if (!decoded) { ck_free(buf); continue; }
-                    if (pos < 0) pos = 0; if ((size_t)pos > buf_len) pos = buf_len;
+                    if (pos < 0) pos = 0;
+                    if ((size_t)pos > buf_len) pos = buf_len;
                     if (strcmp(opname, "insert") == 0) {
                       if (buf_len + decoded_len > 65536) { ck_free(decoded); ck_free(buf); continue; }
                       /* insert */
@@ -7533,8 +7582,10 @@ AFLNET_REGIONS_SELECTION:;
                     json_object_object_get_ex(op, "len", &jlen);
                     long pos = json_object_get_int(jpos);
                     long ln = json_object_get_int(jlen);
-                    if (pos < 0) pos = 0; if (pos >= (long)buf_len) { ck_free(buf); continue; }
-                    if (ln <= 0) ln = 1; if ((size_t)(pos+ln) > buf_len) ln = buf_len - pos;
+                    if (pos < 0) pos = 0;
+                    if (pos >= (long)buf_len) { ck_free(buf); continue; }
+                    if (ln <= 0) ln = 1;
+                    if ((size_t)(pos+ln) > buf_len) ln = buf_len - pos;
                     for (long b=0; b<ln; b++) buf[pos+b] = ~buf[pos+b];
                   } else {
                     /* unsupported action */
@@ -11101,6 +11152,11 @@ int main(int argc, char **argv)
       {
         extract_requests = &extract_requests_ftp;
         extract_response_codes = &extract_response_codes_ftp;
+      }
+      else if (!strcmp(optarg, "MQTT"))
+      {
+        extract_requests = &extract_requests_mqtt;
+        extract_response_codes = &extract_response_codes_mqtt;
       }
       else if (!strcmp(optarg, "DTLS12"))
       {

@@ -647,6 +647,66 @@ region_t *extract_requests_ftp(unsigned char *buf, unsigned int buf_size, unsign
   return regions;
 }
 
+region_t *extract_requests_mqtt(unsigned char *buf, unsigned int buf_size, unsigned int *region_count_ref)
+{
+  char *mem;
+  unsigned int mem_count = 0;
+  unsigned int mem_size = 1024;
+  unsigned int region_count = 0;
+  unsigned int cur_start = 0;
+  unsigned int cur_end = 0;
+  region_t *regions = NULL;
+  mem = (char *)ck_alloc(mem_size);
+  while (cur_start < buf_size)
+  {
+    if ((buf_size - cur_start) == 1)
+    {
+      region_count++;
+      regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+      regions[region_count - 1].start_byte = cur_start;
+      regions[region_count - 1].end_byte = buf_size - 1;
+      regions[region_count - 1].state_sequence = NULL;
+      regions[region_count - 1].state_count = 0;
+      break;
+    }
+    // Read the packet header
+    memcpy(&mem[mem_count], buf + cur_start, 2);
+    cur_start = cur_start + 2;
+    // Check the packet length and update current_end
+    // mem[0] is Message Type. mem[1] is Msg Len.
+    if (mem[1] >= 0)
+      cur_end = cur_start + mem[1] - 1;
+    else
+      cur_end = buf_size;
+    // Create a region for every request
+    region_count++;
+    regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+    regions[region_count - 1].start_byte = cur_start - 2;
+    regions[region_count - 1].end_byte = cur_end;
+    regions[region_count - 1].state_sequence = NULL;
+    regions[region_count - 1].state_count = 0;
+    // Update the indices
+    mem_count = 0;
+    cur_start = cur_end + 1;
+    cur_end = cur_start;
+  }
+  if (mem)
+    ck_free(mem);
+  // in case region_count equals zero, it means that the structure of the buffer is broken
+  // hence we create one region for the whole buffer
+  if ((region_count == 0) && (buf_size > 0))
+  {
+    regions = (region_t *)ck_realloc(regions, sizeof(region_t));
+    regions[0].start_byte = 0;
+    regions[0].end_byte = buf_size - 1;
+    regions[0].state_sequence = NULL;
+    regions[0].state_count = 0;
+    region_count = 1;
+  }
+  *region_count_ref = region_count;
+  return regions;
+}
+
 region_t *extract_requests_sip(unsigned char *buf, unsigned int buf_size, unsigned int *region_count_ref)
 {
   char *mem;
@@ -1518,6 +1578,68 @@ unsigned int *extract_response_codes_ftp(unsigned char *buf, unsigned int buf_si
   return state_sequence;
 }
 
+unsigned int *extract_response_codes_mqtt(unsigned char *buf, unsigned int buf_size, unsigned int *state_count_ref)
+{
+  unsigned char *mem;
+  unsigned int byte_count = 0;
+  unsigned int mem_count = 0;
+  unsigned int mem_size = 1024;
+  unsigned int *state_sequence = NULL;
+  unsigned int state_count = 0;
+  // Packet headers for MQTT broker responses
+  char start1[1] = {0x20}; // Connect Ack
+  char start2[1] = {0x40}; // Publish Ack
+  char start3[1] = {0x50}; // Publish Receive
+  char start4[1] = {0x62}; // Publish Release
+  char start5[1] = {0x70}; // Publish complete
+  char start6[1] = {0x90}; // Subscribe Ack
+  char start7[1] = {0xB0}; // Unsubscribe Ack
+  char start8[1] = {0xD0}; // Ping Response
+  char start9[1] = {0xE0}; // Disconnect
+  char start10[1] = {0xF0}; // Auth
+  mem = (unsigned char *)ck_alloc(mem_size);
+  // Initial state of the response state machine
+  state_count++;
+  state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+  state_sequence[state_count - 1] = 0;
+  while (byte_count < buf_size)
+  {
+    // Copy the packet header to get the message type(mem[0])
+    memcpy(&mem[mem_count++], buf + byte_count++, 1);
+    if (byte_count >= buf_size) break;
+    memcpy(&mem[mem_count], buf + byte_count++, 1);
+    // Determine whether it's a response packet
+    if ((mem_count > 0) && ((memcmp(&mem[0], start1, 1) == 0) || (memcmp(&mem[0], start2, 1) == 0) || (memcmp(&mem[0], start3, 1) == 0) || (memcmp(&mem[0], start4, 1) == 0) || (memcmp(&mem[0], start5, 1) == 0) || (memcmp(&mem[0], start6, 1) == 0) || (memcmp(&mem[0], start7, 1) == 0) || (memcmp(&mem[0], start8, 1) == 0) || (memcmp(&mem[0], start9, 1) == 0) || (memcmp(&mem[0], start10, 1) == 0)))
+    {
+      // Get the response code(message type) from the packet
+      unsigned int message_code = (unsigned int)mem[0];
+      if (message_code == 0) break;
+
+      // Create a new state
+      state_count++;
+      state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+      state_sequence[state_count - 1] = message_code;
+      mem_count = 0;
+      // Skip remaining length bytes
+      byte_count = byte_count + mem[1];
+    }
+    else
+    {
+      mem_count++;
+      if (mem_count == mem_size)
+      {
+        // enlarge the mem buffer
+        mem_size = mem_size * 2;
+        mem = (unsigned char *)ck_realloc(mem, mem_size);
+      }
+    }
+  }
+  if (mem)
+    ck_free(mem);
+  *state_count_ref = state_count;
+  return state_sequence;
+}
+
 unsigned int *extract_response_codes_sip(unsigned char *buf, unsigned int buf_size, unsigned int *state_count_ref)
 {
   char *mem;
@@ -1724,190 +1846,6 @@ unsigned int *extract_response_codes_ipp(unsigned char *buf, unsigned int buf_si
   return state_sequence;
 }
 
-// ============================================================
-// MQTT protocol support
-// MQTT v3.1.1 (ISO 20922) binary framing
-// ============================================================
-
-/* Decode MQTT remaining-length field (variable-length encoding).
-   Returns number of bytes consumed, -1 on error.
-   Sets *length to the decoded value. */
-static int mqtt_decode_remlen(const unsigned char *buf, unsigned int buf_size,
-                               unsigned int offset, unsigned int *length)
-{
-  unsigned int multiplier = 1;
-  unsigned int value = 0;
-  int consumed = 0;
-  unsigned char byte;
-
-  do {
-    if (offset + (unsigned int)consumed >= buf_size)
-      return -1;
-    byte = buf[offset + consumed];
-    consumed++;
-    value += (byte & 0x7F) * multiplier;
-    multiplier *= 128;
-    if (multiplier > 128 * 128 * 128)
-      return -1; /* malformed: >4 bytes */
-  } while (byte & 0x80);
-
-  *length = value;
-  return consumed;
-}
-
-/* Split a raw MQTT byte-stream (client→server direction) into one
-   region per packet, following the length-prefixed framing. */
-region_t *extract_requests_mqtt(unsigned char *buf, unsigned int buf_size,
-                                 unsigned int *region_count_ref)
-{
-  unsigned int region_count = 0;
-  region_t *regions = NULL;
-  unsigned int offset = 0;
-
-  while (offset < buf_size) {
-    unsigned int cur_start = offset;
-
-    /* Need at least: 1 fixed-header byte + 1 remaining-length byte */
-    if (offset + 2 > buf_size) {
-      /* Treat leftover bytes as a final partial region */
-      region_count++;
-      regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
-      regions[region_count - 1].start_byte   = cur_start;
-      regions[region_count - 1].end_byte     = buf_size - 1;
-      regions[region_count - 1].state_sequence = NULL;
-      regions[region_count - 1].state_count  = 0;
-      break;
-    }
-
-    offset++; /* consume fixed-header byte */
-
-    unsigned int remlen = 0;
-    int len_bytes = mqtt_decode_remlen(buf, buf_size, offset, &remlen);
-    if (len_bytes < 0) {
-      /* Malformed remaining-length: treat rest as one region */
-      region_count++;
-      regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
-      regions[region_count - 1].start_byte   = cur_start;
-      regions[region_count - 1].end_byte     = buf_size - 1;
-      regions[region_count - 1].state_sequence = NULL;
-      regions[region_count - 1].state_count  = 0;
-      break;
-    }
-
-    offset += (unsigned int)len_bytes;
-
-    unsigned int pkt_end = offset + remlen;
-    if (pkt_end > buf_size) pkt_end = buf_size;
-
-    region_count++;
-    regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
-    regions[region_count - 1].start_byte   = cur_start;
-    regions[region_count - 1].end_byte     = pkt_end - 1;
-    regions[region_count - 1].state_sequence = NULL;
-    regions[region_count - 1].state_count  = 0;
-
-    offset = pkt_end;
-  }
-
-  /* Safety fallback: empty or fully-malformed input → one region */
-  if (region_count == 0 && buf_size > 0) {
-    regions = (region_t *)ck_realloc(regions, sizeof(region_t));
-    regions[0].start_byte   = 0;
-    regions[0].end_byte     = buf_size - 1;
-    regions[0].state_sequence = NULL;
-    regions[0].state_count  = 0;
-    region_count = 1;
-  }
-
-  *region_count_ref = region_count;
-  return regions;
-}
-
-/* Extract state-sequence from the server→client MQTT response stream.
-   State encoding:
-     0          : initial / unknown
-     200+rc     : CONNACK  (rc = 0-5, so states 200-205)
-     300        : PUBACK
-     301        : PUBREC
-     302        : PUBCOMP
-     400+rc     : SUBACK   (rc = 0-2 or 0x80→49, so states 400-402 / 449)
-     500        : UNSUBACK
-     600        : PINGRESP
-*/
-unsigned int *extract_response_codes_mqtt(unsigned char *buf, unsigned int buf_size,
-                                           unsigned int *state_count_ref)
-{
-  unsigned int *state_sequence = NULL;
-  unsigned int state_count = 0;
-  unsigned int offset = 0;
-
-  /* Always start with state 0 */
-  state_count++;
-  state_sequence = (unsigned int *)ck_realloc(state_sequence,
-                                               state_count * sizeof(unsigned int));
-  state_sequence[state_count - 1] = 0;
-
-  while (offset + 1 < buf_size) {
-    unsigned char fixed_hdr  = buf[offset];
-    unsigned char pkt_type   = (fixed_hdr >> 4) & 0x0F;
-    offset++;
-
-    unsigned int remlen  = 0;
-    int len_bytes = mqtt_decode_remlen(buf, buf_size, offset, &remlen);
-    if (len_bytes < 0) break;
-    offset += (unsigned int)len_bytes;
-
-    unsigned int payload_start = offset;
-    unsigned int state_code    = 0;
-
-    switch (pkt_type) {
-      case 2: /* CONNACK: variable-header = [session_present, return_code] */
-        if (remlen >= 2 && payload_start + 1 < buf_size) {
-          unsigned char rc = buf[payload_start + 1];
-          state_code = 200 + (unsigned int)(rc & 0x0F);
-        } else {
-          state_code = 200;
-        }
-        break;
-
-      case 4:  /* PUBACK */   state_code = 300; break;
-      case 5:  /* PUBREC */   state_code = 301; break;
-      case 7:  /* PUBCOMP */  state_code = 302; break;
-
-      case 9: /* SUBACK: variable-header = [pkt_id_msb, pkt_id_lsb, return_code...] */
-        if (remlen >= 3 && payload_start + 2 < buf_size) {
-          unsigned char rc = buf[payload_start + 2];
-          state_code = (rc == 0x80) ? 449 : (400 + (unsigned int)(rc & 0x03));
-        } else {
-          state_code = 400;
-        }
-        break;
-
-      case 11: /* UNSUBACK */  state_code = 500; break;
-      case 13: /* PINGRESP */  state_code = 600; break;
-
-      default:
-        /* Ignore client-originated or unrecognised packet types */
-        break;
-    }
-
-    if (state_code > 0) {
-      state_count++;
-      state_sequence = (unsigned int *)ck_realloc(state_sequence,
-                                                   state_count * sizeof(unsigned int));
-      state_sequence[state_count - 1] = state_code;
-    }
-
-    /* Advance past this packet's payload */
-    offset = payload_start + remlen;
-    if (offset > buf_size) break;
-  }
-
-  *state_count_ref = state_count;
-  return state_sequence;
-}
-
-// ============================================================
 // kl_messages manipulating functions
 
 klist_t(lms) * construct_kl_messages(u8 *fname, region_t *regions, u32 region_count)

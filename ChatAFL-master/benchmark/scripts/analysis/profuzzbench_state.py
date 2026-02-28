@@ -56,25 +56,43 @@ def main(csv_file, put, runs, cut_off, step, out_file, fuzzers):
   print("Saving mean logs into file...")
   mean_df.to_csv("mean_plot_data.csv", index=False)
 
+  # Explicit color palette: blue, orange, red (replaces default green for better contrast)
+  COLOR_PALETTE = ['#1f77b4', '#ff7f0e', '#d62728', '#9467bd', '#8c564b',
+                   '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+  # Line styles and markers for visual distinction when lines overlap
+  LINE_STYLES = ['-', '--', '-.',   ':', '-', '--', '-.', ':']
+  MARKERS     = ['o', 's',  '^',   'D', 'v', 'P',  'X',  '*']
+  fuzzer_colors = {f.lower(): COLOR_PALETTE[i % len(COLOR_PALETTE)] for i, f in enumerate(fuzzers)}
+  fuzzer_styles = {f.lower(): LINE_STYLES[i % len(LINE_STYLES)] for i, f in enumerate(fuzzers)}
+  fuzzer_markers = {f.lower(): MARKERS[i % len(MARKERS)] for i, f in enumerate(fuzzers)}
+  marker_every = max(1, cut_off // (step * 10))
+
   fig, axes = plt.subplots(1, 2, figsize = (10, 20))
   fig.suptitle("State coverage analysis")
 
   for key, grp in mean_df.groupby(['fuzzer', 'data_type']):
+    c = fuzzer_colors.get(key[0], None)
+    ls = fuzzer_styles.get(key[0], '-')
+    mk = fuzzer_markers.get(key[0], None)
     if key[1] == 'nodes':
-      axes[0].plot(grp['time'], grp['data'])
-      #axes[0].set_title('Edge coverage over time (#edges)')
+      axes[0].plot(grp['time'], grp['data'], color=c, linestyle=ls, marker=mk, markevery=marker_every, markersize=5, linewidth=2)
       axes[0].set_xlabel('Time (in min)')
       axes[0].set_ylabel('#nodes')
     if key[1] == 'edges':
-      axes[1].plot(grp['time'], grp['data'])
-      #axes[1].set_title('Edge coverage over time (%)')
-      # Remove hardcoded ylim to allow edges to scale naturally
+      axes[1].plot(grp['time'], grp['data'], color=c, linestyle=ls, marker=mk, markevery=marker_every, markersize=5, linewidth=2)
       axes[1].set_xlabel('Time (in min)')
       axes[1].set_ylabel('#edges')
 
+  # Auto-zoom Y-axis to data range with padding
   for i, ax in enumerate(fig.axes):
+    lines = ax.get_lines()
+    if lines:
+      all_y = [y for line in lines for y in line.get_ydata()]
+      ymin, ymax = min(all_y), max(all_y)
+      margin = max((ymax - ymin) * 0.15, 1)
+      ax.set_ylim([max(0, ymin - margin), ymax + margin])
     ax.legend(fuzzers, loc='upper left')
-    ax.grid()
+    ax.grid(True, alpha=0.3)
 
   #Save to file
   plt.savefig(out_file)

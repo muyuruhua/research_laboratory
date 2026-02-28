@@ -475,11 +475,16 @@ void setup_llm_grammars()
     {
       json_object *jobj = kl_val(iter);
 
+      if (!jobj || !json_object_is_type(jobj, json_type_array) ||
+          json_object_array_length(jobj) == 0)
+        continue;
+
       json_object *header = json_object_array_get_idx(jobj, 0);
 
       int absent;
 
       const char *header_str = json_object_get_string(header);
+      if (!header_str) continue;
 
       khiter_t k = kh_put(consistency_table, const_table, header_str, &absent);
       if (absent)
@@ -10476,6 +10481,11 @@ int main(int argc, char **argv)
       {
         extract_requests = &extract_requests_ftp;
         extract_response_codes = &extract_response_codes_ftp;
+      }
+      else if (!strcmp(optarg, "MQTT"))
+      {
+        extract_requests = &extract_requests_mqtt;
+        extract_response_codes = &extract_response_codes_mqtt;
       }
       else if (!strcmp(optarg, "DTLS12"))
       {

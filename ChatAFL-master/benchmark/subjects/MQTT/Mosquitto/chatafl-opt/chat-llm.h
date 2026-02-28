@@ -27,11 +27,6 @@ Similarly 1700 is for the example request in the seed enrichment
 // Maximum amount of tries to get the grammars
 #define GRAMMAR_RETRIES 5
 
-// LLM API timeout configuration (in seconds)
-#define LLM_API_TIMEOUT 30
-#define LLM_API_CONNECT_TIMEOUT 10
-#define LLM_API_RETRY_BACKOFF_INIT 2
-
 // Maximum amount
 #define MESSAGE_TYPE_RETRIES 5
 
@@ -72,10 +67,19 @@ KHASH_INIT(consistency_table, const char *, khash_t(field_table) *, 1, kh_str_ha
 char *chat_with_llm(char *prompt, char *model, int tries, float temperature);
 char *construct_prompt_for_templates(char *protocol_name, char **final_msg);
 char *construct_prompt_for_remaining_templates(char *protocol_name, char *templates_prompt, char *templates_answer);
+char *extract_protocol_commands_from_response(char *llm_response);
 char *construct_prompt_for_protocol_message_types(char *protocol_name);
 char *construct_prompt_for_requests_to_states(const char *protocol_name, const char *protocol_state, const char *example_requests);
 char *construct_prompt_stall(char *protocol_name, char *examples, char *history);
 
+/* Handle plateau: build prompt from examples/history, call LLM and
+    return a formatted request message (NULL on failure). */
+/* state_ctx: JSON string with coverage/state info, may be NULL */
+char *llm_handle_plateau(const char *protocol_name, const char *examples,
+                         const char *history, const char *state_ctx);
+/* Validator helper - returns allocated suggested_request or NULL */
+/* Parse and validate LLM JSON. Returns a new json_object* (caller must json_object_put) or NULL */
+struct json_object *validate_and_parse_llm_json(const char *json_str);
 void extract_message_grammars(char *answers, klist_t(gram) * grammar_set);
 char *extract_message_pattern(const char *header_str,
                                khash_t(field_table) * field_table,
@@ -90,7 +94,7 @@ range_list starts_with(char *line, int length, pcre2_code *pattern);
 range_list get_mutable_ranges(char *line, int length, int offset, pcre2_code *pattern);
 void get_protocol_message_types(char *state_prompt, khash_t(strSet) * message_types);
 
-char *enrich_sequence(char* sequence, khash_t(strSet) *missing_message_types);
+char *enrich_sequence(char *sequence, khash_t(strSet) *missing_message_types, const char *protocol_name);
 khash_t(strSet)* duplicate_hash(khash_t(strSet)* set);
 void write_new_seeds(char *enriched_file, char *contents);
 char *unescape_string(const char *input);

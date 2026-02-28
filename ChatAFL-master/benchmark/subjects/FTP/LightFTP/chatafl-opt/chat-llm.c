@@ -42,6 +42,9 @@ static size_t chat_with_llm_helper(void *contents, size_t size, size_t nmemb, vo
     return realsize;
 }
 
+/* forward declaration for validator used in llm_handle_plateau */
+static int is_garbage_response(const char *response, size_t len);
+
 char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
 {
     CURL *curl;
@@ -169,21 +172,39 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
 
 char *construct_prompt_stall(char *protocol_name, char *examples, char *history)
 {
-    char *template = "You are analyzing the %s protocol. Based on the communication history below, "
-                     "suggest the next client request that could trigger new server behaviors or explore untested code paths.\n\n"
-                     "Communication History:\n\"\"\"%s\"\"\"\n\n"
-                     "Example request format:\n%s\n\n"
-                     "IMPORTANT: Return your response ONLY as valid JSON in this exact format:\n"
+    /* Note: state_ctx is embedded via llm_handle_plateau before calling this;
+     * this base template is kept for backward compatibility. */
+    char *template = "You are an expert protocol fuzzing assistant analyzing the %s protocol. "
+                     "The fuzzer has reached a PLATEAU - no new code paths have been discovered recently.\n\n"
+                     "**Communication History (most recent interactions):**\n\"\"\"%s\"\"\"\n\n"
+                     "**Example Request Formats:**\n%s\n\n"
+                     "**Your Task:**\n"
+                     "1. Analyze the server's responses to identify:\n"
+                     "   - Repeated or stuck patterns\n"
+                     "   - Error messages that suggest unexplored features\n"
+                     "   - State transitions that haven't been tested\n"
+                     "   - Commands that might have optional parameters\n"
+                     "2. Suggest ONE specific request that:\n"
+                     "   - Explores a DIFFERENT code path (not just repeating recent commands)\n"
+                     "   - Tests edge cases: unusual values, boundary conditions, rare features\n"
+                     "   - Tries advanced protocol features if basic commands are exhausted\n"
+                     "   - Uses different parameter combinations or formats\n\n"
+                     "**Strategy Priorities:**\n"
+                     "- If seeing permission errors: try different authentication states or paths\n"
+                     "- If seeing parsing errors: try malformed but protocol-valid inputs\n"
+                     "- If commands succeed: try rare optional flags, extended syntax, or protocol extensions\n"
+                     "- Consider: uncommon commands, unusual sequences, protocol-specific edge cases\n\n"
+                     "**Response Format (STRICT JSON):**\n"
                      "{\n"
-                     "  \"analysis\": \"brief explanation of why the server might be stuck or what to try next\",\n"
-                     "  \"suggested_request\": \"COMMAND argument\\r\\n\"\n"
+                     "  \"analysis\": \"Identify the pattern/bottleneck and explain why this specific request should break through\",\n"
+                     "  \"suggested_request\": \"EXACT_COMMAND with_parameters\\r\\n\"\n"
                      "}\n\n"
-                     "Do NOT include markdown formatting, code blocks, or any text outside the JSON structure.";
+                     "Do NOT include markdown, code blocks, or any non-JSON text.";
 
     char *prompt = NULL;
     asprintf(&prompt, template, protocol_name, history, examples);
 
-    // FIXED: Use json-c library to build complete JSON array with proper escaping
+    // Use json-c library to build complete JSON array with proper escaping
     struct json_object *messages_array = json_object_new_array();
     
     struct json_object *system_msg = json_object_new_object();
@@ -205,21 +226,210 @@ char *construct_prompt_stall(char *protocol_name, char *examples, char *history)
     return final_prompt;
 }
 
+/*
+ * llm_handle_plateau: state-aware plateau handler.
+ * - Builds a rich prompt embedding state coverage stats (state_ctx)
+ * - Asks LLM to return either suggested_request OR actions[]
+ * - Passes response back as raw JSON for parent-side validation
+ * state_ctx: JSON string like {"nodes":N,"edges":M,"growth_rate":X,...}, may be NULL
+ */
+char *llm_handle_plateau(const char *protocol_name, const char *examples,
+                         const char *history, const char *state_ctx) {
+    if (!protocol_name) return NULL;
+
+    /* Build state-aware prompt text */
+    char *state_section = NULL;
+    if (state_ctx && strlen(state_ctx) > 2) {
+        asprintf(&state_section,
+            "**Current Fuzzer State (IMPORTANT - use this to guide your suggestion):**\n"
+            "%s\n\n"
+            "Focus on protocol states with LOW coverage (low edge count). "
+            "If growth_rate is near 0, the fuzzer is completely stuck - be creative.\n\n",
+            state_ctx);
+    } else {
+        state_section = strdup("");
+    }
+
+    /* Build the full state-aware prompt string */
+    char *raw_prompt = NULL;
+    asprintf(&raw_prompt,
+        "You are an expert protocol fuzzing assistant analyzing the %s protocol.\n"
+        "The fuzzer has reached a PLATEAU - no new code paths have been discovered recently.\n\n"
+        "%s"
+        "**STATE DATA EXPLANATION:**\n"
+        "The `states` array lists protocol states sorted by effectiveness (LOWEST first = most stuck).\n"
+        "Each state has:\n"
+        "  - id: use this exact number in set_target_state or prioritize_seeds\n"
+        "  - paths: total execution paths covering this state\n"
+        "  - paths_discovered: NEW paths found when fuzzing this state (low = stuck)\n"
+        "  - selected_times: how many times fuzzer targeted this state\n"
+        "  - fuzzs: total fuzzing attempts on this state\n"
+        "  - seed_ids: exact seed indices reachable from this state (use in prioritize_seeds)\n\n"
+        "**Communication History (most recent interactions):**\n\"\"\"%s\"\"\"\n\n"
+        "**Example Request Formats:**\n%s\n\n"
+        "**Your Task:** Choose ONE strategy and return ONLY valid JSON:\n\n"
+        "Strategy A - Send a new specific request:\n"
+        "  {\"analysis\":\"...\", \"suggested_request\":\"EXACT_CMD\\r\\n\"}\n\n"
+        "Strategy B - State-aware seed/state actions (use REAL ids from the states[] data above):\n"
+        "  {\"analysis\":\"...\", \"actions\":[\n"
+        "    {\"type\":\"set_target_state\", \"state_id\":ID},\n"
+        "    {\"type\":\"prioritize_seeds\", \"seed_ids\":[N1,N2,N3]},\n"
+        "    {\"type\":\"propose_mutations\", \"seed_id\":N, \"ops\":[\n"
+        "       {\"op\":\"flip\",\"pos\":P,\"len\":L},\n"
+        "       {\"op\":\"insert\",\"pos\":P,\"bytes_base64\":\"BASE64\"}\n"
+        "    ]}\n"
+        "  ]}\n\n"
+        "**Decision Guide:**\n"
+        "- growth_rate=0 AND states[0].paths_discovered=0: use set_target_state to switch to a DIFFERENT state\n"
+        "- One state has high selected_times but low paths_discovered: use set_target_state + prioritize_seeds for that state\n"
+        "- States with seeds_count=0: cannot be targeted, skip them\n"
+        "- Use the EXACT state id and seed_ids numbers from the states[] data — do NOT invent IDs\n"
+        "- Strategy A (suggested_request) is best when history shows unrecognized commands\n\n"
+        "Respond with ONLY valid JSON. No markdown, no code blocks, no explanation outside JSON.",
+        protocol_name,
+        state_section ? state_section : "",
+        history ? history : "",
+        examples ? examples : "");
+    free(state_section);
+    if (!raw_prompt) return NULL;
+
+    /* Wrap in messages array for chat API */
+    struct json_object *messages_array = json_object_new_array();
+    struct json_object *system_msg = json_object_new_object();
+    json_object_object_add(system_msg, "role", json_object_new_string("system"));
+    json_object_object_add(system_msg, "content", json_object_new_string("You are a helpful protocol fuzzing assistant."));
+    json_object_array_add(messages_array, system_msg);
+    struct json_object *user_msg = json_object_new_object();
+    json_object_object_add(user_msg, "role", json_object_new_string("user"));
+    json_object_object_add(user_msg, "content", json_object_new_string(raw_prompt));
+    json_object_array_add(messages_array, user_msg);
+    free(raw_prompt);
+    char *prompt = strdup(json_object_to_json_string(messages_array));
+    json_object_put(messages_array);
+    if (!prompt) return NULL;
+
+    char *resp = chat_with_llm(prompt, "gpt-4o-mini", STALL_RETRIES, 1.2);
+    free(prompt);
+    if (!resp) return NULL;
+
+    if (is_garbage_response(resp, strlen(resp))) {
+        free(resp);
+        return NULL;
+    }
+
+    /* Try to parse resp as direct JSON first (LLM returned actions[] or suggested_request) */
+    struct json_object *jtry = json_tokener_parse(resp);
+    if (jtry) {
+        /* LLM returned valid JSON directly — pass through as-is */
+        const char *raw = json_object_to_json_string(jtry);
+        char *out = strdup(raw);
+        json_object_put(jtry);
+        free(resp);
+        return out;
+    }
+
+    /* Fallback: try to extract suggested_request from plain text */
+    char *stall_message = extract_stalled_message(resp, strlen(resp));
+    free(resp);
+    if (!stall_message) return NULL;
+
+    char *formatted = format_request_message(stall_message);
+    if (!formatted) return NULL;
+
+    /* Wrap into JSON for strict parent-side validation */
+    struct json_object *jroot = json_object_new_object();
+    json_object_object_add(jroot, "suggested_request", json_object_new_string(formatted));
+    const char *json_str = json_object_to_json_string(jroot);
+    char *out = strdup(json_str);
+    json_object_put(jroot);
+    ck_free(formatted);
+    return out;
+}
+
+/* Lookup table of per-protocol few-shot examples for grammar prompts.
+ * Each entry shows ONE representative message of that protocol using the
+ * exact <<VALUE>> template format so the LLM knows the expected output style.
+ * Format convention (same as rest of code):
+ *   \\n       -> literal \n seen by LLM
+ *   \\\"      -> literal " seen by LLM
+ *   \\\\r\\\\n -> literal \r\n seen by LLM
+ */
+typedef struct {
+    const char *name;
+    /* msg_type : short human-readable name of the示例 message type */
+    const char *msg_type;
+    /* example : the full "For the X protocol, the Y template is:\nY: [...]" string */
+    const char *example;
+} ProtocolExampleEntry;
+
+static const ProtocolExampleEntry PROTOCOL_EXAMPLE_TABLE[] = {
+    {"FTP",  "USER",
+     "For the FTP protocol, the USER client request template is:\\n"
+     "USER: [\\\"USER <<VALUE>>\\\\r\\\\n\\\"]"},
+    {"SMTP", "EHLO",
+     "For the SMTP protocol, the EHLO client request template is:\\n"
+     "EHLO: [\\\"EHLO <<VALUE>>\\\\r\\\\n\\\"]"},
+    {"RTSP", "DESCRIBE",
+     "For the RTSP protocol, the DESCRIBE client request template is:\\n"
+     "DESCRIBE: [\\\"DESCRIBE <<VALUE>>\\\\r\\\\n\\\","
+     "\\\"CSeq: <<VALUE>>\\\\r\\\\n\\\","
+     "\\\"User-Agent: <<VALUE>>\\\\r\\\\n\\\","
+     "\\\"Accept: <<VALUE>>\\\\r\\\\n\\\","
+     "\\\"\\\\r\\\\n\\\"]"},
+    {"HTTP", "GET",
+     "For the HTTP protocol, the GET client request template is:\\n"
+     "GET: [\\\"GET <<VALUE>> HTTP/1.1\\\\r\\\\n\\\","
+     "\\\"Host: <<VALUE>>\\\\r\\\\n\\\","
+     "\\\"\\\\r\\\\n\\\"]"},
+    {"SIP",  "REGISTER",
+     "For the SIP protocol, the REGISTER client request template is:\\n"
+     "REGISTER: [\\\"REGISTER sip:<<VALUE>> SIP/2.0\\\\r\\\\n\\\","
+     "\\\"Via: SIP/2.0/UDP <<VALUE>>\\\\r\\\\n\\\","
+     "\\\"From: <sip:<<VALUE>>>\\\\r\\\\n\\\","
+     "\\\"To: <sip:<<VALUE>>>\\\\r\\\\n\\\","
+     "\\\"CSeq: <<VALUE>> REGISTER\\\\r\\\\n\\\","
+     "\\\"\\\\r\\\\n\\\"]"},
+    {"DAAP", "login",
+     "For the DAAP protocol, the login client request template is:\\n"
+     "login: [\\\"GET /login?pairing-guid=<<VALUE>> HTTP/1.1\\\\r\\\\n\\\","
+     "\\\"Host: <<VALUE>>\\\\r\\\\n\\\","
+     "\\\"Client-DAAP-Version: <<VALUE>>\\\\r\\\\n\\\","
+     "\\\"\\\\r\\\\n\\\"]"},
+    {"MQTT", "CONNECT",
+     "For the MQTT protocol, the CONNECT packet template is:\\n"
+     "CONNECT: [\\\"\\\\x10<<VALUE>>\\\\x00\\\\x04MQTT\\\\x04<<VALUE>>\\\\x00\\\\x3c\\\\x00<<VALUE>>\\\"]"},
+    {"DNS",  "QUERY",
+     "For the DNS protocol, the QUERY request template is:\\n"
+     "QUERY: [\\\"<<VALUE>>\\\\x01\\\\x00\\\\x00\\\\x01\\\\x00\\\\x00\\\\x00\\\\x00\\\\x00\\\\x00<<VALUE>>\\\"]"},
+    {NULL, NULL, NULL}
+};
+
 char *construct_prompt_for_templates(char *protocol_name, char **final_msg)
 {
-    // Give one example for learning formats
-    char *prompt_rtsp_example = "For the RTSP protocol, the DESCRIBE client request template is:\\n"
-                                "DESCRIBE: [\\\"DESCRIBE <<VALUE>>\\\\r\\\\n\\\","
-                                "\\\"CSeq: <<VALUE>>\\\\r\\\\n\\\","
-                                "\\\"User-Agent: <<VALUE>>\\\\r\\\\n\\\","
-                                "\\\"Accept: <<VALUE>>\\\\r\\\\n\\\","
-                                "\\\"\\\\r\\\\n\\\"]";
-
-    char *prompt_http_example = "For the HTTP protocol, the GET client request template is:\\n"
-                                "GET: [\\\"GET <<VALUE>>\\\\r\\\\n\\\"]";
+    /* Find the same-protocol example to use as the few-shot anchor.
+     * Showing the LLM one concrete example of the TARGET protocol guides it
+     * to produce responses for the same command set rather than generic text. */
+    const char *anchor_example = NULL;
+    const char *anchor_msg_type = NULL;
+    for (int i = 0; PROTOCOL_EXAMPLE_TABLE[i].name != NULL; i++) {
+        if (strcasecmp(protocol_name, PROTOCOL_EXAMPLE_TABLE[i].name) == 0) {
+            anchor_example  = PROTOCOL_EXAMPLE_TABLE[i].example;
+            anchor_msg_type = PROTOCOL_EXAMPLE_TABLE[i].msg_type;
+            break;
+        }
+    }
+    /* Fallback for unknown protocols: use a generic format hint */
+    if (anchor_example == NULL) {
+        anchor_example  = PROTOCOL_EXAMPLE_TABLE[2].example; /* RTSP as generic shape */
+        anchor_msg_type = "request";
+    }
 
     char *msg = NULL;
-    asprintf(&msg, "%s\\n%s\\nFor the %s protocol, all of client request templates are :", prompt_rtsp_example, prompt_http_example, protocol_name);
+    asprintf(&msg,
+             "%s\\n"
+             "Following the same format above, for the %s protocol, "
+             "list ALL client request message templates (not just %s):",
+             anchor_example, protocol_name, anchor_msg_type);
     *final_msg = msg;
     
     // FIXED: Use json-c library to build complete JSON array with proper escaping
@@ -499,16 +709,31 @@ char *extract_protocol_commands_from_response(char *llm_response)
                 // Check if this line looks like a protocol command
                 if (line_len > 0 && line_len < 1024) {
                     int is_valid = 0;
-                    const char *ftp_commands[] = {"USER", "PASS", "CWD", "PWD", "LIST", "RETR", 
-                                                   "STOR", "DELE", "MKD", "RMD", "RNFR", "RNTO",
-                                                   "QUIT", "SYST", "TYPE", "PORT", "PASV", "ABOR",
-                                                   "HELP", "NOOP", "STAT", "APPE", "REST", "SIZE",
-                                                   "MDTM", "FEAT", "OPTS", NULL};
-                    
-                    for (int i = 0; ftp_commands[i] != NULL; i++) {
-                        size_t cmd_len = strlen(ftp_commands[i]);
-                        if (line_len >= cmd_len && 
-                            strncmp(line_start, ftp_commands[i], cmd_len) == 0 &&
+                    /* Multi-protocol: FTP, SMTP, RTSP, SIP, HTTP, DAAP, MQTT */
+                    const char *proto_commands[] = {
+                        /* FTP */
+                        "USER","PASS","CWD","PWD","LIST","RETR","STOR","DELE",
+                        "MKD","RMD","RNFR","RNTO","QUIT","SYST","TYPE","PORT",
+                        "PASV","ABOR","HELP","NOOP","STAT","APPE","REST","SIZE",
+                        "MDTM","FEAT","OPTS","ALLO","CDUP","SMNT","REIN","STOU",
+                        "STRU","MODE","EPSV","EPRT","MLSD","MLST","SITE",
+                        /* SMTP */
+                        "EHLO","HELO","MAIL","RCPT","DATA","RSET","VRFY","EXPN",
+                        "AUTH","STARTTLS","SAML","SOML","SEND","TURN",
+                        /* RTSP */
+                        "OPTIONS","DESCRIBE","SETUP","PLAY","PAUSE","TEARDOWN",
+                        "GET_PARAMETER","SET_PARAMETER","ANNOUNCE","RECORD","REDIRECT",
+                        /* SIP */
+                        "INVITE","ACK","BYE","CANCEL","REGISTER","INFO","PRACK",
+                        "SUBSCRIBE","NOTIFY","UPDATE","REFER","MESSAGE","PUBLISH",
+                        /* HTTP */
+                        "GET","POST","PUT","DELETE","HEAD","CONNECT","TRACE","PATCH",
+                        NULL
+                    };
+                    for (int i = 0; proto_commands[i] != NULL; i++) {
+                        size_t cmd_len = strlen(proto_commands[i]);
+                        if (line_len >= cmd_len &&
+                            strncmp(line_start, proto_commands[i], cmd_len) == 0 &&
                             (line_len == cmd_len || line_start[cmd_len] == ' ' || line_start[cmd_len] == '\r')) {
                             is_valid = 1;
                             break;
@@ -589,17 +814,31 @@ char *extract_protocol_commands_from_response(char *llm_response)
             size_t line_len = line_end - line_start;
             
             if (line_len > 0 && line_len < 1024) {
-                // Check for FTP command at start of line
-                const char *ftp_commands[] = {"USER", "PASS", "CWD", "PWD", "LIST", "RETR", 
-                                               "STOR", "DELE", "MKD", "RMD", "RNFR", "RNTO",
-                                               "QUIT", "SYST", "TYPE", "PORT", "PASV", "ABOR",
-                                               "HELP", "NOOP", "STAT", "APPE", "REST", "SIZE",
-                                               "MDTM", "FEAT", "OPTS", NULL};
-                
-                for (int i = 0; ftp_commands[i] != NULL; i++) {
-                    size_t cmd_len = strlen(ftp_commands[i]);
-                    if (line_len >= cmd_len && 
-                        strncmp(line_start, ftp_commands[i], cmd_len) == 0 &&
+                /* Multi-protocol: FTP, SMTP, RTSP, SIP, HTTP, DAAP, MQTT */
+                const char *proto_commands[] = {
+                    /* FTP */
+                    "USER","PASS","CWD","PWD","LIST","RETR","STOR","DELE",
+                    "MKD","RMD","RNFR","RNTO","QUIT","SYST","TYPE","PORT",
+                    "PASV","ABOR","HELP","NOOP","STAT","APPE","REST","SIZE",
+                    "MDTM","FEAT","OPTS","ALLO","CDUP","SMNT","REIN","STOU",
+                    "STRU","MODE","EPSV","EPRT","MLSD","MLST","SITE",
+                    /* SMTP */
+                    "EHLO","HELO","MAIL","RCPT","DATA","RSET","VRFY","EXPN",
+                    "AUTH","STARTTLS","SAML","SOML","SEND","TURN",
+                    /* RTSP */
+                    "OPTIONS","DESCRIBE","SETUP","PLAY","PAUSE","TEARDOWN",
+                    "GET_PARAMETER","SET_PARAMETER","ANNOUNCE","RECORD","REDIRECT",
+                    /* SIP */
+                    "INVITE","ACK","BYE","CANCEL","REGISTER","INFO","PRACK",
+                    "SUBSCRIBE","NOTIFY","UPDATE","REFER","MESSAGE","PUBLISH",
+                    /* HTTP */
+                    "GET","POST","PUT","DELETE","HEAD","CONNECT","TRACE","PATCH",
+                    NULL
+                };
+                for (int i = 0; proto_commands[i] != NULL; i++) {
+                    size_t cmd_len = strlen(proto_commands[i]);
+                    if (line_len >= cmd_len &&
+                        strncmp(line_start, proto_commands[i], cmd_len) == 0 &&
                         (line_len == cmd_len || line_start[cmd_len] == ' ' || line_start[cmd_len] == '\r')) {
                         
                         if (out_pos + line_len + 2 >= capacity) {
@@ -649,7 +888,7 @@ char *extract_protocol_commands_from_response(char *llm_response)
     
     // Finalize the result
     if (out_pos == 0) {
-        free(extracted);
+        ck_free(extracted);
         return NULL;
     }
     
@@ -1346,23 +1585,64 @@ int min(int a, int b) {
     return a < b ? a : b;
 }
 
-char *enrich_sequence(char *sequence, khash_t(strSet) * missing_message_types)
+/* Per-protocol hints for the enrichment prompt */
+typedef struct {
+    const char *name;
+    const char *sequences;  /* typical command/message sequences to explore */
+    const char *errors;     /* error/boundary cases specific to this protocol */
+} EnrichHintEntry;
+
+static const EnrichHintEntry ENRICH_HINT_TABLE[] = {
+    {"FTP",  "ALLO+STOR, REST+RETR, REIN, PASV/PORT switches, MLSD/MLST",
+             "invalid paths (/../..), long filenames (256+ chars), permission denials, case variants (MKD vs mkd)"},
+    {"SMTP", "EHLO+MAIL+RCPT+DATA, AUTH LOGIN/PLAIN, VRFY/EXPN probing, RSET+MAIL chains",
+             "malformed addresses, oversized headers, repeated RSET, missing EHLO, bare CR/LF"},
+    {"RTSP", "DESCRIBE+SETUP+PLAY+PAUSE+TEARDOWN, interleaved channel requests, OPTIONS probing",
+             "invalid session IDs, malformed stream URIs, unsupported transport specs, bad CSeq"},
+    {"HTTP", "GET/POST/PUT/DELETE/OPTIONS/HEAD sequences, pipelining, chunked transfer, keep-alive",
+             "path traversal (/../), oversized headers, invalid methods, malformed URIs, HTTP/0.9"},
+    {"SIP",  "REGISTER+INVITE+ACK+BYE, CANCEL, OPTIONS, re-registration, forked dialogs",
+             "malformed SIP URIs, missing Via/From/To headers, invalid CSeq, loop detection"},
+    {"DAAP", "login+server-info+update+databases+items+containers sequences, session management",
+             "invalid session tokens, malformed content-codes, unexpected revision numbers"},
+    {"MQTT", "CONNECT+SUBSCRIBE+PUBLISH+UNSUBSCRIBE+DISCONNECT, PINGREQ/PINGRESP, QoS 0/1/2",
+             "oversized client IDs, invalid topic filters, will message variations, clean session"},
+    {"DNS",  "A/AAAA/MX/NS/PTR/TXT/SOA query sequences, recursive vs iterative",
+             "malformed labels, oversized names, EDNS options, DNSSEC flag variations"},
+    {NULL, NULL, NULL}
+};
+
+char *enrich_sequence(char *sequence, khash_t(strSet) *missing_message_types, const char *protocol_name)
 {
+    /* Look up protocol-specific hints */
+    const EnrichHintEntry *hint = NULL;
+    if (protocol_name) {
+        for (int i = 0; ENRICH_HINT_TABLE[i].name != NULL; i++) {
+            if (strcasecmp(protocol_name, ENRICH_HINT_TABLE[i].name) == 0) {
+                hint = &ENRICH_HINT_TABLE[i];
+                break;
+            }
+        }
+    }
+    const char *proto   = (protocol_name && *protocol_name) ? protocol_name : "network";
+    const char *seqs    = hint ? hint->sequences : "command sequences and state transitions";
+    const char *errors  = hint ? hint->errors    : "invalid parameters, oversized values, boundary inputs";
+
     const char *prompt_template =
-        "You are a fuzzing expert testing an FTP server. Current request sequence:\\n"
-        "%.*s\\n\\n"
-        "Task: Add %.*s commands to MAXIMIZE code coverage by:\\n"
-        "1. EXPLORE new paths: Use uncommon command combinations (ALLO+STOR, REST+RETR, REIN)\\n"
-        "2. TRIGGER errors: Invalid paths (/../../etc), missing files, permission denials\\n"
-        "3. TEST boundaries: Long names (256+ chars), special chars (@#$%%^), empty args\\n"
-        "4. CREATE complexity: Nested dirs (a/b/c/d/e), rename chains, concurrent ops\\n"
-        "5. PROBE edge cases: Case variants (MKD vs mkd), repeated commands, state transitions\\n\\n"
-        "Requirements:\\n"
-        "- Generate commands that cover DIFFERENT code branches\\n"
-        "- Include both valid and INVALID scenarios\\n"
-        "- Use diverse parameters (paths, filenames, ports)\\n"
-        "- Insert commands at strategic positions to maximize state transitions\\n\\n"
-        "Output ONLY the modified command sequence (no explanations):";
+        "You are a fuzzing expert testing a %s server. Current request sequence:\n"
+        "%.*s\n\n"
+        "Task: Add %.*s messages to MAXIMIZE code coverage by:\n"
+        "1. EXPLORE new paths: Use uncommon %s combinations (%s)\n"
+        "2. TRIGGER errors: %s\n"
+        "3. TEST boundaries: Long values (256+ chars), special chars (@#$%%%%^), empty args\n"
+        "4. CREATE complexity: Nested sequences, rename chains, concurrent operations\n"
+        "5. PROBE edge cases: Case variants, repeated messages, unusual state transitions\n\n"
+        "Requirements:\n"
+        "- Generate messages that cover DIFFERENT code branches\n"
+        "- Include both valid and INVALID scenarios\n"
+        "- Use diverse parameters\n"
+        "- Insert messages at strategic positions to maximize state transitions\n\n"
+        "Output ONLY the modified message sequence (no explanations):";
 
     int missing_fields_len = 0;
     int missing_fields_capacity = 100;
@@ -1398,9 +1678,14 @@ char *enrich_sequence(char *sequence, khash_t(strSet) * missing_message_types)
 
     // FIXED: Use json-c library properly to handle ALL escaping automatically
     // json-c will correctly escape control characters as \uXXXX in the final JSON
-    
-    // Build the content string from template
-    asprintf(&content, prompt_template, (int)strlen(sequence), sequence, missing_fields_len, missing_fields_seq);
+
+    // Build the content string from protocol-aware template
+    asprintf(&content, prompt_template,
+             proto,
+             (int)strlen(sequence), sequence,
+             missing_fields_len, missing_fields_seq,
+             proto, seqs,
+             errors);
     
     // Create JSON array using json-c (this handles ALL escaping correctly)
     struct json_object *messages_array = json_object_new_array();

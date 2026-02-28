@@ -13,6 +13,7 @@ RUN apt-get -y update && \
     git \
     autoconf \
     llvm \
+    llvm-dev \
     python3-pip \
     nano \
     net-tools \
@@ -122,6 +123,7 @@ COPY --chown=ubuntu:ubuntu mosquitto.conf ${WORKDIR}/mosquitto.conf
 COPY --chown=ubuntu:ubuntu in-mqtt ${WORKDIR}/in-mqtt
 COPY --chown=ubuntu:ubuntu run.sh ${WORKDIR}/run
 COPY --chown=ubuntu:ubuntu cov_script.sh ${WORKDIR}/cov_script
+RUN chmod +x ${WORKDIR}/run ${WORKDIR}/cov_script
 
 # Switch default user to root
 USER root

@@ -369,6 +369,42 @@ do
 
         fi
 
+
+##### MQTT #####
+
+        if [[ $TARGET == "mosquitto" ]] || [[ $TARGET == "all" ]]
+        then
+
+            cd $PFBENCH
+            RESULTS_DIR="results-mosquitto_${TIMESTAMP}"
+            mkdir -p ${RESULTS_DIR}
+
+            if [[ $FUZZER == "aflnet" ]] || [[ $FUZZER == "all" ]]
+            then
+                profuzzbench_exec_common_dev.sh mosquitto $NUM_CONTAINERS ${RESULTS_DIR} aflnet out-mosquitto-aflnet "-P MQTT -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+            fi
+
+            if [[ $FUZZER == "chatafl" ]] || [[ $FUZZER == "all" ]]
+            then
+                profuzzbench_exec_common_dev.sh mosquitto $NUM_CONTAINERS ${RESULTS_DIR} chatafl out-mosquitto-chatafl "-P MQTT -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+            fi
+
+            if [[ $FUZZER == "chatafl-cl1" ]] || [[ $FUZZER == "all" ]]
+            then
+                profuzzbench_exec_common_dev.sh mosquitto $NUM_CONTAINERS ${RESULTS_DIR} chatafl-cl1 out-mosquitto-chatafl_cl1 "-P MQTT -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+            fi
+
+            if [[ $FUZZER == "chatafl-cl2" ]] || [[ $FUZZER == "all" ]]
+            then
+                profuzzbench_exec_common_dev.sh mosquitto $NUM_CONTAINERS ${RESULTS_DIR} chatafl-cl2 out-mosquitto-chatafl_cl2 "-P MQTT -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+            fi
+
+            if [[ $FUZZER == "chatafl-opt" ]] || [[ $FUZZER == "all" ]]
+            then
+                profuzzbench_exec_common_dev.sh mosquitto $NUM_CONTAINERS ${RESULTS_DIR} chatafl-opt out-mosquitto-chatafl_opt "-P MQTT -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+            fi
+
+        fi
     done
 
 done

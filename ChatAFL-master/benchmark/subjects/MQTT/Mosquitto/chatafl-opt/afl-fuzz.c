@@ -2808,7 +2808,7 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
       khash_t(strSet)* subset = kv_A(message_subsets,i); 
 
       // Try enriching the sequence
-        char *client_request_answer = enrich_sequence(nl_file_content, subset);
+        char *client_request_answer = enrich_sequence(nl_file_content, subset, protocol_name);
 
         if (client_request_answer == NULL)
           continue;
@@ -6503,17 +6503,11 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
   write_to_testcase(out_buf, len);
 
   /* ============================================
-   * ChatAFL-Opt: Hypothesis Validation (FIXED)
+   * ChatAFL-Opt: Hypothesis Validation & Refinement
+   * Uses the full validate_and_refine_hypotheses() which also
+   * collects counterexamples and periodically triggers refinement.
    * ============================================ */
-  if (hypothesis_ctx && hypothesis_ctx->hypothesis_count > 0) {
-    // Validate test case against all hypotheses
-    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++) {
-      grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
-      if (hyp) {
-        validate_message_against_hypothesis(hyp, out_buf, len);
-      }
-    }
-  }
+  validate_and_refine_hypotheses(out_buf, len);
 
   /* AFLNet update kl_messages linked list */
 
@@ -7513,7 +7507,8 @@ AFLNET_REGIONS_SELECTION:;
                     size_t decoded_len = 0;
                     unsigned char *decoded = base64_decode(b64, strlen(b64), &decoded_len);
                     if (!decoded) { ck_free(buf); continue; }
-                    if (pos < 0) pos = 0; if ((size_t)pos > buf_len) pos = buf_len;
+                    if (pos < 0) pos = 0;
+                    if ((size_t)pos > buf_len) pos = buf_len;
                     if (strcmp(opname, "insert") == 0) {
                       if (buf_len + decoded_len > 65536) { ck_free(decoded); ck_free(buf); continue; }
                       /* insert */
@@ -7533,8 +7528,10 @@ AFLNET_REGIONS_SELECTION:;
                     json_object_object_get_ex(op, "len", &jlen);
                     long pos = json_object_get_int(jpos);
                     long ln = json_object_get_int(jlen);
-                    if (pos < 0) pos = 0; if (pos >= (long)buf_len) { ck_free(buf); continue; }
-                    if (ln <= 0) ln = 1; if ((size_t)(pos+ln) > buf_len) ln = buf_len - pos;
+                    if (pos < 0) pos = 0;
+                    if (pos >= (long)buf_len) { ck_free(buf); continue; }
+                    if (ln <= 0) ln = 1;
+                    if ((size_t)(pos+ln) > buf_len) ln = buf_len - pos;
                     for (long b=0; b<ln; b++) buf[pos+b] = ~buf[pos+b];
                   } else {
                     /* unsupported action */
@@ -11102,6 +11099,11 @@ int main(int argc, char **argv)
         extract_requests = &extract_requests_ftp;
         extract_response_codes = &extract_response_codes_ftp;
       }
+      else if (!strcmp(optarg, "MQTT"))
+      {
+        extract_requests = &extract_requests_mqtt;
+        extract_response_codes = &extract_response_codes_mqtt;
+      }
       else if (!strcmp(optarg, "DTLS12"))
       {
         extract_requests = &extract_requests_dtls12;
@@ -11146,11 +11148,6 @@ int main(int argc, char **argv)
       {
         extract_requests = &extract_requests_ipp;
         extract_response_codes = &extract_response_codes_ipp;
-      }
-      else if (!strcmp(optarg, "MQTT"))
-      {
-        extract_requests = &extract_requests_mqtt;
-        extract_response_codes = &extract_response_codes_mqtt;
       }
       else
       {

@@ -74,6 +74,8 @@
 #include <graphviz/gvc.h>
 #include <math.h>
 
+#include "chat-llm.h"
+
 #if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
 #include <sys/sysctl.h>
 #endif /* __APPLE__ || __FreeBSD__ || __OpenBSD__ */
@@ -294,6 +296,50 @@ static struct queue_entry *queue, /* Fuzzing queue (linked list)      */
 static struct queue_entry *
     top_rated[MAP_SIZE]; /* Top entries for bitmap bytes     */
 
+/* Helper: find queue entry by its index */
+static struct queue_entry *find_queue_entry_by_index(u32 idx) {
+  struct queue_entry *q = queue;
+  while (q) {
+    if (q->index == idx) return q;
+    q = q->next;
+  }
+  return NULL;
+}
+
+/* Base64 decode helper (simple, no padding robustness needed for small payloads) */
+static unsigned char *base64_decode(const char *data, size_t input_length, size_t *out_len) {
+  if (!data) return NULL;
+  static const signed char tbl[256] = {
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,62,-1,-1,-1,63,
+    52,53,54,55,56,57,58,59,60,61,-1,-1,-1, 0,-1,-1,
+    -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,
+    15,16,17,18,19,20,21,22,23,24,25,-1,-1,-1,-1,-1,
+    -1,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,
+    41,42,43,44,45,46,47,48,49,50,51,-1,-1,-1,-1,-1,
+    /* rest -1 */
+  };
+  /* Ensure table covers 256 entries */
+  unsigned char *out = ck_alloc(input_length);
+  size_t outi = 0;
+  int val=0, valb=-8;
+  for (size_t i=0;i<input_length;i++) {
+    unsigned char c = data[i];
+    signed char d = (c < 256) ? tbl[c] : -1;
+    if (d == -1) continue;
+    val = (val<<6) + d;
+    valb += 6;
+    if (valb>=0) {
+      out[outi++] = (unsigned char)((val>>valb)&0xFF);
+      valb-=8;
+    }
+  }
+  if (outi == 0) { ck_free(out); return NULL; }
+  *out_len = outi;
+  return out;
+}
+
 struct extra_data
 {
   u8 *data;    /* Dictionary token data            */
@@ -412,6 +458,14 @@ u32 uninteresting_times = 0;
 /* Track how much times we ask for breaking coverage plateau */
 u32 chat_times = 0;
 
+/* ============================================
+ * Adaptive Plateau Triggering Variables
+ * ============================================ */
+static u32 last_edges_count = 0;           /* Edges count at last check */
+static u64 last_edges_check_time = 0;      /* Time of last edges check (ms) */
+static double edges_growth_rate = 0.0;     /* Edges/minute growth rate */
+static u32 adaptive_plateau_threshold = 100; /* Dynamic plateau threshold (starts at UNINTERESTING_THRESHOLD) */
+
 /* Implemented state machine */
 Agraph_t *ipsm;
 static FILE *ipsm_dot_file;
@@ -484,6 +538,20 @@ void setup_llm_grammars()
     for (iter = kl_begin(grammar_list); iter != kl_end(grammar_list); iter = kl_next(iter))
     {
       json_object *jobj = kl_val(iter);
+
+      // Check if jobj is actually an array before accessing
+      if (!json_object_is_type(jobj, json_type_array))
+      {
+        fprintf(stderr, "[!] Warning: Grammar object is not an array, skipping\n");
+        continue;
+      }
+
+      int array_len = json_object_array_length(jobj);
+      if (array_len < 1)
+      {
+        fprintf(stderr, "[!] Warning: Grammar array is empty, skipping\n");
+        continue;
+      }
 
       json_object *header = json_object_array_get_idx(jobj, 0);
 
@@ -2642,6 +2710,10 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
     exit(1);
   }
 
+  OKF("Found %d protocol message types for enrichment", kh_size(message_types_set));
+  int seeds_processed = 0;
+  int total_enriched = 0;
+
   // traverse the directory to read the files
   for (int i = 0; i < nl_cnt; i++)
   {
@@ -2651,6 +2723,9 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
     {
       continue;
     }
+    
+    seeds_processed++;
+    ACTF("Processing seed %d: %s", seeds_processed, nl_file_name);
     char *nl_file_path = malloc(strlen(in_dir) + strlen(nl_file_name) + 2);
     strcpy(nl_file_path, in_dir);
     strcat(nl_file_path, "/");
@@ -2711,9 +2786,11 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
     {
       kh_destroy(strSet,messages);
       // No missing message types, cannot enrich
-      WARNF("Message %s already has all message types. Skipping enrichment",nl_file_name);
       continue;
     }
+
+    int original_missing = kh_size(messages);
+    OKF("Missing %d message types, generating combinations...", original_missing);
 
     while(kh_size(messages) > MAX_ENRICHMENT_CORPUS_SIZE) 
     {
@@ -2731,7 +2808,7 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
       khash_t(strSet)* subset = kv_A(message_subsets,i); 
 
       // Try enriching the sequence
-        char *client_request_answer = enrich_sequence(nl_file_content, subset);
+        char *client_request_answer = enrich_sequence(nl_file_content, subset, protocol_name);
 
         if (client_request_answer == NULL)
           continue;
@@ -2763,6 +2840,9 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
         // printf("## Enriched file path: %s\n", enriched_file_path);
 
         write_new_seeds(enriched_file_path, unescaped_client_requests);
+        
+        total_enriched++;
+        OKF("Created enriched seed: %s", enriched_file_name);
 
         free(enriched_file_name);
         free(enriched_file_path);
@@ -2775,6 +2855,9 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
 
     kh_destroy(strSet, messages);
   }
+  
+  OKF("Enrichment complete: generated %d enriched seeds from %d processed seeds", 
+      total_enriched, seeds_processed);
 }
 
 /* Enrich the testcases before startup */
@@ -4168,6 +4251,213 @@ static void check_map_coverage(void)
   WARNF("Recompile binary with newer version of afl to improve coverage!");
 }
 
+/* ============================================
+ * ChatAFL-Opt: Initialize Grammar Hypothesis System
+ * ============================================ */
+static void init_grammar_hypothesis_system(void)
+{
+  if (!hypothesis_mode)
+  {
+    fprintf(stderr, "[!] init_grammar_hypothesis_system called but hypothesis_mode=0\n");
+    return;
+  }
+
+  ACTF("Initializing Grammar Hypothesis System...");
+  fprintf(stderr, "[DEBUG] Protocol: %s, Output dir: %s\n", 
+          protocol_name ? protocol_name : "UNKNOWN", out_dir);
+
+  // Collect PCAP samples from seed corpus
+  char **pcap_samples = NULL;
+  size_t pcap_count = 0;
+  size_t queue_length = 0;
+
+  struct queue_entry *q = queue;
+  
+  // Count queue entries for diagnostics
+  struct queue_entry *q_tmp = queue;
+  while (q_tmp) {
+    queue_length++;
+    q_tmp = q_tmp->next;
+  }
+  
+  fprintf(stderr, "[DEBUG] Queue has %zu entries, collecting up to 10 PCAP samples\n", queue_length);
+  
+  while (q && pcap_count < 10)
+  { // Limit to 10 samples
+    fprintf(stderr, "[DEBUG] Processing seed: %s (len=%u)\n", q->fname, q->len);
+    s32 fd = open(q->fname, O_RDONLY);
+    if (fd >= 0)
+    {
+      u8 *sample = ck_alloc_nozero(q->len + 1);
+      if (read(fd, sample, q->len) == (ssize_t)q->len)
+      {
+        sample[q->len] = '\0';
+        pcap_samples = ck_realloc(pcap_samples, (pcap_count + 1) * sizeof(char *));
+        pcap_samples[pcap_count++] = (char *)sample;
+        fprintf(stderr, "[DEBUG] Added PCAP sample %zu (len=%u)\n", pcap_count, q->len);
+      }
+      else
+      {
+        fprintf(stderr, "[!] Failed to read seed file: %s\n", q->fname);
+        ck_free(sample);
+      }
+      close(fd);
+    }
+    else
+    {
+      fprintf(stderr, "[!] Failed to open seed file: %s (errno=%d: %s)\n", 
+              q->fname, errno, strerror(errno));
+    }
+    q = q->next;
+  }
+
+  fprintf(stderr, "[DEBUG] Collected %zu PCAP samples from %zu queue entries\n", 
+          pcap_count, queue_length);
+
+  if (pcap_count == 0)
+  {
+    WARNF("No PCAP samples collected, hypothesis system disabled");
+    hypothesis_mode = 0;
+    return;
+  }
+
+  // Initialize hypothesis context
+  fprintf(stderr, "[DEBUG] Calling init_hypothesis_context with protocol=%s, pcap_count=%zu\n",
+          protocol_name ? protocol_name : "UNKNOWN", pcap_count);
+  
+  hypothesis_ctx = init_hypothesis_context(
+      protocol_name ? protocol_name : "UNKNOWN",
+      NULL, // RFC text (would be loaded from file in production)
+      pcap_samples,
+      pcap_count);
+
+  if (!hypothesis_ctx)
+  {
+    fprintf(stderr, "[!] init_hypothesis_context returned NULL\n");
+    FATAL("Failed to initialize hypothesis context");
+  }
+
+  fprintf(stderr, "[DEBUG] Hypothesis context initialized successfully\n");
+
+  // Generate initial hypotheses
+  fprintf(stderr, "[DEBUG] Calling generate_grammar_hypotheses (max=5)\n");
+  int hyp_count = generate_grammar_hypotheses(hypothesis_ctx, 5);
+  fprintf(stderr, "[DEBUG] generate_grammar_hypotheses returned %d hypotheses\n", hyp_count);
+
+  if (hyp_count == 0)
+  {
+    WARNF("No grammar hypotheses generated, continuing in standard mode");
+    hypothesis_mode = 0;
+    free_hypothesis_context(hypothesis_ctx);
+    hypothesis_ctx = NULL;
+  }
+  else
+  {
+    OKF("Generated %d grammar hypotheses", hyp_count);
+
+    // Save hypotheses to disk for reproducibility
+    char *hyp_dir = alloc_printf("%s/grammar-hypothesis", out_dir);
+    fprintf(stderr, "[DEBUG] Creating hypothesis directory: %s\n", hyp_dir);
+    
+    if (mkdir(hyp_dir, 0700) && errno != EEXIST)
+    {
+      fprintf(stderr, "[!] Failed to create directory '%s' (errno=%d: %s)\n",
+              hyp_dir, errno, strerror(errno));
+      PFATAL("Unable to create directory '%s'", hyp_dir);
+    }
+
+    fprintf(stderr, "[DEBUG] Saving %zu hypotheses to disk\n", hypothesis_ctx->hypothesis_count);
+    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++)
+    {
+      grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
+      char *hyp_file = alloc_printf("%s/hypothesis-%llu-%s.json",
+                                    hyp_dir, hyp->hypothesis_id, hyp->message_type);
+      fprintf(stderr, "[DEBUG] Saving hypothesis %zu to: %s\n", i+1, hyp_file);
+      
+      int save_result = save_hypothesis_to_file(hyp, hyp_file);
+      if (save_result)
+      {
+        fprintf(stderr, "[+] Successfully saved hypothesis: %s\n", hyp_file);
+      }
+      else
+      {
+        fprintf(stderr, "[!] Failed to save hypothesis: %s\n", hyp_file);
+      }
+      
+      ck_free(hyp_file);
+    }
+
+    ck_free(hyp_dir);
+  }
+
+  // Cleanup PCAP samples
+  fprintf(stderr, "[DEBUG] Cleaning up %zu PCAP samples\n", pcap_count);
+  for (size_t i = 0; i < pcap_count; i++)
+  {
+    ck_free(pcap_samples[i]);
+  }
+  ck_free(pcap_samples);
+
+  OKF("Grammar Hypothesis System initialized successfully.");
+}
+
+/* ============================================
+ * ChatAFL-Opt: Validate and Refine Hypotheses
+ * Called periodically during fuzzing loop
+ * ============================================ */
+static void validate_and_refine_hypotheses(u8 *buf, u32 len)
+{
+  if (!hypothesis_mode || !hypothesis_ctx)
+    return;
+
+  hypothesis_validation_count++;
+
+  // Validate against all hypotheses
+  for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++)
+  {
+    grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
+
+    int valid = validate_message_against_hypothesis(hyp, buf, len);
+
+    if (!valid && hyp->parse_failure % 10 == 0)
+    {
+      // Add as counterexample every 10th failure
+      add_counterexample(hyp, buf, len, "Validation failed");
+    }
+  }
+
+  // Periodic refinement check
+  if (hypothesis_validation_count % hypothesis_refinement_interval == 0)
+  {
+    ACTF("Checking for hypothesis refinement (validation count: %u)...",
+         hypothesis_validation_count);
+
+    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++)
+    {
+      grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
+
+      // Refine if fitness is low and we have counterexamples
+      if (hyp->fitness < FITNESS_THRESHOLD && hyp->counterexample_count >= 3)
+      {
+        ACTF("Refining hypothesis for %s (fitness: %.3f, counterexamples: %zu)",
+             hyp->message_type, hyp->fitness, hyp->counterexample_count);
+
+        if (refine_hypothesis_with_counterexamples(hypothesis_ctx, hyp))
+        {
+          // Save refined hypothesis
+          char *hyp_file = alloc_printf("%s/grammar-hypothesis/hypothesis-%llu-%s-refined-%lu.json",
+                                        out_dir, hyp->hypothesis_id, hyp->message_type, time(NULL));
+          save_hypothesis_to_file(hyp, hyp_file);
+          ck_free(hyp_file);
+
+          OKF("Hypothesis refined: %s (new fitness: %.3f)",
+              hyp->message_type, hyp->fitness);
+        }
+      }
+    }
+  }
+}
+
 /* Perform dry run of all test cases to confirm that the app is working as
    expected. This is done only for the initial inputs, and only once. */
 
@@ -4400,157 +4690,6 @@ static void perform_dry_run(char **argv)
 
   OKF("All test cases processed.");
 }
-
-
-/* ============================================
- * ChatAFL-Opt: Initialize Grammar Hypothesis System
- * ============================================ */
-static void init_grammar_hypothesis_system(void)
-{
-  if (!hypothesis_mode)
-    return;
-
-  ACTF("Initializing Grammar Hypothesis System...");
-
-  // Collect PCAP samples from seed corpus
-  char **pcap_samples = NULL;
-  size_t pcap_count = 0;
-
-  struct queue_entry *q = queue;
-  while (q && pcap_count < 10)
-  { // Limit to 10 samples
-    s32 fd = open(q->fname, O_RDONLY);
-    if (fd >= 0)
-    {
-      u8 *sample = ck_alloc_nozero(q->len + 1);
-      if (read(fd, sample, q->len) == (ssize_t)q->len)
-      {
-        sample[q->len] = '\0';
-        pcap_samples = ck_realloc(pcap_samples, (pcap_count + 1) * sizeof(char *));
-        pcap_samples[pcap_count++] = (char *)sample;
-      }
-      else
-      {
-        ck_free(sample);
-      }
-      close(fd);
-    }
-    q = q->next;
-  }
-
-  // Initialize hypothesis context
-  hypothesis_ctx = init_hypothesis_context(
-      protocol_name ? protocol_name : "UNKNOWN",
-      NULL, // RFC text (would be loaded from file in production)
-      pcap_samples,
-      pcap_count);
-
-  if (!hypothesis_ctx)
-  {
-    FATAL("Failed to initialize hypothesis context");
-  }
-
-  // Generate initial hypotheses
-  int hyp_count = generate_grammar_hypotheses(hypothesis_ctx, 5);
-
-  if (hyp_count == 0)
-  {
-    WARNF("No grammar hypotheses generated, continuing in standard mode");
-    hypothesis_mode = 0;
-    free_hypothesis_context(hypothesis_ctx);
-    hypothesis_ctx = NULL;
-  }
-  else
-  {
-    OKF("Generated %d grammar hypotheses", hyp_count);
-
-    // Save hypotheses to disk for reproducibility
-    char *hyp_dir = alloc_printf("%s/grammar-hypotheses", out_dir);
-    if (mkdir(hyp_dir, 0700) && errno != EEXIST)
-    {
-      PFATAL("Unable to create directory '%s'", hyp_dir);
-    }
-
-    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++)
-    {
-      grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
-      char *hyp_file = alloc_printf("%s/hypothesis-%llu-%s.json",
-                                    hyp_dir, hyp->hypothesis_id, hyp->message_type);
-      save_hypothesis_to_file(hyp, hyp_file);
-      ck_free(hyp_file);
-    }
-
-    ck_free(hyp_dir);
-  }
-
-  // Cleanup PCAP samples
-  for (size_t i = 0; i < pcap_count; i++)
-  {
-    ck_free(pcap_samples[i]);
-  }
-  ck_free(pcap_samples);
-
-  OKF("Grammar Hypothesis System initialized.");
-}
-
-/* ============================================
- * ChatAFL-Opt: Validate and Refine Hypotheses
- * Called periodically during fuzzing loop
- * ============================================ */
-static void validate_and_refine_hypotheses(u8 *buf, u32 len)
-{
-  if (!hypothesis_mode || !hypothesis_ctx)
-    return;
-
-  hypothesis_validation_count++;
-
-  // Validate against all hypotheses
-  for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++)
-  {
-    grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
-
-    int valid = validate_message_against_hypothesis(hyp, buf, len);
-
-    if (!valid && hyp->parse_failure % 10 == 0)
-    {
-      // Add as counterexample every 10th failure
-      add_counterexample(hyp, buf, len, "Validation failed");
-    }
-  }
-
-  // Periodic refinement check
-  if (hypothesis_validation_count % hypothesis_refinement_interval == 0)
-  {
-    ACTF("Checking for hypothesis refinement (validation count: %u)...",
-         hypothesis_validation_count);
-
-    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++)
-    {
-      grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
-
-      // Refine if fitness is low and we have counterexamples
-      if (hyp->fitness < FITNESS_THRESHOLD && hyp->counterexample_count >= 3)
-      {
-        ACTF("Refining hypothesis for %s (fitness: %.3f, counterexamples: %zu)",
-             hyp->message_type, hyp->fitness, hyp->counterexample_count);
-
-        if (refine_hypothesis_with_counterexamples(hypothesis_ctx, hyp))
-        {
-          // Save refined hypothesis
-          char *hyp_file = alloc_printf("%s/grammar-hypotheses/hypothesis-%llu-%s-refined-%lu.json",
-                                        out_dir, hyp->hypothesis_id, hyp->message_type, time(NULL));
-          save_hypothesis_to_file(hyp, hyp_file);
-          ck_free(hyp_file);
-
-          OKF("Hypothesis refined: %s (new fitness: %.3f)",
-              hyp->message_type, hyp->fitness);
-        }
-      }
-    }
-  }
-}
-
-/* Original perform_dry_run end marker */
 
 /* Helper function: link() if possible, copy otherwise. */
 
@@ -5186,6 +5325,41 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
     fprintf(f, "peak_rss_mb       : %zu\n", usage.ru_maxrss >> 10);
 #endif /* ^__APPLE__ */
   }
+
+  /* ============================================
+   * ChatAFL-Opt: Hypothesis & Plateau Statistics
+   * ============================================ */
+  if (hypothesis_ctx && hypothesis_ctx->hypothesis_count > 0) {
+    u32 total_parse_success = 0;
+    u32 total_parse_failure = 0;
+    double avg_fitness = 0.0;
+    
+    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++) {
+      grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
+      if (hyp) {
+        total_parse_success += hyp->parse_success;
+        total_parse_failure += hyp->parse_failure;
+        avg_fitness += hyp->fitness;
+      }
+    }
+    avg_fitness /= hypothesis_ctx->hypothesis_count;
+    
+    fprintf(f, "hypothesis_count   : %zu\n"
+               "hypothesis_parse_success : %u\n"
+               "hypothesis_parse_failure : %u\n"
+               "hypothesis_avg_fitness   : %0.03f\n",
+            hypothesis_ctx->hypothesis_count,
+            total_parse_success,
+            total_parse_failure,
+            avg_fitness);
+  }
+  
+  fprintf(f, "plateau_calls      : %u\n"
+             "plateau_threshold  : %u\n"
+             "edges_growth_rate  : %0.02f\n",
+          chat_times,
+          adaptive_plateau_threshold,
+          edges_growth_rate);
 
   fclose(f);
 }
@@ -6318,12 +6492,6 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
 
   u8 fault;
 
-  /* ChatAFL-Opt: Validate message against hypotheses */
-  if (hypothesis_mode && hypothesis_ctx)
-  {
-    validate_and_refine_hypotheses(out_buf, len);
-  }
-
   if (post_handler)
   {
 
@@ -6333,6 +6501,13 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
   }
 
   write_to_testcase(out_buf, len);
+
+  /* ============================================
+   * ChatAFL-Opt: Hypothesis Validation & Refinement
+   * Uses the full validate_and_refine_hypotheses() which also
+   * collects counterexamples and periodically triggers refinement.
+   * ============================================ */
+  validate_and_refine_hypotheses(out_buf, len);
 
   /* AFLNet update kl_messages linked list */
 
@@ -7010,186 +7185,466 @@ AFLNET_REGIONS_SELECTION:;
     count++;
   }
 
-  if (uninteresting_times >= UNINTERESTING_THRESHOLD && chat_times < CHATTING_THRESHOLD)
+  /* ============================================
+   * Adaptive Plateau Triggering Logic
+   * ============================================ */
+  
+  // Update edges growth rate every 60 seconds
+  u64 cur_ms = get_cur_time();
+  if (cur_ms - last_edges_check_time >= 60000) {  // 60 seconds
+    u32 current_edges = agnedges(ipsm);  // Use IPSM edges (FIXED: was count_bits)
+    if (last_edges_count > 0) {
+      double time_elapsed_min = (cur_ms - last_edges_check_time) / 60000.0;
+      double edges_gained = (double)(current_edges - last_edges_count);
+      edges_growth_rate = edges_gained / time_elapsed_min;  // edges per minute
+      
+      // Adaptive threshold adjustment:
+      // High growth (>5 edges/min): increase threshold to 150 (reduce LLM calls)
+      // Medium growth (1-5 edges/min): keep threshold at 100
+      // Low growth (<1 edge/min): decrease threshold to 50 (increase LLM calls)
+      if (edges_growth_rate > 5.0) {
+        adaptive_plateau_threshold = 150;
+      } else if (edges_growth_rate > 1.0) {
+        adaptive_plateau_threshold = 100;
+      } else {
+        adaptive_plateau_threshold = 50;
+      }
+      
+      fprintf(stderr, "[adaptive-plateau] edges_growth_rate=%.2f/min, threshold=%u\n",
+              edges_growth_rate, adaptive_plateau_threshold);
+    }
+    last_edges_count = current_edges;
+    last_edges_check_time = cur_ms;
+  }
+  
+  if (uninteresting_times >= adaptive_plateau_threshold && chat_times < CHATTING_THRESHOLD)
   {
     uninteresting_times = 0;
-    // Fuzzing is stalled - ask LLM for help by taking the current sequence and if it is has a prefix,
-    // ask the LLM to generate a possibly correct next message
+    fprintf(stderr, "[plateau-trigger] Triggering LLM (growth_rate=%.2f, threshold=%u, chat_times=%u)\n",
+            edges_growth_rate, adaptive_plateau_threshold, chat_times);
+
     u32 *response_bytes_temp = NULL;
     u32 buffer_len = 0;
-
     u32 response_count = 0;
     char *response_fname = alloc_printf("%s/responses-ipsm/id:%s", out_dir, basename(queue_cur->fname));
     char **responses_temp = get_responses_from_file(response_fname, &response_bytes_temp, &response_count, &buffer_len);
-    if (responses_temp != NULL)
+    if (responses_temp == NULL)
     {
-      chat_times++;
       ck_free(response_fname);
+      goto plateau_done;
+    }
 
-      char *history = NULL;
-      u32 history_len = 0;
-      char *examples = NULL;
-      int examples_len = 0;
-      kliter_t(lms) *it_pref = kl_begin(kl_messages);
-      int i = 0;
-      int empty = 1;
-      int prev_len = 0;
-      for (; i < response_count && it_pref != M2_prev; i++, it_pref = kl_next(it_pref))
+    chat_times++;
+    ck_free(response_fname);
+
+    char *history = NULL;
+    u32 history_len = 0;
+    char *examples = NULL;
+    int examples_len = 0;
+    kliter_t(lms) *it_pref = kl_begin(kl_messages);
+    int i = 0;
+    int empty = 1;
+    int prev_len = 0;
+    for (; i < response_count && it_pref != M2_prev; i++, it_pref = kl_next(it_pref))
+    {
+      empty = 0;
+
+      json_object *request_v = json_object_new_string_len(kl_val(it_pref)->mdata, kl_val(it_pref)->msize);
+      char *request = strdup(json_object_to_json_string(request_v));
+      json_object_put(request_v);
+      int request_len = strlen(request) - 2;
+      request++;
+      for (int i = 0; i < request_len; i++)
       {
-        empty = 0;
-
-        json_object *request_v = json_object_new_string_len(kl_val(it_pref)->mdata, kl_val(it_pref)->msize);
-        char *request = strdup(json_object_to_json_string(request_v));
-        json_object_put(request_v);
-        int request_len = strlen(request) - 2;
-        request++;
-        for (int i = 0; i < request_len; i++)
-        {
-          if (!isprint(request[i]) || request[i] < 0 || request[i] >= 127) // ensure that the character is printable
-            request[i] = ' ';
-        }
-
-        json_object *response_v = json_object_new_string_len(responses_temp[i], response_bytes_temp[i] - prev_len);
-        char *response = strdup(json_object_to_json_string(response_v));
-        json_object_put(response_v);
-        prev_len = response_bytes_temp[i];
-        int response_len = strlen(response) - 2;
-        response++;
-
-        for (int i = 0; i < response_len; i++)
-        {
-          if (!isprint(response[i]) || response[i] < 0 || response[i] >= 127)
-            response[i] = ' ';
-        }
-
-        if (i == 0)
-        {
-          examples_len = asprintf(&examples, "Request-1:\\n%.*s\\nRequest-2:\\n%.*s\\n", request_len, request, request_len, request);
-        }
-
-        history = ck_realloc(history, history_len + request_len);
-        memcpy(history + history_len, request, request_len);
-        history_len += request_len;
-
-        history = ck_realloc(history, history_len + response_len);
-        memcpy(history + history_len, response, response_len);
-        history_len += response_len;
-
-        free(request - 1);
-        free(response - 1);
+        if (!isprint(request[i]) || request[i] < 0 || request[i] >= 127)
+          request[i] = ' ';
       }
 
-      if (!empty)
+      json_object *response_v = json_object_new_string_len(responses_temp[i], response_bytes_temp[i] - prev_len);
+      char *response = strdup(json_object_to_json_string(response_v));
+      json_object_put(response_v);
+      prev_len = response_bytes_temp[i];
+      int response_len = strlen(response) - 2;
+      response++;
+
+      for (int i = 0; i < response_len; i++)
       {
-        history = ck_realloc(history, history_len + 1);
-        history[history_len] = '\0';
+        if (!isprint(response[i]) || response[i] < 0 || response[i] >= 127)
+          response[i] = ' ';
+      }
 
-        // Trim the strings to ensure the prompt is not too big
-        if (history_len > HISTORY_PROMPT_LENGTH)
+      if (i == 0)
+      {
+        examples_len = asprintf(&examples, "Request-1:\n%.*s\nRequest-2:\n%.*s\n", request_len, request, request_len, request);
+      }
+
+      history = ck_realloc(history, history_len + request_len);
+      memcpy(history + history_len, request, request_len);
+      history_len += request_len;
+
+      history = ck_realloc(history, history_len + response_len);
+      memcpy(history + history_len, response, response_len);
+      history_len += response_len;
+
+      free(request - 1);
+      free(response - 1);
+    }
+
+    if (!empty)
+    {
+      history = ck_realloc(history, history_len + 1);
+      history[history_len] = '\0';
+
+      if (history_len > HISTORY_PROMPT_LENGTH)
+      {
+        int offset = history_len - HISTORY_PROMPT_LENGTH;
+        if (history[offset - 1] == '\\')
         {
-          int offset = history_len - HISTORY_PROMPT_LENGTH;
-          if (history[offset - 1] == '\\')
-          {
-            offset++;
+          offset++;
+        }
+        char *history_temp = ck_strdup(history + offset);
+        ck_free(history);
+        history = history_temp;
+        history_len = history_len - offset;
+      }
+
+      if (examples_len > EXAMPLES_PROMPT_LENGTH)
+      {
+        int offset = examples_len - EXAMPLES_PROMPT_LENGTH;
+        if (examples[offset - 1] == '\\')
+        {
+          offset++;
+        }
+        char *examples_temp = strdup(examples + offset);
+        free(examples);
+        examples = examples_temp;
+        examples_len = examples_len - offset;
+      }
+
+      /* Fork off an isolated helper to call the LLM and extract/format the
+       * suggested request. This keeps the main fuzzer process insulated from
+       * potential memory issues in network/parsing code. The child writes the
+       * result to a temp file which the parent validates and consumes. */
+      {
+        /* Build rich state-context JSON including per-state coverage details */
+        char *state_ctx = NULL;
+        {
+          struct json_object *jctx = json_object_new_object();
+          json_object_object_add(jctx, "nodes",           json_object_new_int(agnnodes(ipsm)));
+          json_object_object_add(jctx, "edges",           json_object_new_int(agnedges(ipsm)));
+          json_object_object_add(jctx, "growth_rate",     json_object_new_double(edges_growth_rate));
+          json_object_object_add(jctx, "pending_favored", json_object_new_int(pending_favored));
+          json_object_object_add(jctx, "queued_paths",    json_object_new_int(queued_paths));
+          json_object_object_add(jctx, "chat_times",      json_object_new_int(chat_times));
+          json_object_object_add(jctx, "target_state_id", json_object_new_int(target_state_id));
+
+          /* Per-state coverage: sort all states by effectiveness ascending (stuck states first) */
+          struct json_object *jstates = json_object_new_array();
+          if (state_ids_count > 0) {
+            u32 *sorted_sids = malloc(state_ids_count * sizeof(u32));
+            if (sorted_sids) {
+              memcpy(sorted_sids, state_ids, state_ids_count * sizeof(u32));
+              /* Bubble sort by paths_discovered/(selected_times+1) asc (small N, OK) */
+              for (u32 a = 0; a < state_ids_count; a++) {
+                for (u32 b = a + 1; b < state_ids_count; b++) {
+                  khint_t ka = kh_get(hms, khms_states, sorted_sids[a]);
+                  khint_t kb = kh_get(hms, khms_states, sorted_sids[b]);
+                  if (ka == kh_end(khms_states) || kb == kh_end(khms_states)) continue;
+                  state_info_t *sa2 = kh_val(khms_states, ka);
+                  state_info_t *sb2 = kh_val(khms_states, kb);
+                  double ea = (double)sa2->paths_discovered / (sa2->selected_times + 1.0);
+                  double eb = (double)sb2->paths_discovered / (sb2->selected_times + 1.0);
+                  if (ea > eb) { u32 tmp = sorted_sids[a]; sorted_sids[a] = sorted_sids[b]; sorted_sids[b] = tmp; }
+                }
+              }
+              u32 max_states = state_ids_count < 8 ? state_ids_count : 8;
+              for (u32 si = 0; si < max_states; si++) {
+                khint_t k2 = kh_get(hms, khms_states, sorted_sids[si]);
+                if (k2 == kh_end(khms_states)) continue;
+                state_info_t *st2 = kh_val(khms_states, k2);
+                struct json_object *js = json_object_new_object();
+                json_object_object_add(js, "id",               json_object_new_int(sorted_sids[si]));
+                json_object_object_add(js, "paths",            json_object_new_int(st2->paths));
+                json_object_object_add(js, "paths_discovered", json_object_new_int(st2->paths_discovered));
+                json_object_object_add(js, "selected_times",   json_object_new_int(st2->selected_times));
+                json_object_object_add(js, "fuzzs",            json_object_new_int(st2->fuzzs));
+                json_object_object_add(js, "seeds_count",      json_object_new_int(st2->seeds_count));
+                /* List up to 5 seed indices reachable from this state */
+                struct json_object *jsids2 = json_object_new_array();
+                u32 max_s = st2->seeds_count < 5 ? st2->seeds_count : 5;
+                for (u32 i = 0; i < max_s; i++) {
+                  struct queue_entry *sq = (struct queue_entry *)st2->seeds[i];
+                  if (sq) json_object_array_add(jsids2, json_object_new_int(sq->index));
+                }
+                json_object_object_add(js, "seed_ids", jsids2);
+                json_object_array_add(jstates, js);
+              }
+              free(sorted_sids);
+            }
           }
-          char *history_temp = ck_strdup(history + offset);
-          ck_free(history);
-          history = history_temp;
-          history_len = history_len - offset;
+          json_object_object_add(jctx, "states", jstates);
+          state_ctx = strdup(json_object_to_json_string(jctx));
+          json_object_put(jctx);
         }
 
-        if (examples_len > EXAMPLES_PROMPT_LENGTH)
+        char *out_path = alloc_printf("%s/stall-interactions/llm-suggest-%d", out_dir, chat_times);
+        pid_t pid = fork();
+        if (pid == 0)
         {
-          int offset = examples_len - EXAMPLES_PROMPT_LENGTH;
-          if (examples[offset - 1] == '\\')
-          {
-            offset++;
+          /* Child */
+          char *res = llm_handle_plateau(protocol_name, examples, history, state_ctx);
+          if (res) {
+            int fd = open(out_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+            if (fd >= 0) {
+              write(fd, res, strlen(res));
+              close(fd);
+            }
+            free(res);
           }
-          char *examples_temp = strdup(examples + offset);
-          free(examples);
-          examples = examples_temp;
-          examples_len = examples_len - offset;
+          _exit(res ? 0 : 1);
         }
 
-        char *stall_prompt = construct_prompt_stall(protocol_name, examples, history);
-        // printf("Got prompt:\n\n%s\n",stall_prompt);
-        char *stall_response = chat_with_llm(stall_prompt, "gpt-4o-mini", STALL_RETRIES, 1.5);
-        // printf("Got response:\n\n%s\n",stall_response);
-
+        /* Parent: wait for child with timeout */
+        int status = 0;
+        int elapsed = 0;
+        const int max_wait = 150; /* seconds */
+        while (elapsed < max_wait)
         {
-          char *stall_prompt_path = alloc_printf("%s/stall-interactions/prompt-%d", out_dir, chat_times);
-          int stall_prompt_fd = open(stall_prompt_path, O_WRONLY | O_CREAT, 0600);
-
-          ck_write(stall_prompt_fd, stall_prompt, strlen(stall_prompt), stall_prompt_path);
-
-          close(stall_prompt_fd);
-          ck_free(stall_prompt_path);
+          pid_t w = waitpid(pid, &status, WNOHANG);
+          if (w == pid) break;
+          sleep(1);
+          elapsed++;
         }
-        
-
-        if (stall_response == NULL)
-          goto free_stall;
-
+        if (elapsed >= max_wait)
         {
-          char *stall_response_path = alloc_printf("%s/stall-interactions/response-%d", out_dir, chat_times);
-          int stall_response_fd = open(stall_response_path, O_WRONLY | O_CREAT, 0600);
-
-          ck_write(stall_response_fd, stall_response, strlen(stall_response), stall_response_path);
-
-          close(stall_response_fd);
-          ck_free(stall_response_path);
+          kill(pid, SIGKILL);
+          waitpid(pid, &status, 0);
+          fprintf(stderr, "[plateau] LLM helper timed out and was killed\n");
         }
 
-        char *stall_message = extract_stalled_message(stall_response, strlen(stall_response));
+        if (state_ctx) { free(state_ctx); state_ctx = NULL; }
 
-        if (stall_message == NULL)
-          goto free_stall;
+        /* Try to read the suggested output */
+        char *stall_message = NULL;
+        int fd = open(out_path, O_RDONLY);
+        if (fd >= 0)
+        {
+          struct stat st;
+          if (fstat(fd, &st) == 0 && st.st_size > 0 && st.st_size < 65536)
+          {
+            stall_message = malloc(st.st_size + 1);
+            if (!stall_message) { close(fd); ck_free(out_path); goto plateau_done; }
+            memset(stall_message, 0, st.st_size + 1);
+            ssize_t r = read(fd, stall_message, st.st_size);
+            if (r > 0) stall_message[r] = '\0'; else { free(stall_message); stall_message = NULL; }
+          }
+          close(fd);
+        }
+        ck_free(out_path);
 
-        stall_message = format_request_message(stall_message);
+        /* Use centralized validator to parse/validate JSON schema and support actions[] */
+        struct json_object *jroot = NULL;
+        if (stall_message)
+        {
+          jroot = validate_and_parse_llm_json(stall_message);
+          free(stall_message);
+          stall_message = NULL;
+        }
+
+        if (jroot) {
+          /* If it's a simple suggested_request, extract and keep it */
+          struct json_object *jsr = NULL;
+          if (json_object_object_get_ex(jroot, "suggested_request", &jsr)) {
+            const char *req = json_object_get_string(jsr);
+            if (req) stall_message = strdup(req);
+          } else if (json_object_object_get_ex(jroot, "actions", &jsr)) {
+            /* Handle actions[] safely here by iterating and creating concrete candidates */
+            size_t nal = json_object_array_length(jsr);
+            for (size_t ai = 0; ai < nal; ai++) {
+              struct json_object *act = json_object_array_get_idx(jsr, ai);
+              struct json_object *jtype = NULL;
+              if (!json_object_object_get_ex(act, "type", &jtype)) continue;
+              const char *type = json_object_get_string(jtype);
+              if (!type) continue;
+
+              if (strcmp(type, "propose_mutations") == 0) {
+                struct json_object *jseed = NULL, *jops = NULL;
+                if (!json_object_object_get_ex(act, "seed_id", &jseed)) continue;
+                if (!json_object_object_get_ex(act, "ops", &jops)) continue;
+                long sid = json_object_get_int(jseed);
+                struct queue_entry *qe = find_queue_entry_by_index((u32)sid);
+                if (!qe) continue;
+
+                /* Read seed file */
+                int sfd = open(qe->fname, O_RDONLY);
+                if (sfd < 0) continue;
+                struct stat st; if (fstat(sfd, &st) != 0) { close(sfd); continue; }
+                if (st.st_size == 0 || st.st_size > 65536) { close(sfd); continue; }
+                unsigned char *seedbuf = ck_alloc(st.st_size);
+                ssize_t rr = read(sfd, seedbuf, st.st_size);
+                close(sfd);
+                if (rr <= 0) { ck_free(seedbuf); continue; }
+
+                size_t nop = json_object_array_length(jops);
+                for (size_t oi = 0; oi < nop; oi++) {
+                  struct json_object *op = json_object_array_get_idx(jops, oi);
+                  struct json_object *jop = NULL;
+                  json_object_object_get_ex(op, "op", &jop);
+                  const char *opname = json_object_get_string(jop);
+                  if (!opname) continue;
+
+                  /* Work on a copy */
+                  unsigned char *buf = ck_alloc(rr + 512);
+                  memcpy(buf, seedbuf, rr);
+                  size_t buf_len = rr;
+
+                  if (strcmp(opname, "insert") == 0 || strcmp(opname, "replace") == 0) {
+                    struct json_object *jpos=NULL, *jbytes=NULL;
+                    json_object_object_get_ex(op, "pos", &jpos);
+                    json_object_object_get_ex(op, "bytes_base64", &jbytes);
+                    long pos = json_object_get_int(jpos);
+                    const char *b64 = json_object_get_string(jbytes);
+                    size_t decoded_len = 0;
+                    unsigned char *decoded = base64_decode(b64, strlen(b64), &decoded_len);
+                    if (!decoded) { ck_free(buf); continue; }
+                    if (pos < 0) pos = 0;
+                    if ((size_t)pos > buf_len) pos = buf_len;
+                    if (strcmp(opname, "insert") == 0) {
+                      if (buf_len + decoded_len > 65536) { ck_free(decoded); ck_free(buf); continue; }
+                      /* insert */
+                      memmove(buf + pos + decoded_len, buf + pos, buf_len - pos);
+                      memcpy(buf + pos, decoded, decoded_len);
+                      buf_len += decoded_len;
+                    } else {
+                      /* replace up to decoded_len */
+                      size_t tocopy = decoded_len;
+                      if ((size_t)pos + tocopy > buf_len) tocopy = buf_len - pos;
+                      memcpy(buf + pos, decoded, tocopy);
+                    }
+                    ck_free(decoded);
+                  } else if (strcmp(opname, "flip") == 0) {
+                    struct json_object *jpos=NULL, *jlen=NULL;
+                    json_object_object_get_ex(op, "pos", &jpos);
+                    json_object_object_get_ex(op, "len", &jlen);
+                    long pos = json_object_get_int(jpos);
+                    long ln = json_object_get_int(jlen);
+                    if (pos < 0) pos = 0;
+                    if (pos >= (long)buf_len) { ck_free(buf); continue; }
+                    if (ln <= 0) ln = 1;
+                    if ((size_t)(pos+ln) > buf_len) ln = buf_len - pos;
+                    for (long b=0; b<ln; b++) buf[pos+b] = ~buf[pos+b];
+                  } else {
+                    /* unsupported action */
+                    ck_free(buf); continue;
+                  }
+
+                  /* Submit mutated candidate safely via common_fuzz_stuff */
+                  if (common_fuzz_stuff(argv, (char*)buf, (u32)buf_len)) {
+                    /* do nothing extra here */
+                  }
+
+                  ck_free(buf);
+                }
+
+                ck_free(seedbuf);
+              } else if (strcmp(type, "prioritize_seeds") == 0) {
+                struct json_object *jsids = NULL;
+                if (!json_object_object_get_ex(act, "seed_ids", &jsids) || !json_object_is_type(jsids, json_type_array)) {
+                  /* malformed, skip */
+                } else {
+                  size_t nm = json_object_array_length(jsids);
+                  for (size_t k = 0; k < nm; k++) {
+                    struct json_object *jid = json_object_array_get_idx(jsids, k);
+                    if (!json_object_is_type(jid, json_type_int)) continue;
+                    long v = json_object_get_int(jid);
+                    if (v < 0) continue;
+                    struct queue_entry *qe = find_queue_entry_by_index((u32)v);
+                    if (!qe) continue;
+                    if (!qe->favored) {
+                      qe->favored = 1;
+                      queued_favored++;
+                      pending_favored++;
+                      fprintf(stderr, "[llm-prioritize] Seed id %ld (%s) marked as favored\n",
+                              v, qe->fname ? (char*)qe->fname : "<unknown>");
+                    } else {
+                      fprintf(stderr, "[llm-prioritize] Seed id %ld already favored, skipping\n", v);
+                    }
+                    /* Update selected_seed_index for EVERY state whose pool contains this
+                     * seed. This ensures choose_seed(target_state_id, mode) picks the
+                     * LLM-recommended seed regardless of which state was set as target.
+                     * Previously only generating_state_id's pool was updated, so any
+                     * set_target_state redirect to a different state had no effect. */
+                    {
+                      u32 _skey; state_info_t *_sval;
+                      kh_foreach(khms_states, _skey, _sval, {
+                        for (u32 si3 = 0; si3 < _sval->seeds_count; si3++) {
+                          if ((struct queue_entry *)_sval->seeds[si3] == qe) {
+                            _sval->selected_seed_index = si3;
+                            fprintf(stderr, "[llm-prioritize] State %u pool index -> %u (seed %s)\n",
+                                    _skey, si3,
+                                    qe->fname ? (char*)qe->fname : "?");
+                            break;
+                          }
+                        }
+                      });
+                    }
+                  } /* end for k < nm */
+                } /* end else (valid jsids) */
+              } else if (strcmp(type, "set_target_state") == 0) {
+                struct json_object *jnew_sid = NULL;
+                if (json_object_object_get_ex(act, "state_id", &jnew_sid)) {
+                  u32 new_sid = (u32)json_object_get_int(jnew_sid);
+                  khint_t k3 = kh_get(hms, khms_states, new_sid);
+                  if (k3 != kh_end(khms_states)) {
+                    fprintf(stderr, "[llm-state] LLM redirecting target_state_id: %u -> %u\n",
+                            target_state_id, new_sid);
+                    target_state_id = new_sid;
+                  } else {
+                    fprintf(stderr, "[llm-state] set_target_state: state %u not found, ignoring\n", new_sid);
+                  }
+                }
+              } else if (strcmp(type, "suggest_strategy") == 0) {
+                /* noop */
+              }
+            }
+          }
+          json_object_put(jroot);
+        }
 
         if (stall_message != NULL)
         {
-          // printf("Filtered message:\n%s\n",stall_message);
-
+          /* Proceed with existing behavior: format/attempt to fuzz the suggested message */
           if (common_fuzz_stuff(argv, stall_message, strlen(stall_message)))
           {
-            // code diverges from abandon entry due to less allocations
             splicing_with = -1;
-
-            /* Update pending_not_fuzzed count if we made it through the calibration
-              cycle and have not seen this entry before. */
-
             if (!stop_soon && !queue_cur->cal_failed && !queue_cur->was_fuzzed)
             {
               queue_cur->was_fuzzed = 1;
               was_fuzzed_map[get_state_index(target_state_id)][queue_cur->index] = 1;
               pending_not_fuzzed--;
-              if (queue_cur->favored)
-                pending_favored--;
+              if (queue_cur->favored) pending_favored--;
             }
 
-            ck_free(stall_message);
-
+            free(stall_message);
             delete_kl_messages(kl_messages);
-
+            ck_free(history);
+            free(examples);
             return ret_val;
           }
 
-          ck_free(stall_message);
+          free(stall_message);
         }
 
-        free(stall_response);
-      free_stall:
-        free(stall_prompt);
-        ck_free(history);
         free(examples);
-      }
-      else
-      {
-        // printf("Had empty prompt\n");
+        ck_free(history);
       }
     }
+    else
+    {
+      /* empty */
+    }
   }
+plateau_done: ;
 
   /* Construct the buffer to be mutated and update out_buf */
   if (M2_prev == NULL)
@@ -10644,6 +11099,11 @@ int main(int argc, char **argv)
         extract_requests = &extract_requests_ftp;
         extract_response_codes = &extract_response_codes_ftp;
       }
+      else if (!strcmp(optarg, "MQTT"))
+      {
+        extract_requests = &extract_requests_mqtt;
+        extract_response_codes = &extract_response_codes_mqtt;
+      }
       else if (!strcmp(optarg, "DTLS12"))
       {
         extract_requests = &extract_requests_dtls12;
@@ -10878,15 +11338,42 @@ int main(int argc, char **argv)
   else
     use_argv = argv + optind;
 
+  fprintf(stderr, "[DEBUG] ========== BEFORE perform_dry_run ==========\n");
+  fflush(stderr);
+  
   perform_dry_run(use_argv);
 
+  fprintf(stderr, "[DEBUG] ========== AFTER perform_dry_run ==========\n");
+  fflush(stderr);
+
   /* ChatAFL-Opt: Initialize grammar hypothesis system */
-  if (getenv("CHATAFL_HYPOTHESIS"))
+  fprintf(stderr, "[DEBUG] Checking CHATAFL_HYPOTHESIS env var...\n");
+  fflush(stderr);
+  char *hyp_env = getenv("CHATAFL_HYPOTHESIS");
+  if (hyp_env)
   {
+    fprintf(stderr, "[DEBUG] CHATAFL_HYPOTHESIS=%s, enabling hypothesis mode\n", hyp_env);
+    fflush(stderr);
     hypothesis_mode = 1;
     OKF("Grammar Hypothesis Mode enabled (CHATAFL_HYPOTHESIS env var set)");
     init_grammar_hypothesis_system();
   }
+  else
+  {
+    fprintf(stderr, "[DEBUG] CHATAFL_HYPOTHESIS not set, hypothesis mode disabled\n");
+    fflush(stderr);
+  }
+  
+  /* ============================================
+   * Initialize Adaptive Plateau Variables
+   * ============================================ */
+  last_edges_count = agnedges(ipsm);  // Use IPSM edges (FIXED: was count_bits)
+  last_edges_check_time = get_cur_time();
+  edges_growth_rate = 0.0;
+  adaptive_plateau_threshold = UNINTERESTING_THRESHOLD;  // Start with default 100
+  
+  fprintf(stderr, "[adaptive-plateau] Initialized: initial_edges=%u (IPSM), threshold=%u\n",
+          last_edges_count, adaptive_plateau_threshold);
 
   cull_queue();
 

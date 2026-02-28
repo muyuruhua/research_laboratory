@@ -442,7 +442,7 @@ char* construct_hypothesis_refinement_prompt(
     const char *protocol_name
 ) {
     char *prompt = (char*)ck_alloc(MAX_HYPOTHESIS_PROMPT);
-    memset(prompt, 0, MAX_HYPOTHESIS_PROMPT);  // Initialize buffer
+    memset(prompt, 0, MAX_HYPOTHESIS_PROMPT);
     int offset = 0;
     int written;
     
@@ -456,18 +456,26 @@ char* construct_hypothesis_refinement_prompt(
         return NULL;
     }
     offset += written;
-    
+
+    /* JSON-escape all user-data fields to prevent binary/special char corruption */
+    char *esc_proto = json_escape_string(protocol_name, 256);
+    char *esc_mtype = json_escape_string(hyp->message_type, 256);
+    char *esc_desc  = json_escape_string(hyp->description ? hyp->description : "", 4096);
+    char *esc_schema = json_escape_string(hyp->schema_str ? hyp->schema_str : "{}", 8192);
+
     written = snprintf(prompt + offset, MAX_HYPOTHESIS_PROMPT - offset,
         "Protocol: %s\\n"
         "Message Type: %s\\n\\n"
         "Current Hypothesis:\\n"
         "Description: %s\\n"
         "Schema: %s\\n\\n",
-        protocol_name,
-        hyp->message_type,
-        hyp->description,
-        hyp->schema_str ? hyp->schema_str : "{}"
-    );
+        esc_proto, esc_mtype, esc_desc, esc_schema);
+
+    ck_free(esc_proto);
+    ck_free(esc_mtype);
+    ck_free(esc_desc);
+    ck_free(esc_schema);
+
     if (written < 0 || written >= MAX_HYPOTHESIS_PROMPT - offset) {
         fprintf(stderr, "[!] Refinement prompt buffer overflow at hypothesis details\n");
         ck_free(prompt);
@@ -475,7 +483,8 @@ char* construct_hypothesis_refinement_prompt(
     }
     offset += written;
     
-    // Add counterexamples
+    /* Counterexamples — already hex-encoded by add_counterexample(),
+     * but still JSON-escape them for safety. */
     written = snprintf(prompt + offset, MAX_HYPOTHESIS_PROMPT - offset,
         "Counterexamples (messages that violated the hypothesis):\\n");
     if (written < 0 || written >= MAX_HYPOTHESIS_PROMPT - offset) {
@@ -489,11 +498,13 @@ char* construct_hypothesis_refinement_prompt(
                       hyp->counterexample_count : MAX_REFINEMENT_COUNTEREXAMPLES;
     
     for (size_t i = 0; i < ce_limit; i++) {
+        char *esc_ce = json_escape_string(hyp->counterexamples[i], 1024);
         written = snprintf(prompt + offset, MAX_HYPOTHESIS_PROMPT - offset,
-            "%zu. %s\\n", i + 1, hyp->counterexamples[i]);
+            "%zu. %s\\n", i + 1, esc_ce);
+        ck_free(esc_ce);
         if (written < 0 || written >= MAX_HYPOTHESIS_PROMPT - offset) {
             fprintf(stderr, "[!] Refinement prompt buffer overflow at counterexample %zu\n", i);
-            break;  // Stop adding counterexamples but continue with what we have
+            break;
         }
         offset += written;
     }
@@ -503,7 +514,6 @@ char* construct_hypothesis_refinement_prompt(
         "Return the updated hypothesis in the same JSON format as before.\"}]");
     if (written < 0 || written >= MAX_HYPOTHESIS_PROMPT - offset) {
         fprintf(stderr, "[!] Refinement prompt buffer overflow at footer\n");
-        // Keep what we have, just add closing
         snprintf(prompt + offset, MAX_HYPOTHESIS_PROMPT - offset, "\"}]");
     }
     
@@ -539,7 +549,7 @@ int generate_grammar_hypotheses(hypothesis_context_t *ctx, int max_hypotheses) {
             strlen(prompt) > 200 ? prompt + strlen(prompt) - 200 : prompt);
     
     // Call LLM with structured prompt
-    fprintf(stderr, "[DEBUG] Calling chat_with_llm(model=gpt-4o-mini, max_tokens=3, temperature=0.3)...\n");
+    fprintf(stderr, "[DEBUG] Calling chat_with_llm(model=gpt-4o-mini, tries=3, temperature=0.3)...\n");
     char *response = chat_with_llm(prompt, "gpt-4o-mini", 3, 0.3);  // Low temperature for consistency
     fprintf(stderr, "[DEBUG] chat_with_llm returned: %p\n", (void*)response);
     
@@ -1039,15 +1049,27 @@ void add_counterexample(
     size_t len,
     const char *error_reason
 ) {
-    // Add counterexample
-    hyp->counterexamples = (char**)ck_realloc(hyp->counterexamples, 
+    /* Cap counterexample storage to avoid unbounded memory growth */
+    if (hyp->counterexample_count >= 200) return;
+
+    /* Limit individual counterexample to 128 bytes of hex (= 64 raw bytes)
+     * to keep refinement prompts reasonably sized. */
+    size_t hex_bytes = len > 64 ? 64 : len;
+
+    /* Hex-encode the message so binary data is JSON-safe.
+     * Format:  HEX[0a1b2c...] [Reason: ...] */
+    size_t ce_size = 4 + hex_bytes * 2 + 1 + 12 + strlen(error_reason) + 2;
+    char *ce = (char*)ck_alloc(ce_size);
+    int off = 0;
+    off += snprintf(ce + off, ce_size - off, "HEX[");
+    for (size_t i = 0; i < hex_bytes && (size_t)off < ce_size - 10; i++)
+        off += snprintf(ce + off, ce_size - off, "%02x", message[i]);
+    off += snprintf(ce + off, ce_size - off, "] [Reason: %s]", error_reason);
+
+    hyp->counterexamples = (char**)ck_realloc(hyp->counterexamples,
                                       (hyp->counterexample_count + 1) * sizeof(char*));
-    
-    char *ce = (char*)ck_alloc(len + 256);  // Message + error reason
-    snprintf(ce, len + 256, "%.*s [Reason: %s]", (int)len, message, error_reason);
-    
     hyp->counterexamples[hyp->counterexample_count++] = ce;
-    
+
     log_hypothesis_event(hyp, "COUNTEREXAMPLE", error_reason);
 }
 

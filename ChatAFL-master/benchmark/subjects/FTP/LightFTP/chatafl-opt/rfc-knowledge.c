@@ -49,6 +49,156 @@ static size_t rfc_write_callback(void *contents, size_t size, size_t nmemb, void
 }
 
 /* ============================================
+ * Helper: Strip HTML tags & collapse whitespace
+ * Used for specs served as HTML (e.g., OASIS MQTT)
+ * ============================================ */
+
+static char* strip_html_to_text(const char *html, size_t html_len) {
+    if (!html || html_len == 0) return NULL;
+
+    char *out = malloc(html_len + 1);
+    if (!out) return NULL;
+
+    size_t j = 0;
+    int in_tag = 0;
+    int in_style = 0;   /* inside <style>...</style> */
+    int in_script = 0;  /* inside <script>...</script> */
+    int prev_space = 0;
+    int newline_count = 0;
+
+    for (size_t i = 0; i < html_len; i++) {
+        /* Detect <style and <script opening tags */
+        if (!in_tag && html[i] == '<') {
+            /* Check for <style */
+            if (i + 6 < html_len &&
+                (html[i+1] == 's' || html[i+1] == 'S') &&
+                (html[i+2] == 't' || html[i+2] == 'T') &&
+                (html[i+3] == 'y' || html[i+3] == 'Y') &&
+                (html[i+4] == 'l' || html[i+4] == 'L') &&
+                (html[i+5] == 'e' || html[i+5] == 'E')) {
+                in_style = 1;
+            }
+            /* Check for <script */
+            if (i + 7 < html_len &&
+                (html[i+1] == 's' || html[i+1] == 'S') &&
+                (html[i+2] == 'c' || html[i+2] == 'C') &&
+                (html[i+3] == 'r' || html[i+3] == 'R') &&
+                (html[i+4] == 'i' || html[i+4] == 'I') &&
+                (html[i+5] == 'p' || html[i+5] == 'P') &&
+                (html[i+6] == 't' || html[i+6] == 'T')) {
+                in_script = 1;
+            }
+            in_tag = 1;
+            continue;
+        }
+
+        if (in_tag) {
+            if (html[i] == '>') {
+                in_tag = 0;
+                /* Check for closing </style> or </script> */
+                if (in_style) {
+                    /* Scan backwards from current '>' to see if we had /style */
+                    size_t k = i;
+                    while (k > 0 && html[k] != '<') k--;
+                    if (k < i && html[k+1] == '/') in_style = 0;
+                }
+                if (in_script) {
+                    size_t k = i;
+                    while (k > 0 && html[k] != '<') k--;
+                    if (k < i && html[k+1] == '/') in_script = 0;
+                }
+                /* Block-level tags insert newline */
+                /* (simplified: the '>' after </p>, </div>, </br>, </h*>, etc.) */
+            }
+            continue;
+        }
+
+        /* Skip content inside <style> and <script> blocks */
+        if (in_style || in_script) continue;
+
+        /* Handle HTML entities */
+        if (html[i] == '&') {
+            /* Common entities */
+            if (i + 3 < html_len && strncmp(&html[i], "&lt;", 4) == 0) {
+                out[j++] = '<'; i += 3; prev_space = 0; newline_count = 0; continue;
+            }
+            if (i + 3 < html_len && strncmp(&html[i], "&gt;", 4) == 0) {
+                out[j++] = '>'; i += 3; prev_space = 0; newline_count = 0; continue;
+            }
+            if (i + 4 < html_len && strncmp(&html[i], "&amp;", 5) == 0) {
+                out[j++] = '&'; i += 4; prev_space = 0; newline_count = 0; continue;
+            }
+            if (i + 5 < html_len && strncmp(&html[i], "&nbsp;", 6) == 0) {
+                out[j++] = ' '; i += 5; prev_space = 1; newline_count = 0; continue;
+            }
+            if (i + 5 < html_len && strncmp(&html[i], "&quot;", 6) == 0) {
+                out[j++] = '"'; i += 5; prev_space = 0; newline_count = 0; continue;
+            }
+            /* Skip unknown entities until ';' */
+            size_t ent_end = i + 1;
+            while (ent_end < html_len && ent_end < i + 10 && html[ent_end] != ';') ent_end++;
+            if (ent_end < html_len && html[ent_end] == ';') {
+                i = ent_end;
+                continue;
+            }
+        }
+
+        /* Collapse whitespace: multiple spaces/tabs → single space, limit newlines to 2 */
+        if (html[i] == '\n' || html[i] == '\r') {
+            newline_count++;
+            if (newline_count <= 2 && j > 0) {
+                out[j++] = '\n';
+            }
+            prev_space = 1;
+            continue;
+        }
+
+        if (html[i] == ' ' || html[i] == '\t') {
+            if (!prev_space && j > 0) {
+                out[j++] = ' ';
+            }
+            prev_space = 1;
+            continue;
+        }
+
+        /* Regular character */
+        out[j++] = html[i];
+        prev_space = 0;
+        newline_count = 0;
+    }
+
+    out[j] = '\0';
+
+    /* Trim leading whitespace */
+    size_t start = 0;
+    while (start < j && (out[start] == ' ' || out[start] == '\n' || out[start] == '\t'))
+        start++;
+
+    if (start > 0) {
+        memmove(out, out + start, j - start + 1);
+        j -= start;
+    }
+
+    printf("[RFC] Stripped HTML to text: %zu → %zu bytes (%.0f%% reduction)\n",
+           html_len, j, 100.0 * (1.0 - (double)j / html_len));
+
+    return out;
+}
+
+/* Helper: check if content looks like HTML */
+static int content_looks_like_html(const char *data, size_t size) {
+    if (!data || size < 15) return 0;
+    /* Check first 1000 bytes for HTML indicators */
+    size_t check_len = size < 1000 ? size : 1000;
+    for (size_t i = 0; i < check_len - 5; i++) {
+        if (strncasecmp(&data[i], "<html", 5) == 0) return 1;
+        if (strncasecmp(&data[i], "<!doc", 5) == 0) return 1;
+        if (strncasecmp(&data[i], "<head", 5) == 0) return 1;
+    }
+    return 0;
+}
+
+/* ============================================
  * RFC Lookup Functions
  * ============================================ */
 
@@ -228,7 +378,20 @@ char* fetch_rfc_text(const char *protocol_name) {
             
             printf("[RFC] ✓ Fetched RFC for %s (%zu bytes)\n", protocol_name, buffer.size);
             
-            // Save to cache
+            // Strip HTML tags if content looks like HTML (e.g., OASIS MQTT spec)
+            if (content_looks_like_html(buffer.data, buffer.size)) {
+                printf("[RFC] Content is HTML, stripping tags...\n");
+                char *text = strip_html_to_text(buffer.data, buffer.size);
+                if (text) {
+                    free(buffer.data);
+                    buffer.data = text;
+                    buffer.size = strlen(text);
+                } else {
+                    fprintf(stderr, "[RFC] ⚠ HTML stripping failed, using raw content\n");
+                }
+            }
+            
+            // Save to cache (save the stripped text so we don't re-strip)
             if (RFC_CACHE_ENABLED) {
                 save_to_cache(protocol_name, buffer.data);
             }

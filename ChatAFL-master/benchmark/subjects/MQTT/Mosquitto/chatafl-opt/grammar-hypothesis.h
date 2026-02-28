@@ -73,7 +73,8 @@ typedef struct hypothesis_context {
 void free_grammar_hypothesis(grammar_hypothesis_t *hyp);
 
 KHASH_MAP_INIT_STR(hypothesis_map, grammar_hypothesis_t*)
-#define __hypothesis_t_free(x) free_grammar_hypothesis(x)
+/* kmpfree_f receives a kl1_hyp* node pointer; access ->data to get the stored grammar_hypothesis_t* */
+#define __hypothesis_t_free(x) free_grammar_hypothesis((x)->data)
 KLIST_INIT(hyp, grammar_hypothesis_t *, __hypothesis_t_free)
 
 /* API */

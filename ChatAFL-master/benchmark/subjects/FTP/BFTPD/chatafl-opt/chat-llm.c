@@ -13,12 +13,8 @@
 // -lcurl -ljson-c -lpcre2-8
 // apt install libcurl4-openssl-dev libjson-c-dev libpcre2-dev libpcre2-8-0
 
-#define MAX_TOKENS 2048
+#define MAX_TOKENS 4096
 #define CONFIDENT_TIMES 3
-
-// Slow connection protection: abort if speed < 1KB/s for 30 seconds
-#define LLM_API_LOW_SPEED_LIMIT 1024L
-#define LLM_API_LOW_SPEED_TIME 30L
 
 struct MemoryStruct
 {
@@ -45,6 +41,9 @@ static size_t chat_with_llm_helper(void *contents, size_t size, size_t nmemb, vo
 
     return realsize;
 }
+
+/* forward declaration for validator used in llm_handle_plateau */
+static int is_garbage_response(const char *response, size_t len);
 
 char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
 {
@@ -78,19 +77,19 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
     {
         asprintf(&data, "{\"model\": \"gpt-4o-mini\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
     }
+    
+    // DEBUG: Print request data for hypothesis system debugging
+    if (strstr(prompt, "protocol") != NULL && strstr(prompt, "templates") != NULL) {
+        fprintf(stderr, "\n=== LLM REQUEST DEBUG ===\n");
+        fprintf(stderr, "URL: %s\n", url);
+        fprintf(stderr, "Data length: %zu bytes\n", strlen(data));
+        fprintf(stderr, "First 500 chars of data:\n%.500s\n", data);
+        fprintf(stderr, "========================\n\n");
+    }
+    
     curl_global_init(CURL_GLOBAL_DEFAULT);
-    int backoff = LLM_API_RETRY_BACKOFF_INIT;
-    int attempt = 0;
-    int should_retry = 1; // Flag to distinguish retryable vs fatal errors
     do
     {
-        if (attempt > 0) {
-            printf("[LLM] Retry attempt %d/%d after %d seconds backoff\n", attempt, tries, backoff);
-            sleep(backoff);
-            backoff *= 2; // Exponential backoff: 2 -> 4 -> 8 seconds
-        }
-        attempt++;
-        should_retry = 1; // Reset for each attempt
         struct MemoryStruct chunk;
 
         chunk.memory = malloc(1); /* will be grown as needed by the realloc above */
@@ -99,10 +98,6 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
         curl = curl_easy_init();
         if (curl)
         {
-            // CURL error buffer for detailed error messages
-            char curl_error_buffer[CURL_ERROR_SIZE];
-            curl_error_buffer[0] = '\0';
-            
             struct curl_slist *headers = NULL;
             headers = curl_slist_append(headers, auth_header);
             headers = curl_slist_append(headers, content_header);
@@ -114,16 +109,9 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, chat_with_llm_helper);
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
             
-            // Timeout configuration
-            curl_easy_setopt(curl, CURLOPT_TIMEOUT, (long)LLM_API_TIMEOUT);
-            curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, (long)LLM_API_CONNECT_TIMEOUT);
-            
-            // Slow connection protection: abort if speed < 1KB/s for 30s
-            curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, LLM_API_LOW_SPEED_LIMIT);
-            curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, LLM_API_LOW_SPEED_TIME);
-            
-            // Enable detailed error messages
-            curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, curl_error_buffer);
+            // Set timeouts to prevent hanging
+            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 120L);  // Total request timeout: 120 seconds
+            curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 30L);  // Connection timeout: 30 seconds
 
             res = curl_easy_perform(curl);
 
@@ -163,45 +151,7 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
             }
             else
             {
-                // Enhanced error handling with timeout type distinction
-                if (res == CURLE_OPERATION_TIMEDOUT) {
-                    printf("[LLM] ⏱ Operation timeout after %d seconds (attempt %d/%d)\n", 
-                           LLM_API_TIMEOUT, attempt, tries);
-                    if (strlen(curl_error_buffer) > 0) {
-                        printf("[LLM] Details: %s\n", curl_error_buffer);
-                    }
-                } else if (res == CURLE_COULDNT_CONNECT) {
-                    printf("[LLM] ⚠ Connection failed after %d seconds (attempt %d/%d)\n",
-                           LLM_API_CONNECT_TIMEOUT, attempt, tries);
-                    if (strlen(curl_error_buffer) > 0) {
-                        printf("[LLM] Details: %s\n", curl_error_buffer);
-                    }
-                } else if (res == CURLE_COULDNT_RESOLVE_HOST) {
-                    printf("[LLM] ❌ Fatal: Cannot resolve API host '%s'\n", url);
-                    should_retry = 0; // DNS failure is not retryable
-                } else if (res == CURLE_OUT_OF_MEMORY) {
-                    printf("[LLM] ❌ Fatal: Out of memory\n");
-                    should_retry = 0; // Memory exhaustion is not retryable
-                } else {
-                    // Generic error with detailed message
-                    printf("[LLM] Error: %s (attempt %d/%d)\n", curl_easy_strerror(res), attempt, tries);
-                    if (strlen(curl_error_buffer) > 0) {
-                        printf("[LLM] Details: %s\n", curl_error_buffer);
-                    }
-                }
-                
-                // Check HTTP status code for non-retryable errors
-                long http_code = 0;
-                curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-                if (http_code >= 400 && http_code < 500 && http_code != 429) {
-                    // 4xx errors (except 429 Too Many Requests) are client errors, don't retry
-                    printf("[LLM] ❌ Fatal: HTTP %ld client error, retry disabled\n", http_code);
-                    should_retry = 0;
-                } else if (http_code == 429) {
-                    printf("[LLM] ⚠ HTTP 429 Rate Limited, will retry with backoff\n");
-                } else if (http_code >= 500) {
-                    printf("[LLM] ⚠ HTTP %ld server error, will retry\n", http_code);
-                }
+                printf("Error: %s\n", curl_easy_strerror(res));
             }
 
             curl_slist_free_all(headers);
@@ -209,7 +159,7 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
         }
 
         free(chunk.memory);
-    } while ((res != CURLE_OK || answer == NULL) && (--tries > 0) && should_retry);
+    } while ((res != CURLE_OK || answer == NULL) && (--tries > 0));
 
     if (data != NULL)
     {
@@ -222,47 +172,283 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
 
 char *construct_prompt_stall(char *protocol_name, char *examples, char *history)
 {
-    char *template = "In the %s protocol, the communication history between the %s client and the %s server is as follows."
-                     "The next proper client request that can affect the server's state are:\\n\\n"
-                     "Desired format of real client requests:\\n%sCommunication History:\\n\\\"\\\"\\\"\\n%s\\\"\\\"\\\"";
+    /* Note: state_ctx is embedded via llm_handle_plateau before calling this;
+     * this base template is kept for backward compatibility. */
+    char *template = "You are an expert protocol fuzzing assistant analyzing the %s protocol. "
+                     "The fuzzer has reached a PLATEAU - no new code paths have been discovered recently.\n\n"
+                     "**Communication History (most recent interactions):**\n\"\"\"%s\"\"\"\n\n"
+                     "**Example Request Formats:**\n%s\n\n"
+                     "**Your Task:**\n"
+                     "1. Analyze the server's responses to identify:\n"
+                     "   - Repeated or stuck patterns\n"
+                     "   - Error messages that suggest unexplored features\n"
+                     "   - State transitions that haven't been tested\n"
+                     "   - Commands that might have optional parameters\n"
+                     "2. Suggest ONE specific request that:\n"
+                     "   - Explores a DIFFERENT code path (not just repeating recent commands)\n"
+                     "   - Tests edge cases: unusual values, boundary conditions, rare features\n"
+                     "   - Tries advanced protocol features if basic commands are exhausted\n"
+                     "   - Uses different parameter combinations or formats\n\n"
+                     "**Strategy Priorities:**\n"
+                     "- If seeing permission errors: try different authentication states or paths\n"
+                     "- If seeing parsing errors: try malformed but protocol-valid inputs\n"
+                     "- If commands succeed: try rare optional flags, extended syntax, or protocol extensions\n"
+                     "- Consider: uncommon commands, unusual sequences, protocol-specific edge cases\n\n"
+                     "**Response Format (STRICT JSON):**\n"
+                     "{\n"
+                     "  \"analysis\": \"Identify the pattern/bottleneck and explain why this specific request should break through\",\n"
+                     "  \"suggested_request\": \"EXACT_COMMAND with_parameters\\r\\n\"\n"
+                     "}\n\n"
+                     "Do NOT include markdown, code blocks, or any non-JSON text.";
 
     char *prompt = NULL;
-    asprintf(&prompt, template, protocol_name, protocol_name, protocol_name, examples, history);
+    asprintf(&prompt, template, protocol_name, history, examples);
 
-    char *final_prompt = NULL;
-
-    asprintf(&final_prompt, "[{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"}, {\"role\": \"user\", \"content\": \"%s\"}]", prompt);
-
+    // Use json-c library to build complete JSON array with proper escaping
+    struct json_object *messages_array = json_object_new_array();
+    
+    struct json_object *system_msg = json_object_new_object();
+    json_object_object_add(system_msg, "role", json_object_new_string("system"));
+    json_object_object_add(system_msg, "content", json_object_new_string("You are a protocol fuzzing assistant that returns only valid JSON."));
+    json_object_array_add(messages_array, system_msg);
+    
+    struct json_object *user_msg = json_object_new_object();
+    json_object_object_add(user_msg, "role", json_object_new_string("user"));
+    json_object_object_add(user_msg, "content", json_object_new_string(prompt));
+    json_object_array_add(messages_array, user_msg);
+    
+    const char *json_str = json_object_to_json_string(messages_array);
+    char *final_prompt = strdup(json_str);
+    
+    json_object_put(messages_array);
     free(prompt);
 
     return final_prompt;
 }
 
+/*
+ * llm_handle_plateau: state-aware plateau handler.
+ * - Builds a rich prompt embedding state coverage stats (state_ctx)
+ * - Asks LLM to return either suggested_request OR actions[]
+ * - Passes response back as raw JSON for parent-side validation
+ * state_ctx: JSON string like {"nodes":N,"edges":M,"growth_rate":X,...}, may be NULL
+ */
+char *llm_handle_plateau(const char *protocol_name, const char *examples,
+                         const char *history, const char *state_ctx) {
+    if (!protocol_name) return NULL;
+
+    /* Build state-aware prompt text */
+    char *state_section = NULL;
+    if (state_ctx && strlen(state_ctx) > 2) {
+        asprintf(&state_section,
+            "**Current Fuzzer State (IMPORTANT - use this to guide your suggestion):**\n"
+            "%s\n\n"
+            "Focus on protocol states with LOW coverage (low edge count). "
+            "If growth_rate is near 0, the fuzzer is completely stuck - be creative.\n\n",
+            state_ctx);
+    } else {
+        state_section = strdup("");
+    }
+
+    /* Build the full state-aware prompt string */
+    char *raw_prompt = NULL;
+    asprintf(&raw_prompt,
+        "You are an expert protocol fuzzing assistant analyzing the %s protocol.\n"
+        "The fuzzer has reached a PLATEAU - no new code paths have been discovered recently.\n\n"
+        "%s"
+        "**STATE DATA EXPLANATION:**\n"
+        "The `states` array lists protocol states sorted by effectiveness (LOWEST first = most stuck).\n"
+        "Each state has:\n"
+        "  - id: use this exact number in set_target_state or prioritize_seeds\n"
+        "  - paths: total execution paths covering this state\n"
+        "  - paths_discovered: NEW paths found when fuzzing this state (low = stuck)\n"
+        "  - selected_times: how many times fuzzer targeted this state\n"
+        "  - fuzzs: total fuzzing attempts on this state\n"
+        "  - seed_ids: exact seed indices reachable from this state (use in prioritize_seeds)\n\n"
+        "**Communication History (most recent interactions):**\n\"\"\"%s\"\"\"\n\n"
+        "**Example Request Formats:**\n%s\n\n"
+        "**Your Task:** Choose ONE strategy and return ONLY valid JSON:\n\n"
+        "Strategy A - Send a new specific request:\n"
+        "  {\"analysis\":\"...\", \"suggested_request\":\"EXACT_CMD\\r\\n\"}\n\n"
+        "Strategy B - State-aware seed/state actions (use REAL ids from the states[] data above):\n"
+        "  {\"analysis\":\"...\", \"actions\":[\n"
+        "    {\"type\":\"set_target_state\", \"state_id\":ID},\n"
+        "    {\"type\":\"prioritize_seeds\", \"seed_ids\":[N1,N2,N3]},\n"
+        "    {\"type\":\"propose_mutations\", \"seed_id\":N, \"ops\":[\n"
+        "       {\"op\":\"flip\",\"pos\":P,\"len\":L},\n"
+        "       {\"op\":\"insert\",\"pos\":P,\"bytes_base64\":\"BASE64\"}\n"
+        "    ]}\n"
+        "  ]}\n\n"
+        "**Decision Guide:**\n"
+        "- growth_rate=0 AND states[0].paths_discovered=0: use set_target_state to switch to a DIFFERENT state\n"
+        "- One state has high selected_times but low paths_discovered: use set_target_state + prioritize_seeds for that state\n"
+        "- States with seeds_count=0: cannot be targeted, skip them\n"
+        "- Use the EXACT state id and seed_ids numbers from the states[] data — do NOT invent IDs\n"
+        "- Strategy A (suggested_request) is best when history shows unrecognized commands\n\n"
+        "Respond with ONLY valid JSON. No markdown, no code blocks, no explanation outside JSON.",
+        protocol_name,
+        state_section ? state_section : "",
+        history ? history : "",
+        examples ? examples : "");
+    free(state_section);
+    if (!raw_prompt) return NULL;
+
+    /* Wrap in messages array for chat API */
+    struct json_object *messages_array = json_object_new_array();
+    struct json_object *system_msg = json_object_new_object();
+    json_object_object_add(system_msg, "role", json_object_new_string("system"));
+    json_object_object_add(system_msg, "content", json_object_new_string("You are a helpful protocol fuzzing assistant."));
+    json_object_array_add(messages_array, system_msg);
+    struct json_object *user_msg = json_object_new_object();
+    json_object_object_add(user_msg, "role", json_object_new_string("user"));
+    json_object_object_add(user_msg, "content", json_object_new_string(raw_prompt));
+    json_object_array_add(messages_array, user_msg);
+    free(raw_prompt);
+    char *prompt = strdup(json_object_to_json_string(messages_array));
+    json_object_put(messages_array);
+    if (!prompt) return NULL;
+
+    char *resp = chat_with_llm(prompt, "gpt-4o-mini", STALL_RETRIES, 1.2);
+    free(prompt);
+    if (!resp) return NULL;
+
+    if (is_garbage_response(resp, strlen(resp))) {
+        free(resp);
+        return NULL;
+    }
+
+    /* Try to parse resp as direct JSON first (LLM returned actions[] or suggested_request) */
+    struct json_object *jtry = json_tokener_parse(resp);
+    if (jtry) {
+        /* LLM returned valid JSON directly — pass through as-is */
+        const char *raw = json_object_to_json_string(jtry);
+        char *out = strdup(raw);
+        json_object_put(jtry);
+        free(resp);
+        return out;
+    }
+
+    /* Fallback: try to extract suggested_request from plain text */
+    char *stall_message = extract_stalled_message(resp, strlen(resp));
+    free(resp);
+    if (!stall_message) return NULL;
+
+    char *formatted = format_request_message(stall_message);
+    if (!formatted) return NULL;
+
+    /* Wrap into JSON for strict parent-side validation */
+    struct json_object *jroot = json_object_new_object();
+    json_object_object_add(jroot, "suggested_request", json_object_new_string(formatted));
+    const char *json_str = json_object_to_json_string(jroot);
+    char *out = strdup(json_str);
+    json_object_put(jroot);
+    ck_free(formatted);
+    return out;
+}
+
+/* Lookup table of per-protocol few-shot examples for grammar prompts.
+ * Each entry shows ONE representative message of that protocol using the
+ * exact <<VALUE>> template format so the LLM knows the expected output style.
+ * Format convention (same as rest of code):
+ *   \\n       -> literal \n seen by LLM
+ *   \\\"      -> literal " seen by LLM
+ *   \\\\r\\\\n -> literal \r\n seen by LLM
+ */
+typedef struct {
+    const char *name;
+    /* msg_type : short human-readable name of the示例 message type */
+    const char *msg_type;
+    /* example : the full "For the X protocol, the Y template is:\nY: [...]" string */
+    const char *example;
+} ProtocolExampleEntry;
+
+static const ProtocolExampleEntry PROTOCOL_EXAMPLE_TABLE[] = {
+    {"FTP",  "USER",
+     "For the FTP protocol, the USER client request template is:\\n"
+     "USER: [\\\"USER <<VALUE>>\\\\r\\\\n\\\"]"},
+    {"SMTP", "EHLO",
+     "For the SMTP protocol, the EHLO client request template is:\\n"
+     "EHLO: [\\\"EHLO <<VALUE>>\\\\r\\\\n\\\"]"},
+    {"RTSP", "DESCRIBE",
+     "For the RTSP protocol, the DESCRIBE client request template is:\\n"
+     "DESCRIBE: [\\\"DESCRIBE <<VALUE>>\\\\r\\\\n\\\","
+     "\\\"CSeq: <<VALUE>>\\\\r\\\\n\\\","
+     "\\\"User-Agent: <<VALUE>>\\\\r\\\\n\\\","
+     "\\\"Accept: <<VALUE>>\\\\r\\\\n\\\","
+     "\\\"\\\\r\\\\n\\\"]"},
+    {"HTTP", "GET",
+     "For the HTTP protocol, the GET client request template is:\\n"
+     "GET: [\\\"GET <<VALUE>> HTTP/1.1\\\\r\\\\n\\\","
+     "\\\"Host: <<VALUE>>\\\\r\\\\n\\\","
+     "\\\"\\\\r\\\\n\\\"]"},
+    {"SIP",  "REGISTER",
+     "For the SIP protocol, the REGISTER client request template is:\\n"
+     "REGISTER: [\\\"REGISTER sip:<<VALUE>> SIP/2.0\\\\r\\\\n\\\","
+     "\\\"Via: SIP/2.0/UDP <<VALUE>>\\\\r\\\\n\\\","
+     "\\\"From: <sip:<<VALUE>>>\\\\r\\\\n\\\","
+     "\\\"To: <sip:<<VALUE>>>\\\\r\\\\n\\\","
+     "\\\"CSeq: <<VALUE>> REGISTER\\\\r\\\\n\\\","
+     "\\\"\\\\r\\\\n\\\"]"},
+    {"DAAP", "login",
+     "For the DAAP protocol, the login client request template is:\\n"
+     "login: [\\\"GET /login?pairing-guid=<<VALUE>> HTTP/1.1\\\\r\\\\n\\\","
+     "\\\"Host: <<VALUE>>\\\\r\\\\n\\\","
+     "\\\"Client-DAAP-Version: <<VALUE>>\\\\r\\\\n\\\","
+     "\\\"\\\\r\\\\n\\\"]"},
+    {"MQTT", "CONNECT",
+     "For the MQTT protocol, the CONNECT packet template is:\\n"
+     "CONNECT: [\\\"\\\\x10<<VALUE>>\\\\x00\\\\x04MQTT\\\\x04<<VALUE>>\\\\x00\\\\x3c\\\\x00<<VALUE>>\\\"]"},
+    {"DNS",  "QUERY",
+     "For the DNS protocol, the QUERY request template is:\\n"
+     "QUERY: [\\\"<<VALUE>>\\\\x01\\\\x00\\\\x00\\\\x01\\\\x00\\\\x00\\\\x00\\\\x00\\\\x00\\\\x00<<VALUE>>\\\"]"},
+    {NULL, NULL, NULL}
+};
+
 char *construct_prompt_for_templates(char *protocol_name, char **final_msg)
 {
-    // Give one example for learning formats
-    char *prompt_rtsp_example = "For the RTSP protocol, the DESCRIBE client request template is:\\n"
-                                "DESCRIBE: [\\\"DESCRIBE <<VALUE>>\\\\r\\\\n\\\","
-                                "\\\"CSeq: <<VALUE>>\\\\r\\\\n\\\","
-                                "\\\"User-Agent: <<VALUE>>\\\\r\\\\n\\\","
-                                "\\\"Accept: <<VALUE>>\\\\r\\\\n\\\","
-                                "\\\"\\\\r\\\\n\\\"]";
-
-    char *prompt_http_example = "For the HTTP protocol, the GET client request template is:\\n"
-                                "GET: [\\\"GET <<VALUE>>\\\\r\\\\n\\\"]";
+    /* Find the same-protocol example to use as the few-shot anchor.
+     * Showing the LLM one concrete example of the TARGET protocol guides it
+     * to produce responses for the same command set rather than generic text. */
+    const char *anchor_example = NULL;
+    const char *anchor_msg_type = NULL;
+    for (int i = 0; PROTOCOL_EXAMPLE_TABLE[i].name != NULL; i++) {
+        if (strcasecmp(protocol_name, PROTOCOL_EXAMPLE_TABLE[i].name) == 0) {
+            anchor_example  = PROTOCOL_EXAMPLE_TABLE[i].example;
+            anchor_msg_type = PROTOCOL_EXAMPLE_TABLE[i].msg_type;
+            break;
+        }
+    }
+    /* Fallback for unknown protocols: use a generic format hint */
+    if (anchor_example == NULL) {
+        anchor_example  = PROTOCOL_EXAMPLE_TABLE[2].example; /* RTSP as generic shape */
+        anchor_msg_type = "request";
+    }
 
     char *msg = NULL;
-    asprintf(&msg, "%s\\n%s\\nFor the %s protocol, all of client request templates are :", prompt_rtsp_example, prompt_http_example, protocol_name);
+    asprintf(&msg,
+             "%s\\n"
+             "Following the same format above, for the %s protocol, "
+             "list ALL client request message templates (not just %s):",
+             anchor_example, protocol_name, anchor_msg_type);
     *final_msg = msg;
-    /** Format of prompt_grammars
-    prompt_grammars = [
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": msg}
-    ]
-     **/
-    char *prompt_grammars = NULL;
-
-    asprintf(&prompt_grammars, "[{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"}, {\"role\": \"user\", \"content\": \"%s\"}]", msg);
+    
+    // FIXED: Use json-c library to build complete JSON array with proper escaping
+    struct json_object *messages_array = json_object_new_array();
+    
+    struct json_object *system_msg = json_object_new_object();
+    json_object_object_add(system_msg, "role", json_object_new_string("system"));
+    json_object_object_add(system_msg, "content", json_object_new_string("You are a helpful assistant."));
+    json_object_array_add(messages_array, system_msg);
+    
+    struct json_object *user_msg = json_object_new_object();
+    json_object_object_add(user_msg, "role", json_object_new_string("user"));
+    json_object_object_add(user_msg, "content", json_object_new_string(msg));
+    json_object_array_add(messages_array, user_msg);
+    
+    const char *json_str = json_object_to_json_string(messages_array);
+    char *prompt_grammars = strdup(json_str);
+    
+    json_object_put(messages_array);
 
     return prompt_grammars;
 }
@@ -272,32 +458,182 @@ char *construct_prompt_for_remaining_templates(char *protocol_name, char *first_
     char *second_question = NULL;
     asprintf(&second_question, "For the %s protocol, other templates of client requests are:", protocol_name);
 
-    json_object *answer_str = json_object_new_string(first_answer);
-    // printf("The First Question\n%s\n\n", first_question);
-    // printf("The First Answer\n%s\n\n", first_answer);
-    // printf("The Second Question\n%s\n\n", second_question);
-    const char *answer_str_escaped = json_object_to_json_string(answer_str);
-
-    char *prompt = NULL;
-
-    asprintf(&prompt,
-             "["
-             "{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"},"
-             "{\"role\": \"user\", \"content\": \"%s\"},"
-             "{\"role\": \"assistant\", \"content\": %s },"
-             "{\"role\": \"user\", \"content\": \"%s\"}"
-             "]",
-             first_question, answer_str_escaped, second_question);
-
-    json_object_put(answer_str);
+    // FIXED: Use json-c library to build complete JSON array with proper escaping
+    struct json_object *messages_array = json_object_new_array();
+    
+    // System message
+    struct json_object *system_msg = json_object_new_object();
+    json_object_object_add(system_msg, "role", json_object_new_string("system"));
+    json_object_object_add(system_msg, "content", json_object_new_string("You are a helpful assistant."));
+    json_object_array_add(messages_array, system_msg);
+    
+    // First user question
+    struct json_object *user_msg1 = json_object_new_object();
+    json_object_object_add(user_msg1, "role", json_object_new_string("user"));
+    json_object_object_add(user_msg1, "content", json_object_new_string(first_question));
+    json_object_array_add(messages_array, user_msg1);
+    
+    // Assistant answer
+    struct json_object *assistant_msg = json_object_new_object();
+    json_object_object_add(assistant_msg, "role", json_object_new_string("assistant"));
+    json_object_object_add(assistant_msg, "content", json_object_new_string(first_answer));
+    json_object_array_add(messages_array, assistant_msg);
+    
+    // Second user question
+    struct json_object *user_msg2 = json_object_new_object();
+    json_object_object_add(user_msg2, "role", json_object_new_string("user"));
+    json_object_object_add(user_msg2, "content", json_object_new_string(second_question));
+    json_object_array_add(messages_array, user_msg2);
+    
+    const char *json_str = json_object_to_json_string(messages_array);
+    char *prompt = strdup(json_str);
+    
+    json_object_put(messages_array);
     free(second_question);
 
     return prompt;
 }
 
+/* Check if a string is valid UTF-8 */
+static int is_valid_utf8(const char *str, size_t len) {
+    size_t i = 0;
+    while (i < len) {
+        unsigned char c = str[i];
+        int bytes = 0;
+        
+        if (c <= 0x7F) {
+            bytes = 1;
+        } else if ((c & 0xE0) == 0xC0) {
+            bytes = 2;
+        } else if ((c & 0xF0) == 0xE0) {
+            bytes = 3;
+        } else if ((c & 0xF8) == 0xF0) {
+            bytes = 4;
+        } else {
+            return 0; // Invalid UTF-8 start byte
+        }
+        
+        // Check continuation bytes
+        for (int j = 1; j < bytes; j++) {
+            if (i + j >= len || (str[i + j] & 0xC0) != 0x80) {
+                return 0; // Invalid continuation byte
+            }
+        }
+        
+        i += bytes;
+    }
+    return 1;
+}
+
+/* Count non-ASCII characters in a string */
+static size_t count_non_ascii(const char *str, size_t len) {
+    size_t count = 0;
+    for (size_t i = 0; i < len; i++) {
+        if ((unsigned char)str[i] > 127) {
+            count++;
+        }
+    }
+    return count;
+}
+
+/* Check if LLM response appears to be garbage */
+static int is_garbage_response(const char *response, size_t len) {
+    if (!response || len == 0) return 1;
+    
+    // Check 1: Must be valid UTF-8
+    if (!is_valid_utf8(response, len)) {
+        fprintf(stderr, "[!] Response validation failed: Invalid UTF-8 encoding\n");
+        return 1;
+    }
+    
+    // Check 2: Non-ASCII ratio shouldn't exceed 40%
+    size_t non_ascii = count_non_ascii(response, len);
+    float non_ascii_ratio = (float)non_ascii / len;
+    if (non_ascii_ratio > 0.4) {
+        fprintf(stderr, "[!] Response validation failed: Too many non-ASCII characters (%.1f%%)\n", 
+                non_ascii_ratio * 100);
+        return 1;
+    }
+    
+    // Check 3: Should not be too short (less than 10 chars)
+    if (len < 10) {
+        fprintf(stderr, "[!] Response validation failed: Too short (%zu bytes)\n", len);
+        return 1;
+    }
+    
+    // Check 4: For JSON responses, check basic structure
+    if (response[0] == '{' || response[0] == '[') {
+        // Count braces
+        int open_braces = 0, close_braces = 0;
+        int open_brackets = 0, close_brackets = 0;
+        for (size_t i = 0; i < len; i++) {
+            if (response[i] == '{') open_braces++;
+            if (response[i] == '}') close_braces++;
+            if (response[i] == '[') open_brackets++;
+            if (response[i] == ']') close_brackets++;
+        }
+        
+        if (open_braces != close_braces || open_brackets != close_brackets) {
+            fprintf(stderr, "[!] Response validation failed: Mismatched braces/brackets " 
+                    "({:%d/%d, [:%d/%d)\n", 
+                    open_braces, close_braces, open_brackets, close_brackets);
+            return 1;
+        }
+    }
+    
+    return 0;
+}
+
 char *extract_stalled_message(char *message, size_t message_len)
 {
-
+    if (!message || message_len == 0) {
+        fprintf(stderr, "[!] extract_stalled_message: NULL or empty message\n");
+        return NULL;
+    }
+    
+    // Step 1: Validate response quality
+    if (is_garbage_response(message, message_len)) {
+        fprintf(stderr, "[!] LLM response failed quality validation, discarding\n");
+        return NULL;
+    }
+    
+    fprintf(stderr, "[+] LLM response passed quality validation\n");
+    
+    // Step 2: Try to parse as JSON (new format)
+    json_object *jobj = json_tokener_parse(message);
+    if (jobj) {
+        fprintf(stderr, "[+] Successfully parsed LLM response as JSON\n");
+        
+        // Extract suggested_request field
+        json_object *req_obj;
+        if (json_object_object_get_ex(jobj, "suggested_request", &req_obj)) {
+            const char *req_str = json_object_get_string(req_obj);
+            if (req_str && strlen(req_str) > 0) {
+                fprintf(stderr, "[+] Extracted suggested request: %.50s...\n", req_str);
+                char *result = strdup(req_str);
+                json_object_put(jobj);
+                return result;
+            }
+        }
+        
+        // Also try "request" field for backward compatibility
+        if (json_object_object_get_ex(jobj, "request", &req_obj)) {
+            const char *req_str = json_object_get_string(req_obj);
+            if (req_str && strlen(req_str) > 0) {
+                fprintf(stderr, "[+] Extracted request: %.50s...\n", req_str);
+                char *result = strdup(req_str);
+                json_object_put(jobj);
+                return result;
+            }
+        }
+        
+        json_object_put(jobj);
+        fprintf(stderr, "[!] JSON parsed but no 'suggested_request' or 'request' field found\n");
+    }
+    
+    // Step 3: Fallback to regex extraction (old format)
+    fprintf(stderr, "[*] Falling back to regex extraction for non-JSON response\n");
+    
     int errornumber;
     size_t erroroffset;
     // After a lot of iterations, the model consistently responds with an empty line and then a line of text
@@ -309,12 +645,255 @@ char *extract_stalled_message(char *message, size_t message_len)
     {
         size_t *ovector = pcre2_get_ovector_pointer(match_data);
         res = strdup(message + ovector[1]);
+        fprintf(stderr, "[+] Regex extraction result: %.50s...\n", res);
+    } else {
+        fprintf(stderr, "[!] Regex extraction failed\n");
     }
 
     pcre2_match_data_free(match_data);
     pcre2_code_free(extracter);
 
     return res;
+}
+
+/* Extract protocol commands from LLM's natural language response
+ * This parses markdown code blocks and extracts actual protocol commands
+ * Filters control characters (0x00-0x1F and 0x7F, except \r\n\t)
+ * Returns: cleaned protocol data or NULL if extraction fails
+ */
+char *extract_protocol_commands_from_response(char *llm_response)
+{
+    if (!llm_response || strlen(llm_response) == 0) {
+        return NULL;
+    }
+
+    size_t resp_len = strlen(llm_response);
+    size_t capacity = resp_len + 1;
+    char *extracted = ck_alloc(capacity);
+    size_t out_pos = 0;
+    
+    // Look for code blocks: ```...``` or just protocol commands
+    char *code_start = strstr(llm_response, "```");
+    char *code_end = NULL;
+    
+    if (code_start) {
+        // Skip past the opening ```
+        code_start += 3;
+        // Skip optional language identifier (e.g., ```ftp or ```plaintext)
+        while (*code_start && (*code_start == '\n' || *code_start == '\r' || 
+               (*code_start >= 'a' && *code_start <= 'z'))) {
+            if (*code_start == '\n') break;
+            code_start++;
+        }
+        if (*code_start == '\n') code_start++;
+        
+        // Find closing ```
+        code_end = strstr(code_start, "```");
+        if (code_end) {
+            // Parse line by line within the code block
+            char *line_start = code_start;
+            while (line_start < code_end) {
+                // Skip leading whitespace
+                while (line_start < code_end && (*line_start == ' ' || *line_start == '\t')) {
+                    line_start++;
+                }
+                
+                // Find end of line
+                char *line_end = line_start;
+                while (line_end < code_end && *line_end != '\n' && *line_end != '\r') {
+                    line_end++;
+                }
+                
+                size_t line_len = line_end - line_start;
+                
+                // Check if this line looks like a protocol command
+                if (line_len > 0 && line_len < 1024) {
+                    int is_valid = 0;
+                    /* Multi-protocol: FTP, SMTP, RTSP, SIP, HTTP, DAAP, MQTT */
+                    const char *proto_commands[] = {
+                        /* FTP */
+                        "USER","PASS","CWD","PWD","LIST","RETR","STOR","DELE",
+                        "MKD","RMD","RNFR","RNTO","QUIT","SYST","TYPE","PORT",
+                        "PASV","ABOR","HELP","NOOP","STAT","APPE","REST","SIZE",
+                        "MDTM","FEAT","OPTS","ALLO","CDUP","SMNT","REIN","STOU",
+                        "STRU","MODE","EPSV","EPRT","MLSD","MLST","SITE",
+                        /* SMTP */
+                        "EHLO","HELO","MAIL","RCPT","DATA","RSET","VRFY","EXPN",
+                        "AUTH","STARTTLS","SAML","SOML","SEND","TURN",
+                        /* RTSP */
+                        "OPTIONS","DESCRIBE","SETUP","PLAY","PAUSE","TEARDOWN",
+                        "GET_PARAMETER","SET_PARAMETER","ANNOUNCE","RECORD","REDIRECT",
+                        /* SIP */
+                        "INVITE","ACK","BYE","CANCEL","REGISTER","INFO","PRACK",
+                        "SUBSCRIBE","NOTIFY","UPDATE","REFER","MESSAGE","PUBLISH",
+                        /* HTTP */
+                        "GET","POST","PUT","DELETE","HEAD","CONNECT","TRACE","PATCH",
+                        NULL
+                    };
+                    for (int i = 0; proto_commands[i] != NULL; i++) {
+                        size_t cmd_len = strlen(proto_commands[i]);
+                        if (line_len >= cmd_len &&
+                            strncmp(line_start, proto_commands[i], cmd_len) == 0 &&
+                            (line_len == cmd_len || line_start[cmd_len] == ' ' || line_start[cmd_len] == '\r')) {
+                            is_valid = 1;
+                            break;
+                        }
+                    }
+                    
+                    // Skip comment lines (starting with # or ; or //)
+                    if (line_len > 0 && (line_start[0] == '#' || line_start[0] == ';' || 
+                        (line_len > 1 && line_start[0] == '/' && line_start[1] == '/'))) {
+                        is_valid = 0;
+                    }
+                    
+                    if (is_valid) {
+                        // Ensure we have space
+                        if (out_pos + line_len + 2 >= capacity) {
+                            capacity = (out_pos + line_len + 100) * 2;
+                            extracted = ck_realloc(extracted, capacity);
+                        }
+                        
+                        // Copy the line byte-by-byte, filtering control chars and comments
+                        for (size_t j = 0; j < line_len; j++) {
+                            unsigned char byte = (unsigned char)line_start[j];
+                            
+                            // Check for inline comments (;, #, //)
+                            if (byte == ';' || byte == '#' ||
+                                (j + 1 < line_len && byte == '/' && line_start[j+1] == '/')) {
+                                // Stop at comment - don't copy anything after this
+                                break;
+                            }
+                            
+                            // Filter control characters (0x00-0x1F and 0x7F)
+                            // BUT keep \r (0x0D), \n (0x0A), \t (0x09)
+                            if ((byte < 0x20 && byte != '\r' && byte != '\n' && byte != '\t') || byte == 0x7F) {
+                                // Skip control characters like \x01, \x02, etc.
+                                continue;
+                            }
+                            
+                            extracted[out_pos++] = byte;
+                        }
+                        
+                        // Trim trailing whitespace
+                        while (out_pos > 0 && (extracted[out_pos-1] == ' ' || extracted[out_pos-1] == '\t')) {
+                            out_pos--;
+                        }
+                        
+                        // Add newline if not present
+                        if (out_pos > 0 && extracted[out_pos-1] != '\n') {
+                            extracted[out_pos++] = '\n';
+                        }
+                    }
+                }
+                
+                // Move to next line
+                line_start = line_end;
+                while (line_start < code_end && (*line_start == '\n' || *line_start == '\r')) {
+                    line_start++;
+                }
+            }
+        }
+    }
+    
+    // If no code block found or extraction failed, try to extract commands from entire response
+    if (out_pos == 0) {
+        char *line_start = llm_response;
+        char *response_end = llm_response + resp_len;
+        
+        while (line_start < response_end) {
+            // Skip leading whitespace
+            while (line_start < response_end && (*line_start == ' ' || *line_start == '\t')) {
+                line_start++;
+            }
+            
+            char *line_end = line_start;
+            while (line_end < response_end && *line_end != '\n' && *line_end != '\r') {
+                line_end++;
+            }
+            
+            size_t line_len = line_end - line_start;
+            
+            if (line_len > 0 && line_len < 1024) {
+                /* Multi-protocol: FTP, SMTP, RTSP, SIP, HTTP, DAAP, MQTT */
+                const char *proto_commands[] = {
+                    /* FTP */
+                    "USER","PASS","CWD","PWD","LIST","RETR","STOR","DELE",
+                    "MKD","RMD","RNFR","RNTO","QUIT","SYST","TYPE","PORT",
+                    "PASV","ABOR","HELP","NOOP","STAT","APPE","REST","SIZE",
+                    "MDTM","FEAT","OPTS","ALLO","CDUP","SMNT","REIN","STOU",
+                    "STRU","MODE","EPSV","EPRT","MLSD","MLST","SITE",
+                    /* SMTP */
+                    "EHLO","HELO","MAIL","RCPT","DATA","RSET","VRFY","EXPN",
+                    "AUTH","STARTTLS","SAML","SOML","SEND","TURN",
+                    /* RTSP */
+                    "OPTIONS","DESCRIBE","SETUP","PLAY","PAUSE","TEARDOWN",
+                    "GET_PARAMETER","SET_PARAMETER","ANNOUNCE","RECORD","REDIRECT",
+                    /* SIP */
+                    "INVITE","ACK","BYE","CANCEL","REGISTER","INFO","PRACK",
+                    "SUBSCRIBE","NOTIFY","UPDATE","REFER","MESSAGE","PUBLISH",
+                    /* HTTP */
+                    "GET","POST","PUT","DELETE","HEAD","CONNECT","TRACE","PATCH",
+                    NULL
+                };
+                for (int i = 0; proto_commands[i] != NULL; i++) {
+                    size_t cmd_len = strlen(proto_commands[i]);
+                    if (line_len >= cmd_len &&
+                        strncmp(line_start, proto_commands[i], cmd_len) == 0 &&
+                        (line_len == cmd_len || line_start[cmd_len] == ' ' || line_start[cmd_len] == '\r')) {
+                        
+                        if (out_pos + line_len + 2 >= capacity) {
+                            capacity = (out_pos + line_len + 100) * 2;
+                            extracted = ck_realloc(extracted, capacity);
+                        }
+                        
+                        // Copy byte-by-byte with control character filtering
+                        for (size_t j = 0; j < line_len; j++) {
+                            unsigned char byte = (unsigned char)line_start[j];
+                            
+                            // Check for inline comments
+                            if (byte == ';' || byte == '#' ||
+                                (j + 1 < line_len && byte == '/' && line_start[j+1] == '/')) {
+                                break;
+                            }
+                            
+                            // Filter control characters (keep \r, \n, \t only)
+                            if ((byte < 0x20 && byte != '\r' && byte != '\n' && byte != '\t') || byte == 0x7F) {
+                                continue;
+                            }
+                            
+                            extracted[out_pos++] = byte;
+                        }
+                        
+                        // Trim trailing whitespace
+                        while (out_pos > 0 && (extracted[out_pos-1] == ' ' || extracted[out_pos-1] == '\t')) {
+                            out_pos--;
+                        }
+                        
+                        // Add newline if not present
+                        if (out_pos > 0 && extracted[out_pos-1] != '\n') {
+                            extracted[out_pos++] = '\n';
+                        }
+                        break;
+                    }
+                }
+            }
+            
+            // Move to next line
+            line_start = line_end;
+            while (line_start < response_end && (*line_start == '\n' || *line_start == '\r')) {
+                line_start++;
+            }
+        }
+    }
+    
+    // Finalize the result
+    if (out_pos == 0) {
+        ck_free(extracted);
+        return NULL;
+    }
+    
+    extracted[out_pos] = '\0';
+    return extracted;
 }
 
 char *format_request_message(char *message)
@@ -433,10 +1012,11 @@ char *construct_prompt_for_requests_to_states(const char *protocol_name,
         example_request_len = EXAMPLE_SEQUENCE_PROMPT_LENGTH;
     }
 
+    // Build content string
     char *content = NULL;
     asprintf(&content,
-             "In the %s protocol, if the server just starts, to reach the INIT state, the sequence of client requests can be:\\n"
-             "%.*s\\nSimilarly, in the %s protocol, if the server just starts, to reach the %.*s state, the sequence of client requests can be:\\n",
+             "In the %s protocol, if the server just starts, to reach the INIT state, the sequence of client requests can be:\n"
+             "%.*s\nSimilarly, in the %s protocol, if the server just starts, to reach the %.*s state, the sequence of client requests can be:\n",
              protocol_name,
              example_request_len,
              example_requests_json_str + 1,
@@ -444,8 +1024,23 @@ char *construct_prompt_for_requests_to_states(const char *protocol_name,
              (int)strlen(protocol_state_json_str) - 2,
              protocol_state_json_str + 1);
 
-    asprintf(&prompt, "[{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"}, {\"role\": \"user\", \"content\": \"%s\"}]", content);
+    // Use json-c to properly construct the entire JSON structure
+    json_object *messages_array = json_object_new_array();
     
+    json_object *system_msg = json_object_new_object();
+    json_object_object_add(system_msg, "role", json_object_new_string("system"));
+    json_object_object_add(system_msg, "content", json_object_new_string("You are a helpful assistant."));
+    json_object_array_add(messages_array, system_msg);
+    
+    json_object *user_msg = json_object_new_object();
+    json_object_object_add(user_msg, "role", json_object_new_string("user"));
+    json_object_object_add(user_msg, "content", json_object_new_string(content));
+    json_object_array_add(messages_array, user_msg);
+    
+    const char *json_str = json_object_to_json_string(messages_array);
+    prompt = strdup(json_str);
+    
+    json_object_put(messages_array);
     free(content);
     json_object_put(protocol_state_json);
     json_object_put(example_requests_json);
@@ -990,12 +1585,64 @@ int min(int a, int b) {
     return a < b ? a : b;
 }
 
-char *enrich_sequence(char *sequence, khash_t(strSet) * missing_message_types)
+/* Per-protocol hints for the enrichment prompt */
+typedef struct {
+    const char *name;
+    const char *sequences;  /* typical command/message sequences to explore */
+    const char *errors;     /* error/boundary cases specific to this protocol */
+} EnrichHintEntry;
+
+static const EnrichHintEntry ENRICH_HINT_TABLE[] = {
+    {"FTP",  "ALLO+STOR, REST+RETR, REIN, PASV/PORT switches, MLSD/MLST",
+             "invalid paths (/../..), long filenames (256+ chars), permission denials, case variants (MKD vs mkd)"},
+    {"SMTP", "EHLO+MAIL+RCPT+DATA, AUTH LOGIN/PLAIN, VRFY/EXPN probing, RSET+MAIL chains",
+             "malformed addresses, oversized headers, repeated RSET, missing EHLO, bare CR/LF"},
+    {"RTSP", "DESCRIBE+SETUP+PLAY+PAUSE+TEARDOWN, interleaved channel requests, OPTIONS probing",
+             "invalid session IDs, malformed stream URIs, unsupported transport specs, bad CSeq"},
+    {"HTTP", "GET/POST/PUT/DELETE/OPTIONS/HEAD sequences, pipelining, chunked transfer, keep-alive",
+             "path traversal (/../), oversized headers, invalid methods, malformed URIs, HTTP/0.9"},
+    {"SIP",  "REGISTER+INVITE+ACK+BYE, CANCEL, OPTIONS, re-registration, forked dialogs",
+             "malformed SIP URIs, missing Via/From/To headers, invalid CSeq, loop detection"},
+    {"DAAP", "login+server-info+update+databases+items+containers sequences, session management",
+             "invalid session tokens, malformed content-codes, unexpected revision numbers"},
+    {"MQTT", "CONNECT+SUBSCRIBE+PUBLISH+UNSUBSCRIBE+DISCONNECT, PINGREQ/PINGRESP, QoS 0/1/2",
+             "oversized client IDs, invalid topic filters, will message variations, clean session"},
+    {"DNS",  "A/AAAA/MX/NS/PTR/TXT/SOA query sequences, recursive vs iterative",
+             "malformed labels, oversized names, EDNS options, DNSSEC flag variations"},
+    {NULL, NULL, NULL}
+};
+
+char *enrich_sequence(char *sequence, khash_t(strSet) *missing_message_types, const char *protocol_name)
 {
+    /* Look up protocol-specific hints */
+    const EnrichHintEntry *hint = NULL;
+    if (protocol_name) {
+        for (int i = 0; ENRICH_HINT_TABLE[i].name != NULL; i++) {
+            if (strcasecmp(protocol_name, ENRICH_HINT_TABLE[i].name) == 0) {
+                hint = &ENRICH_HINT_TABLE[i];
+                break;
+            }
+        }
+    }
+    const char *proto   = (protocol_name && *protocol_name) ? protocol_name : "network";
+    const char *seqs    = hint ? hint->sequences : "command sequences and state transitions";
+    const char *errors  = hint ? hint->errors    : "invalid parameters, oversized values, boundary inputs";
+
     const char *prompt_template =
-        "The following is one sequence of client requests:\\n"
-        "%.*s\\n"
-        "Please add the %.*s client requests in the proper locations, and the modified sequence of client requests is:";
+        "You are a fuzzing expert testing a %s server. Current request sequence:\n"
+        "%.*s\n\n"
+        "Task: Add %.*s messages to MAXIMIZE code coverage by:\n"
+        "1. EXPLORE new paths: Use uncommon %s combinations (%s)\n"
+        "2. TRIGGER errors: %s\n"
+        "3. TEST boundaries: Long values (256+ chars), special chars (@#$%%%%^), empty args\n"
+        "4. CREATE complexity: Nested sequences, rename chains, concurrent operations\n"
+        "5. PROBE edge cases: Case variants, repeated messages, unusual state transitions\n\n"
+        "Requirements:\n"
+        "- Generate messages that cover DIFFERENT code branches\n"
+        "- Include both valid and INVALID scenarios\n"
+        "- Use diverse parameters\n"
+        "- Insert messages at strategic positions to maximize state transitions\n\n"
+        "Output ONLY the modified message sequence (no explanations):";
 
     int missing_fields_len = 0;
     int missing_fields_capacity = 100;
@@ -1029,26 +1676,55 @@ char *enrich_sequence(char *sequence, khash_t(strSet) * missing_message_types)
     char *prompt = NULL;
     char *content = NULL;
 
-    json_object *sequence_escaped = json_object_new_string(sequence);
-    const char *sequence_escaped_str = json_object_to_json_string(sequence_escaped);
-    sequence_escaped_str++;
+    // FIXED: Use json-c library properly to handle ALL escaping automatically
+    // json-c will correctly escape control characters as \uXXXX in the final JSON
 
-    int sequence_len = strlen(sequence_escaped_str) - 1;
-    int allowed_tokens = (MAX_TOKENS - strlen(prompt_template) - missing_fields_len);
-    if (sequence_len > allowed_tokens)
-    {
-        sequence_len = allowed_tokens;
-    }
-    asprintf(&content, prompt_template, sequence_len, sequence_escaped_str, missing_fields_len, missing_fields_seq);
-    asprintf(&prompt, "[{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"}, {\"role\": \"user\", \"content\": \"%s\"}]", content);
+    // Build the content string from protocol-aware template
+    asprintf(&content, prompt_template,
+             proto,
+             (int)strlen(sequence), sequence,
+             missing_fields_len, missing_fields_seq,
+             proto, seqs,
+             errors);
     
+    // Create JSON array using json-c (this handles ALL escaping correctly)
+    struct json_object *messages_array = json_object_new_array();
+    
+    // System message
+    struct json_object *system_msg = json_object_new_object();
+    json_object_object_add(system_msg, "role", json_object_new_string("system"));
+    json_object_object_add(system_msg, "content", json_object_new_string("You are a helpful assistant."));
+    json_object_array_add(messages_array, system_msg);
+    
+    // User message - json-c will automatically escape control characters
+    struct json_object *user_msg = json_object_new_object();
+    json_object_object_add(user_msg, "role", json_object_new_string("user"));
+    json_object_object_add(user_msg, "content", json_object_new_string(content));
+    json_object_array_add(messages_array, user_msg);
+    
+    // Get JSON string - json-c handles all escaping including \x01, \x04, \x1e etc.
+    const char *json_str = json_object_to_json_string(messages_array);
+    prompt = strdup(json_str);
+    
+    // Cleanup
+    json_object_put(messages_array);  // This frees system_msg and user_msg too
     free(content);
     ck_free(missing_fields_seq);
-    json_object_put(sequence_escaped);
 
     char *response = chat_with_llm(prompt, "gpt-4o-mini", ENRICHMENT_RETRIES, 0.5);
 
     free(prompt);
+
+    // Extract protocol commands from LLM's natural language response
+    if (response) {
+        char *extracted_commands = extract_protocol_commands_from_response(response);
+        if (extracted_commands) {
+            free(response);
+            return extracted_commands;
+        }
+        // If extraction fails, log warning but return original response as fallback
+        fprintf(stderr, "[WARNING] Failed to extract protocol commands from LLM response, using raw response\\n");
+    }
 
     return response;
 }

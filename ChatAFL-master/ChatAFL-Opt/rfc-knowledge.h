@@ -79,10 +79,10 @@ static const rfc_info_t RFC_DATABASE[] = {
     },
     {
         .protocol_name = "MQTT",
-        .rfc_number = "RFC 9293",
-        .rfc_url = "https://www.rfc-editor.org/rfc/rfc9293.txt",
-        .description = "MQTT Version 3.1.1",
-        .has_ietf_spec = 1
+        .rfc_number = "OASIS mqtt-v3.1.1",
+        .rfc_url = "https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html",
+        .description = "MQTT Version 3.1.1 (OASIS Standard, not IETF RFC)",
+        .has_ietf_spec = 0
     },
     // Terminator
     { .protocol_name = NULL }

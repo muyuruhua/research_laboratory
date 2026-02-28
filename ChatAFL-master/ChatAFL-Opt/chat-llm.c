@@ -247,7 +247,7 @@ char *llm_handle_plateau(const char *protocol_name, const char *examples,
             "If growth_rate is near 0, the fuzzer is completely stuck - be creative.\n\n",
             state_ctx);
     } else {
-        asprintf(&state_section, "");
+        state_section = strdup("");
     }
 
     /* Build the full state-aware prompt string */
