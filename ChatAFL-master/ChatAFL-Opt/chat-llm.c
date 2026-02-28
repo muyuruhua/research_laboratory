@@ -1545,18 +1545,18 @@ khash_t(strSet) * duplicate_hash(khash_t(strSet) * set)
 //         return newCombinations;
 //     }
 // }
-void make_combination(khash_t(strSet)* sequence, char** data , message_set_list* res,khiter_t st, khiter_t end, int index, int size);
+void make_combination(khash_t(strSet)* sequence, const char** data , message_set_list* res,khiter_t st, khiter_t end, int index, int size);
 
 message_set_list message_combinations(khash_t(strSet)* sequence, int size)
 {
     message_set_list res;
     kv_init(res);
-    char* data[size];
+    const char* data[size];
     make_combination(sequence,data, &res, kh_begin(sequence), kh_end(sequence), 0, size);
     return res;
 }
 
-void make_combination(khash_t(strSet)* sequence, char** data , message_set_list* res,khiter_t st, khiter_t end,
+void make_combination(khash_t(strSet)* sequence, const char** data , message_set_list* res,khiter_t st, khiter_t end,
                      int index, int size)
 {
 

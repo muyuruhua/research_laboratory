@@ -68,8 +68,43 @@ static unsigned char mqtt_name_to_nibble(const char *name) {
 
 int is_binary_protocol(const char *protocol_name) {
     if (!protocol_name) return 0;
-    return (strcasecmp(protocol_name, "MQTT") == 0 ||
-            strcasecmp(protocol_name, "DNS")  == 0);
+    return (strcasecmp(protocol_name, "MQTT")   == 0 ||
+            strcasecmp(protocol_name, "DNS")    == 0 ||
+            strcasecmp(protocol_name, "DTLS12") == 0 ||
+            strcasecmp(protocol_name, "TLS")    == 0 ||
+            strcasecmp(protocol_name, "SSH")    == 0 ||
+            strcasecmp(protocol_name, "DICOM")  == 0);
+}
+
+/* Extract the first token from a text protocol message region
+ * as the message type keyword (e.g., "USER", "GET", "INVITE").
+ * Returns a newly allocated string via ck_alloc, or NULL.
+ * Caller must free with ck_free(). */
+char* extract_text_message_type(const unsigned char *buf, size_t len) {
+    if (!buf || len == 0) return NULL;
+
+    /* Skip leading whitespace / CRLF */
+    size_t start = 0;
+    while (start < len && (buf[start] == ' '  || buf[start] == '\t' ||
+                           buf[start] == '\r' || buf[start] == '\n'))
+        start++;
+
+    if (start >= len) return NULL;
+
+    /* Find end of first token (delimited by space, tab, or CRLF) */
+    size_t end = start;
+    while (end < len && buf[end] != ' '  && buf[end] != '\t' &&
+                        buf[end] != '\r' && buf[end] != '\n')
+        end++;
+
+    size_t token_len = end - start;
+    if (token_len == 0 || token_len > 64) return NULL;  /* sanity check */
+
+    char *type = ck_alloc(token_len + 1);
+    memcpy(type, buf + start, token_len);
+    type[token_len] = '\0';
+
+    return type;
 }
 
 /* ============================================

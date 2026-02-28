@@ -120,87 +120,722 @@ hypothesis_context_t* init_hypothesis_context(
  * ============================================ */
 
 /* ============================================
- * RFC Smart Extraction Functions
+ * RFC Smart Extraction Functions (v2)
+ * ============================================
+ * Execution order:
+ *   Step 1: Grammar block extraction (40% budget)
+ *           - Text protocols → ABNF rules  (name = def)
+ *           - Binary protocols → struct/enum/byte-table blocks
+ *   Step 2: Section-boundary parsing → numbered RFC sections
+ *   Step 3: Scored section selection → greedily fill remaining budget
+ *
+ * Design rationale:
+ *   - ABNF rules (text) / struct+enum defs (binary) are the single
+ *     most valuable content for grammar hypothesis generation.
+ *   - Numbered RFC sections have clear boundaries; extracting whole
+ *     sections preserves semantic coherence.
+ *   - Protocol-specific scoring prioritizes relevant sections.
  * ============================================ */
 
-char* extract_rfc_key_sections(const char *rfc_text, size_t max_chars) {
-    // Priority sections for protocol grammar learning:
-    // 1. Command definitions (USER, PASS, GET, POST, etc.)
-    // 2. ABNF grammar rules
-    // 3. Response code tables (2xx, 3xx, 4xx, 5xx)
-    // 4. State machine descriptions
-    // 5. Message format specifications
-    
-    if (!rfc_text) return NULL;
-    
-    size_t rfc_len = strlen(rfc_text);
-    
-    // If RFC is small enough, use it all
-    if (rfc_len <= max_chars) {
-        return (char*)ck_strdup((u8*)rfc_text);
+/* Local helper: is this a binary-framed protocol?
+ * Must stay in sync with hypothesis-adapter.c::is_binary_protocol(). */
+static int rfc_is_binary_protocol(const char *name) {
+    if (!name) return 0;
+    return (strcasecmp(name, "MQTT")   == 0 ||
+            strcasecmp(name, "DNS")    == 0 ||
+            strcasecmp(name, "DTLS12") == 0 ||
+            strcasecmp(name, "TLS")    == 0 ||
+            strcasecmp(name, "SSH")    == 0 ||
+            strcasecmp(name, "DICOM")  == 0);
+}
+
+/* --- Section representation for RFC parsing --- */
+typedef struct {
+    size_t start;     /* byte offset in rfc_text */
+    size_t end;       /* byte offset (exclusive) */
+    int    score;     /* relevance score */
+    char   title[128];
+} rfc_section_t;
+
+#define MAX_RFC_SECTIONS 256
+
+/* --- Protocol-specific keyword tables --- */
+typedef struct {
+    const char *protocol;
+    const char *keywords[20]; /* NULL-terminated */
+} protocol_keyword_table_t;
+
+static const protocol_keyword_table_t PROTOCOL_KEYWORDS[] = {
+    { "FTP", { "Command", "Reply", "Transfer", "Access Control",
+               "Authentication", "Data Connection", "USER", "PASS",
+               "RETR", "STOR", "LIST", "QUIT", "TYPE", NULL } },
+    { "SMTP", { "Command", "Reply", "Mail Transaction", "EHLO", "HELO",
+                "MAIL FROM", "RCPT TO", "DATA", "RSET", "VRFY", "NOOP",
+                "QUIT", "Extension", NULL } },
+    { "HTTP", { "Request", "Response", "Method", "Status", "Header",
+                "GET", "POST", "PUT", "DELETE", "Content-Type",
+                "Transfer-Encoding", "Message Body", NULL } },
+    { "RTSP", { "Request", "Response", "Method", "Status", "Header",
+                "DESCRIBE", "SETUP", "PLAY", "PAUSE", "TEARDOWN",
+                "Session", "Transport", NULL } },
+    { "SIP",  { "Request", "Response", "Method", "Header", "Dialog",
+                "Transaction", "INVITE", "ACK", "BYE", "CANCEL",
+                "REGISTER", "OPTIONS", "Via", "Contact", "CSeq", NULL } },
+    { "MQTT", { "CONNECT", "PUBLISH", "SUBSCRIBE", "UNSUBSCRIBE",
+                "PINGREQ", "DISCONNECT", "Packet", "Fixed Header",
+                "Variable Header", "Payload", "QoS", "Topic", NULL } },
+    { "DNS",  { "Query", "Response", "Resource Record", "Header",
+                "QTYPE", "QCLASS", "RCODE", "OPCODE", "Domain Name",
+                "Label", "Pointer", NULL } },
+    { "DTLS12", { "Handshake", "Record", "ClientHello", "ServerHello",
+                  "Fragment", "Retransmission", "Epoch", "Sequence",
+                  "Cookie", "Alert", NULL } },
+    { "TLS",  { "Handshake", "Record", "ClientHello", "ServerHello",
+                "Certificate", "Cipher", "Extension", "Alert",
+                "Application Data", "Key Exchange", NULL } },
+    { "SSH",  { "Key Exchange", "Authentication", "Channel", "Packet",
+                "Message Number", "Encryption", "MAC", "Compression",
+                "Session", "Transport", NULL } },
+    { "DICOM", { "Association", "PDU", "DIMSE", "Command", "Data Set",
+                 "Transfer Syntax", "SOP", "Presentation Context",
+                 "A-ASSOCIATE", "C-STORE", "C-FIND", NULL } },
+    { "IPP",  { "Operation", "Attribute", "Status", "Request",
+                "Response", "Job", "Printer", "Group", "Tag",
+                "Value", NULL } },
+    { NULL, { NULL } } /* terminator */
+};
+
+/* Get protocol-specific keywords, or NULL if unknown protocol */
+static const char * const *get_protocol_keywords(const char *protocol_name) {
+    for (int i = 0; PROTOCOL_KEYWORDS[i].protocol; i++) {
+        if (strcasecmp(PROTOCOL_KEYWORDS[i].protocol, protocol_name) == 0)
+            return (const char * const *)PROTOCOL_KEYWORDS[i].keywords;
     }
-    
-    // Smart extraction: find key sections
-    char *extracted = (char*)ck_alloc(max_chars + 1);
-    memset(extracted, 0, max_chars + 1);  // Initialize buffer to prevent garbage
-    size_t extracted_len = 0;
-    
-    // Section markers to prioritize
-    const char *priority_markers[] = {
-        "ABNF",
-        "Command Syntax",
-        "Commands",
-        "Request",
-        "Response",
-        "Status Code",
-        "Message Format",
-        "Protocol State",
-        "State Machine",
-        "Grammar",
-        "Syntax",
-        NULL
-    };
-    
-    // Extract sections around priority markers
-    for (int i = 0; priority_markers[i] && extracted_len < max_chars - 1000; i++) {
-        const char *marker = strcasestr(rfc_text, priority_markers[i]);
-        if (marker) {
-            // Extract up to 2000 chars around this marker
-            const char *start = marker - 500;
-            if (start < rfc_text) start = rfc_text;
-            
-            size_t extract_size = 2000;
-            if (extracted_len + extract_size > max_chars) {
-                extract_size = max_chars - extracted_len;
-            }
-            
-            // Ensure we don't read beyond RFC text
-            size_t available = rfc_len - (start - rfc_text);
-            if (extract_size > available) {
-                extract_size = available;
-            }
-            
-            // Ensure we have space for header + content + safety margin
-            if (extract_size > 50 && extracted_len + extract_size + 100 < max_chars) {
-                int written = snprintf(extracted + extracted_len, max_chars - extracted_len,
-                         "\n[--- %s Section ---]\n%.*s\n",
-                         priority_markers[i], (int)(extract_size - 50), start);
-                if (written > 0 && written < (int)(max_chars - extracted_len)) {
-                    extracted_len += written;
+    return NULL;
+}
+
+/* --- Pass 1: Parse RFC section boundaries --- */
+static int parse_rfc_sections(const char *text, size_t text_len,
+                              rfc_section_t *sections, int max_sections)
+{
+    int count = 0;
+    const char *p = text;
+    const char *end = text + text_len;
+
+    /* RFC section headers follow patterns:
+     *   "1.  TITLE"           (top-level, starts at column 0)
+     *   "   2.1.  Sub-title"  (sub-section, indented with spaces)
+     *   "25  Augmented BNF"   (some RFCs omit the dot)
+     * We detect lines that start with optional whitespace + digit(s) + '.' */
+    while (p < end && count < max_sections - 1) {
+        /* Find start of line */
+        const char *line = p;
+
+        /* Skip leading spaces (max 6 for sub-sections) */
+        const char *lp = line;
+        int spaces = 0;
+        while (lp < end && *lp == ' ' && spaces < 6) { lp++; spaces++; }
+
+        /* Check if line starts with section number: digit(s) then '.' or ' ' */
+        if (lp < end && *lp >= '1' && *lp <= '9') {
+            const char *np = lp;
+            /* Consume number like "4.1.2" */
+            while (np < end && ((*np >= '0' && *np <= '9') || *np == '.'))
+                np++;
+
+            int num_len = (int)(np - lp);
+            /* Must have at least "N." and be followed by whitespace+uppercase or whitespace+title */
+            if (num_len >= 2 && *(np - 1) != '.' && lp[num_len - 1 - (num_len > 1)] == '.'
+                ? 1 : (num_len >= 1 && np < end && *np == ' ')) {
+
+                /* Skip whitespace after number */
+                while (np < end && (*np == ' ' || *np == '\t')) np++;
+
+                /* Check that remainder has title-like text (at least 3 alpha chars) */
+                int alpha_count = 0;
+                const char *tp = np;
+                while (tp < end && *tp != '\n' && *tp != '\r') {
+                    if ((*tp >= 'A' && *tp <= 'Z') || (*tp >= 'a' && *tp <= 'z'))
+                        alpha_count++;
+                    tp++;
+                }
+
+                if (alpha_count >= 3) {
+                    /* Close previous section */
+                    if (count > 0) {
+                        sections[count - 1].end = (size_t)(line - text);
+                    }
+                    /* Record new section */
+                    sections[count].start = (size_t)(line - text);
+                    sections[count].score = 0;
+
+                    /* Copy title */
+                    size_t title_len = (size_t)(tp - lp);
+                    if (title_len > 127) title_len = 127;
+                    memcpy(sections[count].title, lp, title_len);
+                    sections[count].title[title_len] = '\0';
+
+                    count++;
                 }
             }
         }
+
+        /* Advance to next line */
+        while (p < end && *p != '\n') p++;
+        if (p < end) p++;  /* skip '\n' */
     }
-    
-    // If no priority sections found, take first max_chars
-    if (extracted_len < 1000) {
-        int written = snprintf(extracted, max_chars + 1, "%.*s", (int)max_chars, rfc_text);
-        if (written > 0 && written < (int)(max_chars + 1)) {
-            extracted_len = written;
+
+    /* Close last section */
+    if (count > 0) {
+        sections[count - 1].end = text_len;
+    }
+
+    return count;
+}
+
+/* --- Step 1b: Extract binary protocol definition blocks --- */
+static size_t extract_binary_protocol_blocks(const char *text, size_t text_len,
+                                             char *out, size_t max_out)
+{
+    /*
+     * Binary protocol RFCs define message formats with:
+     *  Pattern A: Byte-field tables   "+--+--+--+" (DNS, DICOM)
+     *  Pattern B: struct/enum defs    "struct {" / "enum {" (TLS, DTLS)
+     *  Pattern C: Field-type lines    "byte  field_name" / "uint32 field" (SSH)
+     *  Pattern D: Constant defs       "NAME  VALUE"  or "NAME = VALUE" tables
+     *
+     * Strategy: scan line by line, detect blocks, extract with surrounding
+     * context (3 lines before start for the human-readable description).
+     */
+    size_t out_len = 0;
+    const char *p = text;
+    const char *end = text + text_len;
+    int blocks_found = 0;
+
+    /* Write header */
+    int w = snprintf(out, max_out,
+                     "\n[=== Binary Protocol Format Definitions ===]\n");
+    if (w > 0 && (size_t)w < max_out) out_len = (size_t)w;
+
+    /* State for block extraction */
+    int in_block = 0;          /* currently inside a definition block */
+    const char *block_start = NULL;
+    const char *context_start = NULL;  /* 3 lines before block for context */
+    int brace_depth = 0;       /* for struct/enum { } tracking */
+    int block_type = 0;        /* 1=byte-table, 2=struct/enum, 3=field-type */
+
+    /* Ring buffer for last 3 line starts (for pre-context) */
+    const char *prev_lines[3] = { text, text, text };
+    int prev_idx = 0;
+
+    while (p < end && out_len < max_out - 200) {
+        const char *line_start = p;
+        const char *line_end = p;
+        while (line_end < end && *line_end != '\n') line_end++;
+        size_t line_len = (size_t)(line_end - line_start);
+
+        /* --- Detect block starts --- */
+        if (!in_block) {
+            /* Pattern A: Byte-field table (+--+--+) */
+            if (line_len > 8) {
+                const char *lp = line_start;
+                while (lp < line_end && *lp == ' ') lp++;
+                if (line_end - lp > 6 &&
+                    lp[0] == '+' && lp[1] == '-' && lp[2] == '-') {
+                    in_block = 1;
+                    block_type = 1;
+                    context_start = prev_lines[(prev_idx + 1) % 3];
+                    block_start = context_start;
+                }
+            }
+
+            /* Pattern B: struct { or enum { */
+            if (!in_block && line_len > 4) {
+                const char *lp = line_start;
+                while (lp < line_end && *lp == ' ') lp++;
+                size_t content_len = (size_t)(line_end - lp);
+                if ((content_len >= 7 && strncmp(lp, "struct ", 7) == 0) ||
+                    (content_len >= 7 && strncmp(lp, "struct{", 7) == 0) ||
+                    (content_len >= 5 && strncmp(lp, "enum ", 5) == 0) ||
+                    (content_len >= 5 && strncmp(lp, "enum{", 5) == 0)) {
+                    in_block = 1;
+                    block_type = 2;
+                    brace_depth = 0;
+                    /* Count braces on this line */
+                    for (const char *bp = lp; bp < line_end; bp++) {
+                        if (*bp == '{') brace_depth++;
+                        else if (*bp == '}') brace_depth--;
+                    }
+                    context_start = prev_lines[(prev_idx + 1) % 3];
+                    block_start = context_start;
+                    /* If braces closed on same line, end immediately */
+                    if (brace_depth <= 0 && brace_depth != 0) {
+                        /* malformed, skip */
+                        in_block = 0;
+                    }
+                }
+            }
+
+            /* Pattern C: Field-type lines (byte/uint32/uint16/uint8/string/opaque) */
+            if (!in_block && line_len > 6) {
+                const char *lp = line_start;
+                while (lp < line_end && *lp == ' ') lp++;
+                size_t content_len = (size_t)(line_end - lp);
+                if ((content_len >= 5 && strncmp(lp, "byte ", 5) == 0) ||
+                    (content_len >= 7 && strncmp(lp, "uint32 ", 7) == 0) ||
+                    (content_len >= 7 && strncmp(lp, "uint16 ", 7) == 0) ||
+                    (content_len >= 6 && strncmp(lp, "uint8 ", 6) == 0) ||
+                    (content_len >= 7 && strncmp(lp, "uint24 ", 7) == 0) ||
+                    (content_len >= 7 && strncmp(lp, "opaque ", 7) == 0) ||
+                    (content_len >= 6 && strncmp(lp, "byte[", 5) == 0)) {
+                    in_block = 1;
+                    block_type = 3;
+                    context_start = prev_lines[(prev_idx + 1) % 3];
+                    block_start = context_start;
+                }
+            }
+        }
+
+        /* --- Track block continuation / end --- */
+        if (in_block) {
+            if (block_type == 1) {
+                /* Byte-table: continues while lines have +--+ or | or field names
+                 * Ends on blank line or next section */
+                const char *lp = line_start;
+                while (lp < line_end && *lp == ' ') lp++;
+                int is_table_line = 0;
+                if (lp < line_end) {
+                    if (*lp == '+' || *lp == '|' || *lp == '/')
+                        is_table_line = 1;
+                    /* Field descriptions: indented text after table */
+                    if (line_len > 0 && line_start[0] == ' ' && lp < line_end &&
+                        ((*lp >= 'A' && *lp <= 'Z') || (*lp >= 'a' && *lp <= 'z')))
+                        is_table_line = 1;
+                }
+                if (!is_table_line || line_len == 0) {
+                    /* End of byte-table block — flush */
+                    size_t blen = (size_t)(line_start - block_start);
+                    if (blen > 10 && out_len + blen + 2 < max_out) {
+                        memcpy(out + out_len, block_start, blen);
+                        out_len += blen;
+                        out[out_len++] = '\n';
+                        blocks_found++;
+                    }
+                    in_block = 0;
+                }
+            } else if (block_type == 2) {
+                /* struct/enum: track brace depth */
+                for (const char *bp = line_start; bp < line_end; bp++) {
+                    if (*bp == '{') brace_depth++;
+                    else if (*bp == '}') brace_depth--;
+                }
+                if (brace_depth <= 0) {
+                    /* Closing brace found — include this line, then flush */
+                    const char *block_end = line_end;
+                    if (block_end < end) block_end++;  /* include \n */
+                    size_t blen = (size_t)(block_end - block_start);
+                    if (blen > 10 && out_len + blen + 2 < max_out) {
+                        memcpy(out + out_len, block_start, blen);
+                        out_len += blen;
+                        out[out_len++] = '\n';
+                        blocks_found++;
+                    }
+                    in_block = 0;
+                }
+            } else if (block_type == 3) {
+                /* Field-type lines: continues while lines match byte/uint/etc */
+                const char *lp = line_start;
+                while (lp < line_end && *lp == ' ') lp++;
+                size_t content_len = (size_t)(line_end - lp);
+                int is_field = 0;
+                if (content_len >= 4 &&
+                    (strncmp(lp, "byte", 4) == 0 ||
+                     strncmp(lp, "uint", 4) == 0 ||
+                     strncmp(lp, "opaq", 4) == 0 ||
+                     strncmp(lp, "stri", 4) == 0 ||
+                     strncmp(lp, "name", 4) == 0 ||
+                     strncmp(lp, "bool", 4) == 0))
+                    is_field = 1;
+                /* Also continue for blank/comment lines within block */
+                if (line_len == 0)
+                    is_field = 0;  /* blank = end */
+
+                if (!is_field) {
+                    size_t blen = (size_t)(line_start - block_start);
+                    if (blen > 10 && out_len + blen + 2 < max_out) {
+                        memcpy(out + out_len, block_start, blen);
+                        out_len += blen;
+                        out[out_len++] = '\n';
+                        blocks_found++;
+                    }
+                    in_block = 0;
+                }
+            }
+        }
+
+        /* Update previous-line ring buffer */
+        prev_lines[prev_idx] = line_start;
+        prev_idx = (prev_idx + 1) % 3;
+
+        /* Next line */
+        p = line_end;
+        if (p < end) p++;
+    }
+
+    /* Flush final block */
+    if (in_block && block_start) {
+        size_t blen = (size_t)(end - block_start);
+        if (blen > 10 && out_len + blen + 2 < max_out) {
+            memcpy(out + out_len, block_start, blen);
+            out_len += blen;
+            blocks_found++;
         }
     }
-    extracted[max_chars] = '\0';  // Ensure null termination
-    
+
+    if (blocks_found == 0) {
+        return 0;  /* No binary definitions found */
+    }
+
+    out[out_len] = '\0';
+    printf("[RFC-Extract] Found %d binary protocol definition blocks (%zu bytes)\n",
+           blocks_found, out_len);
+    return out_len;
+}
+
+/* --- Step 1a: Extract ABNF grammar blocks (text protocols) --- */
+static size_t extract_abnf_blocks(const char *text, size_t text_len,
+                                  char *out, size_t max_out)
+{
+    /* ABNF rules look like:  "rule-name  =  definition"
+     * or continuation lines: "               / alternative"
+     * Match: ^[A-Za-z][A-Za-z0-9-]*  *=  (but not == which is code) */
+    size_t out_len = 0;
+    const char *p = text;
+    const char *end = text + text_len;
+    int in_rule = 0;
+    const char *rule_start = NULL;
+    int rules_found = 0;
+
+    /* Write header */
+    int w = snprintf(out, max_out,
+                     "\n[=== ABNF Grammar Rules ===]\n");
+    if (w > 0 && (size_t)w < max_out) out_len = (size_t)w;
+
+    while (p < end) {
+        /* Find line boundaries */
+        const char *line_start = p;
+        const char *line_end = p;
+        while (line_end < end && *line_end != '\n') line_end++;
+
+        size_t line_len = (size_t)(line_end - line_start);
+
+        /* Check if this line starts a new ABNF rule */
+        int is_rule_start = 0;
+        if (line_len > 4) {
+            const char *lp = line_start;
+            /* Allow leading spaces (some RFCs indent ABNF) */
+            while (lp < line_end && *lp == ' ') lp++;
+
+            if (lp < line_end &&
+                ((*lp >= 'A' && *lp <= 'Z') || (*lp >= 'a' && *lp <= 'z'))) {
+                /* Scan rule name: [A-Za-z0-9-]* */
+                const char *name_end = lp + 1;
+                while (name_end < line_end &&
+                       ((*name_end >= 'A' && *name_end <= 'Z') ||
+                        (*name_end >= 'a' && *name_end <= 'z') ||
+                        (*name_end >= '0' && *name_end <= '9') ||
+                        *name_end == '-'))
+                    name_end++;
+
+                /* Skip spaces before '=' */
+                const char *eq = name_end;
+                while (eq < line_end && *eq == ' ') eq++;
+
+                /* Must be '=' but not '==' */
+                if (eq < line_end && *eq == '=' &&
+                    (eq + 1 >= line_end || *(eq + 1) != '=') &&
+                    (name_end - lp) >= 2 && (name_end - lp) <= 40) {
+                    is_rule_start = 1;
+                }
+            }
+        }
+
+        /* Check if line is ABNF continuation: starts with lots of spaces then / or text */
+        int is_continuation = 0;
+        if (in_rule && line_len > 0) {
+            int leading = 0;
+            const char *lp = line_start;
+            while (lp < line_end && *lp == ' ') { lp++; leading++; }
+            /* Continuation: indented >= 6 spaces, or starts with / */
+            if (leading >= 6 && lp < line_end && *lp != '\n') {
+                is_continuation = 1;
+            }
+            if (lp < line_end && *lp == '/') {
+                is_continuation = 1;
+            }
+        }
+
+        if (is_rule_start) {
+            /* Flush previous rule if any */
+            if (in_rule && rule_start) {
+                size_t rlen = (size_t)(line_start - rule_start);
+                if (out_len + rlen + 2 < max_out) {
+                    memcpy(out + out_len, rule_start, rlen);
+                    out_len += rlen;
+                    rules_found++;
+                }
+            }
+            rule_start = line_start;
+            in_rule = 1;
+        } else if (!is_continuation && in_rule) {
+            /* End of rule block — flush */
+            if (rule_start) {
+                size_t rlen = (size_t)(line_start - rule_start);
+                if (out_len + rlen + 2 < max_out) {
+                    memcpy(out + out_len, rule_start, rlen);
+                    out_len += rlen;
+                    rules_found++;
+                }
+            }
+            in_rule = 0;
+            rule_start = NULL;
+        }
+
+        /* Next line */
+        p = line_end;
+        if (p < end) p++;
+    }
+
+    /* Flush final rule */
+    if (in_rule && rule_start) {
+        size_t rlen = (size_t)(end - rule_start);
+        if (out_len + rlen + 2 < max_out) {
+            memcpy(out + out_len, rule_start, rlen);
+            out_len += rlen;
+            rules_found++;
+        }
+    }
+
+    if (rules_found == 0) {
+        return 0;  /* No ABNF found — caller should not use this output */
+    }
+
+    out[out_len] = '\0';
+    printf("[RFC-Extract] Found %d ABNF rules (%zu bytes)\n", rules_found, out_len);
+    return out_len;
+}
+
+/* --- Pass 3: Score and select sections --- */
+static void score_sections(rfc_section_t *sections, int count,
+                           const char *rfc_text,
+                           const char *protocol_name)
+{
+    /* Generic high-value keywords (applicable to all protocols) */
+    static const char *generic_high[] = {
+        "ABNF", "BNF", "Grammar", "Syntax", "Format",
+        "Definition", NULL
+    };
+    static const char *generic_mid[] = {
+        "Command", "Request", "Response", "Reply", "Method",
+        "Status", "Code", "State", "Machine", "Transition",
+        "Header", "Field", "Parameter", "Message", NULL
+    };
+    static const char *generic_low[] = {
+        "Example", "Scenario", "Overview", "Introduction",
+        "Security", "IANA", "Acknowledgement", "Reference",
+        "Appendix", "Author", "Copyright", "Abstract", NULL
+    };
+
+    const char * const *proto_kw = get_protocol_keywords(protocol_name);
+
+    for (int i = 0; i < count; i++) {
+        int score = 0;
+        const char *title = sections[i].title;
+        size_t sec_len = sections[i].end - sections[i].start;
+
+        /* Score based on title keyword matches */
+        for (int k = 0; generic_high[k]; k++) {
+            if (strcasestr(title, generic_high[k])) { score += 30; break; }
+        }
+        for (int k = 0; generic_mid[k]; k++) {
+            if (strcasestr(title, generic_mid[k])) { score += 15; break; }
+        }
+        for (int k = 0; generic_low[k]; k++) {
+            if (strcasestr(title, generic_low[k])) { score -= 10; break; }
+        }
+
+        /* Protocol-specific keyword bonus: check section CONTENT */
+        if (proto_kw) {
+            const char *sec_text = rfc_text + sections[i].start;
+            /* Only scan first 3000 chars of section to keep fast */
+            size_t scan_len = sec_len < 3000 ? sec_len : 3000;
+            int hits = 0;
+            for (int k = 0; proto_kw[k] && hits < 15; k++) {
+                /* Count up to 2 occurrences per keyword */
+                const char *found = sec_text;
+                const char *scan_end = sec_text + scan_len;
+                int kw_hits = 0;
+                while (found < scan_end && kw_hits < 2) {
+                    found = strcasestr(found, proto_kw[k]);
+                    if (!found || found >= scan_end) break;
+                    kw_hits++;
+                    found += strlen(proto_kw[k]);
+                }
+                hits += kw_hits;
+            }
+            score += hits * 5;  /* Each hit = +5 */
+        }
+
+        /* ABNF content bonus: check if section contains rule definitions */
+        {
+            const char *sec_text = rfc_text + sections[i].start;
+            size_t scan_len = sec_len < 5000 ? sec_len : 5000;
+            const char *eq = sec_text;
+            int abnf_count = 0;
+            while (eq < sec_text + scan_len - 2 && abnf_count < 5) {
+                eq = strstr(eq, " = ");
+                if (!eq || eq >= sec_text + scan_len) break;
+                /* Check if preceded by alpha (rule-name) */
+                if (eq > sec_text && ((*(eq-1) >= 'A' && *(eq-1) <= 'Z') ||
+                                       (*(eq-1) >= 'a' && *(eq-1) <= 'z') ||
+                                       *(eq-1) == '-'))
+                    abnf_count++;
+                eq += 3;
+            }
+            score += abnf_count * 8;
+        }
+
+        /* Penalty for very large sections (>15KB) — they dilute the budget */
+        if (sec_len > 15000) score -= 5;
+        if (sec_len > 30000) score -= 10;
+
+        /* Penalty for very short sections (<200 bytes) — likely just a title */
+        if (sec_len < 200) score -= 20;
+
+        sections[i].score = score;
+    }
+}
+
+/* Comparator for sorting sections by score (descending) */
+static int section_score_cmp(const void *a, const void *b) {
+    const rfc_section_t *sa = (const rfc_section_t *)a;
+    const rfc_section_t *sb = (const rfc_section_t *)b;
+    return sb->score - sa->score;  /* descending */
+}
+
+/* --- Main extraction entry point (v2) --- */
+char* extract_rfc_key_sections(const char *rfc_text, size_t max_chars,
+                               const char *protocol_name) {
+    if (!rfc_text) return NULL;
+
+    size_t rfc_len = strlen(rfc_text);
+
+    /* If RFC is small enough, use it all */
+    if (rfc_len <= max_chars) {
+        return (char*)ck_strdup((u8*)rfc_text);
+    }
+
+    char *extracted = (char*)ck_alloc(max_chars + 1);
+    memset(extracted, 0, max_chars + 1);
+    size_t out_len = 0;
+
+    /* --- Step 1: Extract grammar definition blocks (40% budget) ---
+     * Text protocols → ABNF rules  (e.g., SIP RFC has ~200 rules)
+     * Binary protocols → struct/enum/byte-table definitions */
+    size_t grammar_budget = max_chars * 2 / 5;
+    size_t grammar_len = 0;
+
+    if (rfc_is_binary_protocol(protocol_name)) {
+        grammar_len = extract_binary_protocol_blocks(rfc_text, rfc_len,
+                                                     extracted, grammar_budget);
+        if (grammar_len == 0) {
+            /* Fallback: some binary specs (MQTT HTML) may not have
+             * recognizable struct/enum patterns after HTML stripping.
+             * Try ABNF as a second chance. */
+            grammar_len = extract_abnf_blocks(rfc_text, rfc_len,
+                                              extracted, grammar_budget);
+        }
+    } else {
+        grammar_len = extract_abnf_blocks(rfc_text, rfc_len,
+                                          extracted, grammar_budget);
+        if (grammar_len == 0) {
+            /* Fallback: some text protocol RFCs lack ABNF.
+             * Try binary patterns as a second chance. */
+            grammar_len = extract_binary_protocol_blocks(rfc_text, rfc_len,
+                                                         extracted, grammar_budget);
+        }
+    }
+    out_len = grammar_len;
+
+    /* --- Pass 1: Parse section boundaries --- */
+    rfc_section_t *sections = (rfc_section_t *)ck_alloc(
+        MAX_RFC_SECTIONS * sizeof(rfc_section_t));
+    memset(sections, 0, MAX_RFC_SECTIONS * sizeof(rfc_section_t));
+
+    int sec_count = parse_rfc_sections(rfc_text, rfc_len,
+                                       sections, MAX_RFC_SECTIONS);
+
+    if (sec_count == 0) {
+        /* No recognizable sections — fall back to head of document */
+        printf("[RFC-Extract] No sections found, using first %zu bytes\n", max_chars);
+        if (out_len < max_chars) {
+            size_t remain = max_chars - out_len;
+            size_t copy = remain < rfc_len ? remain : rfc_len;
+            memcpy(extracted + out_len, rfc_text, copy);
+            out_len += copy;
+        }
+        ck_free(sections);
+        extracted[out_len] = '\0';
+        return extracted;
+    }
+
+    printf("[RFC-Extract] Parsed %d sections from RFC (%zu bytes)\n",
+           sec_count, rfc_len);
+
+    /* --- Pass 3: Score sections, greedily select top-scoring --- */
+    score_sections(sections, sec_count, rfc_text,
+                   protocol_name ? protocol_name : "GENERIC");
+
+    /* Sort by score descending */
+    qsort(sections, sec_count, sizeof(rfc_section_t), section_score_cmp);
+
+    /* Greedily select sections until budget is full */
+    size_t remaining_budget = max_chars - out_len;
+    int selected = 0;
+
+    for (int i = 0; i < sec_count && remaining_budget > 200; i++) {
+        size_t sec_len = sections[i].end - sections[i].start;
+        if (sections[i].score < 0) continue;  /* skip negatively-scored */
+
+        /* Cap individual section at 8KB to avoid one section consuming all budget */
+        size_t copy_len = sec_len;
+        if (copy_len > 8192) copy_len = 8192;
+        if (copy_len > remaining_budget - 50) copy_len = remaining_budget - 50;
+
+        /* Write section with header marker */
+        int hdr = snprintf(extracted + out_len, remaining_budget,
+                           "\n[--- Section: %s (score=%d) ---]\n",
+                           sections[i].title, sections[i].score);
+        if (hdr > 0 && (size_t)hdr < remaining_budget) {
+            out_len += hdr;
+            remaining_budget -= hdr;
+        }
+
+        /* Copy section content */
+        if (copy_len > 0 && copy_len <= remaining_budget) {
+            memcpy(extracted + out_len,
+                   rfc_text + sections[i].start, copy_len);
+            out_len += copy_len;
+            remaining_budget -= copy_len;
+            selected++;
+        }
+    }
+
+    printf("[RFC-Extract] Selected %d/%d sections (grammar=%zu + sections=%zu = %zu/%zu bytes)\n",
+           selected, sec_count, grammar_len, out_len - grammar_len, out_len, max_chars);
+
+    ck_free(sections);
+    extracted[out_len] = '\0';
     return extracted;
 }
 
@@ -322,7 +957,8 @@ char* construct_hypothesis_generation_prompt(hypothesis_context_t *ctx) {
     
     // Add RFC specification with smart extraction
     if (ctx->rfc_text) {
-        char *rfc_extract = extract_rfc_key_sections(ctx->rfc_text, MAX_RFC_CHARS);
+        char *rfc_extract = extract_rfc_key_sections(ctx->rfc_text, MAX_RFC_CHARS,
+                                                       ctx->protocol_name);
         
         if (rfc_extract) {
             char *escaped_rfc = json_escape_string(rfc_extract, MAX_RFC_CHARS);

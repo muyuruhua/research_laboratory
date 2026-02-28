@@ -2197,7 +2197,8 @@ int parse_net_config(u8 *net_config, u8 *protocol, u8 **ip_address, u32 *port)
   if (strlen(net_config) > 80)
     return 1;
 
-  strncpy(buf, net_config, strlen(net_config));
+  strncpy(buf, net_config, sizeof(buf) - 1);
+  buf[sizeof(buf) - 1] = '\0';
   str_rtrim(buf);
 
   if (!str_split(buf, "/", tokens, tokenCount))

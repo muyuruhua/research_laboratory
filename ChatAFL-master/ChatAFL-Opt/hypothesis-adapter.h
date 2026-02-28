@@ -21,7 +21,12 @@ int integrate_hypotheses_into_protocol_patterns(hypothesis_context_t *ctx,
 // Returns NULL if the nibble is not a known MQTT type.
 const char *mqtt_type_nibble_to_name(unsigned char nibble);
 
-// Returns 1 if the given protocol is binary-framed (e.g. MQTT, DNS).
+// Returns 1 if the given protocol is binary-framed (MQTT, DNS, DTLS12, TLS, SSH, DICOM).
 int is_binary_protocol(const char *protocol_name);
+
+// Extract the first token from a text protocol region as the message type.
+// e.g., "USER" from FTP, "INVITE" from SIP, "GET" from HTTP.
+// Returns ck_alloc'd string or NULL. Caller must ck_free().
+char* extract_text_message_type(const unsigned char *buf, size_t len);
 
 #endif

@@ -4429,55 +4429,69 @@ static void validate_and_refine_hypotheses(u8 *buf, u32 len)
   hypothesis_validation_count++;
 
   /* ============================================
-   * Fix 3: Per-region validation for binary protocols (MQTT)
-   * Split buffer into protocol messages and validate each
-   * region against the MATCHING hypothesis only.
-   * Text protocols keep original whole-buffer behavior.
+   * Fix 4: Unified per-region validation for ALL protocols.
+   * Split buffer into individual messages via extract_requests(),
+   * then match each region to the correct hypothesis by type:
+   *   - MQTT: upper nibble of first byte → mqtt_type_nibble_to_name()
+   *   - Text (FTP/SMTP/HTTP/RTSP/SIP): first token → type keyword
+   *   - Other binary (DNS etc.): no type mapping → validate all hyps
+   * This prevents false counterexamples from cross-type validation.
    * ============================================ */
-  if (is_binary_protocol(protocol_name) && extract_requests) {
+  if (extract_requests) {
     u32 region_count = 0;
     region_t *regions = (*extract_requests)(buf, len, &region_count);
 
-    for (u32 r = 0; r < region_count; r++) {
-      u32 rstart = regions[r].start_byte;
-      u32 rend   = regions[r].end_byte;
-      if (rend >= len) rend = len - 1;
-      u32 rlen   = rend - rstart + 1;
-      if (rlen < 2) continue;
+    if (regions && region_count > 0) {
+      int binary = is_binary_protocol(protocol_name);
 
-      /* For MQTT: upper nibble of first byte identifies message type */
-      unsigned char type_nibble = (buf[rstart] >> 4) & 0x0F;
-      const char *msg_type = mqtt_type_nibble_to_name(type_nibble);
-      if (!msg_type) continue;
+      for (u32 r = 0; r < region_count; r++) {
+        u32 rstart = regions[r].start_byte;
+        u32 rend   = regions[r].end_byte;
+        if (rend >= len) rend = len - 1;
+        u32 rlen   = rend - rstart + 1;
+        if (rlen < 2) continue;
 
-      /* Find the matching hypothesis and validate only that region */
-      for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++) {
-        grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
-        if (!hyp->message_type) continue;
-        if (strcasecmp(hyp->message_type, msg_type) != 0) continue;
+        /* Determine message type for this region */
+        const char *msg_type = NULL;
+        char *alloc_type = NULL;
 
-        int valid = validate_message_against_hypothesis(hyp,
-                                                        buf + rstart, rlen);
-        if (!valid && hyp->parse_failure % 10 == 0) {
-          add_counterexample(hyp, buf + rstart, rlen,
-                             "Validation failed");
+        if (binary && strcasecmp(protocol_name, "MQTT") == 0) {
+          /* MQTT: upper nibble of first byte identifies message type */
+          unsigned char type_nibble = (buf[rstart] >> 4) & 0x0F;
+          msg_type = mqtt_type_nibble_to_name(type_nibble);
+        } else if (!binary) {
+          /* Text protocol: first token is the command keyword
+           * e.g., "USER" for FTP, "INVITE" for SIP, "GET" for HTTP */
+          alloc_type = extract_text_message_type(buf + rstart, rlen);
+          msg_type = alloc_type;
         }
-        break;  /* matched — move to next region */
+        /* else: binary without type mapping (DNS etc.) →
+         * msg_type stays NULL → validate all hypotheses per region */
+
+        /* Validate against matching hypothesis(es) */
+        for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++) {
+          grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
+          if (!hyp->message_type) continue;
+
+          /* If type is known, only validate the matching hypothesis */
+          if (msg_type && strcasecmp(hyp->message_type, msg_type) != 0)
+            continue;
+
+          int valid = validate_message_against_hypothesis(hyp,
+                                                          buf + rstart, rlen);
+          if (!valid && hyp->parse_failure % 10 == 0) {
+            add_counterexample(hyp, buf + rstart, rlen,
+                               "Validation failed");
+          }
+
+          if (msg_type) break;  /* Matched type → next region */
+        }
+
+        if (alloc_type) ck_free(alloc_type);
       }
     }
-    ck_free(regions);
 
-  } else {
-    /* Original behaviour for text protocols (SIP, FTP, HTTP, …) */
-    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++) {
-      grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
-
-      int valid = validate_message_against_hypothesis(hyp, buf, len);
-
-      if (!valid && hyp->parse_failure % 10 == 0) {
-        add_counterexample(hyp, buf, len, "Validation failed");
-      }
-    }
+    if (regions) ck_free(regions);
   }
 
   // Periodic refinement check

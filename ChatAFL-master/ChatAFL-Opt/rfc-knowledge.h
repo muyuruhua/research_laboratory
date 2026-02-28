@@ -84,6 +84,41 @@ static const rfc_info_t RFC_DATABASE[] = {
         .description = "MQTT Version 3.1.1 (OASIS Standard, not IETF RFC)",
         .has_ietf_spec = 0
     },
+    {
+        .protocol_name = "DNS",
+        .rfc_number = "RFC 1035",
+        .rfc_url = "https://www.rfc-editor.org/rfc/rfc1035.txt",
+        .description = "Domain Name System - Implementation and Specification",
+        .has_ietf_spec = 1
+    },
+    {
+        .protocol_name = "DTLS12",
+        .rfc_number = "RFC 6347",
+        .rfc_url = "https://www.rfc-editor.org/rfc/rfc6347.txt",
+        .description = "Datagram Transport Layer Security Version 1.2",
+        .has_ietf_spec = 1
+    },
+    {
+        .protocol_name = "TLS",
+        .rfc_number = "RFC 8446",
+        .rfc_url = "https://www.rfc-editor.org/rfc/rfc8446.txt",
+        .description = "The Transport Layer Security (TLS) Protocol Version 1.3",
+        .has_ietf_spec = 1
+    },
+    {
+        .protocol_name = "SSH",
+        .rfc_number = "RFC 4253",
+        .rfc_url = "https://www.rfc-editor.org/rfc/rfc4253.txt",
+        .description = "The Secure Shell (SSH) Transport Layer Protocol",
+        .has_ietf_spec = 1
+    },
+    {
+        .protocol_name = "DICOM",
+        .rfc_number = "N/A",
+        .rfc_url = "https://www.dicomstandard.org/current",
+        .description = "Digital Imaging and Communications in Medicine",
+        .has_ietf_spec = 0
+    },
     // Terminator
     { .protocol_name = NULL }
 };
