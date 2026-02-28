@@ -926,8 +926,47 @@ u32 update_scores_and_select_next_state(u8 mode)
       switch (mode)
       {
       case FAVOR:
-        state->score = ceil(1000 * pow(2, -log10(log10(state->fuzzs + 1) * state->selected_times + 1)) * pow(2, log(state->paths_discovered + 1)));
+      {
+        double base = ceil(1000 * pow(2, -log10(log10(state->fuzzs + 1) * state->selected_times + 1)) * pow(2, log(state->paths_discovered + 1)));
+
+        /* Fix 5: Frontier bonus for node discovery.
+         *
+         * Problem: hypothesis-guided mutations produce more valid protocol
+         * sequences, which excels at discovering new state transitions (edges)
+         * between known states but may under-explore "frontier" states —
+         * states with few outgoing edges where new nodes are most likely
+         * to be found.
+         *
+         * Solution: count outgoing edges for this state in the IPSM graph.
+         * States with fewer outgoing edges get a multiplicative bonus,
+         * biasing the weighted random selection toward frontier exploration.
+         *
+         *   out_degree 0-1  → ×4.0  (uncharted frontier, highest priority)
+         *   out_degree 2-3  → ×2.0  (partially explored)
+         *   out_degree 4+   → ×1.0  (well-explored, no bonus)
+         */
+        double frontier_bonus = 1.0;
+        {
+          char sid_str[STATE_STR_LEN];
+          snprintf(sid_str, STATE_STR_LEN, "%d", state_id);
+          Agnode_t *nd = agnode(ipsm, sid_str, FALSE);
+          if (nd) {
+            int out_degree = 0;
+            Agedge_t *e;
+            for (e = agfstout(ipsm, nd); e; e = agnxtout(ipsm, e))
+              out_degree++;
+            if (out_degree <= 1)       frontier_bonus = 4.0;
+            else if (out_degree <= 3)  frontier_bonus = 2.0;
+            /* else: 1.0 (no bonus) */
+          } else {
+            /* State not yet in IPSM graph → maximum frontier bonus */
+            frontier_bonus = 4.0;
+          }
+        }
+
+        state->score = (u32)(base * frontier_bonus);
         break;
+      }
         // other cases are reserved
       }
 
@@ -11473,6 +11512,12 @@ int main(int argc, char **argv)
       PFATAL("No server states have been detected. Server responses are likely empty!");
     }
 
+    /* Fix 5b: Node stagnation detection.
+     * If no new IPSM nodes have been discovered recently, periodically
+     * force random state selection to break out of exploitation ruts. */
+    u32 prev_node_count_loop = agnnodes(ipsm);
+    u32 node_stagnation_rounds = 0;
+
     while (1)
     {
       u8 skipped_fuzz;
@@ -11480,7 +11525,24 @@ int main(int argc, char **argv)
       struct queue_entry *selected_seed = NULL;
       while (!selected_seed || selected_seed->region_count == 0)
       {
-        target_state_id = choose_target_state(state_selection_algo);
+        /* Track node stagnation */
+        u32 cur_nodes = agnnodes(ipsm);
+        if (cur_nodes > prev_node_count_loop) {
+          prev_node_count_loop = cur_nodes;
+          node_stagnation_rounds = 0;
+        } else {
+          node_stagnation_rounds++;
+        }
+
+        /* If nodes haven't grown for 80+ rounds, occasionally use
+         * RANDOM_SELECTION to explore underrepresented states.
+         * 30% chance ensures we don't abandon FAVOR entirely. */
+        u8 effective_algo = state_selection_algo;
+        if (node_stagnation_rounds > 80 && UR(100) < 30) {
+          effective_algo = RANDOM_SELECTION;
+        }
+
+        target_state_id = choose_target_state(effective_algo);
 
         /* Update favorites based on the selected state */
         cull_queue();
