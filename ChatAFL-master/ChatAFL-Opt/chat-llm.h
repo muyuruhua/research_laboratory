@@ -39,6 +39,14 @@ Similarly 1700 is for the example request in the seed enrichment
 // Maximum number of messages to examine for addition
 #define MAX_ENRICHMENT_CORPUS_SIZE 10
 
+// Fix-8: Parallel enrichment — no budget cap.
+// All C(n,2) message-type combinations are enriched for every seed.
+// LLM calls are I/O-bound (~12 s network latency each, <1% CPU), so
+// multiple pthread workers share the single --cpus=1 container core
+// without contention.  With 4 threads the worst case (live555, 315
+// calls) takes ~16 min instead of 63 min serial.
+#define ENRICHMENT_THREADS 4
+
 #define PCRE2_CODE_UNIT_WIDTH 8 // Characters are 8 bits
 #include <pcre2.h>
 
@@ -63,6 +71,11 @@ typedef kvec_t(khash_t(strSet)*) message_set_list;
 KHASH_MAP_INIT_STR(strMap, int)
 KHASH_MAP_INIT_STR(field_table, int);
 KHASH_INIT(consistency_table, const char *, khash_t(field_table) *, 1, kh_str_hash_func, kh_str_hash_equal);
+
+/* Must be called once before any chat_with_llm / enrich_sequence calls */
+void chat_llm_global_init(void);
+/* Must be called once after all LLM calls are done */
+void chat_llm_global_cleanup(void);
 
 char *chat_with_llm(char *prompt, char *model, int tries, float temperature);
 char *construct_prompt_for_templates(char *protocol_name, char **final_msg);

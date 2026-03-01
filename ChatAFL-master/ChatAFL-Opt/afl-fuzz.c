@@ -71,6 +71,7 @@
 #include <sys/ioctl.h>
 #include <sys/file.h>
 #include <sys/capability.h>
+#include <pthread.h>
 
 #include "aflnet.h"
 #include <graphviz/gvc.h>
@@ -2741,6 +2742,50 @@ static void setup_post(void)
   OKF("Postprocessor installed successfully.");
 }
 
+/* ================================================================
+ * Fix-8: Parallel enrichment infrastructure.
+ * Each task captures one (seed_content, combo_subset) pair.
+ * Workers only call enrich_sequence() — pure LLM I/O, thread-safe.
+ * All file I/O and khash manipulation stays in the main thread.
+ * ================================================================ */
+
+typedef struct {
+    char *seed_content;           /* shared read-only ptr (owned by seed_data) */
+    khash_t(strSet) *subset;      /* read-only ptr (owned by message_subsets) */
+    const char *protocol;         /* global read-only */
+    char *result;                 /* worker writes enriched string, or NULL */
+    char *seed_file_name;         /* strdup'd, for output naming */
+    int  combo_idx;               /* for output file naming */
+} enrich_task_t;
+
+typedef struct {
+    enrich_task_t *tasks;
+    int            n_tasks;
+    int            next_task;     /* next index to claim */
+    pthread_mutex_t lock;
+} enrich_pool_t;
+
+static void *enrich_worker(void *arg) {
+    enrich_pool_t *pool = (enrich_pool_t *)arg;
+    while (1) {
+        pthread_mutex_lock(&pool->lock);
+        int idx = pool->next_task++;
+        pthread_mutex_unlock(&pool->lock);
+        if (idx >= pool->n_tasks) break;
+
+        enrich_task_t *t = &pool->tasks[idx];
+        t->result = enrich_sequence(t->seed_content, t->subset, t->protocol);
+    }
+    return NULL;
+}
+
+/* Track per-seed heap data so we can free it after all workers finish. */
+typedef struct {
+    char              *content;     /* malloc'd file content */
+    message_set_list   subsets;     /* C(n,2) subsets (owns khash_t ptrs) */
+    khash_t(strSet)   *messages;    /* missing-types set */
+} seed_data_t;
+
 void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message_types_set)
 {
   struct dirent **nl_files;
@@ -2752,8 +2797,18 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
   }
 
   OKF("Found %d protocol message types for enrichment", kh_size(message_types_set));
+
+  /* Fix-8: call curl_global_init ONCE before any worker threads */
+  chat_llm_global_init();
+
   int seeds_processed = 0;
   int total_enriched = 0;
+
+  /* --- Phase 1: collect enrichment tasks from all seeds --- */
+  enrich_task_t *tasks = NULL;
+  int n_tasks = 0, tasks_cap = 0;
+  seed_data_t   *seed_arr = NULL;
+  int n_seed_data = 0, seed_cap = 0;
 
   // traverse the directory to read the files
   for (int i = 0; i < nl_cnt; i++)
@@ -2764,7 +2819,7 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
     {
       continue;
     }
-    
+
     seeds_processed++;
     ACTF("Processing seed %d: %s", seeds_processed, nl_file_name);
     char *nl_file_path = malloc(strlen(in_dir) + strlen(nl_file_name) + 2);
@@ -2844,59 +2899,120 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
 
     message_set_list message_subsets = message_combinations(messages,MAX_ENRICHMENT_MESSAGE_TYPES);
 
-    for(int i = 0;i < kv_size(message_subsets);i++) {
+    int n_combos = kv_size(message_subsets);
+    OKF("Seed '%s': %d combos (no cap — full enrichment)", nl_file_name, n_combos);
 
-      khash_t(strSet)* subset = kv_A(message_subsets,i); 
+    /* Store seed data for later cleanup (content + subsets stay alive
+     * until all workers are done). */
+    if (n_seed_data >= seed_cap) {
+      seed_cap = seed_cap ? seed_cap * 2 : 16;
+      seed_arr = realloc(seed_arr, seed_cap * sizeof(seed_data_t));
+    }
+    seed_arr[n_seed_data].content  = nl_file_content;
+    seed_arr[n_seed_data].subsets  = message_subsets;
+    seed_arr[n_seed_data].messages = messages;
+    n_seed_data++;
 
-      // Try enriching the sequence
-        char *client_request_answer = enrich_sequence(nl_file_content, subset, protocol_name);
-
-        if (client_request_answer == NULL)
-          continue;
-
-        // Check whether the client_request_answer is the same as the nl_file_content or if the client_request_answer is empty
-        char *formatted_nl_file_content = format_string(nl_file_content);
-        char *unescaped_client_requests = unescape_string(client_request_answer);
-        char *formatted_unescaped_client_requests = format_string(unescaped_client_requests);
-        // printf("## Formatted answer from LLM:\n %s\n", formatted_unescaped_client_requests);
-        // printf("## Formatted file content:\n %s\n", formatted_nl_file_content);
-        if (formatted_unescaped_client_requests == NULL || strcmp(formatted_unescaped_client_requests, formatted_nl_file_content) == 0)
-        {
-          printf("## Skip the same seed\n");
-          continue;
-        }
-
-        unescaped_client_requests = format_request_message(unescaped_client_requests);
-
-        // Create the file in the same directory with the name enriched_state_<file_name>
-        char *enriched_file_name = malloc(strlen(nl_file_name) + 10 + 20);
-        strcpy(enriched_file_name, "enriched_");
-        sprintf(enriched_file_name+9,"%d_",i);
-        strcat(enriched_file_name, nl_file_name);
-        char *enriched_file_path = malloc(strlen(in_dir) + strlen(enriched_file_name) + 2);
-        strcpy(enriched_file_path, in_dir);
-        strcat(enriched_file_path, "/");
-        strcat(enriched_file_path, enriched_file_name);
-        
-        // printf("## Enriched file path: %s\n", enriched_file_path);
-
-        write_new_seeds(enriched_file_path, unescaped_client_requests);
-        
-        total_enriched++;
-        OKF("Created enriched seed: %s", enriched_file_name);
-
-        free(enriched_file_name);
-        free(enriched_file_path);
+    /* Collect one task per combo. */
+    for (int c = 0; c < n_combos; c++) {
+      if (n_tasks >= tasks_cap) {
+        tasks_cap = tasks_cap ? tasks_cap * 2 : 64;
+        tasks = realloc(tasks, tasks_cap * sizeof(enrich_task_t));
+      }
+      enrich_task_t *t = &tasks[n_tasks];
+      t->seed_content   = nl_file_content;
+      t->subset         = kv_A(message_subsets, c);
+      t->protocol       = protocol_name;
+      t->result         = NULL;
+      t->seed_file_name = strdup(nl_file_name);
+      t->combo_idx      = c;
+      n_tasks++;
     }
 
-    for(int i = 0;i < kv_size(message_subsets);i++) {
-      khash_t(strSet)* subset = kv_A(message_subsets,i);
-      kh_destroy(strSet,subset);
-    } 
-
-    kh_destroy(strSet, messages);
+    /* NOTE: do NOT free nl_file_content, subsets or messages here —
+     * workers will read them.  Freed after all threads join. */
   }
-  
+
+  /* ==== Phase 2: parallel LLM enrichment ==== */
+  OKF("Collected %d enrichment tasks from %d seeds — launching %d threads",
+      n_tasks, seeds_processed,
+      n_tasks < ENRICHMENT_THREADS ? n_tasks : ENRICHMENT_THREADS);
+
+  if (n_tasks > 0) {
+    enrich_pool_t pool = {
+        .tasks     = tasks,
+        .n_tasks   = n_tasks,
+        .next_task = 0,
+        .lock      = PTHREAD_MUTEX_INITIALIZER
+    };
+
+    int n_threads = ENRICHMENT_THREADS;
+    if (n_threads > n_tasks) n_threads = n_tasks;
+
+    pthread_t *tids = malloc(n_threads * sizeof(pthread_t));
+    for (int t = 0; t < n_threads; t++)
+      pthread_create(&tids[t], NULL, enrich_worker, &pool);
+    for (int t = 0; t < n_threads; t++)
+      pthread_join(tids[t], NULL);
+    free(tids);
+    pthread_mutex_destroy(&pool.lock);
+  }
+
+  /* ==== Phase 3: process results (main thread only) ==== */
+  for (int i = 0; i < n_tasks; i++) {
+    enrich_task_t *t = &tasks[i];
+    if (t->result == NULL) {
+      free(t->seed_file_name);
+      continue;
+    }
+
+    /* Validate: skip if enriched text == original seed */
+    char *formatted_orig = format_string(t->seed_content);
+    char *unescaped      = unescape_string(t->result);
+    char *formatted_new  = format_string(unescaped);
+
+    if (formatted_new == NULL ||
+        strcmp(formatted_new, formatted_orig) == 0) {
+      printf("## Skip the same seed\n");
+      free(t->seed_file_name);
+      free(t->result);
+      continue;
+    }
+
+    unescaped = format_request_message(unescaped);
+
+    /* Build output path: enriched_<combo_idx>_<seed_file_name> */
+    char *enriched_file_name = malloc(strlen(t->seed_file_name) + 10 + 20);
+    strcpy(enriched_file_name, "enriched_");
+    sprintf(enriched_file_name + 9, "%d_", t->combo_idx);
+    strcat(enriched_file_name, t->seed_file_name);
+
+    char *enriched_file_path = malloc(strlen(in_dir) + strlen(enriched_file_name) + 2);
+    strcpy(enriched_file_path, in_dir);
+    strcat(enriched_file_path, "/");
+    strcat(enriched_file_path, enriched_file_name);
+
+    write_new_seeds(enriched_file_path, unescaped);
+
+    total_enriched++;
+    OKF("Created enriched seed: %s", enriched_file_name);
+
+    free(enriched_file_name);
+    free(enriched_file_path);
+    free(t->seed_file_name);
+    free(t->result);
+  }
+
+  /* ==== Cleanup ==== */
+  free(tasks);
+  for (int s = 0; s < n_seed_data; s++) {
+    for (int c = 0; c < kv_size(seed_arr[s].subsets); c++)
+      kh_destroy(strSet, kv_A(seed_arr[s].subsets, c));
+    kh_destroy(strSet, seed_arr[s].messages);
+    free(seed_arr[s].content);
+  }
+  free(seed_arr);
+
   OKF("Enrichment complete: generated %d enriched seeds from %d processed seeds", 
       total_enriched, seeds_processed);
 }

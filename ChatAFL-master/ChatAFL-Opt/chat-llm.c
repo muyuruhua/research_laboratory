@@ -45,6 +45,10 @@ static size_t chat_with_llm_helper(void *contents, size_t size, size_t nmemb, vo
 /* forward declaration for validator used in llm_handle_plateau */
 static int is_garbage_response(const char *response, size_t len);
 
+/* --- curl global lifecycle (call once from main thread) --- */
+void chat_llm_global_init(void)  { curl_global_init(CURL_GLOBAL_DEFAULT); }
+void chat_llm_global_cleanup(void) { curl_global_cleanup(); }
+
 char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
 {
     CURL *curl;
@@ -86,8 +90,6 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
         fprintf(stderr, "First 500 chars of data:\n%.500s\n", data);
         fprintf(stderr, "========================\n\n");
     }
-    
-    curl_global_init(CURL_GLOBAL_DEFAULT);
     do
     {
         struct MemoryStruct chunk;
@@ -166,7 +168,6 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
         free(data);
     }
 
-    curl_global_cleanup();
     return answer;
 }
 
