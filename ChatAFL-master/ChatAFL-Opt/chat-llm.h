@@ -43,9 +43,9 @@ Similarly 1700 is for the example request in the seed enrichment
 // All C(n,2) message-type combinations are enriched for every seed.
 // LLM calls are I/O-bound (~12 s network latency each, <1% CPU), so
 // multiple pthread workers share the single --cpus=1 container core
-// without contention.  With 4 threads the worst case (live555, 315
-// calls) takes ~16 min instead of 63 min serial.
-#define ENRICHMENT_THREADS 4
+// without contention.  With 32 threads the worst case (live555, 315
+// calls) takes ~2 min instead of 63 min serial.
+#define ENRICHMENT_THREADS 32
 
 #define PCRE2_CODE_UNIT_WIDTH 8 // Characters are 8 bits
 #include <pcre2.h>

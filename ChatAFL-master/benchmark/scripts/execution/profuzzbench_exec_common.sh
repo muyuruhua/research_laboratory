@@ -13,6 +13,9 @@ DELETE=$9
 
 WORKDIR="/home/ubuntu/experiments"
 
+# Log tag: FUZZER(target) e.g. CHATAFL-OPT(bftpd)
+LOG_TAG="${FUZZER^^}(${DOCIMAGE})"
+
 #keep all container ids
 cids=()
 
@@ -33,18 +36,21 @@ for id in ${cids[@]}; do
 done
 
 #wait until all these dockers are stopped
-printf "\n${FUZZER^^}: Fuzzing in progress ..."
-printf "\n${FUZZER^^}: Waiting for the following containers to stop:${dlist}"
+printf "\n${LOG_TAG}: Fuzzing in progress ..."
+printf "\n${LOG_TAG}: Waiting for the following containers to stop:${dlist}"
+for id in ${cids[@]}; do
+  printf "\n${LOG_TAG}: You can check logs by: docker logs -f ${id}\n"
+done
 if [ -n "${dlist}" ]; then
   docker wait ${dlist} > /dev/null
 fi
 wait
 
 #collect the fuzzing results from the containers
-printf "\n${FUZZER^^}: Collecting results and save them to ${SAVETO}"
+printf "\n${LOG_TAG}: Collecting results and save them to ${SAVETO}"
 index=1
 for id in ${cids[@]}; do
-  printf "\n${FUZZER^^}: Collecting results from container ${id}"
+  printf "\n${LOG_TAG}: Collecting results from container ${id}"
   docker cp ${id}:/home/ubuntu/experiments/${OUTDIR}.tar.gz ${SAVETO}/${OUTDIR}_${index}.tar.gz > /dev/null
   if [ ! -z $DELETE ]; then
     printf "\nDeleting ${id}"
@@ -53,4 +59,4 @@ for id in ${cids[@]}; do
   index=$((index+1))
 done
 
-printf "\n${FUZZER^^}: I am done!\n"
+printf "\n${LOG_TAG}: I am done!\n"

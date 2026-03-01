@@ -1357,12 +1357,16 @@ grammar_hypothesis_t* parse_llm_hypothesis_response(const char *llm_response) {
     grammar_hypothesis_t *hyp = (grammar_hypothesis_t*)ck_alloc(sizeof(grammar_hypothesis_t));
     memset(hyp, 0, sizeof(grammar_hypothesis_t));
     
-    // Extract message_type
+    // Extract message_type (normalised to UPPERCASE so that the
+    // dedup check in hypothesis-adapter.c — which uses strcmp via
+    // khash strSet — matches the LLM-grammar side that is already
+    // uppercase by convention).
     json_object *msg_type_obj;
     if (json_object_object_get_ex(jobj, "message_type", &msg_type_obj)) {
         const char *msg_type_str = json_object_get_string(msg_type_obj);
         if (msg_type_str && strlen(msg_type_str) > 0) {
             hyp->message_type = (char*)ck_strdup((u8*)msg_type_str);
+            for (char *p = hyp->message_type; *p; p++) *p = toupper((unsigned char)*p);
         }
     }
     

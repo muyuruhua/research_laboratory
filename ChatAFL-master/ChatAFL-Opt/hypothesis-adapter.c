@@ -147,6 +147,24 @@ int integrate_hypotheses_into_protocol_patterns(hypothesis_context_t *ctx,
         grammar_hypothesis_t *hyp = ctx->hypotheses[i];
         if (!hyp || !hyp->message_type) continue;
 
+        /* Fix-7b: Skip hypothesis patterns for message types that already
+         * have patterns from the original LLM grammar.  Adding a second
+         * pattern with a different (more permissive) regex causes the IPSM
+         * state machine to misclassify messages, degrading state discovery.
+         * Observed on lighttpd: GET/POST/HEAD/etc. already matched by
+         * "^(?:GET (.*) HTTP/1.1\r\n)", hypothesis added "^GET(?:[\t ].*)?
+         * \r?\n" → IPSM dropped from 7/7 to 5/5 nodes/edges. */
+        {
+            khiter_t k = kh_get(strSet, message_types_set, hyp->message_type);
+            if (k != kh_end(message_types_set)) {
+                fprintf(stderr,
+                        "[hyp-adapter] Skipping '%s': pattern already exists "
+                        "in message_types_set (dedup)\n",
+                        hyp->message_type);
+                continue;
+            }
+        }
+
         char header_pattern[512];
         char fields_pattern[128];
 
