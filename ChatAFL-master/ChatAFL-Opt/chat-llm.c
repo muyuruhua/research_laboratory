@@ -670,7 +670,7 @@ char *extract_protocol_commands_from_response(char *llm_response)
 
     size_t resp_len = strlen(llm_response);
     size_t capacity = resp_len + 1;
-    char *extracted = ck_alloc(capacity);
+    char *extracted = calloc(capacity, 1);
     size_t out_pos = 0;
     
     // Look for code blocks: ```...``` or just protocol commands
@@ -751,7 +751,7 @@ char *extract_protocol_commands_from_response(char *llm_response)
                         // Ensure we have space
                         if (out_pos + line_len + 2 >= capacity) {
                             capacity = (out_pos + line_len + 100) * 2;
-                            extracted = ck_realloc(extracted, capacity);
+                            extracted = realloc(extracted, capacity);
                         }
                         
                         // Copy the line byte-by-byte, filtering control chars and comments
@@ -844,7 +844,7 @@ char *extract_protocol_commands_from_response(char *llm_response)
                         
                         if (out_pos + line_len + 2 >= capacity) {
                             capacity = (out_pos + line_len + 100) * 2;
-                            extracted = ck_realloc(extracted, capacity);
+                            extracted = realloc(extracted, capacity);
                         }
                         
                         // Copy byte-by-byte with control character filtering
@@ -889,7 +889,7 @@ char *extract_protocol_commands_from_response(char *llm_response)
     
     // Finalize the result
     if (out_pos == 0) {
-        ck_free(extracted);
+        free(extracted);
         return NULL;
     }
     
@@ -903,7 +903,7 @@ char *format_request_message(char *message)
     int message_len = strlen(message);
     int max_len = message_len;
     int res_len = 0;
-    char *res = ck_alloc(message_len * sizeof(char));
+    char *res = calloc(message_len, sizeof(char));
     for (int i = 0; i < message_len; i++)
     {
         // If an \n is not padded with an \r before, we add it
@@ -911,7 +911,7 @@ char *format_request_message(char *message)
         {
             if (res_len == max_len)
             {
-                res = ck_realloc(res, max_len + 10);
+                res = realloc(res, max_len + 10);
                 max_len += 10;
             }
             res[res_len++] = '\r';
@@ -919,7 +919,7 @@ char *format_request_message(char *message)
 
         if (res_len == max_len)
         {
-            res = ck_realloc(res, max_len + 10);
+            res = realloc(res, max_len + 10);
             max_len += 10;
         }
         res[res_len++] = message[i];
@@ -930,13 +930,13 @@ char *format_request_message(char *message)
     {
         if (res_len == max_len)
         {
-            res = ck_realloc(res, max_len + 10);
+            res = realloc(res, max_len + 10);
             max_len += 10;
         }
         res[res_len++] = '\r';
         if (res_len == max_len)
         {
-            res = ck_realloc(res, max_len + 10);
+            res = realloc(res, max_len + 10);
             max_len += 10;
         }
         res[res_len++] = '\n';
@@ -944,7 +944,7 @@ char *format_request_message(char *message)
 
     if (res_len == max_len)
     {
-        res = ck_realloc(res, max_len + 1);
+        res = realloc(res, max_len + 1);
         max_len++;
     }
     res[res_len++] = '\0';
@@ -1647,7 +1647,7 @@ char *enrich_sequence(char *sequence, khash_t(strSet) *missing_message_types, co
 
     int missing_fields_len = 0;
     int missing_fields_capacity = 100;
-    char *missing_fields_seq = ck_alloc(missing_fields_capacity);
+    char *missing_fields_seq = calloc(missing_fields_capacity, 1);
 
     khiter_t k;
     int i = 0;
@@ -1664,7 +1664,7 @@ char *enrich_sequence(char *sequence, khash_t(strSet) *missing_message_types, co
         if (missing_fields_len + needed_len > missing_fields_capacity)
         {
             missing_fields_capacity += 2 * needed_len;
-            missing_fields_seq = ck_realloc(missing_fields_seq, missing_fields_capacity);
+            missing_fields_seq = realloc(missing_fields_seq, missing_fields_capacity);
         }
 
         memcpy(missing_fields_seq + missing_fields_len, message_type, strlen(message_type));
@@ -1710,7 +1710,7 @@ char *enrich_sequence(char *sequence, khash_t(strSet) *missing_message_types, co
     // Cleanup
     json_object_put(messages_array);  // This frees system_msg and user_msg too
     free(content);
-    ck_free(missing_fields_seq);
+    free(missing_fields_seq);
 
     char *response = chat_with_llm(prompt, "gpt-4o-mini", ENRICHMENT_RETRIES, 0.5);
 
