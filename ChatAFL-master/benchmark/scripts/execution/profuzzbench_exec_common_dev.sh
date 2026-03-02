@@ -43,9 +43,9 @@ SUBJECT_DIR=$(get_subject_dir "$DOCIMAGE")
 if [[ -n "$SUBJECT_DIR" ]] && [[ -d "$SUBJECT_DIR" ]]; then
     printf "\n${LOG_TAG}: [DEV] Subject dir mounted: ${SUBJECT_DIR}\n"
     SUBJECT_MOUNT="-v ${SUBJECT_DIR}:/tmp/subject-src:ro"
-    SUBJECT_COPY="cp -f /tmp/subject-src/run.sh ${WORKDIR}/run 2>/dev/null && chmod +x ${WORKDIR}/run && echo '[DEV] run.sh updated from host' && "
+    SUBJECT_COPY="cp -f /tmp/subject-src/run.sh ${WORKDIR}/run && chmod +x ${WORKDIR}/run && "
 else
-    printf "\n${LOG_TAG}: [WARN] No subject dir for '${DOCIMAGE}', using image-embedded run.sh\n"
+    printf "\n${LOG_TAG}: [WARN] No subject dir for ${DOCIMAGE}, using image-embedded run.sh\n"
     SUBJECT_MOUNT=""
     SUBJECT_COPY=""
 fi
