@@ -1691,15 +1691,46 @@ char *clean_llm_response(const char *response, const char *protocol_name)
             }
         } else {
             /* Non-blank line: copy it */
+
+            /* Fix-12 defense: For line-based protocols, strip trailing
+             * literal \r\n text (4 chars: backslash-r-backslash-n) that
+             * the LLM may output despite being told not to.  Without this,
+             * unescape_string() later converts the literal \r\n to real
+             * \r\n, producing double-CRLF between commands. */
+            size_t effective_len = line_len;
+            if (line_based) {
+                /* Strip one or more trailing literal \r\n sequences */
+                while (effective_len >= 4 &&
+                       src[effective_len - 4] == '\\' &&
+                       src[effective_len - 3] == 'r'  &&
+                       src[effective_len - 2] == '\\' &&
+                       src[effective_len - 1] == 'n') {
+                    effective_len -= 4;
+                }
+                /* Also strip trailing literal \r (2 chars) without \n */
+                if (effective_len >= 2 &&
+                    src[effective_len - 2] == '\\' &&
+                    src[effective_len - 1] == 'r') {
+                    effective_len -= 2;
+                }
+                /* If stripping leaves an empty line, skip it */
+                if (effective_len == 0) {
+                    src = line_end;
+                    if (src < content_end && *src == '\r') src++;
+                    if (src < content_end && *src == '\n') src++;
+                    continue;
+                }
+            }
+
             /* Ensure capacity */
-            if (out_pos + line_len + 4 >= cap) {
-                cap = (out_pos + line_len + 64) * 2;
+            if (out_pos + effective_len + 4 >= cap) {
+                cap = (out_pos + effective_len + 64) * 2;
                 out = realloc(out, cap);
                 if (!out) return NULL;
             }
 
-            memcpy(out + out_pos, src, line_len);
-            out_pos += line_len;
+            memcpy(out + out_pos, src, effective_len);
+            out_pos += effective_len;
 
             /* Add \r\n line terminator */
             out[out_pos++] = '\r';
@@ -1759,18 +1790,32 @@ typedef struct {
 } EnrichHintEntry;
 
 static const EnrichHintEntry ENRICH_HINT_TABLE[] = {
+    /* Fix-12: Removed literal \\r\\n from line-based format hints.
+     * Root cause of bftpd IPSM-edge regression (-37.3%):
+     *  - The old hint told the LLM to terminate each command with \\r\\n,
+     *    so the LLM output literal \\r\\n text at the end of each line.
+     *  - clean_llm_response() ALSO added real \\r\\n after each line.
+     *  - unescape_string() then converted the literal \\r\\n → real \\r\\n.
+     *  - Result: \\r\\n\\r\\n (double CRLF) between every FTP command.
+     *  - FTP is line-based: each command should be separated by a single \\r\\n.
+     *  - The extra blank line between commands confused the FTP server and
+     *    degraded IPSM state coverage (116 edges vs baseline's 185).
+     * Fix: Tell the LLM to put one command per line WITHOUT literal \\r\\n.
+     *      clean_llm_response() will add the correct \\r\\n terminator. */
     {"FTP",
      "ALLO+STOR, REST+RETR, REIN, PASV/PORT switches, MLSD/MLST",
      "invalid paths (/../..), long filenames (256+ chars), permission denials, case variants (MKD vs mkd)",
-     "Each command on its own line with arguments, terminated by \\r\\n. "
-     "NO blank lines between commands. Use concrete values, NOT placeholders "
-     "like <<VALUE>>. Example: USER anonymous\\r\\nPASS guest\\r\\n"},
+     "One command per line, NO blank lines between commands. "
+     "Do NOT write \\r\\n — just use normal line breaks. "
+     "Use concrete values, NOT placeholders like <<VALUE>>. "
+     "Example:\nUSER anonymous\nPASS guest\nSYST"},
     {"SMTP",
      "EHLO+MAIL+RCPT+DATA, AUTH LOGIN/PLAIN, VRFY/EXPN probing, RSET+MAIL chains",
      "malformed addresses, oversized headers, repeated RSET, missing EHLO, bare CR/LF",
-     "Each command on its own line with arguments, terminated by \\r\\n. "
-     "NO blank lines between commands. Use concrete values, NOT placeholders "
-     "like <<USERNAME>>. Example: EHLO test.com\\r\\nMAIL FROM:<user@test.com>\\r\\n"},
+     "One command per line, NO blank lines between commands. "
+     "Do NOT write \\r\\n — just use normal line breaks. "
+     "Use concrete values, NOT placeholders like <<USERNAME>>. "
+     "Example:\nEHLO test.com\nMAIL FROM:<user@test.com>\nRCPT TO:<dest@test.com>"},
     {"RTSP",
      "DESCRIBE+SETUP+PLAY+PAUSE+TEARDOWN, interleaved channel requests, OPTIONS probing",
      "invalid session IDs, malformed stream URIs, unsupported transport specs, bad CSeq",
