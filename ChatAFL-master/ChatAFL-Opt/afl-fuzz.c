@@ -504,18 +504,6 @@ void setup_llm_grammars()
 
   ACTF("Getting grammars from LLM...");
 
-  /* Fix-13: MQTT binary protocol bypass.
-   * The LLM cannot generate valid binary packet templates for MQTT,
-   * resulting in 0 grammars / 0 enriched seeds.  Instead, we inject
-   * hardcoded MQTT message types directly and skip the LLM grammar
-   * generation entirely. */
-  if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0) {
-    ACTF("MQTT detected — using hardcoded binary grammars (LLM bypass)");
-    int n = mqtt_setup_hardcoded_grammars(protocol_patterns, message_types_set, out_dir);
-    OKF("Injected %d MQTT message types into grammar system", n);
-    return;
-  }
-
   khash_t(consistency_table) *const_table = kh_init(consistency_table);
   char *first_question;
   char *templates_prompt = construct_prompt_for_templates(protocol_name, &first_question);
@@ -635,6 +623,18 @@ void setup_llm_grammars()
       ck_free(pattern_path);
 
     }
+  }
+
+  /* Fix-13: MQTT binary protocol supplementation.
+   * The LLM pipeline above runs normally (API calls happen), but for MQTT
+   * it produces 0 useful grammars because the LLM cannot generate binary
+   * packet templates.  Supplement message_types_set with hardcoded MQTT
+   * message types so the enrichment pipeline has types to work with. */
+  if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0) {
+    ACTF("MQTT: LLM produced %d patterns — supplementing with hardcoded binary types",
+         (int)protocol_patterns->size);
+    int n = mqtt_setup_hardcoded_grammars(protocol_patterns, message_types_set, out_dir);
+    OKF("Injected %d MQTT message types (supplementing LLM results)", n);
   }
 
   free(first_question);
@@ -3035,22 +3035,18 @@ static void enrich_testcases(void)
 {
   ACTF("Enriching test cases from LLM...");
 
-  /* Fix-13: MQTT binary protocol bypass.
-   * For MQTT, the LLM enrichment pipeline cannot work because:
-   *   1. LLM cannot generate binary packet templates
-   *   2. extract_message_grammars() only parses JSON arrays from text
-   *   3. The seed content is binary — LLM text enrichment is nonsensical
-   * Instead, we use mqtt_enrich_seeds() which programmatically builds
-   * valid MQTT packet sequences covering diverse interaction patterns. */
-  if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0) {
-    ACTF("MQTT detected — using programmatic binary seed enrichment (LLM bypass)");
-    int n = mqtt_enrich_seeds(in_dir, message_types_set);
-    OKF("MQTT enrichment: generated %d binary seeds", n);
-    return;
-  }
-
-  // Get seeds to states and save them to the in_dir
+  // Get seeds to states and save them to the in_dir (all protocols, including MQTT)
   get_seeds_with_messsage_types(in_dir, message_types_set);
+
+  /* Fix-13: MQTT binary protocol supplementation.
+   * The LLM enrichment pipeline above runs normally (API calls happen),
+   * but its text-based enriched seeds are invalid for MQTT's binary format.
+   * Supplement with programmatic binary seed generation. */
+  if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0) {
+    ACTF("MQTT: supplementing LLM enrichment with programmatic binary seeds");
+    int n = mqtt_enrich_seeds(in_dir, message_types_set);
+    OKF("MQTT supplementation: generated %d binary seeds", n);
+  }
 }
 
 /* Read all testcases from the input directory, then queue them for testing.
