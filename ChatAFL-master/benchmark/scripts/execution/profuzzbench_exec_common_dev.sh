@@ -19,6 +19,37 @@ PROJECT_ROOT="${PROJECT_ROOT:-$PWD/../..}"
 # Log tag: FUZZER(target) e.g. CHATAFL-OPT(bftpd)
 LOG_TAG="${FUZZER^^}(${DOCIMAGE})"
 
+# Subject directory mapping: docker image name → host subject directory
+# Volume mount run.sh，改宿主机的 run.sh / cov_script.sh 不用重建镜像
+get_subject_dir() {
+    local target=$1
+    local base="${PROJECT_ROOT}/benchmark/subjects"
+    case "$target" in
+        lightftp)      echo "${base}/FTP/LightFTP" ;;
+        bftpd)         echo "${base}/FTP/BFTPD" ;;
+        proftpd)       echo "${base}/FTP/ProFTPD" ;;
+        pure-ftpd)     echo "${base}/FTP/PureFTPD" ;;
+        exim)          echo "${base}/SMTP/Exim" ;;
+        live555)       echo "${base}/RTSP/Live555" ;;
+        kamailio)      echo "${base}/SIP/Kamailio" ;;
+        forked-daapd)  echo "${base}/DAAP/forked-daapd" ;;
+        lighttpd1)     echo "${base}/HTTP/Lighttpd1" ;;
+        mosquitto)     echo "${base}/MQTT/Mosquitto" ;;
+        *) echo "" ;;
+    esac
+}
+
+SUBJECT_DIR=$(get_subject_dir "$DOCIMAGE")
+if [[ -n "$SUBJECT_DIR" ]] && [[ -d "$SUBJECT_DIR" ]]; then
+    printf "\n${LOG_TAG}: [DEV] Subject dir mounted: ${SUBJECT_DIR}\n"
+    SUBJECT_MOUNT="-v ${SUBJECT_DIR}:/tmp/subject-src:ro"
+    SUBJECT_COPY="cp -f /tmp/subject-src/run.sh ${WORKDIR}/run 2>/dev/null && chmod +x ${WORKDIR}/run && echo '[DEV] run.sh updated from host' && "
+else
+    printf "\n${LOG_TAG}: [WARN] No subject dir for '${DOCIMAGE}', using image-embedded run.sh\n"
+    SUBJECT_MOUNT=""
+    SUBJECT_COPY=""
+fi
+
 #keep all container ids
 cids=()
 
@@ -31,7 +62,9 @@ for i in $(seq 1 $RUNS); do
       -e KEY="${KEY}" \
       -e CHATAFL_HYPOTHESIS=1 \
       -v "${PROJECT_ROOT}/ChatAFL-Opt:/tmp/chatafl-opt-src:ro" \
+      ${SUBJECT_MOUNT} \
       -d -it $DOCIMAGE /bin/bash -c "\
+        ${SUBJECT_COPY}\
         echo '[DEV] Copying and compiling updated code...' && \
         cp -f /tmp/chatafl-opt-src/*.c /tmp/chatafl-opt-src/*.h /tmp/chatafl-opt-src/Makefile /home/ubuntu/chatafl-opt/ 2>/dev/null || true && \
         cd /home/ubuntu/chatafl-opt && make clean && make -j\$(nproc) && \
@@ -41,7 +74,9 @@ for i in $(seq 1 $RUNS); do
     id=$(docker run --cpus=1 \
       -e KEY="${KEY}" \
       -v "${PROJECT_ROOT}/ChatAFL:/tmp/chatafl-src:ro" \
+      ${SUBJECT_MOUNT} \
       -d -it $DOCIMAGE /bin/bash -c "\
+        ${SUBJECT_COPY}\
         cp -f /tmp/chatafl-src/*.c /tmp/chatafl-src/*.h /home/ubuntu/chatafl/ && \
         cd /home/ubuntu/chatafl && make clean && make -j\$(nproc) && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
@@ -49,7 +84,9 @@ for i in $(seq 1 $RUNS); do
     id=$(docker run --cpus=1 \
       -e KEY="${KEY}" \
       -v "${PROJECT_ROOT}/ChatAFL-CL1:/tmp/chatafl-cl1-src:ro" \
+      ${SUBJECT_MOUNT} \
       -d -it $DOCIMAGE /bin/bash -c "\
+        ${SUBJECT_COPY}\
         cp -f /tmp/chatafl-cl1-src/*.c /tmp/chatafl-cl1-src/*.h /home/ubuntu/chatafl-cl1/ && \
         cd /home/ubuntu/chatafl-cl1 && make clean && make -j\$(nproc) && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
@@ -57,12 +94,14 @@ for i in $(seq 1 $RUNS); do
     id=$(docker run --cpus=1 \
       -e KEY="${KEY}" \
       -v "${PROJECT_ROOT}/ChatAFL-CL2:/tmp/chatafl-cl2-src:ro" \
+      ${SUBJECT_MOUNT} \
       -d -it $DOCIMAGE /bin/bash -c "\
+        ${SUBJECT_COPY}\
         cp -f /tmp/chatafl-cl2-src/*.c /tmp/chatafl-cl2-src/*.h /home/ubuntu/chatafl-cl2/ && \
         cd /home/ubuntu/chatafl-cl2 && make clean && make -j\$(nproc) && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   else
-    id=$(docker run --cpus=1 -e KEY="${KEY}" -d -it $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
+    id=$(docker run --cpus=1 -e KEY="${KEY}" ${SUBJECT_MOUNT} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   fi
   cids+=(${id::12}) #store only the first 12 characters of a container ID
 done
