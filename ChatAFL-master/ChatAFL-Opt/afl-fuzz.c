@@ -45,6 +45,7 @@
 #include "chat-llm.h"
 #include "grammar-hypothesis.h"
 #include "hypothesis-adapter.h"
+#include "mqtt-builder.h"
 
 #include <stdio.h>
 #include <unistd.h>
@@ -502,6 +503,18 @@ void setup_llm_grammars()
 {
 
   ACTF("Getting grammars from LLM...");
+
+  /* Fix-13: MQTT binary protocol bypass.
+   * The LLM cannot generate valid binary packet templates for MQTT,
+   * resulting in 0 grammars / 0 enriched seeds.  Instead, we inject
+   * hardcoded MQTT message types directly and skip the LLM grammar
+   * generation entirely. */
+  if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0) {
+    ACTF("MQTT detected — using hardcoded binary grammars (LLM bypass)");
+    int n = mqtt_setup_hardcoded_grammars(protocol_patterns, message_types_set, out_dir);
+    OKF("Injected %d MQTT message types into grammar system", n);
+    return;
+  }
 
   khash_t(consistency_table) *const_table = kh_init(consistency_table);
   char *first_question;
@@ -3022,12 +3035,19 @@ static void enrich_testcases(void)
 {
   ACTF("Enriching test cases from LLM...");
 
-  // char *message_prompt = construct_prompt_for_protocol_message_types(protocol_name);
-
-  // // Get protocol states
-  // get_protocol_message_types(message_prompt, message_type_set);
-
-  // free(message_prompt);
+  /* Fix-13: MQTT binary protocol bypass.
+   * For MQTT, the LLM enrichment pipeline cannot work because:
+   *   1. LLM cannot generate binary packet templates
+   *   2. extract_message_grammars() only parses JSON arrays from text
+   *   3. The seed content is binary — LLM text enrichment is nonsensical
+   * Instead, we use mqtt_enrich_seeds() which programmatically builds
+   * valid MQTT packet sequences covering diverse interaction patterns. */
+  if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0) {
+    ACTF("MQTT detected — using programmatic binary seed enrichment (LLM bypass)");
+    int n = mqtt_enrich_seeds(in_dir, message_types_set);
+    OKF("MQTT enrichment: generated %d binary seeds", n);
+    return;
+  }
 
   // Get seeds to states and save them to the in_dir
   get_seeds_with_messsage_types(in_dir, message_types_set);

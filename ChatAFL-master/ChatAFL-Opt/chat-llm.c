@@ -731,6 +731,10 @@ char *extract_protocol_commands_from_response(char *llm_response)
                         "SUBSCRIBE","NOTIFY","UPDATE","REFER","MESSAGE","PUBLISH",
                         /* HTTP */
                         "GET","POST","PUT","DELETE","HEAD","CONNECT","TRACE","PATCH",
+                        /* MQTT (Fix-13: packet type names for binary protocol) */
+                        "CONNECT","CONNACK","PUBLISH","PUBACK","PUBREC","PUBREL",
+                        "PUBCOMP","SUBSCRIBE","SUBACK","UNSUBSCRIBE","UNSUBACK",
+                        "PINGREQ","PINGRESP","DISCONNECT",
                         NULL
                     };
                     for (int i = 0; proto_commands[i] != NULL; i++) {
@@ -1839,7 +1843,8 @@ static const EnrichHintEntry ENRICH_HINT_TABLE[] = {
     {"MQTT",
      "CONNECT+SUBSCRIBE+PUBLISH+UNSUBSCRIBE+DISCONNECT, PINGREQ/PINGRESP, QoS 0/1/2",
      "oversized client IDs, invalid topic filters, will message variations, clean session",
-     "Output MQTT commands in text-representable format with all required fields"},
+     "MQTT is a binary protocol — seed enrichment uses programmatic packet builders "
+     "(Fix-13: LLM text enrichment bypassed for binary protocols)"},
     {"DNS",
      "A/AAAA/MX/NS/PTR/TXT/SOA query sequences, recursive vs iterative",
      "malformed labels, oversized names, EDNS options, DNSSEC flag variations",
