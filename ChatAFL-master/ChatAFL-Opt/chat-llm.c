@@ -1586,6 +1586,168 @@ int min(int a, int b) {
     return a < b ? a : b;
 }
 
+/* ============================================
+ * Fix-10a: Lightweight LLM response cleaner.
+ *
+ * Problem discovered in R9: returning raw LLM output (Fix-9a) fixed RTSP
+ * by preserving multi-region structure, but BROKE SMTP because:
+ *   1. Markdown ``` fencing becomes a garbage SMTP region
+ *   2. LLM inserts blank lines between commands -> empty \r\n regions
+ *      (SMTP splits on \r\n, not \r\n\r\n like RTSP)
+ *   3. LLM uses placeholders like <<USERNAME>> instead of real values
+ *
+ * Solution: protocol-aware cleaning that preserves structure for
+ * header-based protocols (RTSP/SIP/HTTP) while cleaning up line-based
+ * protocols (FTP/SMTP). This is NOT the old extract_protocol_commands_
+ * from_response() which stripped URLs/headers/CSeq -- this only removes
+ * the wrapper garbage while keeping actual protocol content intact.
+ * ============================================ */
+char *clean_llm_response(const char *response, const char *protocol_name)
+{
+    if (!response || !*response)
+        return NULL;
+
+    size_t resp_len = strlen(response);
+    size_t cap = resp_len + 64;
+    char *out = calloc(cap, 1);
+    if (!out) return NULL;
+    size_t out_pos = 0;
+
+    /* Determine if this is a line-based protocol (region = \r\n)
+     * vs a header-based protocol (region = \r\n\r\n).            */
+    int line_based = 0;
+    if (protocol_name) {
+        if (strcasecmp(protocol_name, "FTP") == 0 ||
+            strcasecmp(protocol_name, "SMTP") == 0) {
+            line_based = 1;
+        }
+    }
+
+    const char *end = response + resp_len;
+
+    /* --- Phase 1: Skip LLM preamble text before the first code fence ---
+     * Many LLM responses start with:
+     *   "Certainly! Below is the modified sequence...\n```\n"
+     * or just natural language.  We skip to inside the ``` block. */
+    const char *content_start = NULL;
+
+    /* Check for opening ``` fence */
+    const char *fence = strstr(response, "```");
+    if (fence) {
+        /* Jump past ```[language]\n */
+        content_start = fence + 3;
+        while (content_start < end && *content_start != '\n' && *content_start != '\r')
+            content_start++;  /* skip optional language tag */
+        if (content_start < end && *content_start == '\r') content_start++;
+        if (content_start < end && *content_start == '\n') content_start++;
+    } else {
+        /* No fence -- use entire response */
+        content_start = response;
+    }
+
+    /* --- Phase 2: Find the end boundary (closing ``` or end of string) --- */
+    const char *content_end = end;
+    if (fence) {
+        const char *close_fence = strstr(content_start, "```");
+        if (close_fence)
+            content_end = close_fence;
+    }
+
+    /* --- Phase 3: Copy content with protocol-aware blank-line handling --- */
+    const char *src = content_start;
+
+    while (src < content_end) {
+        /* Find end of current line */
+        const char *line_end = src;
+        while (line_end < content_end && *line_end != '\n' && *line_end != '\r')
+            line_end++;
+
+        size_t line_len = line_end - src;
+
+        /* Check if line is blank (empty or only whitespace) */
+        int is_blank = 1;
+        for (size_t i = 0; i < line_len; i++) {
+            if (src[i] != ' ' && src[i] != '\t') {
+                is_blank = 0;
+                break;
+            }
+        }
+
+        if (is_blank) {
+            if (line_based) {
+                /* For SMTP/FTP: skip blank lines entirely.
+                 * This prevents empty \r\n regions from being created
+                 * by extract_requests_smtp(). */
+                /* (do nothing -- just advance past this line) */
+            } else {
+                /* For RTSP/SIP/HTTP: blank lines ARE the region delimiter
+                 * (\r\n\r\n), so we MUST preserve them. */
+                if (out_pos + 2 < cap) {
+                    out[out_pos++] = '\r';
+                    out[out_pos++] = '\n';
+                }
+            }
+        } else {
+            /* Non-blank line: copy it */
+            /* Ensure capacity */
+            if (out_pos + line_len + 4 >= cap) {
+                cap = (out_pos + line_len + 64) * 2;
+                out = realloc(out, cap);
+                if (!out) return NULL;
+            }
+
+            memcpy(out + out_pos, src, line_len);
+            out_pos += line_len;
+
+            /* Add \r\n line terminator */
+            out[out_pos++] = '\r';
+            out[out_pos++] = '\n';
+        }
+
+        /* Advance past line ending */
+        src = line_end;
+        if (src < content_end && *src == '\r') src++;
+        if (src < content_end && *src == '\n') src++;
+    }
+
+    /* Trim trailing whitespace/newlines */
+    while (out_pos > 0 && (out[out_pos-1] == '\r' || out[out_pos-1] == '\n' ||
+                           out[out_pos-1] == ' '  || out[out_pos-1] == '\t'))
+        out_pos--;
+
+    /* For header-based protocols, ensure we end with \r\n\r\n
+     * so the last request is properly terminated */
+    if (!line_based && out_pos > 0) {
+        if (out_pos + 5 >= cap) {
+            cap = out_pos + 8;
+            out = realloc(out, cap);
+        }
+        out[out_pos++] = '\r';
+        out[out_pos++] = '\n';
+        out[out_pos++] = '\r';
+        out[out_pos++] = '\n';
+    }
+    /* For line-based protocols, ensure we end with \r\n */
+    if (line_based && out_pos > 0) {
+        if (out_pos + 3 >= cap) {
+            cap = out_pos + 4;
+            out = realloc(out, cap);
+        }
+        out[out_pos++] = '\r';
+        out[out_pos++] = '\n';
+    }
+
+    if (out_pos == 0) {
+        free(out);
+        return NULL;
+    }
+
+    out[out_pos] = '\0';
+    fprintf(stderr, "[clean_llm_response] %s: %zu -> %zu bytes (line_based=%d)\n",
+            protocol_name ? protocol_name : "?", resp_len, out_pos, line_based);
+    return out;
+}
+
 /* Per-protocol hints for the enrichment prompt */
 typedef struct {
     const char *name;
@@ -1599,12 +1761,14 @@ static const EnrichHintEntry ENRICH_HINT_TABLE[] = {
      "ALLO+STOR, REST+RETR, REIN, PASV/PORT switches, MLSD/MLST",
      "invalid paths (/../..), long filenames (256+ chars), permission denials, case variants (MKD vs mkd)",
      "Each command on its own line with arguments, terminated by \\r\\n. "
-     "Example: USER anonymous\\r\\n"},
+     "NO blank lines between commands. Use concrete values, NOT placeholders "
+     "like <<VALUE>>. Example: USER anonymous\\r\\nPASS guest\\r\\n"},
     {"SMTP",
      "EHLO+MAIL+RCPT+DATA, AUTH LOGIN/PLAIN, VRFY/EXPN probing, RSET+MAIL chains",
      "malformed addresses, oversized headers, repeated RSET, missing EHLO, bare CR/LF",
      "Each command on its own line with arguments, terminated by \\r\\n. "
-     "Example: EHLO test.com\\r\\n"},
+     "NO blank lines between commands. Use concrete values, NOT placeholders "
+     "like <<USERNAME>>. Example: EHLO test.com\\r\\nMAIL FROM:<user@test.com>\\r\\n"},
     {"RTSP",
      "DESCRIBE+SETUP+PLAY+PAUSE+TEARDOWN, interleaved channel requests, OPTIONS probing",
      "invalid session IDs, malformed stream URIs, unsupported transport specs, bad CSeq",
@@ -1742,19 +1906,32 @@ char *enrich_sequence(char *sequence, khash_t(strSet) *missing_message_types, co
 
     free(prompt);
 
-    /* Fix-9a: Return the raw LLM response WITHOUT stripping.
-     * The previous extract_protocol_commands_from_response() removed URLs,
-     * headers, CSeq etc., leaving only bare command names like
-     * "DESCRIBE rtsp:\r\nSETUP rtsp:\r\n". This caused:
-     *  - Only 1 \r\n\r\n per seed → extract_requests_rtsp() saw 1 region
-     *  - Server returned single 400 Bad Request → trivial IPSM state
-     *  - 315 enriched seeds mapped to 25 distinct map_sizes (vs 143 for baseline)
-     *  - IPSM edges: 72 vs baseline's 128
-     * By returning the full LLM response (which includes complete protocol
-     * requests with URLs, RTSP/1.0 version, headers, and \r\n\r\n separators),
-     * each enriched seed properly generates multiple regions → multiple
-     * server response codes → rich IPSM state exploration. */
-    return response;
+    /* Fix-10a: Protocol-aware response cleaning.
+     *
+     * History of this code path:
+     *  - Original: used extract_protocol_commands_from_response() which stripped
+     *    URLs, headers, CSeq -> only bare command names -> 1 region per seed
+     *    -> IPSM edges: 72 (vs baseline 128)
+     *  - Fix-9a: returned raw LLM output -> fixed RTSP (edges: 132) but broke
+     *    SMTP because raw output contains markdown ```, blank lines between
+     *    commands, and <<PLACEHOLDER>> tokens -> 59 SMTP regions (vs 7 original)
+     *    -> coverage dropped from 7439 to 5845
+     *  - Fix-10a: clean_llm_response() removes markdown fencing and LLM preamble,
+     *    and for line-based protocols (SMTP/FTP) collapses blank lines while
+     *    preserving blank lines for header-based protocols (RTSP/SIP/HTTP) where
+     *    \r\n\r\n is the region delimiter.
+     */
+    if (!response) return NULL;
+
+    char *cleaned = clean_llm_response(response, protocol_name);
+    free(response);
+
+    if (!cleaned) {
+        fprintf(stderr, "[enrich] clean_llm_response returned NULL, skipping\n");
+        return NULL;
+    }
+
+    return cleaned;
 }
 
 // // For debugging

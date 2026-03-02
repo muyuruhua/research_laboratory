@@ -108,6 +108,7 @@ range_list get_mutable_ranges(char *line, int length, int offset, pcre2_code *pa
 void get_protocol_message_types(char *state_prompt, khash_t(strSet) * message_types);
 
 char *enrich_sequence(char *sequence, khash_t(strSet) *missing_message_types, const char *protocol_name);
+char *clean_llm_response(const char *response, const char *protocol_name);
 khash_t(strSet)* duplicate_hash(khash_t(strSet)* set);
 void write_new_seeds(char *enriched_file, char *contents);
 char *unescape_string(const char *input);

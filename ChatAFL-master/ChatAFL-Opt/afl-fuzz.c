@@ -7454,6 +7454,18 @@ AFLNET_REGIONS_SELECTION:;
   if (uninteresting_times >= adaptive_plateau_threshold && chat_times < CHATTING_THRESHOLD)
   {
     uninteresting_times = 0;
+
+    /* Fix-10b: Lazy hypothesis system init — only on first plateau trigger.
+     * R9 showed eager init at startup cost 380s + 30MB RSS for exim with
+     * zero benefit (hypothesis_parse_success=0). Deferring to first plateau
+     * avoids the cost entirely for short runs and delays it until the fuzzer
+     * actually needs LLM assistance. */
+    if (hypothesis_mode && !hypothesis_ctx) {
+      fprintf(stderr, "[hypothesis] Lazy init: first plateau reached, "
+                      "initializing grammar hypothesis system now.\n");
+      init_grammar_hypothesis_system();
+    }
+
     fprintf(stderr, "[plateau-trigger] Triggering LLM (growth_rate=%.2f, threshold=%u, chat_times=%u)\n",
             edges_growth_rate, adaptive_plateau_threshold, chat_times);
 
@@ -11580,17 +11592,27 @@ int main(int argc, char **argv)
   fprintf(stderr, "[DEBUG] ========== AFTER perform_dry_run ==========\n");
   fflush(stderr);
 
-  /* ChatAFL-Opt: Initialize grammar hypothesis system */
+  /* ChatAFL-Opt: Grammar hypothesis system — DEFERRED initialization.
+   *
+   * Fix-10b: Do NOT initialize hypothesis system eagerly at startup.
+   * R9 data showed that eager init costs:
+   *   - 380s startup delay (RFC fetch + LLM hypothesis generation)
+   *   - +30MB RSS overhead from hypothesis_ctx allocation
+   *   - hypothesis_avg_fitness stuck at 0.500 (never validated)
+   *
+   * Instead, just record that hypothesis mode is requested.  The actual
+   * init_grammar_hypothesis_system() call is deferred to the first time
+   * the plateau handler fires, when the system actually needs it. */
   fprintf(stderr, "[DEBUG] Checking CHATAFL_HYPOTHESIS env var...\n");
   fflush(stderr);
   char *hyp_env = getenv("CHATAFL_HYPOTHESIS");
   if (hyp_env)
   {
-    fprintf(stderr, "[DEBUG] CHATAFL_HYPOTHESIS=%s, enabling hypothesis mode\n", hyp_env);
+    fprintf(stderr, "[DEBUG] CHATAFL_HYPOTHESIS=%s, hypothesis mode DEFERRED (lazy init on first plateau)\n", hyp_env);
     fflush(stderr);
     hypothesis_mode = 1;
-    OKF("Grammar Hypothesis Mode enabled (CHATAFL_HYPOTHESIS env var set)");
-    init_grammar_hypothesis_system();
+    OKF("Grammar Hypothesis Mode enabled (deferred init until first plateau)");
+    /* init_grammar_hypothesis_system() will be called on first plateau trigger */
   }
   else
   {
