@@ -350,10 +350,12 @@ char *llm_handle_plateau(const char *protocol_name, const char *examples,
 /* Lookup table of per-protocol few-shot examples for grammar prompts.
  * Each entry shows ONE representative message of that protocol using the
  * exact <<VALUE>> template format so the LLM knows the expected output style.
- * Format convention (same as rest of code):
- *   \\n       -> literal \n seen by LLM
- *   \\\"      -> literal " seen by LLM
- *   \\\\r\\\\n -> literal \r\n seen by LLM
+ *
+ * These strings are passed to json_object_new_string() which auto-escapes.
+ * Use NATURAL C string escaping:
+ *   \n       -> real newline  (json-c emits \n in JSON -> API sees newline)
+ *   "        -> quote char    (json-c emits \" in JSON -> API sees ")
+ *   \\r\\n   -> 4 chars \r\n (json-c emits \\r\\n  -> API sees \r\n text)
  */
 typedef struct {
     const char *name;
@@ -365,43 +367,43 @@ typedef struct {
 
 static const ProtocolExampleEntry PROTOCOL_EXAMPLE_TABLE[] = {
     {"FTP",  "USER",
-     "For the FTP protocol, the USER client request template is:\\n"
-     "USER: [\\\"USER <<VALUE>>\\\\r\\\\n\\\"]"},
+     "For the FTP protocol, the USER client request template is:\n"
+     "USER: [\"USER <<VALUE>>\\r\\n\"]"},
     {"SMTP", "EHLO",
-     "For the SMTP protocol, the EHLO client request template is:\\n"
-     "EHLO: [\\\"EHLO <<VALUE>>\\\\r\\\\n\\\"]"},
+     "For the SMTP protocol, the EHLO client request template is:\n"
+     "EHLO: [\"EHLO <<VALUE>>\\r\\n\"]"},
     {"RTSP", "DESCRIBE",
-     "For the RTSP protocol, the DESCRIBE client request template is:\\n"
-     "DESCRIBE: [\\\"DESCRIBE <<VALUE>>\\\\r\\\\n\\\","
-     "\\\"CSeq: <<VALUE>>\\\\r\\\\n\\\","
-     "\\\"User-Agent: <<VALUE>>\\\\r\\\\n\\\","
-     "\\\"Accept: <<VALUE>>\\\\r\\\\n\\\","
-     "\\\"\\\\r\\\\n\\\"]"},
+     "For the RTSP protocol, the DESCRIBE client request template is:\n"
+     "DESCRIBE: [\"DESCRIBE <<VALUE>>\\r\\n\","
+     "\"CSeq: <<VALUE>>\\r\\n\","
+     "\"User-Agent: <<VALUE>>\\r\\n\","
+     "\"Accept: <<VALUE>>\\r\\n\","
+     "\"\\r\\n\"]"},
     {"HTTP", "GET",
-     "For the HTTP protocol, the GET client request template is:\\n"
-     "GET: [\\\"GET <<VALUE>> HTTP/1.1\\\\r\\\\n\\\","
-     "\\\"Host: <<VALUE>>\\\\r\\\\n\\\","
-     "\\\"\\\\r\\\\n\\\"]"},
+     "For the HTTP protocol, the GET client request template is:\n"
+     "GET: [\"GET <<VALUE>> HTTP/1.1\\r\\n\","
+     "\"Host: <<VALUE>>\\r\\n\","
+     "\"\\r\\n\"]"},
     {"SIP",  "REGISTER",
-     "For the SIP protocol, the REGISTER client request template is:\\n"
-     "REGISTER: [\\\"REGISTER sip:<<VALUE>> SIP/2.0\\\\r\\\\n\\\","
-     "\\\"Via: SIP/2.0/UDP <<VALUE>>\\\\r\\\\n\\\","
-     "\\\"From: <sip:<<VALUE>>>\\\\r\\\\n\\\","
-     "\\\"To: <sip:<<VALUE>>>\\\\r\\\\n\\\","
-     "\\\"CSeq: <<VALUE>> REGISTER\\\\r\\\\n\\\","
-     "\\\"\\\\r\\\\n\\\"]"},
+     "For the SIP protocol, the REGISTER client request template is:\n"
+     "REGISTER: [\"REGISTER sip:<<VALUE>> SIP/2.0\\r\\n\","
+     "\"Via: SIP/2.0/UDP <<VALUE>>\\r\\n\","
+     "\"From: <sip:<<VALUE>>>\\r\\n\","
+     "\"To: <sip:<<VALUE>>>\\r\\n\","
+     "\"CSeq: <<VALUE>> REGISTER\\r\\n\","
+     "\"\\r\\n\"]"},
     {"DAAP", "login",
-     "For the DAAP protocol, the login client request template is:\\n"
-     "login: [\\\"GET /login?pairing-guid=<<VALUE>> HTTP/1.1\\\\r\\\\n\\\","
-     "\\\"Host: <<VALUE>>\\\\r\\\\n\\\","
-     "\\\"Client-DAAP-Version: <<VALUE>>\\\\r\\\\n\\\","
-     "\\\"\\\\r\\\\n\\\"]"},
+     "For the DAAP protocol, the login client request template is:\n"
+     "login: [\"GET /login?pairing-guid=<<VALUE>> HTTP/1.1\\r\\n\","
+     "\"Host: <<VALUE>>\\r\\n\","
+     "\"Client-DAAP-Version: <<VALUE>>\\r\\n\","
+     "\"\\r\\n\"]"},
     {"MQTT", "CONNECT",
-     "For the MQTT protocol, the CONNECT packet template is:\\n"
-     "CONNECT: [\\\"\\\\x10<<VALUE>>\\\\x00\\\\x04MQTT\\\\x04<<VALUE>>\\\\x00\\\\x3c\\\\x00<<VALUE>>\\\"]"},
+     "For the MQTT protocol, the CONNECT packet template is:\n"
+     "CONNECT: [\"\\x10<<VALUE>>\\x00\\x04MQTT\\x04<<VALUE>>\\x00\\x3c\\x00<<VALUE>>\"]"},
     {"DNS",  "QUERY",
-     "For the DNS protocol, the QUERY request template is:\\n"
-     "QUERY: [\\\"<<VALUE>>\\\\x01\\\\x00\\\\x00\\\\x01\\\\x00\\\\x00\\\\x00\\\\x00\\\\x00\\\\x00<<VALUE>>\\\"]"},
+     "For the DNS protocol, the QUERY request template is:\n"
+     "QUERY: [\"<<VALUE>>\\x01\\x00\\x00\\x01\\x00\\x00\\x00\\x00\\x00\\x00<<VALUE>>\"]"},
     {NULL, NULL, NULL}
 };
 
@@ -427,7 +429,7 @@ char *construct_prompt_for_templates(char *protocol_name, char **final_msg)
 
     char *msg = NULL;
     asprintf(&msg,
-             "%s\\n"
+             "%s\n"
              "Following the same format above, for the %s protocol, "
              "list ALL client request message templates (not just %s):",
              anchor_example, protocol_name, anchor_msg_type);
