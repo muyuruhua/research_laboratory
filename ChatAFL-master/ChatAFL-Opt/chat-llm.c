@@ -1589,28 +1589,51 @@ int min(int a, int b) {
 /* Per-protocol hints for the enrichment prompt */
 typedef struct {
     const char *name;
-    const char *sequences;  /* typical command/message sequences to explore */
-    const char *errors;     /* error/boundary cases specific to this protocol */
+    const char *sequences;    /* typical command/message sequences to explore */
+    const char *errors;       /* error/boundary cases specific to this protocol */
+    const char *format_hint;  /* protocol-specific format instructions for LLM */
 } EnrichHintEntry;
 
 static const EnrichHintEntry ENRICH_HINT_TABLE[] = {
-    {"FTP",  "ALLO+STOR, REST+RETR, REIN, PASV/PORT switches, MLSD/MLST",
-             "invalid paths (/../..), long filenames (256+ chars), permission denials, case variants (MKD vs mkd)"},
-    {"SMTP", "EHLO+MAIL+RCPT+DATA, AUTH LOGIN/PLAIN, VRFY/EXPN probing, RSET+MAIL chains",
-             "malformed addresses, oversized headers, repeated RSET, missing EHLO, bare CR/LF"},
-    {"RTSP", "DESCRIBE+SETUP+PLAY+PAUSE+TEARDOWN, interleaved channel requests, OPTIONS probing",
-             "invalid session IDs, malformed stream URIs, unsupported transport specs, bad CSeq"},
-    {"HTTP", "GET/POST/PUT/DELETE/OPTIONS/HEAD sequences, pipelining, chunked transfer, keep-alive",
-             "path traversal (/../), oversized headers, invalid methods, malformed URIs, HTTP/0.9"},
-    {"SIP",  "REGISTER+INVITE+ACK+BYE, CANCEL, OPTIONS, re-registration, forked dialogs",
-             "malformed SIP URIs, missing Via/From/To headers, invalid CSeq, loop detection"},
-    {"DAAP", "login+server-info+update+databases+items+containers sequences, session management",
-             "invalid session tokens, malformed content-codes, unexpected revision numbers"},
-    {"MQTT", "CONNECT+SUBSCRIBE+PUBLISH+UNSUBSCRIBE+DISCONNECT, PINGREQ/PINGRESP, QoS 0/1/2",
-             "oversized client IDs, invalid topic filters, will message variations, clean session"},
-    {"DNS",  "A/AAAA/MX/NS/PTR/TXT/SOA query sequences, recursive vs iterative",
-             "malformed labels, oversized names, EDNS options, DNSSEC flag variations"},
-    {NULL, NULL, NULL}
+    {"FTP",
+     "ALLO+STOR, REST+RETR, REIN, PASV/PORT switches, MLSD/MLST",
+     "invalid paths (/../..), long filenames (256+ chars), permission denials, case variants (MKD vs mkd)",
+     "Each command on its own line with arguments, terminated by \\r\\n. "
+     "Example: USER anonymous\\r\\n"},
+    {"SMTP",
+     "EHLO+MAIL+RCPT+DATA, AUTH LOGIN/PLAIN, VRFY/EXPN probing, RSET+MAIL chains",
+     "malformed addresses, oversized headers, repeated RSET, missing EHLO, bare CR/LF",
+     "Each command on its own line with arguments, terminated by \\r\\n. "
+     "Example: EHLO test.com\\r\\n"},
+    {"RTSP",
+     "DESCRIBE+SETUP+PLAY+PAUSE+TEARDOWN, interleaved channel requests, OPTIONS probing",
+     "invalid session IDs, malformed stream URIs, unsupported transport specs, bad CSeq",
+     "Each request includes: command URL RTSP/1.0, headers (CSeq, Transport, Session), "
+     "and is terminated by a blank line (\\r\\n\\r\\n)"},
+    {"HTTP",
+     "GET/POST/PUT/DELETE/OPTIONS/HEAD sequences, pipelining, chunked transfer, keep-alive",
+     "path traversal (/../), oversized headers, invalid methods, malformed URIs, HTTP/0.9",
+     "Each request includes: METHOD path HTTP/1.1, headers (Host, Content-Type, etc.), "
+     "and is terminated by a blank line (\\r\\n\\r\\n)"},
+    {"SIP",
+     "REGISTER+INVITE+ACK+BYE, CANCEL, OPTIONS, re-registration, forked dialogs",
+     "malformed SIP URIs, missing Via/From/To headers, invalid CSeq, loop detection",
+     "Each request includes: METHOD sip:URI SIP/2.0, headers (Via, From, To, CSeq, Call-ID), "
+     "and is terminated by a blank line (\\r\\n\\r\\n)"},
+    {"DAAP",
+     "login+server-info+update+databases+items+containers sequences, session management",
+     "invalid session tokens, malformed content-codes, unexpected revision numbers",
+     "Each request includes: GET path HTTP/1.1, headers (Host, Client-DAAP-Version), "
+     "and is terminated by a blank line (\\r\\n\\r\\n)"},
+    {"MQTT",
+     "CONNECT+SUBSCRIBE+PUBLISH+UNSUBSCRIBE+DISCONNECT, PINGREQ/PINGRESP, QoS 0/1/2",
+     "oversized client IDs, invalid topic filters, will message variations, clean session",
+     "Output MQTT commands in text-representable format with all required fields"},
+    {"DNS",
+     "A/AAAA/MX/NS/PTR/TXT/SOA query sequences, recursive vs iterative",
+     "malformed labels, oversized names, EDNS options, DNSSEC flag variations",
+     "Output DNS queries in text-representable format with query type and domain"},
+    {NULL, NULL, NULL, NULL}
 };
 
 char *enrich_sequence(char *sequence, khash_t(strSet) *missing_message_types, const char *protocol_name)
@@ -1628,22 +1651,23 @@ char *enrich_sequence(char *sequence, khash_t(strSet) *missing_message_types, co
     const char *proto   = (protocol_name && *protocol_name) ? protocol_name : "network";
     const char *seqs    = hint ? hint->sequences : "command sequences and state transitions";
     const char *errors  = hint ? hint->errors    : "invalid parameters, oversized values, boundary inputs";
+    const char *fmt     = hint ? hint->format_hint : "Output each request in complete wire-ready format";
 
+    /* Fix-9c: Rewritten prompt to produce COMPLETE protocol requests.
+     * Uses protocol-specific format_hint from ENRICH_HINT_TABLE so that
+     * header-based protocols (RTSP/SIP/HTTP) get \r\n\r\n instructions
+     * while line-based protocols (FTP/SMTP) get \r\n instructions.
+     * This avoids the baseline's problem of no format guidance AND
+     * avoids the old prompt's problem of RTSP-centric hardcoding. */
     const char *prompt_template =
-        "You are a fuzzing expert testing a %s server. Current request sequence:\n"
+        "The following is one sequence of %s client requests:\n"
         "%.*s\n\n"
-        "Task: Add %.*s messages to MAXIMIZE code coverage by:\n"
-        "1. EXPLORE new paths: Use uncommon %s combinations (%s)\n"
-        "2. TRIGGER errors: %s\n"
-        "3. TEST boundaries: Long values (256+ chars), special chars (@#$%%%%^), empty args\n"
-        "4. CREATE complexity: Nested sequences, rename chains, concurrent operations\n"
-        "5. PROBE edge cases: Case variants, repeated messages, unusual state transitions\n\n"
-        "Requirements:\n"
-        "- Generate messages that cover DIFFERENT code branches\n"
-        "- Include both valid and INVALID scenarios\n"
-        "- Use diverse parameters\n"
-        "- Insert messages at strategic positions to maximize state transitions\n\n"
-        "Output ONLY the modified message sequence (no explanations):";
+        "Please add %.*s client requests in the proper locations "
+        "to maximize protocol state coverage.\n\n"
+        "IMPORTANT: Output the COMPLETE modified request sequence in "
+        "wire-ready format. Format: %s\n\n"
+        "Tips for coverage: try %s and trigger %s.\n\n"
+        "Output ONLY the complete modified request sequence:";
 
     int missing_fields_len = 0;
     int missing_fields_capacity = 100;
@@ -1681,11 +1705,13 @@ char *enrich_sequence(char *sequence, khash_t(strSet) *missing_message_types, co
     // json-c will correctly escape control characters as \uXXXX in the final JSON
 
     // Build the content string from protocol-aware template
+    // Format specs: %s(proto), %.*s(sequence), %.*s(missing), %s(fmt), %s(seqs), %s(errors)
     asprintf(&content, prompt_template,
              proto,
              (int)strlen(sequence), sequence,
              missing_fields_len, missing_fields_seq,
-             proto, seqs,
+             fmt,
+             seqs,
              errors);
     
     // Create JSON array using json-c (this handles ALL escaping correctly)
@@ -1716,17 +1742,18 @@ char *enrich_sequence(char *sequence, khash_t(strSet) *missing_message_types, co
 
     free(prompt);
 
-    // Extract protocol commands from LLM's natural language response
-    if (response) {
-        char *extracted_commands = extract_protocol_commands_from_response(response);
-        if (extracted_commands) {
-            free(response);
-            return extracted_commands;
-        }
-        // If extraction fails, log warning but return original response as fallback
-        fprintf(stderr, "[WARNING] Failed to extract protocol commands from LLM response, using raw response\\n");
-    }
-
+    /* Fix-9a: Return the raw LLM response WITHOUT stripping.
+     * The previous extract_protocol_commands_from_response() removed URLs,
+     * headers, CSeq etc., leaving only bare command names like
+     * "DESCRIBE rtsp:\r\nSETUP rtsp:\r\n". This caused:
+     *  - Only 1 \r\n\r\n per seed → extract_requests_rtsp() saw 1 region
+     *  - Server returned single 400 Bad Request → trivial IPSM state
+     *  - 315 enriched seeds mapped to 25 distinct map_sizes (vs 143 for baseline)
+     *  - IPSM edges: 72 vs baseline's 128
+     * By returning the full LLM response (which includes complete protocol
+     * requests with URLs, RTSP/1.0 version, headers, and \r\n\r\n separators),
+     * each enriched seed properly generates multiple regions → multiple
+     * server response codes → rich IPSM state exploration. */
     return response;
 }
 

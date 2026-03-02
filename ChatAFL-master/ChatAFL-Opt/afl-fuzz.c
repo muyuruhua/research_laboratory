@@ -4576,7 +4576,9 @@ static void init_grammar_hypothesis_system(void)
  * ChatAFL-Opt: Validate and Refine Hypotheses
  * Called periodically during fuzzing loop
  * ============================================ */
-static void validate_and_refine_hypotheses(u8 *buf, u32 len)
+/* Fix-9b: Removed from common_fuzz_stuff() hot path. Kept for potential
+ * future use in periodic/non-hot-path contexts. */
+static void __attribute__((unused)) validate_and_refine_hypotheses(u8 *buf, u32 len)
 {
   if (!hypothesis_mode || !hypothesis_ctx)
     return;
@@ -6726,11 +6728,20 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
   write_to_testcase(out_buf, len);
 
   /* ============================================
-   * ChatAFL-Opt: Hypothesis Validation & Refinement
-   * Uses the full validate_and_refine_hypotheses() which also
-   * collects counterexamples and periodically triggers refinement.
+   * Fix-9b: Removed validate_and_refine_hypotheses() from hot path.
+   *
+   * Previously called on EVERY execution, this caused:
+   * 1. Double extract_requests(): parsing buffer here AND again below
+   *    → ~2x parsing overhead on every test case
+   * 2. Per-region × per-hypothesis validation loops → 67K+ calls
+   *    with zero refinements triggered for text protocols (RTSP/FTP)
+   *    because hypothesis fitness stayed at 1.000
+   * 3. Measurable impact on exec_speed (22K execs vs baseline 30K)
+   *
+   * The grammar-hypothesis system remains initialized and available
+   * for the plateau handler's LLM-driven enrichment, but is no
+   * longer invoked on the critical per-execution path.
    * ============================================ */
-  validate_and_refine_hypotheses(out_buf, len);
 
   /* AFLNet update kl_messages linked list */
 
