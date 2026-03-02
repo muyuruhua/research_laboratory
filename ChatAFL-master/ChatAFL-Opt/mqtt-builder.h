@@ -116,4 +116,33 @@ int mqtt_setup_hardcoded_grammars(klist_t(rang) *protocol_patterns,
 int mqtt_enrich_seeds(const char *in_dir,
                       khash_t(strSet) *message_types_set);
 
+/* ============================================
+ * Binary ↔ Text Conversion for LLM Integration
+ *
+ * The LLM cannot read/write raw binary MQTT packets.
+ * These functions convert between binary and a human-readable
+ * text representation so the LLM enrichment pipeline can work.
+ *
+ * Text format (one packet per line):
+ *   CONNECT ClientId=fuzz_client CleanSession=1 KeepAlive=60
+ *   SUBSCRIBE PacketId=1 Topic=test/# QoS=0
+ *   PUBLISH Topic=test/topic QoS=0 Retain=0 Payload=hello
+ *   PINGREQ
+ *   DISCONNECT
+ * ============================================ */
+
+/* Convert binary MQTT packet buffer to text representation.
+ * Returns malloc'd string; caller must free(). */
+char *mqtt_binary_to_text(const unsigned char *buf, size_t buf_len);
+
+/* Convert text representation (from LLM) back to binary MQTT packets.
+ * Returns malloc'd buffer; caller must free(). Sets *out_len. */
+unsigned char *mqtt_text_to_binary(const char *text, size_t *out_len);
+
+/* Extract the MQTT message type name from a binary region.
+ * Reads the upper nibble of the first byte at buf[start_byte].
+ * Returns a ck_alloc'd string (e.g., "CONNECT") or NULL.
+ * Caller must ck_free(). */
+char *mqtt_extract_type_from_region(const unsigned char *buf, unsigned int start_byte);
+
 #endif /* __MQTT_BUILDER_H */

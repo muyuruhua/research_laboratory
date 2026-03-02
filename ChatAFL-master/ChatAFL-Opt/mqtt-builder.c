@@ -18,11 +18,13 @@
 #include <string.h>
 #include <strings.h>
 #include <stdint.h>
+#include <stdarg.h>
 #include <dirent.h>
 #include <fcntl.h>
 #include <unistd.h>
 
 #include "mqtt-builder.h"
+#include "hypothesis-adapter.h"
 #include "alloc-inl.h"
 
 /* ============================================
@@ -593,4 +595,374 @@ int mqtt_enrich_seeds(const char *in_dir,
             total_enriched, n_templates, variants_per_template);
 
     return total_enriched;
+}
+
+/* ============================================
+ * Binary → Text Conversion
+ *
+ * Decode binary MQTT packets into human-readable text so that
+ * the LLM can reason about them.
+ * ============================================ */
+
+/* Read a 2-byte length-prefixed UTF-8 string from buf at *pos.
+ * Advances *pos.  Returns malloc'd string or NULL. */
+static char *read_mqtt_string(const unsigned char *buf, size_t buf_len, size_t *pos) {
+    if (*pos + 2 > buf_len) return NULL;
+    uint16_t slen = ((uint16_t)buf[*pos] << 8) | buf[*pos + 1];
+    *pos += 2;
+    if (*pos + slen > buf_len) return NULL;
+    char *s = malloc(slen + 1);
+    if (!s) return NULL;
+    memcpy(s, buf + *pos, slen);
+    s[slen] = '\0';
+    *pos += slen;
+    return s;
+}
+
+/* Decode remaining-length at *pos; advance *pos. Returns length, or -1 on error. */
+static int decode_remaining_length(const unsigned char *buf, size_t buf_len, size_t *pos) {
+    int value = 0, multiplier = 1;
+    for (int i = 0; i < 4; i++) {
+        if (*pos >= buf_len) return -1;
+        unsigned char encoded = buf[(*pos)++];
+        value += (encoded & 0x7F) * multiplier;
+        if ((encoded & 0x80) == 0) return value;
+        multiplier *= 128;
+    }
+    return -1;  /* malformed */
+}
+
+/* Append formatted text to a dynamic buffer. */
+static void text_appendf(char **buf, size_t *len, size_t *cap, const char *fmt, ...) {
+    va_list ap;
+    while (1) {
+        va_start(ap, fmt);
+        int n = vsnprintf(*buf + *len, *cap - *len, fmt, ap);
+        va_end(ap);
+        if (n >= 0 && (size_t)n < *cap - *len) {
+            *len += n;
+            return;
+        }
+        *cap = (*cap + n + 64) * 2;
+        *buf = realloc(*buf, *cap);
+        if (!*buf) return;
+    }
+}
+
+char *mqtt_binary_to_text(const unsigned char *buf, size_t buf_len) {
+    size_t cap = 1024, out_len = 0;
+    char *out = malloc(cap);
+    if (!out) return NULL;
+    out[0] = '\0';
+
+    size_t pos = 0;
+    while (pos < buf_len) {
+        if (pos + 2 > buf_len) break;
+
+        unsigned char byte0 = buf[pos];
+        unsigned char type_nibble = byte0 >> 4;
+        unsigned char flags = byte0 & 0x0F;
+        pos++;
+
+        int rem = decode_remaining_length(buf, buf_len, &pos);
+        if (rem < 0) break;
+
+        size_t pkt_end = pos + rem;
+        if (pkt_end > buf_len) pkt_end = buf_len;
+
+        const char *type_name = mqtt_type_nibble_to_name(type_nibble);
+        if (!type_name) {
+            text_appendf(&out, &out_len, &cap, "UNKNOWN_0x%02X\n", byte0);
+            pos = pkt_end;
+            continue;
+        }
+
+        switch (type_nibble) {
+        case 1: { /* CONNECT */
+            text_appendf(&out, &out_len, &cap, "CONNECT");
+            /* Skip protocol name (2+4), protocol level (1) */
+            if (pos + 7 <= pkt_end) {
+                pos += 6;  /* 00 04 M Q T T */
+                pos++;     /* protocol level */
+                unsigned char conn_flags = (pos < pkt_end) ? buf[pos++] : 0;
+                uint16_t keepalive = 0;
+                if (pos + 2 <= pkt_end) {
+                    keepalive = ((uint16_t)buf[pos] << 8) | buf[pos + 1];
+                    pos += 2;
+                }
+                int clean  = (conn_flags & 0x02) ? 1 : 0;
+                int has_will = (conn_flags & 0x04) ? 1 : 0;
+                int has_user = (conn_flags & 0x80) ? 1 : 0;
+                int has_pass = (conn_flags & 0x40) ? 1 : 0;
+
+                char *client_id = read_mqtt_string(buf, pkt_end, &pos);
+                text_appendf(&out, &out_len, &cap, " ClientId=%s CleanSession=%d KeepAlive=%u",
+                             client_id ? client_id : "", clean, keepalive);
+                free(client_id);
+
+                if (has_will) {
+                    char *will_topic = read_mqtt_string(buf, pkt_end, &pos);
+                    char *will_msg   = read_mqtt_string(buf, pkt_end, &pos);
+                    text_appendf(&out, &out_len, &cap, " WillTopic=%s WillMsg=%s",
+                                 will_topic ? will_topic : "", will_msg ? will_msg : "");
+                    free(will_topic); free(will_msg);
+                }
+                if (has_user) {
+                    char *username = read_mqtt_string(buf, pkt_end, &pos);
+                    text_appendf(&out, &out_len, &cap, " User=%s", username ? username : "");
+                    free(username);
+                }
+                if (has_pass) {
+                    char *password = read_mqtt_string(buf, pkt_end, &pos);
+                    text_appendf(&out, &out_len, &cap, " Pass=%s", password ? password : "");
+                    free(password);
+                }
+            }
+            text_appendf(&out, &out_len, &cap, "\n");
+            break;
+        }
+        case 3: { /* PUBLISH */
+            int qos = (flags >> 1) & 0x03;
+            int retain = flags & 0x01;
+            char *topic = read_mqtt_string(buf, pkt_end, &pos);
+            uint16_t pkt_id = 0;
+            if (qos > 0 && pos + 2 <= pkt_end) {
+                pkt_id = ((uint16_t)buf[pos] << 8) | buf[pos + 1];
+                pos += 2;
+            }
+            /* Remaining bytes = payload */
+            size_t payload_len = (pkt_end > pos) ? pkt_end - pos : 0;
+            /* Represent payload: if printable use text, else hex */
+            int printable = 1;
+            for (size_t i = 0; i < payload_len && i < 128; i++) {
+                if (buf[pos + i] < 0x20 && buf[pos + i] != '\t') { printable = 0; break; }
+            }
+            text_appendf(&out, &out_len, &cap, "PUBLISH Topic=%s QoS=%d Retain=%d",
+                         topic ? topic : "", qos, retain);
+            if (pkt_id) text_appendf(&out, &out_len, &cap, " PacketId=%u", pkt_id);
+            if (payload_len > 0) {
+                if (printable) {
+                    /* Safe: limit display to 200 chars */
+                    int show = payload_len > 200 ? 200 : (int)payload_len;
+                    text_appendf(&out, &out_len, &cap, " Payload=%.*s", show, buf + pos);
+                } else {
+                    text_appendf(&out, &out_len, &cap, " PayloadHex=");
+                    int show = payload_len > 32 ? 32 : (int)payload_len;
+                    for (int i = 0; i < show; i++)
+                        text_appendf(&out, &out_len, &cap, "%02x", buf[pos + i]);
+                }
+            }
+            text_appendf(&out, &out_len, &cap, "\n");
+            free(topic);
+            break;
+        }
+        case 8: { /* SUBSCRIBE */
+            uint16_t pkt_id = 0;
+            if (pos + 2 <= pkt_end) {
+                pkt_id = ((uint16_t)buf[pos] << 8) | buf[pos + 1];
+                pos += 2;
+            }
+            char *topic = read_mqtt_string(buf, pkt_end, &pos);
+            int qos = (pos < pkt_end) ? buf[pos++] & 0x03 : 0;
+            text_appendf(&out, &out_len, &cap, "SUBSCRIBE PacketId=%u Topic=%s QoS=%d\n",
+                         pkt_id, topic ? topic : "", qos);
+            free(topic);
+            break;
+        }
+        case 10: { /* UNSUBSCRIBE */
+            uint16_t pkt_id = 0;
+            if (pos + 2 <= pkt_end) {
+                pkt_id = ((uint16_t)buf[pos] << 8) | buf[pos + 1];
+                pos += 2;
+            }
+            char *topic = read_mqtt_string(buf, pkt_end, &pos);
+            text_appendf(&out, &out_len, &cap, "UNSUBSCRIBE PacketId=%u Topic=%s\n",
+                         pkt_id, topic ? topic : "");
+            free(topic);
+            break;
+        }
+        case 4: case 5: case 6: case 7: { /* PUBACK/PUBREC/PUBREL/PUBCOMP */
+            uint16_t pkt_id = 0;
+            if (pos + 2 <= pkt_end) {
+                pkt_id = ((uint16_t)buf[pos] << 8) | buf[pos + 1];
+                pos += 2;
+            }
+            text_appendf(&out, &out_len, &cap, "%s PacketId=%u\n", type_name, pkt_id);
+            break;
+        }
+        case 12: /* PINGREQ */
+            text_appendf(&out, &out_len, &cap, "PINGREQ\n");
+            break;
+        case 14: /* DISCONNECT */
+            text_appendf(&out, &out_len, &cap, "DISCONNECT\n");
+            break;
+        default:
+            text_appendf(&out, &out_len, &cap, "%s\n", type_name);
+            break;
+        }
+        pos = pkt_end;
+    }
+    out[out_len] = '\0';
+    return out;
+}
+
+/* ============================================
+ * Text → Binary Conversion
+ *
+ * Parse the LLM's text output and build binary MQTT packets.
+ * ============================================ */
+
+/* Helper: parse key=value from a line, return value for given key.
+ * Returns pointer into line (not a copy), or NULL. */
+static const char *find_kv(const char *line, const char *key) {
+    size_t klen = strlen(key);
+    const char *p = line;
+    while ((p = strstr(p, key)) != NULL) {
+        /* Check that key is preceded by space/tab/start-of-line */
+        if (p != line && p[-1] != ' ' && p[-1] != '\t') { p += klen; continue; }
+        if (p[klen] == '=') return p + klen + 1;
+        p += klen;
+    }
+    return NULL;
+}
+
+/* Extract value string from "Key=value" up to next space or end of line.
+ * Returns malloc'd copy. */
+static char *extract_kv_str(const char *line, const char *key) {
+    const char *v = find_kv(line, key);
+    if (!v) return NULL;
+    const char *end = v;
+    while (*end && *end != ' ' && *end != '\t' && *end != '\r' && *end != '\n')
+        end++;
+    size_t len = end - v;
+    char *s = malloc(len + 1);
+    memcpy(s, v, len);
+    s[len] = '\0';
+    return s;
+}
+
+/* Extract integer value for "Key=123". Returns default_val if not found. */
+static int extract_kv_int(const char *line, const char *key, int default_val) {
+    const char *v = find_kv(line, key);
+    if (!v) return default_val;
+    return atoi(v);
+}
+
+unsigned char *mqtt_text_to_binary(const char *text, size_t *out_len) {
+    if (!text || !*text) { *out_len = 0; return NULL; }
+
+    size_t cap = 4096;
+    unsigned char *out = malloc(cap);
+    if (!out) { *out_len = 0; return NULL; }
+    size_t total = 0;
+
+    const char *line = text;
+    int pkt_id_counter = 1;
+
+    while (*line) {
+        /* Skip blank lines */
+        while (*line == '\r' || *line == '\n') line++;
+        if (!*line) break;
+
+        /* Find end of line */
+        const char *eol = line;
+        while (*eol && *eol != '\r' && *eol != '\n') eol++;
+        size_t line_len = eol - line;
+
+        /* Make a NUL-terminated copy for easier parsing */
+        char *lcopy = malloc(line_len + 1);
+        memcpy(lcopy, line, line_len);
+        lcopy[line_len] = '\0';
+
+        unsigned char *pkt = NULL;
+        size_t pkt_len = 0;
+
+        if (strncasecmp(lcopy, "CONNECT", 7) == 0) {
+            char *cid   = extract_kv_str(lcopy, "ClientId");
+            int   clean = extract_kv_int(lcopy, "CleanSession", 1);
+            int   ka    = extract_kv_int(lcopy, "KeepAlive", 60);
+            char *wt    = extract_kv_str(lcopy, "WillTopic");
+            char *wm    = extract_kv_str(lcopy, "WillMsg");
+            char *user  = extract_kv_str(lcopy, "User");
+            char *pass  = extract_kv_str(lcopy, "Pass");
+            pkt = mqtt_build_connect(cid, clean, (uint16_t)ka, wt, wm, user, pass, &pkt_len);
+            free(cid); free(wt); free(wm); free(user); free(pass);
+        }
+        else if (strncasecmp(lcopy, "PUBLISH", 7) == 0) {
+            char *topic    = extract_kv_str(lcopy, "Topic");
+            int   qos      = extract_kv_int(lcopy, "QoS", 0);
+            int   retain   = extract_kv_int(lcopy, "Retain", 0);
+            int   pid      = extract_kv_int(lcopy, "PacketId", pkt_id_counter++);
+            char *payload  = extract_kv_str(lcopy, "Payload");
+            const unsigned char *pdata = (const unsigned char *)(payload ? payload : "");
+            size_t plen = payload ? strlen(payload) : 0;
+            pkt = mqtt_build_publish(topic, pdata, plen, qos, retain, (uint16_t)pid, &pkt_len);
+            free(topic); free(payload);
+        }
+        else if (strncasecmp(lcopy, "SUBSCRIBE", 9) == 0) {
+            char *topic = extract_kv_str(lcopy, "Topic");
+            int   qos   = extract_kv_int(lcopy, "QoS", 0);
+            int   pid   = extract_kv_int(lcopy, "PacketId", pkt_id_counter++);
+            pkt = mqtt_build_subscribe(topic, qos, (uint16_t)pid, &pkt_len);
+            free(topic);
+        }
+        else if (strncasecmp(lcopy, "UNSUBSCRIBE", 11) == 0) {
+            char *topic = extract_kv_str(lcopy, "Topic");
+            int   pid   = extract_kv_int(lcopy, "PacketId", pkt_id_counter++);
+            pkt = mqtt_build_unsubscribe(topic, (uint16_t)pid, &pkt_len);
+            free(topic);
+        }
+        else if (strncasecmp(lcopy, "PUBACK", 6) == 0) {
+            int pid = extract_kv_int(lcopy, "PacketId", pkt_id_counter++);
+            pkt = mqtt_build_puback((uint16_t)pid, &pkt_len);
+        }
+        else if (strncasecmp(lcopy, "PUBREC", 6) == 0) {
+            int pid = extract_kv_int(lcopy, "PacketId", pkt_id_counter++);
+            pkt = mqtt_build_pubrec((uint16_t)pid, &pkt_len);
+        }
+        else if (strncasecmp(lcopy, "PUBREL", 6) == 0) {
+            int pid = extract_kv_int(lcopy, "PacketId", pkt_id_counter++);
+            pkt = mqtt_build_pubrel((uint16_t)pid, &pkt_len);
+        }
+        else if (strncasecmp(lcopy, "PUBCOMP", 7) == 0) {
+            int pid = extract_kv_int(lcopy, "PacketId", pkt_id_counter++);
+            pkt = mqtt_build_pubcomp((uint16_t)pid, &pkt_len);
+        }
+        else if (strncasecmp(lcopy, "PINGREQ", 7) == 0) {
+            pkt = mqtt_build_pingreq(&pkt_len);
+        }
+        else if (strncasecmp(lcopy, "DISCONNECT", 10) == 0) {
+            pkt = mqtt_build_disconnect(&pkt_len);
+        }
+        /* else: skip unrecognized lines (LLM commentary, etc.) */
+
+        if (pkt && pkt_len > 0) {
+            if (total + pkt_len > cap) {
+                cap = (total + pkt_len + 1024) * 2;
+                out = realloc(out, cap);
+            }
+            memcpy(out + total, pkt, pkt_len);
+            total += pkt_len;
+            free(pkt);
+        }
+
+        free(lcopy);
+        line = eol;
+    }
+
+    *out_len = total;
+    if (total == 0) { free(out); return NULL; }
+    return out;
+}
+
+/* ============================================
+ * Helper: extract MQTT type name from binary region
+ * ============================================ */
+char *mqtt_extract_type_from_region(const unsigned char *buf, unsigned int start_byte) {
+    unsigned char type_nibble = buf[start_byte] >> 4;
+    const char *name = mqtt_type_nibble_to_name(type_nibble);
+    if (!name) return NULL;
+    char *copy = ck_alloc(strlen(name) + 1);
+    strcpy(copy, name);
+    return copy;
 }

@@ -399,8 +399,11 @@ static const ProtocolExampleEntry PROTOCOL_EXAMPLE_TABLE[] = {
      "\"Client-DAAP-Version: <<VALUE>>\\r\\n\","
      "\"\\r\\n\"]"},
     {"MQTT", "CONNECT",
-     "For the MQTT protocol, the CONNECT packet template is:\n"
-     "CONNECT: [\"\\x10<<VALUE>>\\x00\\x04MQTT\\x04<<VALUE>>\\x00\\x3c\\x00<<VALUE>>\"]"},
+     "For the MQTT protocol, messages are described in text form (one per line).\n"
+     "CONNECT: [\"CONNECT <<VALUE>>\\r\\n\","
+     "\"ClientId: <<VALUE>>\\r\\n\","
+     "\"CleanSession: <<VALUE>>\\r\\n\","
+     "\"KeepAlive: <<VALUE>>\\r\\n\"]"},
     {"DNS",  "QUERY",
      "For the DNS protocol, the QUERY request template is:\n"
      "QUERY: [\"<<VALUE>>\\x01\\x00\\x00\\x01\\x00\\x00\\x00\\x00\\x00\\x00<<VALUE>>\"]"},
@@ -1843,8 +1846,10 @@ static const EnrichHintEntry ENRICH_HINT_TABLE[] = {
     {"MQTT",
      "CONNECT+SUBSCRIBE+PUBLISH+UNSUBSCRIBE+DISCONNECT, PINGREQ/PINGRESP, QoS 0/1/2",
      "oversized client IDs, invalid topic filters, will message variations, clean session",
-     "MQTT is a binary protocol — seed enrichment uses programmatic packet builders "
-     "(Fix-13: LLM text enrichment bypassed for binary protocols)"},
+     "Output each MQTT packet as one line in text form: TYPE Key=Value Key=Value. "
+     "Example: CONNECT ClientId=test CleanSession=1 KeepAlive=60. "
+     "Valid types: CONNECT, PUBLISH, SUBSCRIBE, UNSUBSCRIBE, PUBACK, PUBREC, PUBREL, PUBCOMP, PINGREQ, DISCONNECT. "
+     "PUBLISH fields: Topic, QoS, Retain, Payload. SUBSCRIBE fields: PacketId, Topic, QoS"},
     {"DNS",
      "A/AAAA/MX/NS/PTR/TXT/SOA query sequences, recursive vs iterative",
      "malformed labels, oversized names, EDNS options, DNSSEC flag variations",

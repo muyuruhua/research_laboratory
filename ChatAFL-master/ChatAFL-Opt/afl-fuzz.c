@@ -2795,6 +2795,7 @@ static void *enrich_worker(void *arg) {
 /* Track per-seed heap data so we can free it after all workers finish. */
 typedef struct {
     char              *content;     /* malloc'd file content */
+    char              *mqtt_text;   /* MQTT text representation (NULL for text protocols) */
     message_set_list   subsets;     /* C(n,2) subsets (owns khash_t ptrs) */
     khash_t(strSet)   *messages;    /* missing-types set */
 } seed_data_t;
@@ -2867,19 +2868,34 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
     for (int j = 0; j < region_count; j++)
     { 
       // remove all messages that are observed
-      int header_len = 0;
-      while (regions[j].start_byte + header_len < regions[j].end_byte 
-      && nl_file_content[regions[j].start_byte + header_len] != ' ' 
-      && nl_file_content[regions[j].start_byte + header_len] != '\r' 
-      && nl_file_content[regions[j].start_byte + header_len] != '\n'
-      && nl_file_content[regions[j].start_byte + header_len] != '\\')
-      {
-        header_len++;
-      }
+      char *header;
+      int is_mqtt = (protocol_name && strcasecmp(protocol_name, "MQTT") == 0);
 
-      char *header = ck_alloc(header_len + 1);
-      memcpy(header, nl_file_content + regions[j].start_byte, header_len);
-      header[header_len] = '\0';
+      if (is_mqtt) {
+        /* Fix-13b: MQTT binary header extraction.
+         * For binary MQTT, the first byte's upper nibble identifies the packet type.
+         * Text-based scanning would produce garbage. */
+        header = mqtt_extract_type_from_region(
+            (const unsigned char *)nl_file_content, regions[j].start_byte);
+        if (!header) {
+          header = ck_alloc(8);
+          snprintf(header, 8, "0x%02X",
+                   (unsigned char)nl_file_content[regions[j].start_byte]);
+        }
+      } else {
+        int header_len = 0;
+        while (regions[j].start_byte + header_len < regions[j].end_byte 
+        && nl_file_content[regions[j].start_byte + header_len] != ' ' 
+        && nl_file_content[regions[j].start_byte + header_len] != '\r' 
+        && nl_file_content[regions[j].start_byte + header_len] != '\n'
+        && nl_file_content[regions[j].start_byte + header_len] != '\\')
+        {
+          header_len++;
+        }
+        header = ck_alloc(header_len + 1);
+        memcpy(header, nl_file_content + regions[j].start_byte, header_len);
+        header[header_len] = '\0';
+      }
 
       khiter_t k = kh_get(strSet, messages, header);
       if (kh_exist(messages, k))
@@ -2915,6 +2931,26 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
     int n_combos = kv_size(message_subsets);
     OKF("Seed '%s': %d combos (no cap — full enrichment)", nl_file_name, n_combos);
 
+    /* For MQTT: convert binary seed to text representation for LLM.
+     * The LLM cannot process raw binary — it needs human-readable text.
+     * mqtt_binary_to_text() decodes each MQTT packet into text lines like:
+     *   CONNECT ClientId=fuzz_client CleanSession=1 KeepAlive=60
+     *   SUBSCRIBE PacketId=1 Topic=test/# QoS=0
+     * This text is what enrich_sequence() will embed in the LLM prompt. */
+    char *seed_for_llm = nl_file_content;
+    int is_mqtt_seed = (protocol_name && strcasecmp(protocol_name, "MQTT") == 0);
+    if (is_mqtt_seed) {
+      seed_for_llm = mqtt_binary_to_text((const unsigned char *)nl_file_content, fsize);
+      if (!seed_for_llm || !*seed_for_llm) {
+        fprintf(stderr, "[!] MQTT binary_to_text failed for seed '%s', using fallback\n", nl_file_name);
+        free(seed_for_llm);
+        seed_for_llm = strdup("CONNECT ClientId=fuzz_client CleanSession=1 KeepAlive=60\n"
+                              "PINGREQ\nDISCONNECT\n");
+      }
+      ACTF("MQTT seed '%s' converted to text (%zu bytes -> %zu chars)",
+           nl_file_name, fsize, strlen(seed_for_llm));
+    }
+
     /* Store seed data for later cleanup (content + subsets stay alive
      * until all workers are done). */
     if (n_seed_data >= seed_cap) {
@@ -2922,6 +2958,7 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
       seed_arr = realloc(seed_arr, seed_cap * sizeof(seed_data_t));
     }
     seed_arr[n_seed_data].content  = nl_file_content;
+    seed_arr[n_seed_data].mqtt_text = is_mqtt_seed ? seed_for_llm : NULL;
     seed_arr[n_seed_data].subsets  = message_subsets;
     seed_arr[n_seed_data].messages = messages;
     n_seed_data++;
@@ -2933,7 +2970,7 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
         tasks = realloc(tasks, tasks_cap * sizeof(enrich_task_t));
       }
       enrich_task_t *t = &tasks[n_tasks];
-      t->seed_content   = nl_file_content;
+      t->seed_content   = is_mqtt_seed ? seed_for_llm : nl_file_content;
       t->subset         = kv_A(message_subsets, c);
       t->protocol       = protocol_name;
       t->result         = NULL;
@@ -2972,27 +3009,14 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
   }
 
   /* ==== Phase 3: process results (main thread only) ==== */
+  int is_mqtt_result = (protocol_name && strcasecmp(protocol_name, "MQTT") == 0);
+
   for (int i = 0; i < n_tasks; i++) {
     enrich_task_t *t = &tasks[i];
     if (t->result == NULL) {
       free(t->seed_file_name);
       continue;
     }
-
-    /* Validate: skip if enriched text == original seed */
-    char *formatted_orig = format_string(t->seed_content);
-    char *unescaped      = unescape_string(t->result);
-    char *formatted_new  = format_string(unescaped);
-
-    if (formatted_new == NULL ||
-        strcmp(formatted_new, formatted_orig) == 0) {
-      printf("## Skip the same seed\n");
-      free(t->seed_file_name);
-      free(t->result);
-      continue;
-    }
-
-    unescaped = format_request_message(unescaped);
 
     /* Build output path: enriched_<combo_idx>_<seed_file_name> */
     char *enriched_file_name = malloc(strlen(t->seed_file_name) + 10 + 20);
@@ -3005,10 +3029,48 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
     strcat(enriched_file_path, "/");
     strcat(enriched_file_path, enriched_file_name);
 
-    write_new_seeds(enriched_file_path, unescaped);
+    if (is_mqtt_result) {
+      /* Fix-13b: MQTT text→binary conversion.
+       * The LLM returned text descriptions of MQTT packets.
+       * Convert them to valid binary packets using mqtt_text_to_binary(). */
+      size_t bin_len = 0;
+      unsigned char *binary_seed = mqtt_text_to_binary(t->result, &bin_len);
+      if (binary_seed && bin_len > 0) {
+        int fd = open(enriched_file_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+        if (fd >= 0) {
+          ssize_t written = write(fd, binary_seed, bin_len);
+          close(fd);
+          if (written == (ssize_t)bin_len) {
+            total_enriched++;
+            OKF("Created MQTT binary enriched seed: %s (%zu bytes)", enriched_file_name, bin_len);
+          }
+        }
+        free(binary_seed);
+      } else {
+        fprintf(stderr, "[!] MQTT text_to_binary failed for enriched result, skipping\n");
+      }
+    } else {
+      /* Original text protocol path */
+      /* Validate: skip if enriched text == original seed */
+      char *formatted_orig = format_string(t->seed_content);
+      char *unescaped      = unescape_string(t->result);
+      char *formatted_new  = format_string(unescaped);
 
-    total_enriched++;
-    OKF("Created enriched seed: %s", enriched_file_name);
+      if (formatted_new == NULL ||
+          strcmp(formatted_new, formatted_orig) == 0) {
+        printf("## Skip the same seed\n");
+        free(t->seed_file_name);
+        free(t->result);
+        free(enriched_file_name);
+        free(enriched_file_path);
+        continue;
+      }
+
+      unescaped = format_request_message(unescaped);
+      write_new_seeds(enriched_file_path, unescaped);
+      total_enriched++;
+      OKF("Created enriched seed: %s", enriched_file_name);
+    }
 
     free(enriched_file_name);
     free(enriched_file_path);
@@ -3023,6 +3085,7 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
       kh_destroy(strSet, kv_A(seed_arr[s].subsets, c));
     kh_destroy(strSet, seed_arr[s].messages);
     free(seed_arr[s].content);
+    if (seed_arr[s].mqtt_text) free(seed_arr[s].mqtt_text);
   }
   free(seed_arr);
 
