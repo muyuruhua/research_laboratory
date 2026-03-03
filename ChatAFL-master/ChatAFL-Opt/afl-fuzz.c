@@ -451,6 +451,7 @@ u8 server_wait = 0;
 u8 socket_timeout = 0;
 u8 protocol_selected = 0;
 u8 terminate_child = 0;
+u8 child_force_killed = 0;  /* Fix-14a: set by send_over_network() SIGKILL escalation */
 u8 corpus_read_or_sync = 0;
 u8 state_aware_mode = 0;
 u8 region_level_mutation = 0;
@@ -1584,6 +1585,8 @@ HANDLE_RESPONSES:
   if (likely_buggy && false_negative_reduction)
     return 0;
 
+  child_force_killed = 0;  /* Fix-14a: reset before each termination attempt */
+
   if (terminate_child && (child_pid > 0))
     kill(child_pid, SIGTERM);
 
@@ -1609,6 +1612,7 @@ HANDLE_RESPONSES:
         break;
       if (++kill_wait >= 250) {          /* 250 × 200 µs = 50 ms */
         kill(child_pid, SIGKILL);
+        child_force_killed = 1;          /* Fix-14a: tell run_target() this is not a crash */
         usleep(1000);                    /* 1 ms for kernel cleanup */
         break;
       }
@@ -4314,6 +4318,16 @@ static u8 run_target(char **argv, u32 timeout)
 
     if (kill_signal == SIGTERM)
       return FAULT_NONE;
+
+    /* Fix-14a: SIGKILL sent by send_over_network() SIGKILL escalation
+     * is a deliberate termination, not a crash.  Without this check,
+     * the 50 ms SIGKILL escalation in Fix-14 causes every slow-to-die
+     * process to be misreported as FAULT_CRASH, aborting dry_run. */
+    if (kill_signal == SIGKILL && child_force_killed)
+    {
+      child_force_killed = 0;
+      return FAULT_NONE;
+    }
 
     return FAULT_CRASH;
   }
