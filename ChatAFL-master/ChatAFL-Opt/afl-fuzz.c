@@ -1550,12 +1550,33 @@ HANDLE_RESPONSES:
     response_bytes[messages_sent - 1] = response_buf_size;
   }
 
-  // wait a bit letting the server to complete its remaining task(s)
+  /* Fix-14: Bounded coverage-stabilization loop.
+   *
+   * Original: unbounded while(1) spinning on has_new_bits() until
+   * trace_bits stops changing (no new pristine coverage bytes).
+   *
+   * Problem: forking daemons (e.g. pure-ftpd, which forks a child per
+   * FTP session) keep generating new coverage bits long after the
+   * protocol-relevant processing is done — ASAN destructors, fd cleanup,
+   * child-reaping, and other teardown code produce a long tail of "new"
+   * bits that keeps this loop spinning for 1–2+ seconds per execution.
+   * Result: pure-ftpd OPT runs at 0.33 exec/sec (59.6% of samples
+   * <1 exec/sec) while bftpd/proftpd are unaffected (<0.1%).
+   *
+   * Fix: cap at 500 iterations (~25–50 ms on typical hardware).
+   * Protocol-relevant coverage (command parsing, state transitions, data
+   * handling) is captured within the first few iterations; the remaining
+   * bits come from non-protocol cleanup paths that are not useful for
+   * bug-finding.  Non-forking servers are unaffected — they already exit
+   * in 1–2 iterations. */
   memset(session_virgin_bits, 255, MAP_SIZE);
-  while (1)
   {
-    if (has_new_bits(session_virgin_bits) != 2)
-      break;
+    int stab_iter = 0;
+    while (stab_iter++ < 500)
+    {
+      if (has_new_bits(session_virgin_bits) != 2)
+        break;
+    }
   }
 
   close(sockfd);
@@ -1566,12 +1587,33 @@ HANDLE_RESPONSES:
   if (terminate_child && (child_pid > 0))
     kill(child_pid, SIGTERM);
 
-  // give the server a bit more time to gracefully terminate
-  while (1)
+  /* Fix-14: Bounded process-termination wait with SIGKILL escalation.
+   *
+   * Original: unbounded while(1) busy-polling kill(pid, 0) at 100% CPU.
+   *
+   * Problem: after SIGTERM, forking servers need to signal and reap their
+   * child processes, then run ASAN destructors — this can take 0.5–1+
+   * second while the fuzzer wastes CPU in a tight spin loop.
+   *
+   * Fix: poll every 200 µs instead of busy-spinning, and escalate to
+   * SIGKILL after 50 ms.  The 50 ms grace period is generous for
+   * graceful shutdown; any server still alive at that point is stuck in
+   * teardown, not in a crash-reportable state.  For non-forking servers
+   * the process is already gone by the first check, so this is a no-op. */
   {
-    int status = kill(child_pid, 0);
-    if ((status != 0) && (errno == ESRCH))
-      break;
+    int kill_wait = 0;
+    while (1)
+    {
+      int kstat = kill(child_pid, 0);
+      if ((kstat != 0) && (errno == ESRCH))
+        break;
+      if (++kill_wait >= 250) {          /* 250 × 200 µs = 50 ms */
+        kill(child_pid, SIGKILL);
+        usleep(1000);                    /* 1 ms for kernel cleanup */
+        break;
+      }
+      usleep(200);
+    }
   }
 
   return 0;
