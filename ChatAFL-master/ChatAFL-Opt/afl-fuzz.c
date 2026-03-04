@@ -4695,11 +4695,34 @@ static void init_grammar_hypothesis_system(void)
           }
           concat[off] = '\0';
 
-          /* Sanitize non-printable characters */
-          for (size_t k = 0; k < off; k++) {
-            unsigned char ch = (unsigned char)concat[k];
-            if (ch == '\r' || ch == '\n' || ch == '\t') continue;
-            if (!isprint(ch)) concat[k] = ' ';
+          /* For binary protocols (MQTT etc.), raw bytes sanitized to spaces
+           * are useless to the LLM.  Hex-encode them instead so the model
+           * can see actual packet content, e.g.:
+           *   "HEX[20020000] (4 bytes, MQTT CONNACK)"
+           * The LLM knows MQTT wire format and can decode these bytes into
+           * meaningful constraints (packet type nibble, return code, etc.).
+           *
+           * For text protocols the existing printable-sanitize is ideal
+           * because the LLM sees readable status lines like
+           *   "220 Welcome to ProFTPD\r\n" */
+          if (is_binary_protocol(protocol_name)) {
+            /* Hex-encode: each byte → 2 hex chars, plus prefix/suffix */
+            size_t hex_sz = 4 + off * 2 + 32;  /* "HEX[" + hex + "] (N bytes)\0" */
+            char *hex = (char *)ck_alloc(hex_sz);
+            int hoff = snprintf(hex, hex_sz, "HEX[");
+            for (size_t k = 0; k < off && (size_t)hoff < hex_sz - 20; k++)
+              hoff += snprintf(hex + hoff, hex_sz - hoff, "%02x",
+                               (unsigned char)concat[k]);
+            hoff += snprintf(hex + hoff, hex_sz - hoff, "] (%zu bytes)", off);
+            ck_free(concat);
+            concat = hex;
+          } else {
+            /* Text protocol: sanitize non-printable, keep CR/LF/TAB */
+            for (size_t k = 0; k < off; k++) {
+              unsigned char ch = (unsigned char)concat[k];
+              if (ch == '\r' || ch == '\n' || ch == '\t') continue;
+              if (!isprint(ch)) concat[k] = ' ';
+            }
           }
 
           srv_responses = (char **)ck_realloc(
