@@ -252,8 +252,26 @@ static FILE *plot_file; /* Gnuplot output file              */
  * ============================================ */
 static hypothesis_context_t *hypothesis_ctx = NULL;  /* Global hypothesis context */
 static u8 hypothesis_mode = 0;                        /* Enable hypothesis-driven mode */
-static u32 hypothesis_refinement_interval = 100;     /* Refinement check interval */
 static u32 hypothesis_validation_count = 0;          /* Validation counter */
+
+/* Fix-15: Two-tier hypothesis validation.
+ *
+ * Tier-1 (sampled validation): runs inside common_fuzz_stuff() every
+ * HYPOTHESIS_VALIDATION_SAMPLE_RATE-th execution.  It RE-USES the
+ * regions already parsed by extract_requests() — NO double-parse.
+ * Cost: ~1 µs per sampled execution (constraint checks only).
+ *
+ * Tier-2 (periodic refinement): runs inside the plateau handler
+ * every HYPOTHESIS_REFINEMENT_CHECK_INTERVAL validations.  If any
+ * hypothesis has fitness < FITNESS_THRESHOLD and ≥3 counterexamples,
+ * it issues ONE LLM refinement call.
+ *
+ * Performance budget at exec_speed ≈ 25 K/s:
+ *   Tier-1: 25000/500 = 50 validations/s × 1 µs = 50 µs/s (<0.01%)
+ *   Tier-2: 1 LLM call per ~10 s ≈ same as existing plateau handler
+ */
+#define HYPOTHESIS_VALIDATION_SAMPLE_RATE  500   /* Validate every N-th exec  */
+#define HYPOTHESIS_REFINEMENT_CHECK_INTERVAL 5000 /* Check refinement every N  */
 /* ============================================ */
 
 struct queue_entry
@@ -4708,112 +4726,134 @@ static void init_grammar_hypothesis_system(void)
 }
 
 /* ============================================
- * ChatAFL-Opt: Validate and Refine Hypotheses
- * Called periodically during fuzzing loop
+ * ChatAFL-Opt: Two-Tier Hypothesis Validation (Fix-15)
+ *
+ * Tier-1: validate_hypothesis_sampled()
+ *   Called from common_fuzz_stuff() every HYPOTHESIS_VALIDATION_SAMPLE_RATE-th
+ *   execution.  Accepts the ALREADY-PARSED regions — zero extra parsing cost.
+ *   Updates fitness / collects counterexamples in O(regions × constraints).
+ *
+ * Tier-2: periodic_hypothesis_refinement()
+ *   Called from the plateau handler path every
+ *   HYPOTHESIS_REFINEMENT_CHECK_INTERVAL validations.  Issues at most one
+ *   LLM refinement call per invocation.
+ *
+ * Together they close the "Hypothesis → Validate → Counterexample → Refine"
+ * loop that Fix-9b had severed, while keeping hot-path overhead < 0.01%.
  * ============================================ */
-/* Fix-9b: Removed from common_fuzz_stuff() hot path. Kept for potential
- * future use in periodic/non-hot-path contexts. */
-static void __attribute__((unused)) validate_and_refine_hypotheses(u8 *buf, u32 len)
+
+/* Tier-1: lightweight sampled validation — reuses pre-parsed regions.
+ * Called from common_fuzz_stuff() with regions it already parsed. */
+static void validate_hypothesis_sampled(
+    u8 *buf, u32 len,
+    region_t *regions, u32 region_count)
 {
-  if (!hypothesis_mode || !hypothesis_ctx)
+  if (!hypothesis_mode || !hypothesis_ctx || !regions || region_count == 0)
     return;
 
   hypothesis_validation_count++;
 
-  /* ============================================
-   * Fix 4: Unified per-region validation for ALL protocols.
-   * Split buffer into individual messages via extract_requests(),
-   * then match each region to the correct hypothesis by type:
-   *   - MQTT: upper nibble of first byte → mqtt_type_nibble_to_name()
-   *   - Text (FTP/SMTP/HTTP/RTSP/SIP): first token → type keyword
-   *   - Other binary (DNS etc.): no type mapping → validate all hyps
-   * This prevents false counterexamples from cross-type validation.
-   * ============================================ */
-  if (extract_requests) {
-    u32 region_count = 0;
-    region_t *regions = (*extract_requests)(buf, len, &region_count);
+  int binary = is_binary_protocol(protocol_name);
 
-    if (regions && region_count > 0) {
-      int binary = is_binary_protocol(protocol_name);
+  /* Cap regions scanned per sample to limit worst-case latency.
+   * 8 regions × 5 hypotheses × 3 constraints ≈ 120 check_constraint() calls. */
+  u32 max_regions = region_count < 8 ? region_count : 8;
 
-      for (u32 r = 0; r < region_count; r++) {
-        u32 rstart = regions[r].start_byte;
-        u32 rend   = regions[r].end_byte;
-        if (rend >= len) rend = len - 1;
-        u32 rlen   = rend - rstart + 1;
-        if (rlen < 2) continue;
+  for (u32 r = 0; r < max_regions; r++) {
+    u32 rstart = regions[r].start_byte;
+    u32 rend   = regions[r].end_byte;
+    if (rend >= len) rend = len - 1;
+    u32 rlen   = rend - rstart + 1;
+    if (rlen < 2) continue;
 
-        /* Determine message type for this region */
-        const char *msg_type = NULL;
-        char *alloc_type = NULL;
+    /* Determine message type for this region */
+    const char *msg_type = NULL;
+    char *alloc_type = NULL;
 
-        if (binary && strcasecmp(protocol_name, "MQTT") == 0) {
-          /* MQTT: upper nibble of first byte identifies message type */
-          unsigned char type_nibble = (buf[rstart] >> 4) & 0x0F;
-          msg_type = mqtt_type_nibble_to_name(type_nibble);
-        } else if (!binary) {
-          /* Text protocol: first token is the command keyword
-           * e.g., "USER" for FTP, "INVITE" for SIP, "GET" for HTTP */
-          alloc_type = extract_text_message_type(buf + rstart, rlen);
-          msg_type = alloc_type;
-        }
-        /* else: binary without type mapping (DNS etc.) →
-         * msg_type stays NULL → validate all hypotheses per region */
-
-        /* Validate against matching hypothesis(es) */
-        for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++) {
-          grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
-          if (!hyp->message_type) continue;
-
-          /* If type is known, only validate the matching hypothesis */
-          if (msg_type && strcasecmp(hyp->message_type, msg_type) != 0)
-            continue;
-
-          int valid = validate_message_against_hypothesis(hyp,
-                                                          buf + rstart, rlen);
-          if (!valid && hyp->parse_failure % 10 == 0) {
-            add_counterexample(hyp, buf + rstart, rlen,
-                               "Validation failed");
-          }
-
-          if (msg_type) break;  /* Matched type → next region */
-        }
-
-        if (alloc_type) ck_free(alloc_type);
-      }
+    if (binary && strcasecmp(protocol_name, "MQTT") == 0) {
+      unsigned char type_nibble = (buf[rstart] >> 4) & 0x0F;
+      msg_type = mqtt_type_nibble_to_name(type_nibble);
+    } else if (!binary) {
+      alloc_type = extract_text_message_type(buf + rstart, rlen);
+      msg_type = alloc_type;
     }
 
-    if (regions) ck_free(regions);
-  }
-
-  // Periodic refinement check
-  if (hypothesis_validation_count % hypothesis_refinement_interval == 0)
-  {
-    ACTF("Checking for hypothesis refinement (validation count: %u)...",
-         hypothesis_validation_count);
-
-    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++)
-    {
+    /* Validate against matching hypothesis(es) */
+    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++) {
       grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
+      if (!hyp->message_type) continue;
 
-      // Refine if fitness is low and we have counterexamples
-      if (hyp->fitness < FITNESS_THRESHOLD && hyp->counterexample_count >= 3)
-      {
-        ACTF("Refining hypothesis for %s (fitness: %.3f, counterexamples: %zu)",
-             hyp->message_type, hyp->fitness, hyp->counterexample_count);
+      if (msg_type && strcasecmp(hyp->message_type, msg_type) != 0)
+        continue;
 
-        if (refine_hypothesis_with_counterexamples(hypothesis_ctx, hyp))
-        {
-          // Save refined hypothesis
-          char *hyp_file = alloc_printf("%s/grammar-hypothesis/hypothesis-%llu-%s-refined-%lu.json",
-                                        out_dir, hyp->hypothesis_id, hyp->message_type, time(NULL));
-          save_hypothesis_to_file(hyp, hyp_file);
-          ck_free(hyp_file);
-
-          OKF("Hypothesis refined: %s (new fitness: %.3f)",
-              hyp->message_type, hyp->fitness);
-        }
+      int valid = validate_message_against_hypothesis(hyp,
+                                                      buf + rstart, rlen);
+      /* Collect counterexample on every 10th failure to avoid flooding */
+      if (!valid && hyp->parse_failure % 10 == 0) {
+        add_counterexample(hyp, buf + rstart, rlen,
+                           "Sampled validation failed");
       }
+
+      if (msg_type) break;  /* Matched type → next region */
+    }
+
+    if (alloc_type) ck_free(alloc_type);
+  }
+}
+
+/* Tier-2: periodic refinement — issues LLM call if any hypothesis
+ * has low fitness AND enough counterexamples.  Safe to call from
+ * any non-hot-path location (plateau handler, main-loop tail). */
+static void periodic_hypothesis_refinement(void)
+{
+  if (!hypothesis_mode || !hypothesis_ctx)
+    return;
+
+  /* Only check every HYPOTHESIS_REFINEMENT_CHECK_INTERVAL validations */
+  if (hypothesis_validation_count == 0 ||
+      hypothesis_validation_count % HYPOTHESIS_REFINEMENT_CHECK_INTERVAL != 0)
+    return;
+
+  fprintf(stderr,
+          "[hypothesis-refine] Checking refinement (validations=%u)\n",
+          hypothesis_validation_count);
+
+  for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++) {
+    grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
+
+    /* Log current fitness for observability */
+    fprintf(stderr,
+            "[hypothesis-refine]   %s: fitness=%.3f success=%u fail=%u ce=%zu\n",
+            hyp->message_type, hyp->fitness,
+            hyp->parse_success, hyp->parse_failure,
+            hyp->counterexample_count);
+
+    /* Refine if fitness < threshold AND ≥3 counterexamples accumulated */
+    if (hyp->fitness < FITNESS_THRESHOLD && hyp->counterexample_count >= 3) {
+      ACTF("Refining hypothesis for %s (fitness: %.3f, counterexamples: %zu)",
+           hyp->message_type, hyp->fitness, hyp->counterexample_count);
+
+      if (refine_hypothesis_with_counterexamples(hypothesis_ctx, hyp)) {
+        /* Persist refined hypothesis for reproducibility */
+        char *hyp_file = alloc_printf(
+            "%s/grammar-hypothesis/hypothesis-%llu-%s-refined-%lu.json",
+            out_dir, hyp->hypothesis_id, hyp->message_type, time(NULL));
+        save_hypothesis_to_file(hyp, hyp_file);
+        ck_free(hyp_file);
+
+        /* Re-integrate refined patterns into IPSM matching */
+        if (protocol_patterns && message_types_set) {
+          integrate_hypotheses_into_protocol_patterns(
+              hypothesis_ctx, protocol_patterns, message_types_set,
+              out_dir, protocol_name);
+        }
+
+        OKF("Hypothesis refined: %s (new fitness: %.3f)",
+            hyp->message_type, hyp->fitness);
+      }
+
+      /* Refine at most ONE hypothesis per invocation to bound latency */
+      break;
     }
   }
 }
@@ -6927,6 +6967,17 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
     if (i == max_seed_region_count)
       break;
   }
+  /* ============================================
+   * Fix-15 Tier-1: Sampled hypothesis validation.
+   * Reuses the regions already parsed above — NO double extract_requests().
+   * Runs every HYPOTHESIS_VALIDATION_SAMPLE_RATE-th execution.
+   * At exec_speed ≈ 25 K/s this is ~50 calls/s × ~1 µs = <0.01% overhead.
+   * ============================================ */
+  if (hypothesis_mode && hypothesis_ctx &&
+      (total_execs % HYPOTHESIS_VALIDATION_SAMPLE_RATE == 0)) {
+    validate_hypothesis_sampled(out_buf, len, regions, region_count);
+  }
+
   ck_free(regions);
 
   cur_last_message = get_last_message(kl_messages);
@@ -7600,6 +7651,12 @@ AFLNET_REGIONS_SELECTION:;
                       "initializing grammar hypothesis system now.\n");
       init_grammar_hypothesis_system();
     }
+
+    /* Fix-15 Tier-2: Check if any hypothesis needs refinement.
+     * This is a natural place: we are already in the plateau handler
+     * which tolerates LLM-level latency.  periodic_hypothesis_refinement()
+     * internally checks the validation count modulo gate. */
+    periodic_hypothesis_refinement();
 
     fprintf(stderr, "[plateau-trigger] Triggering LLM (growth_rate=%.2f, threshold=%u, chat_times=%u)\n",
             edges_growth_rate, adaptive_plateau_threshold, chat_times);

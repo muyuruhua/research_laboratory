@@ -88,6 +88,38 @@ ChatAFL-Opt 是一个自适应闭环控制系统。它有三个可观测量：�
 
 吞吐量不受损（部分目标甚至提升），因为并行充实和 fork 隔离的 LLM 调用大幅减少了主循环的阻塞时间，有界循环消除了异常阻塞风险。
 
+==========
+Fix-15: 两层假设验证机制 (Two-Tier Hypothesis Validation)
+==========
+背景问题：
+  Fix-9b 为了修复 27% 吞吐量回归，将 validate_and_refine_hypotheses() 从 common_fuzz_stuff()
+  热路径中完全移除（__attribute__((unused))）。这导致"假设→验证→反例→精炼"闭环断裂。
+
+解决方案（Fix-15）：
+  用两层采样架构代替原来的 per-execution 全量验证：
+
+  Tier-1（采样验证）：在 common_fuzz_stuff() 中每 500 次执行做一次验证
+    - 复用已有的 extract_requests() 解析结果（零额外解析开销）
+    - 每次最多扫描 8 个 region × N 个假设的约束
+    - 性能开销：25000/500 = 50 次/秒 × ~1µs = <0.01%
+    - 失败时每 10 次收集一个反例（counterexample）
+
+  Tier-2（周期性精炼）：在 plateau handler 中每 5000 次验证检查一次
+    - 如果某假设 fitness < 0.7 且反例 ≥ 3 个，触发 LLM 精炼
+    - 每次最多精炼一个假设（限制延迟）
+    - 精炼后自动重新集成到 IPSM 模式匹配
+
+  约束检查修复：
+    - CONSTRAINT_REGEX：实现 PCRE2 编译匹配（之前为 placeholder return 1）
+    - CONSTRAINT_NUMERIC：实现 strtoll 范围检查（之前为 placeholder return 1）
+    - CONSTRAINT_ENUM：修复为精确长度+大小写不敏感匹配
+
+闭环数据流：
+  common_fuzz_stuff() → [每500次] validate_hypothesis_sampled()
+    → 更新 fitness / 收集 counterexample
+  plateau_handler → [每5000次验证] periodic_hypothesis_refinement()
+    → LLM refine → 更新 schema/constraints → 重新集成到 IPSM
+
 
 
 
