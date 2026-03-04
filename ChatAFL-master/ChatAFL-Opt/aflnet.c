@@ -2273,21 +2273,46 @@ u8 *state_sequence_to_string(unsigned int *stateSequence, unsigned int stateCoun
 /* ============================================
  * Fix-19: Protocol-aware error state classification.
  *
- * Text protocols (FTP/SMTP/RTSP/HTTP/SIP): state_id IS the 3-digit
- * numeric response code extracted by extract_response_codes_*().
- *   → 4xx (client error) or 5xx (server error) = likely error dead-end
- *   → 1xx/2xx/3xx = normal or intermediate
+ * Supported protocols and their state_id semantics:
  *
- * Binary protocols (MQTT/TLS/DTLS/DICOM/DNS/SSH): state_id encodes
- * packet type, not an error code.  Return 0 (unknown) and let the
- * behavioral confirmation in afl-fuzz.c handle it.
+ * ┌────────────┬──────────────────────────────────────┬──────────────┐
+ * │ Protocol   │ state_id encoding                    │ Error detect │
+ * ├────────────┼──────────────────────────────────────┼──────────────┤
+ * │ FTP        │ 3-digit code (220/331/530/…)         │ 4xx/5xx      │
+ * │ SMTP       │ 3-digit code (250/354/550/…)         │ 4xx/5xx      │
+ * │ RTSP       │ 3-digit code (200/404/…)             │ 4xx/5xx      │
+ * │ HTTP       │ 3-digit code (200/404/…)             │ 4xx/5xx      │
+ * │ SIP        │ 3-digit code (200/401/…)             │ 4xx/5xx      │
+ * │ IPP        │ HTTP code OR 200+10*b3+b4 compound   │ 4xx/5xx†     │
+ * │ SSH        │ msg_type byte (1-255) or 256=ident   │ behavioral   │
+ * │ MQTT       │ packet-type byte (0x20-0xF0)         │ behavioral   │
+ * │ TLS        │ (content_type<<8)|msg_type (0x1600…) │ behavioral‡  │
+ * │ DTLS12     │ (content_type<<8)|msg_type            │ behavioral‡  │
+ * │ DNS        │ 16-bit flags word (QR|Opcode|RCODE…) │ behavioral§  │
+ * │ DICOM      │ PDU type byte (0x01-0x07…)           │ behavioral   │
+ * └────────────┴──────────────────────────────────────┴──────────────┘
+ *
+ * † IPP: HTTP 200 is MODIFIED to 200+10*byte3+byte4.
+ *   So state_id 400-599 (raw HTTP error) → error; state_id 200-299
+ *   (compound IPP success) → not error.
+ *
+ * ‡ TLS/DTLS: content_type 0x15 (ALERT) could indicate error, but the
+ *   state_id = (0x15<<8)|alert_type = 0x15xx = 5376+, which falls in
+ *   the thousands range and does NOT collide with the 4xx/5xx check.
+ *   We leave TLS/DTLS to behavioral confirmation.
+ *
+ * § DNS: The RCODE (bits 0-3 of lower byte) encodes error, but the full
+ *   16-bit flags word is not a simple error code.  Behavioral fallback.
  *
  * O(1), no allocation, safe to call from hot path.
  * ============================================ */
 u8 classify_state_error_hint(unsigned int state_id, const char *protocol) {
     if (!protocol) return 0;
 
-    /* Text protocols where state_id = 3-digit HTTP-style response code */
+    /* Text protocols where state_id = 3-digit HTTP-style response code.
+     * IPP included: its extract_response_codes_ipp() uses raw HTTP codes
+     * for non-200 responses (4xx/5xx pass through unchanged), and only
+     * modifies HTTP 200 to 200+10*b3+b4 (resulting in 200-299 range). */
     if (strcasecmp(protocol, "FTP") == 0 ||
         strcasecmp(protocol, "SMTP") == 0 ||
         strcasecmp(protocol, "RTSP") == 0 ||
@@ -2299,7 +2324,29 @@ u8 classify_state_error_hint(unsigned int state_id, const char *protocol) {
         return 0;
     }
 
-    /* Binary protocols: cannot classify structurally → rely on behavior */
+    /* SSH: state_id = msg_type byte (1-255) or 256 (identification).
+     * SSH_MSG_DISCONNECT = 1 is a disconnection indicator but not
+     * an "error dead-end" in the fuzzing sense — behavioral check
+     * is more appropriate. */
+
+    /* MQTT: state_id = raw packet-type byte (0x20=CONNACK, 0x90=SUBACK…).
+     * CONNACK return code in payload byte could indicate rejection, but
+     * the state_id itself only encodes packet type. Behavioral fallback. */
+
+    /* TLS/DTLS12: state_id = (content_type << 8) | message_type.
+     * E.g. 0x1602 = Handshake/ServerHello, 0x1500 = Alert/close_notify.
+     * These are multi-thousand values, not 3-digit codes.
+     * Behavioral fallback. */
+
+    /* DNS: state_id = 16-bit DNS header flags (QR|Opcode|AA|TC|RD|RA|RCODE).
+     * RCODE>0 means error but is embedded in a bitfield, not a simple
+     * class-based code. Behavioral fallback. */
+
+    /* DICOM: state_id = PDU type byte (0x01=A-ASSOCIATE-RQ, 0x03=A-ASSOCIATE-RJ…).
+     * 0x03 (reject) and 0x06 (abort) could be error indicators, but the
+     * PDU type space is too small (0x01-0x07) for reliable classification.
+     * Behavioral fallback. */
+
     return 0;
 }
 
