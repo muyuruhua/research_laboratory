@@ -35,10 +35,10 @@ echo "# PROJECT_ROOT: ${PROJECT_ROOT}"
 echo "=========================================="
 echo
 
-for FUZZER in $(echo $FUZZER_LIST | sed "s/,/ /g")
+for TARGET in $(echo $TARGET_LIST | sed "s/,/ /g")
 do
 
-    for TARGET in $(echo $TARGET_LIST | sed "s/,/ /g")
+    for FUZZER in $(echo $FUZZER_LIST | sed "s/,/ /g")
     do
 
         echo
@@ -405,6 +405,11 @@ do
             fi
 
         fi
+
+        # Brief pause so background process startup messages print in order
+        # before the next fuzzer's messages begin (docker run -d returns in <1s)
+        sleep 2
+
     done
 
 done
