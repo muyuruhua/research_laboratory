@@ -18,18 +18,22 @@ then
 fi
 
 echo
+echo "=========================================="
+echo "标准模式"
+echo "=========================================="
 echo "# NUM_CONTAINERS: ${NUM_CONTAINERS}"
 echo "# TIMEOUT: ${TIMEOUT} s"
 echo "# SKIPCOUNT: ${SKIPCOUNT}"
 echo "# TEST TIMEOUT: ${TEST_TIMEOUT} ms"
 echo "# TARGET LIST: ${TARGET_LIST}"
 echo "# FUZZER LIST: ${FUZZER_LIST}"
+echo "=========================================="
 echo
 
-for FUZZER in $(echo $FUZZER_LIST | sed "s/,/ /g")
+for TARGET in $(echo $TARGET_LIST | sed "s/,/ /g")
 do
 
-    for TARGET in $(echo $TARGET_LIST | sed "s/,/ /g")
+    for FUZZER in $(echo $FUZZER_LIST | sed "s/,/ /g")
     do
 
         echo
@@ -395,13 +399,19 @@ do
 
         fi
 
-
-        if [[ $TARGET == "all" ]]
-        then
-            # Quit loop -- all fuzzers and targets have already been executed
-            exit
-        fi
+        # Brief pause so background process startup messages print in order
+        # before the next fuzzer's messages begin (docker run -d returns in <1s)
+        sleep 2
 
     done
+
 done
+
+# 等待所有后台任务完成
+wait
+
+echo
+echo "=========================================="
+echo "✅ 标准模式测试完成"
+echo "=========================================="
 
