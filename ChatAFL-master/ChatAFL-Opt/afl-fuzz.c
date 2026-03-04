@@ -997,6 +997,28 @@ u32 update_scores_and_select_next_state(u8 mode)
           }
         }
 
+        /* Fix-19: Acceptability penalty — prevent error dead-ends from
+         * monopolizing the frontier bonus.  Three-tier logic:
+         *
+         * error_hint=1 (structural: 4xx/5xx, not yet proven productive)
+         *   → frontier_bonus × 0.25  (neutralize: 4.0→1.0, 2.0→0.5)
+         *
+         * error_hint=0 (unknown, e.g. binary protocols) AND
+         * behaviorally unproductive (selected≥20, productivity<0.01)
+         *   → frontier_bonus × 0.5   (softer penalty, data-driven)
+         *
+         * error_hint=2 (confirmed productive despite error code)
+         *   → no penalty (full bonus preserved)
+         */
+        if (state->error_hint == 1) {
+          frontier_bonus *= 0.25;
+        } else if (state->error_hint == 0 &&
+                   state->selected_times >= 20 &&
+                   state->productivity < 0.01) {
+          frontier_bonus *= 0.5;
+        }
+        /* error_hint == 2: confirmed productive → no penalty */
+
         state->score = (u32)(base * frontier_bonus);
         break;
       }
@@ -1234,6 +1256,9 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
           newState_From->selected_seed_index = 0;
           newState_From->seeds = NULL;
           newState_From->seeds_count = 0;
+          /* Fix-19: Initialize acceptability fields */
+          newState_From->error_hint = classify_state_error_hint(prevStateID, protocol_name);
+          newState_From->productivity = 0.0;
 
           k = kh_put(hms, khms_states, prevStateID, &discard);
           kh_value(khms_states, k) = newState_From;
@@ -1268,6 +1293,9 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
           newState_To->selected_seed_index = 0;
           newState_To->seeds = NULL;
           newState_To->seeds_count = 0;
+          /* Fix-19: Initialize acceptability fields */
+          newState_To->error_hint = classify_state_error_hint(curStateID, protocol_name);
+          newState_To->productivity = 0.0;
 
           k = kh_put(hms, khms_states, curStateID, &discard);
           kh_value(khms_states, k) = newState_To;
@@ -1376,6 +1404,9 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
         newState->seeds = (void **)ck_realloc(newState->seeds, sizeof(void *));
         newState->seeds[0] = (void *)q;
         newState->seeds_count = 1;
+        /* Fix-19: Initialize acceptability fields */
+        newState->error_hint = classify_state_error_hint(reachable_state_id, protocol_name);
+        newState->productivity = 0.0;
 
         k = kh_put(hms, khms_states, reachable_state_id, &discard);
         kh_value(khms_states, k) = newState;
@@ -1425,6 +1456,51 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
     if (k != kh_end(khms_states))
     {
       kh_val(khms_states, k)->paths_discovered++;
+    }
+  }
+
+  /* Fix-19: Update productivity and behavioral confirmation for all states.
+   *
+   * productivity = paths_discovered / (selected_times + 1.0)
+   *   — cached here so FAVOR scoring can read it in O(1)
+   *
+   * Behavioral override logic (requires sufficient sample, selected_times >= 10):
+   *   error_hint=1 AND productivity >= 0.1  →  promote to 2 (productive)
+   *     e.g. FTP 550 that leads to interesting retry paths
+   *   error_hint=0 AND productivity < 0.005 AND selected_times >= 30
+   *     →  demote to 1 (behaviorally confirmed dead-end)
+   *     e.g. MQTT PINGRESP (0xD0) that never produces new coverage
+   */
+  for (u32 si = 0; si < state_ids_count; si++)
+  {
+    k = kh_get(hms, khms_states, state_ids[si]);
+    if (k != kh_end(khms_states))
+    {
+      state_info_t *st = kh_val(khms_states, k);
+      st->productivity = (double)st->paths_discovered / (st->selected_times + 1.0);
+
+      if (st->selected_times >= 10)
+      {
+        /* Promotion: structural error hint but actually productive */
+        if (st->error_hint == 1 && st->productivity >= 0.1)
+        {
+          st->error_hint = 2;  /* confirmed productive, remove penalty */
+          fprintf(stderr,
+                  "[fix-19] State %u promoted: error_hint 1->2 (productivity=%.3f)\n",
+                  st->id, st->productivity);
+        }
+      }
+      if (st->selected_times >= 30)
+      {
+        /* Demotion: unknown protocol state but behaviorally dead */
+        if (st->error_hint == 0 && st->productivity < 0.005)
+        {
+          st->error_hint = 1;  /* behaviorally confirmed unproductive */
+          fprintf(stderr,
+                  "[fix-19] State %u demoted: error_hint 0->1 (productivity=%.4f, sel=%u)\n",
+                  st->id, st->productivity, st->selected_times);
+        }
+      }
     }
   }
 
@@ -7910,6 +7986,11 @@ AFLNET_REGIONS_SELECTION:;
                 json_object_object_add(js, "selected_times",   json_object_new_int(st2->selected_times));
                 json_object_object_add(js, "fuzzs",            json_object_new_int(st2->fuzzs));
                 json_object_object_add(js, "seeds_count",      json_object_new_int(st2->seeds_count));
+                /* Fix-19: Expose acceptability metadata to LLM */
+                json_object_object_add(js, "is_error",
+                    json_object_new_boolean(st2->error_hint == 1));
+                json_object_object_add(js, "productivity",
+                    json_object_new_double(st2->productivity));
                 /* List up to 5 seed indices reachable from this state */
                 struct json_object *jsids2 = json_object_new_array();
                 u32 max_s = st2->seeds_count < 5 ? st2->seeds_count : 5;

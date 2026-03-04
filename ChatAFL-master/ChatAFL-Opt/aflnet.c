@@ -2270,6 +2270,39 @@ u8 *state_sequence_to_string(unsigned int *stateSequence, unsigned int stateCoun
   return out;
 }
 
+/* ============================================
+ * Fix-19: Protocol-aware error state classification.
+ *
+ * Text protocols (FTP/SMTP/RTSP/HTTP/SIP): state_id IS the 3-digit
+ * numeric response code extracted by extract_response_codes_*().
+ *   → 4xx (client error) or 5xx (server error) = likely error dead-end
+ *   → 1xx/2xx/3xx = normal or intermediate
+ *
+ * Binary protocols (MQTT/TLS/DTLS/DICOM/DNS/SSH): state_id encodes
+ * packet type, not an error code.  Return 0 (unknown) and let the
+ * behavioral confirmation in afl-fuzz.c handle it.
+ *
+ * O(1), no allocation, safe to call from hot path.
+ * ============================================ */
+u8 classify_state_error_hint(unsigned int state_id, const char *protocol) {
+    if (!protocol) return 0;
+
+    /* Text protocols where state_id = 3-digit HTTP-style response code */
+    if (strcasecmp(protocol, "FTP") == 0 ||
+        strcasecmp(protocol, "SMTP") == 0 ||
+        strcasecmp(protocol, "RTSP") == 0 ||
+        strcasecmp(protocol, "HTTP") == 0 ||
+        strcasecmp(protocol, "SIP") == 0 ||
+        strcasecmp(protocol, "IPP") == 0) {
+        unsigned int cls = state_id / 100;
+        if (cls == 4 || cls == 5) return 1;  /* 4xx/5xx → likely error */
+        return 0;
+    }
+
+    /* Binary protocols: cannot classify structurally → rely on behavior */
+    return 0;
+}
+
 void hexdump(unsigned char *msg, unsigned char *buf, int start, int end)
 {
   printf("%s : ", msg);
