@@ -15,6 +15,13 @@ DAAP 协议：forked-daapd
 HTTP 协议：lighttpd1
 MQTT 协议：mosquitto
 
+待二进制协议：
+DNS
+DTLS12
+TLS	
+SSH	
+DICOM
+
 cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 1 100 lightftp,pure-ftpd,mosquitto chatafl,chatafl-opt,aflnet
 
 sudo ./analyze.sh live555 95
