@@ -12,6 +12,7 @@
 #include <time.h>
 #include <ctype.h>
 #include <errno.h>
+#include <limits.h>
 #include <sys/stat.h>
 
 #include "grammar-hypothesis.h"
@@ -1035,6 +1036,37 @@ char* construct_hypothesis_generation_prompt(hypothesis_context_t *ctx) {
             offset += written;
         }
     }
+
+    /* ── Gap-1 fix: Inject server response examples into the prompt ──
+     * Gives the LLM concrete evidence of server behaviour (status codes,
+     * header fields, error messages) which dramatically improves the
+     * quality of constraint generation — especially enums and dependency
+     * constraints that require knowledge of both directions. */
+    if (ctx->server_responses && ctx->response_count > 0) {
+        written = snprintf(prompt + offset, MAX_HYPOTHESIS_PROMPT - offset,
+            "Server Response Examples (observed during fuzzing):\\n");
+        if (written > 0 && written < MAX_HYPOTHESIS_PROMPT - offset) {
+            offset += written;
+        }
+
+        size_t resp_limit = ctx->response_count < 5 ? ctx->response_count : 5;
+        for (size_t i = 0; i < resp_limit; i++) {
+            char *escaped_resp = json_escape_string(ctx->server_responses[i], 512);
+            written = snprintf(prompt + offset, MAX_HYPOTHESIS_PROMPT - offset,
+                "%zu. %s\\n", i + 1, escaped_resp);
+            ck_free(escaped_resp);
+            if (written < 0 || written >= MAX_HYPOTHESIS_PROMPT - offset) break;
+            offset += written;
+        }
+
+        written = snprintf(prompt + offset, MAX_HYPOTHESIS_PROMPT - offset, "\\n");
+        if (written > 0 && written < MAX_HYPOTHESIS_PROMPT - offset) {
+            offset += written;
+        }
+
+        printf("[+] Injected %zu server response examples into LLM prompt\n",
+               resp_limit);
+    }
     
 finalize_prompt:
     
@@ -1043,7 +1075,13 @@ finalize_prompt:
         "Generate grammar hypotheses for this protocol. For each message type, provide:\\n"
         "1. message_type: Identifier (e.g., 'USER', 'GET')\\n"
         "2. description: What this message does\\n"
-        "3. schema: JSON Schema with field definitions\\n"
+        "3. schema: JSON Schema with field definitions.  "
+        "Use standard JSON Schema keywords: "
+        "\\\"minLength\\\"/\\\"maxLength\\\" for string lengths, "
+        "\\\"enum\\\": [\\\"val1\\\", \\\"val2\\\"] for allowed values, "
+        "\\\"pattern\\\": \\\"regex\\\" for format constraints, "
+        "\\\"minimum\\\"/\\\"maximum\\\" for numeric ranges, "
+        "and \\\"required\\\": [\\\"field1\\\", ...] for mandatory fields.\\n"
         "4. constraints: Array of field constraints\\n"
         "5. production_rules: ABNF-like syntax rules\\n\\n"
         "Format your response as a JSON array of hypothesis objects:\\n"
@@ -1541,8 +1579,133 @@ void extract_constraints_from_schema(grammar_hypothesis_t *hyp, json_object *sch
             }
         }
 
+        /* ── Gap-2 fix: Extract "enum" constraint ──
+         * JSON Schema: "enum": ["GET", "POST", "PUT", ...]
+         * We parse the array of quoted strings and create a
+         * CONSTRAINT_ENUM with values/count. */
+        const char *enump = strstr(block_buf, "\"enum\"");
+        if (enump && hyp->constraint_count < max_constraints) {
+            const char *arr_start = strchr(enump + 5, '[');
+            if (arr_start) {
+                const char *arr_end = strchr(arr_start, ']');
+                if (arr_end) {
+                    /* Count and extract quoted values inside [...] */
+                    char **vals = NULL;
+                    size_t val_cnt = 0;
+                    const char *cur = arr_start + 1;
+                    while (cur < arr_end && val_cnt < 32) {
+                        const char *q1 = memchr(cur, '"', arr_end - cur);
+                        if (!q1) break;
+                        q1++;
+                        const char *q2 = memchr(q1, '"', arr_end - q1);
+                        if (!q2) break;
+                        size_t vlen = q2 - q1;
+                        if (vlen > 0 && vlen < 256) {
+                            vals = (char **)ck_realloc(
+                                vals, (val_cnt + 1) * sizeof(char *));
+                            vals[val_cnt] = (char *)ck_alloc(vlen + 1);
+                            memcpy(vals[val_cnt], q1, vlen);
+                            vals[val_cnt][vlen] = '\0';
+                            val_cnt++;
+                        }
+                        cur = q2 + 1;
+                    }
+                    if (val_cnt > 0) {
+                        field_constraint_t *c = (field_constraint_t *)
+                            ck_alloc(sizeof(field_constraint_t));
+                        memset(c, 0, sizeof(field_constraint_t));
+                        c->type = CONSTRAINT_ENUM;
+                        c->field_name = (char *)ck_strdup((u8 *)field_name);
+                        c->data.enumeration.values = vals;
+                        c->data.enumeration.count  = val_cnt;
+                        hyp->constraints[hyp->constraint_count++] = c;
+                    } else if (vals) {
+                        ck_free(vals);
+                    }
+                }
+            }
+        }
+
+        /* ── Gap-2 fix: Extract "minimum" / "maximum" constraint ──
+         * JSON Schema: "minimum": 0, "maximum": 65535
+         * Creates a CONSTRAINT_NUMERIC with [min, max] range. */
+        {
+            const char *minp_num = strstr(block_buf, "\"minimum\"");
+            const char *maxp_num = strstr(block_buf, "\"maximum\"");
+            if ((minp_num || maxp_num) &&
+                hyp->constraint_count < max_constraints) {
+                field_constraint_t *c = (field_constraint_t *)
+                    ck_alloc(sizeof(field_constraint_t));
+                memset(c, 0, sizeof(field_constraint_t));
+                c->type = CONSTRAINT_NUMERIC;
+                c->field_name = (char *)ck_strdup((u8 *)field_name);
+                c->data.numeric.min = LLONG_MIN;
+                c->data.numeric.max = LLONG_MAX;
+
+                if (minp_num) {
+                    const char *d = minp_num + 9; /* skip "minimum" */
+                    while (*d && *d != ':') d++;
+                    if (*d == ':') d++;
+                    while (*d && (*d == ' ' || *d == '\t')) d++;
+                    if (*d == '-' || isdigit((unsigned char)*d))
+                        c->data.numeric.min = strtoll(d, NULL, 10);
+                }
+                if (maxp_num) {
+                    const char *d = maxp_num + 9; /* skip "maximum" */
+                    while (*d && *d != ':') d++;
+                    if (*d == ':') d++;
+                    while (*d && (*d == ' ' || *d == '\t')) d++;
+                    if (*d == '-' || isdigit((unsigned char)*d))
+                        c->data.numeric.max = strtoll(d, NULL, 10);
+                }
+                hyp->constraints[hyp->constraint_count++] = c;
+            }
+        }
+
         ck_free(block_buf);
         p = it; // advance
+    }
+
+    /* ── Gap-3 fix: Extract "required" fields as CONSTRAINT_DEPENDENCY ──
+     * JSON Schema: "required": ["field1", "field2", ...]
+     * This keyword is at the schema level (sibling of "properties"),
+     * so we scan the original schema_str, not individual field blocks.
+     * Each required field becomes a CONSTRAINT_DEPENDENCY with
+     * condition="required", enabling message-level presence checks. */
+    {
+        const char *reqp = strstr(s, "\"required\"");
+        if (reqp) {
+            const char *arr = strchr(reqp + 10, '[');
+            if (arr) {
+                const char *arr_e = strchr(arr, ']');
+                if (arr_e) {
+                    const char *cur = arr + 1;
+                    while (cur < arr_e && hyp->constraint_count < max_constraints) {
+                        const char *q1 = memchr(cur, '"', arr_e - cur);
+                        if (!q1) break;
+                        q1++;
+                        const char *q2 = memchr(q1, '"', arr_e - q1);
+                        if (!q2) break;
+                        size_t nlen = q2 - q1;
+                        if (nlen > 0 && nlen < 128) {
+                            field_constraint_t *c = (field_constraint_t *)
+                                ck_alloc(sizeof(field_constraint_t));
+                            memset(c, 0, sizeof(field_constraint_t));
+                            c->type = CONSTRAINT_DEPENDENCY;
+                            c->field_name = (char *)ck_strdup((u8 *)"_schema");
+                            c->data.dependency.target_field =
+                                (char *)ck_alloc(nlen + 1);
+                            memcpy(c->data.dependency.target_field, q1, nlen);
+                            c->data.dependency.target_field[nlen] = '\0';
+                            c->data.dependency.condition =
+                                (char *)ck_strdup((u8 *)"required");
+                            hyp->constraints[hyp->constraint_count++] = c;
+                        }
+                        cur = q2 + 1;
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1693,14 +1856,46 @@ int check_constraint(
         }
 
         case CONSTRAINT_DEPENDENCY:
-            /* Cross-field dependency (e.g., "if Content-Type present then
-             * Content-Length required") needs the full message context that
-             * individual constraint checks don't have.
+            /* ── Gap-3 fix: Message-level field presence check ──
+             * validate_message_against_hypothesis() passes the FULL message
+             * as (field_value, value_len), so we can do substring search for
+             * the target_field name.
              *
-             * Best-effort: log the dependency for observability and soft-pass.
-             * The counterexample + refinement loop will still catch systematic
-             * dependency violations via the overall fitness score. */
-            return 1;
+             * Semantics:
+             *   condition == "required"  → target_field must appear in msg
+             *   condition == "absent"    → target_field must NOT appear
+             *   other / NULL             → soft-pass (future extensibility)
+             *
+             * This works well for text protocols where field names appear
+             * literally (e.g., "Content-Length:", "Host:", "USER ").
+             * For binary protocols the LLM won't generate "required"
+             * constraints (it generates length/numeric instead), so
+             * the check gracefully degrades to soft-pass. */
+            if (constraint->data.dependency.target_field &&
+                constraint->data.dependency.condition) {
+                const char *target = constraint->data.dependency.target_field;
+                size_t tlen = strlen(target);
+                if (tlen == 0 || tlen > value_len) return 1; /* degenerate */
+
+                /* Case-insensitive substring search in message */
+                int found = 0;
+                for (size_t i = 0; i + tlen <= value_len; i++) {
+                    if (strncasecmp(field_value + i, target, tlen) == 0) {
+                        found = 1;
+                        break;
+                    }
+                }
+
+                if (strcmp(constraint->data.dependency.condition,
+                           "required") == 0) {
+                    return found;  /* must be present */
+                }
+                if (strcmp(constraint->data.dependency.condition,
+                           "absent") == 0) {
+                    return !found; /* must NOT be present */
+                }
+            }
+            return 1;  /* unknown condition → soft-pass */
 
         default:
             return 1;

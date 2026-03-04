@@ -4649,6 +4649,86 @@ static void init_grammar_hypothesis_system(void)
 
   fprintf(stderr, "[DEBUG] Hypothesis context initialized successfully\n");
 
+  /* ── Gap-1 fix: Collect server responses from responses-ipsm/ ──
+   * By the time lazy init fires (first plateau), the fuzzer has already
+   * saved server response files during calibration / early fuzzing.
+   * We scan the directory and feed up to 10 sanitized response snippets
+   * into hypothesis_ctx so construct_hypothesis_generation_prompt() can
+   * inject them into the LLM prompt, giving the model concrete examples
+   * of what the server actually returns. */
+  {
+    char *resp_dir_path = alloc_printf("%s/responses-ipsm", out_dir);
+    DIR *resp_dir = opendir(resp_dir_path);
+    if (resp_dir) {
+      char **srv_responses = NULL;
+      size_t srv_count = 0;
+      struct dirent *ent;
+
+      while ((ent = readdir(resp_dir)) != NULL && srv_count < 10) {
+        if (ent->d_name[0] == '.') continue;          /* skip . / .. */
+
+        char *fpath = alloc_printf("%s/%s", resp_dir_path, ent->d_name);
+        u32 *resp_bytes = NULL;
+        u32 resp_cnt = 0, buf_len = 0;
+        char **raw = get_responses_from_file((u8 *)fpath, &resp_bytes,
+                                             &resp_cnt, &buf_len);
+        if (raw && resp_cnt > 0) {
+          /* Concatenate individual response segments into one string
+           * (capped at 2 KB to keep the prompt reasonable). */
+          size_t total = 0;
+          for (u32 r = 0; r < resp_cnt; r++) {
+            u32 seg_len = (r == 0) ? resp_bytes[0]
+                                   : resp_bytes[r] - resp_bytes[r - 1];
+            total += seg_len;
+          }
+          if (total > 2048) total = 2048;
+
+          char *concat = (char *)ck_alloc(total + 1);
+          size_t off = 0;
+          u32 prev = 0;
+          for (u32 r = 0; r < resp_cnt && off < total; r++) {
+            u32 seg_len = resp_bytes[r] - prev;
+            size_t copy = (off + seg_len > total) ? total - off : seg_len;
+            memcpy(concat + off, raw[r], copy);
+            off += copy;
+            prev = resp_bytes[r];
+          }
+          concat[off] = '\0';
+
+          /* Sanitize non-printable characters */
+          for (size_t k = 0; k < off; k++) {
+            unsigned char ch = (unsigned char)concat[k];
+            if (ch == '\r' || ch == '\n' || ch == '\t') continue;
+            if (!isprint(ch)) concat[k] = ' ';
+          }
+
+          srv_responses = (char **)ck_realloc(
+              srv_responses, (srv_count + 1) * sizeof(char *));
+          srv_responses[srv_count++] = concat;
+
+          /* Free per-file data returned by get_responses_from_file */
+          for (u32 r = 0; r < resp_cnt; r++) ck_free(raw[r]);
+          ck_free(raw);
+          ck_free(resp_bytes);
+        }
+        ck_free(fpath);
+      }
+      closedir(resp_dir);
+
+      if (srv_count > 0) {
+        hypothesis_ctx->server_responses = srv_responses;
+        hypothesis_ctx->response_count   = srv_count;
+        fprintf(stderr, "[hypothesis] Gap-1: injected %zu server response "
+                        "snippets into hypothesis context\n", srv_count);
+      }
+    } else {
+      fprintf(stderr, "[hypothesis] responses-ipsm/ not found yet — "
+                      "hypothesis generation will proceed without server "
+                      "response examples\n");
+    }
+    ck_free(resp_dir_path);
+  }
+
   // Generate initial hypotheses
   fprintf(stderr, "[DEBUG] Calling generate_grammar_hypotheses (max=5)\n");
   int hyp_count = generate_grammar_hypotheses(hypothesis_ctx, 5);
