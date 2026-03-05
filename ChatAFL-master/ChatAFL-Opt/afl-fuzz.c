@@ -4967,10 +4967,14 @@ static void validate_hypothesis_sampled(
 
       int valid = validate_message_against_hypothesis(hyp,
                                                       buf + rstart, rlen);
-      /* Collect counterexample on every 10th failure to avoid flooding */
+      /* Fix-20b: Collect counterexample with specific constraint violation
+       * details instead of generic "Sampled validation failed".
+       * Every 10th failure to avoid flooding. */
       if (!valid && hyp->parse_failure % 10 == 0) {
+        char *detail = collect_violation_details(hyp, buf + rstart, rlen);
         add_counterexample(hyp, buf + rstart, rlen,
-                           "Sampled validation failed");
+                           detail ? detail : "Validation failed (no constraint detail)");
+        if (detail) ck_free(detail);
       }
 
       if (msg_type) break;  /* Matched type → next region */

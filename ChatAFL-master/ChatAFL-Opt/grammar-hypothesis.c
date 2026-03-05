@@ -1183,9 +1183,22 @@ char* construct_hypothesis_refinement_prompt(
         offset += written;
     }
     
+    /* Fix-20a: Locality-constrained refinement instruction.
+     * Spec: "让它只修一个字段/一条产生式, 限制LLM自由度, 降低幻觉" */
     written = snprintf(prompt + offset, MAX_HYPOTHESIS_PROMPT - offset,
-        "\\nPlease revise the grammar hypothesis to accommodate these counterexamples. "
-        "Return the updated hypothesis in the same JSON format as before.\"}]");
+        "\\nIMPORTANT REFINEMENT RULES:\\n"
+        "1. Make the MINIMAL change needed: modify at most ONE constraint, "
+        "ONE production rule, or ONE schema field per refinement.\\n"
+        "2. Do NOT rewrite the entire hypothesis. Keep all unchanged "
+        "fields, rules, and constraints EXACTLY as they are.\\n"
+        "3. In your response JSON, include a top-level field "
+        "\\\"changed_field\\\": \\\"<name of the single field or rule you modified>\\\" "
+        "so the change can be audited.\\n"
+        "4. Return the COMPLETE hypothesis in the same JSON format as before, "
+        "with only the single targeted fix applied.\\n"
+        "5. If no single local fix can accommodate ALL counterexamples, "
+        "fix the one that resolves the MOST counterexamples.\\n"
+        "\"}]");
     if (written < 0 || written >= MAX_HYPOTHESIS_PROMPT - offset) {
         fprintf(stderr, "[!] Refinement prompt buffer overflow at footer\n");
         snprintf(prompt + offset, MAX_HYPOTHESIS_PROMPT - offset, "\"}]");
@@ -1713,6 +1726,101 @@ void extract_constraints_from_schema(grammar_hypothesis_t *hyp, json_object *sch
  * Validation Functions
  * ============================================ */
 
+/* Fix-20b: Constraint-type → human-readable label for counterexample reasons */
+static const char* constraint_type_name(constraint_type_t t) {
+    switch (t) {
+        case CONSTRAINT_LENGTH:     return "LENGTH";
+        case CONSTRAINT_ENUM:       return "ENUM";
+        case CONSTRAINT_REGEX:      return "REGEX";
+        case CONSTRAINT_DEPENDENCY: return "DEPENDENCY";
+        case CONSTRAINT_NUMERIC:    return "NUMERIC";
+        default:                    return "UNKNOWN";
+    }
+}
+
+/* Fix-20b: Collect detailed violation reasons for counterexample enrichment.
+ * Returns a heap-allocated string like:
+ *   "Failed LENGTH(command,expect=4-32,got=130), ENUM(method)"
+ * Caller must ck_free() the result.  Returns NULL if all constraints pass.
+ * This does NOT update constraint stats — call validate_message_against_hypothesis()
+ * for that; this is a read-only diagnostic. */
+char* collect_violation_details(
+    grammar_hypothesis_t *hyp,
+    const unsigned char *message,
+    size_t len
+) {
+    if (!hyp || !message || hyp->constraint_count == 0)
+        return NULL;
+
+    char buf[2048];
+    int off = 0;
+    int violation_count = 0;
+
+    off += snprintf(buf + off, sizeof(buf) - off, "Failed ");
+
+    for (size_t i = 0; i < hyp->constraint_count && off < (int)sizeof(buf) - 80; i++) {
+        field_constraint_t *c = hyp->constraints[i];
+
+        if (check_constraint(c, (const char*)message, len))
+            continue;  /* This constraint passed */
+
+        if (violation_count > 0)
+            off += snprintf(buf + off, sizeof(buf) - off, ", ");
+
+        const char *fname = c->field_name ? c->field_name : "?";
+
+        switch (c->type) {
+            case CONSTRAINT_LENGTH:
+                off += snprintf(buf + off, sizeof(buf) - off,
+                    "%s(%s,expect=%zu-%zu,got=%zu)",
+                    constraint_type_name(c->type), fname,
+                    c->data.length.min, c->data.length.max, len);
+                break;
+            case CONSTRAINT_ENUM:
+                off += snprintf(buf + off, sizeof(buf) - off,
+                    "%s(%s,%zu values)", constraint_type_name(c->type),
+                    fname, c->data.enumeration.count);
+                break;
+            case CONSTRAINT_REGEX:
+                off += snprintf(buf + off, sizeof(buf) - off,
+                    "%s(%s,pat=%.30s)", constraint_type_name(c->type),
+                    fname,
+                    c->data.regex.pattern ? c->data.regex.pattern : "null");
+                break;
+            case CONSTRAINT_NUMERIC:
+                off += snprintf(buf + off, sizeof(buf) - off,
+                    "%s(%s,range=%lld-%lld)",
+                    constraint_type_name(c->type), fname,
+                    c->data.numeric.min, c->data.numeric.max);
+                break;
+            case CONSTRAINT_DEPENDENCY:
+                off += snprintf(buf + off, sizeof(buf) - off,
+                    "%s(%s->%s)", constraint_type_name(c->type),
+                    fname,
+                    c->data.dependency.target_field ?
+                        c->data.dependency.target_field : "?");
+                break;
+            default:
+                off += snprintf(buf + off, sizeof(buf) - off,
+                    "%s(%s)", constraint_type_name(c->type), fname);
+                break;
+        }
+
+        violation_count++;
+
+        /* Cap at 5 violations to keep counterexample concise */
+        if (violation_count >= 5) {
+            off += snprintf(buf + off, sizeof(buf) - off, ", ...");
+            break;
+        }
+    }
+
+    if (violation_count == 0)
+        return NULL;
+
+    return (char*)ck_strdup((u8*)buf);
+}
+
 int validate_message_against_hypothesis(
     grammar_hypothesis_t *hyp,
     const unsigned char *message,
@@ -2013,63 +2121,190 @@ int refine_hypothesis_with_counterexamples(
         return 0;
     }
     
-    // Update existing hypothesis with refined data
-    
-    // Transfer message_type
-    ck_free(hyp->message_type);
-    hyp->message_type = refined_hyp->message_type;
-    refined_hyp->message_type = NULL;  // Transfer ownership
-    
-    // Transfer description
-    ck_free(hyp->description);
-    hyp->description = refined_hyp->description;
-    refined_hyp->description = NULL;  // Transfer ownership
-    
-    // Transfer schema
-    if (hyp->schema) json_object_put(hyp->schema);
-    hyp->schema = refined_hyp->schema;
-    refined_hyp->schema = NULL;  // Transfer ownership
-    
-    ck_free(hyp->schema_str);
-    hyp->schema_str = refined_hyp->schema_str;
-    refined_hyp->schema_str = NULL;  // Transfer ownership
-    
-    // Transfer production_rules
-    for (size_t i = 0; i < hyp->rule_count; i++) {
-        ck_free(hyp->production_rules[i]);
+    /* Fix-20c: Diff-based selective merge — only overwrite fields that
+     * actually changed.  Log every changed field so the refinement is
+     * auditable and LLM hallucination (wholesale rewrite) is detectable.
+     *
+     * Spec: "只允许局部 patch" — if the LLM changed >2 major fields we
+     * still accept (prompt already constrains to 1), but we warn. */
+    int fields_changed = 0;
+    char change_log[2048];
+    int cl_off = 0;
+
+    /* --- message_type: should almost never change --- */
+    if (refined_hyp->message_type && hyp->message_type &&
+        strcmp(refined_hyp->message_type, hyp->message_type) != 0) {
+        cl_off += snprintf(change_log + cl_off, sizeof(change_log) - cl_off,
+            "message_type(%s->%s) ", hyp->message_type, refined_hyp->message_type);
+        ck_free(hyp->message_type);
+        hyp->message_type = refined_hyp->message_type;
+        refined_hyp->message_type = NULL;
+        fields_changed++;
+    } else {
+        /* Keep original, discard refined copy */
+        if (refined_hyp->message_type) ck_free(refined_hyp->message_type);
+        refined_hyp->message_type = NULL;
     }
-    ck_free(hyp->production_rules);
-    hyp->production_rules = refined_hyp->production_rules;
-    hyp->rule_count = refined_hyp->rule_count;
-    refined_hyp->production_rules = NULL;  // Transfer ownership
-    refined_hyp->rule_count = 0;
-    
-    // Update constraints - properly free old constraints with nested data
-    for (size_t i = 0; i < hyp->constraint_count; i++) {
-        field_constraint_t *c = hyp->constraints[i];
-        ck_free(c->field_name);
-        
-        // Free constraint-specific data
-        if (c->type == CONSTRAINT_ENUM) {
-            for (size_t j = 0; j < c->data.enumeration.count; j++) {
-                ck_free(c->data.enumeration.values[j]);
-            }
-            ck_free(c->data.enumeration.values);
-        } else if (c->type == CONSTRAINT_REGEX) {
-            ck_free(c->data.regex.pattern);
-        } else if (c->type == CONSTRAINT_DEPENDENCY) {
-            ck_free(c->data.dependency.target_field);
-            ck_free(c->data.dependency.condition);
+
+    /* --- description: cosmetic, always accept --- */
+    if (refined_hyp->description) {
+        int desc_changed = !hyp->description ||
+            strcmp(refined_hyp->description, hyp->description) != 0;
+        if (desc_changed) {
+            cl_off += snprintf(change_log + cl_off, sizeof(change_log) - cl_off,
+                "description ");
+            fields_changed++;
         }
-        
-        ck_free(c);
+        ck_free(hyp->description);
+        hyp->description = refined_hyp->description;
+        refined_hyp->description = NULL;
     }
-    ck_free(hyp->constraints);
+
+    /* --- schema / schema_str --- */
+    {
+        int schema_changed = 0;
+        if (refined_hyp->schema_str && hyp->schema_str) {
+            schema_changed = strcmp(refined_hyp->schema_str, hyp->schema_str) != 0;
+        } else if (refined_hyp->schema_str || hyp->schema_str) {
+            schema_changed = 1;
+        }
+
+        if (schema_changed) {
+            cl_off += snprintf(change_log + cl_off, sizeof(change_log) - cl_off,
+                "schema ");
+            fields_changed++;
+
+            if (hyp->schema) json_object_put(hyp->schema);
+            hyp->schema = refined_hyp->schema;
+            refined_hyp->schema = NULL;
+
+            ck_free(hyp->schema_str);
+            hyp->schema_str = refined_hyp->schema_str;
+            refined_hyp->schema_str = NULL;
+        } else {
+            /* Keep original */
+            if (refined_hyp->schema) { json_object_put(refined_hyp->schema); refined_hyp->schema = NULL; }
+            if (refined_hyp->schema_str) { ck_free(refined_hyp->schema_str); refined_hyp->schema_str = NULL; }
+        }
+    }
+
+    /* --- production_rules --- */
+    {
+        int rules_changed = (refined_hyp->rule_count != hyp->rule_count);
+        if (!rules_changed) {
+            for (size_t i = 0; i < hyp->rule_count; i++) {
+                if (strcmp(hyp->production_rules[i],
+                           refined_hyp->production_rules[i]) != 0) {
+                    rules_changed = 1;
+                    break;
+                }
+            }
+        }
+
+        if (rules_changed) {
+            cl_off += snprintf(change_log + cl_off, sizeof(change_log) - cl_off,
+                "production_rules(%zu->%zu) ", hyp->rule_count, refined_hyp->rule_count);
+            fields_changed++;
+
+            for (size_t i = 0; i < hyp->rule_count; i++)
+                ck_free(hyp->production_rules[i]);
+            ck_free(hyp->production_rules);
+            hyp->production_rules = refined_hyp->production_rules;
+            hyp->rule_count = refined_hyp->rule_count;
+            refined_hyp->production_rules = NULL;
+            refined_hyp->rule_count = 0;
+        } else {
+            for (size_t i = 0; i < refined_hyp->rule_count; i++)
+                ck_free(refined_hyp->production_rules[i]);
+            ck_free(refined_hyp->production_rules);
+            refined_hyp->production_rules = NULL;
+            refined_hyp->rule_count = 0;
+        }
+    }
+
+    /* --- constraints: always accept (this is the primary refinement target) --- */
+    {
+        int constraints_changed = (refined_hyp->constraint_count != hyp->constraint_count);
+        if (!constraints_changed) {
+            /* Shallow check: compare field names and types */
+            for (size_t i = 0; i < hyp->constraint_count; i++) {
+                field_constraint_t *a = hyp->constraints[i];
+                field_constraint_t *b = refined_hyp->constraints[i];
+                if (a->type != b->type ||
+                    !a->field_name || !b->field_name ||
+                    strcmp(a->field_name, b->field_name) != 0) {
+                    constraints_changed = 1;
+                    break;
+                }
+            }
+        }
+
+        if (constraints_changed) {
+            cl_off += snprintf(change_log + cl_off, sizeof(change_log) - cl_off,
+                "constraints(%zu->%zu) ", hyp->constraint_count,
+                refined_hyp->constraint_count);
+            fields_changed++;
+
+            /* Free old constraints with nested data */
+            for (size_t i = 0; i < hyp->constraint_count; i++) {
+                field_constraint_t *c = hyp->constraints[i];
+                ck_free(c->field_name);
+                if (c->type == CONSTRAINT_ENUM) {
+                    for (size_t j = 0; j < c->data.enumeration.count; j++)
+                        ck_free(c->data.enumeration.values[j]);
+                    ck_free(c->data.enumeration.values);
+                } else if (c->type == CONSTRAINT_REGEX) {
+                    ck_free(c->data.regex.pattern);
+                } else if (c->type == CONSTRAINT_DEPENDENCY) {
+                    ck_free(c->data.dependency.target_field);
+                    ck_free(c->data.dependency.condition);
+                }
+                ck_free(c);
+            }
+            ck_free(hyp->constraints);
+
+            hyp->constraints = refined_hyp->constraints;
+            hyp->constraint_count = refined_hyp->constraint_count;
+            refined_hyp->constraints = NULL;
+            refined_hyp->constraint_count = 0;
+        } else {
+            /* Constraints unchanged — free refined copy */
+            for (size_t i = 0; i < refined_hyp->constraint_count; i++) {
+                field_constraint_t *c = refined_hyp->constraints[i];
+                ck_free(c->field_name);
+                if (c->type == CONSTRAINT_ENUM) {
+                    for (size_t j = 0; j < c->data.enumeration.count; j++)
+                        ck_free(c->data.enumeration.values[j]);
+                    ck_free(c->data.enumeration.values);
+                } else if (c->type == CONSTRAINT_REGEX) {
+                    ck_free(c->data.regex.pattern);
+                } else if (c->type == CONSTRAINT_DEPENDENCY) {
+                    ck_free(c->data.dependency.target_field);
+                    ck_free(c->data.dependency.condition);
+                }
+                ck_free(c);
+            }
+            ck_free(refined_hyp->constraints);
+            refined_hyp->constraints = NULL;
+            refined_hyp->constraint_count = 0;
+        }
+    }
+
+    /* Warn if LLM changed too many fields (locality violation) */
+    if (fields_changed > 2) {
+        fprintf(stderr,
+            "[!] Fix-20c WARNING: LLM changed %d fields (expected ≤2): %s\n",
+            fields_changed, change_log);
+    }
     
-    hyp->constraints = refined_hyp->constraints;
-    hyp->constraint_count = refined_hyp->constraint_count;
-    refined_hyp->constraints = NULL;  // Transfer ownership
-    refined_hyp->constraint_count = 0;
+    /* Log the diff for auditability */
+    if (fields_changed > 0) {
+        fprintf(stderr, "[hypothesis-refine] Diff: %s(%d field%s)\n",
+                change_log, fields_changed, fields_changed > 1 ? "s" : "");
+    } else {
+        fprintf(stderr, "[hypothesis-refine] No field changes detected "
+                "(LLM returned identical hypothesis)\n");
+    }
     
     // Clear counterexamples after refinement
     for (size_t i = 0; i < hyp->counterexample_count; i++) {
