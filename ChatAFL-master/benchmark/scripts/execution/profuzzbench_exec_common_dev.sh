@@ -115,8 +115,9 @@ done
 printf "\n${LOG_TAG}: Fuzzing in progress ..."
 printf "\n${LOG_TAG}: Waiting for the following containers to stop:${dlist}"
 for id in ${cids[@]}; do
-  printf "\n${LOG_TAG}: You can check logs by: docker logs -f ${id}\n"
+  printf "\n${LOG_TAG}: You can check logs by: docker logs -f ${id}"
 done
+printf "\n"
 if [ -n "${dlist}" ]; then
   docker wait ${dlist} > /dev/null
 fi
