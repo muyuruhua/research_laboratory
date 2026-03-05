@@ -97,7 +97,8 @@ do
         continue
     fi
     #echo $FUZZERS
-    info "Subject: $ORIGINAL_SUBJECT, Fuzzers: $FUZZERS, Replications: $REPS"
+    FUZZERS_DISPLAY=$(echo "$FUZZERS" | tr '\n' ',' | sed 's/,$//' | sed 's/,/, /g')
+    info "Subject: $ORIGINAL_SUBJECT, Fuzzers: $FUZZERS_DISPLAY, Replications: $REPS\n"
     
     # OCP Extension: Clean up previous analysis (suppress expected "file not found" warnings)
     rm -f results.csv states.csv 2>/dev/null
