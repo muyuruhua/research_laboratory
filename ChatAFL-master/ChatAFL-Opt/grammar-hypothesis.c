@@ -227,7 +227,9 @@ static int parse_rfc_sections(const char *text, size_t text_len,
      *   "1.  TITLE"           (top-level, starts at column 0)
      *   "   2.1.  Sub-title"  (sub-section, indented with spaces)
      *   "25  Augmented BNF"   (some RFCs omit the dot)
-     * We detect lines that start with optional whitespace + digit(s) + '.' */
+     *   "Appendix A.  Title"  (appendix sections — TLS, FTP, etc.)
+     * We detect lines that start with optional whitespace + digit(s) + '.'
+     * OR lines that start with "Appendix" */
     while (p < end && count < max_sections - 1) {
         /* Find start of line */
         const char *line = p;
@@ -237,7 +239,11 @@ static int parse_rfc_sections(const char *text, size_t text_len,
         int spaces = 0;
         while (lp < end && *lp == ' ' && spaces < 6) { lp++; spaces++; }
 
-        /* Check if line starts with section number: digit(s) then '.' or ' ' */
+        int section_detected = 0;
+        const char *title_start = NULL;  /* where the title text begins for copying */
+        const char *title_end = NULL;
+
+        /* --- Pattern 1: Numbered sections ("4.1.2  Title") --- */
         if (lp < end && *lp >= '1' && *lp <= '9') {
             const char *np = lp;
             /* Consume number like "4.1.2" */
@@ -262,23 +268,62 @@ static int parse_rfc_sections(const char *text, size_t text_len,
                 }
 
                 if (alpha_count >= 3) {
-                    /* Close previous section */
-                    if (count > 0) {
-                        sections[count - 1].end = (size_t)(line - text);
-                    }
-                    /* Record new section */
-                    sections[count].start = (size_t)(line - text);
-                    sections[count].score = 0;
-
-                    /* Copy title */
-                    size_t title_len = (size_t)(tp - lp);
-                    if (title_len > 127) title_len = 127;
-                    memcpy(sections[count].title, lp, title_len);
-                    sections[count].title[title_len] = '\0';
-
-                    count++;
+                    section_detected = 1;
+                    title_start = lp;  /* include number in title */
+                    title_end = tp;
                 }
             }
+        }
+
+        /* --- Pattern 2: Appendix sections ("Appendix A.  State Machine") ---
+         * Only match at column 0 (no indent) to avoid TOC entries which
+         * are typically indented with 2-3 spaces. */
+        if (!section_detected && spaces == 0 && lp < end &&
+            (size_t)(end - lp) > 10 && strncmp(lp, "Appendix", 8) == 0) {
+            const char *np = lp + 8;
+            /* Skip whitespace after "Appendix" */
+            while (np < end && (*np == ' ' || *np == '\t')) np++;
+            /* Expect letter (A-Z) optionally followed by digits and '.' */
+            if (np < end && *np >= 'A' && *np <= 'Z') {
+                const char *label_end = np + 1;
+                while (label_end < end && ((*label_end >= '0' && *label_end <= '9') ||
+                       *label_end == '.')) label_end++;
+                /* Skip whitespace to title */
+                while (label_end < end && (*label_end == ' ' || *label_end == '\t'))
+                    label_end++;
+                /* Check for title text */
+                int alpha_count = 0;
+                const char *tp = label_end;
+                while (tp < end && *tp != '\n' && *tp != '\r') {
+                    if ((*tp >= 'A' && *tp <= 'Z') || (*tp >= 'a' && *tp <= 'z'))
+                        alpha_count++;
+                    tp++;
+                }
+                if (alpha_count >= 3) {
+                    section_detected = 1;
+                    title_start = lp;  /* "Appendix A.  Title" */
+                    title_end = tp;
+                }
+            }
+        }
+
+        /* Record detected section */
+        if (section_detected && title_start && title_end) {
+            /* Close previous section */
+            if (count > 0) {
+                sections[count - 1].end = (size_t)(line - text);
+            }
+            /* Record new section */
+            sections[count].start = (size_t)(line - text);
+            sections[count].score = 0;
+
+            /* Copy title */
+            size_t title_len = (size_t)(title_end - title_start);
+            if (title_len > 127) title_len = 127;
+            memcpy(sections[count].title, title_start, title_len);
+            sections[count].title[title_len] = '\0';
+
+            count++;
         }
 
         /* Advance to next line */
@@ -503,13 +548,14 @@ static size_t extract_binary_protocol_blocks(const char *text, size_t text_len,
     return out_len;
 }
 
-/* --- Step 1a: Extract ABNF grammar blocks (text protocols) --- */
+/* --- Step 1a: Extract ABNF/BNF grammar blocks (text protocols) --- */
 static size_t extract_abnf_blocks(const char *text, size_t text_len,
                                   char *out, size_t max_out)
 {
-    /* ABNF rules look like:  "rule-name  =  definition"
-     * or continuation lines: "               / alternative"
-     * Match: ^[A-Za-z][A-Za-z0-9-]*  *=  (but not == which is code) */
+    /* ABNF rules:  "rule-name  =  definition"    (RFC 5234 style)
+     * BNF rules:   "rule-name  ::=  definition"  (older RFCs: FTP 959, etc.)
+     * Continuation: "               / alternative"
+     * Match: ^[A-Za-z][A-Za-z0-9-]*  *(=|::=)  (but not == which is code) */
     size_t out_len = 0;
     const char *p = text;
     const char *end = text + text_len;
@@ -519,7 +565,7 @@ static size_t extract_abnf_blocks(const char *text, size_t text_len,
 
     /* Write header */
     int w = snprintf(out, max_out,
-                     "\n[=== ABNF Grammar Rules ===]\n");
+                     "\n[=== ABNF/BNF Grammar Rules ===]\n");
     if (w > 0 && (size_t)w < max_out) out_len = (size_t)w;
 
     while (p < end) {
@@ -530,7 +576,7 @@ static size_t extract_abnf_blocks(const char *text, size_t text_len,
 
         size_t line_len = (size_t)(line_end - line_start);
 
-        /* Check if this line starts a new ABNF rule */
+        /* Check if this line starts a new ABNF/BNF rule */
         int is_rule_start = 0;
         if (line_len > 4) {
             const char *lp = line_start;
@@ -548,15 +594,19 @@ static size_t extract_abnf_blocks(const char *text, size_t text_len,
                         *name_end == '-'))
                     name_end++;
 
-                /* Skip spaces before '=' */
+                /* Skip spaces before operator */
                 const char *eq = name_end;
                 while (eq < line_end && *eq == ' ') eq++;
 
-                /* Must be '=' but not '==' */
-                if (eq < line_end && *eq == '=' &&
-                    (eq + 1 >= line_end || *(eq + 1) != '=') &&
-                    (name_end - lp) >= 2 && (name_end - lp) <= 40) {
-                    is_rule_start = 1;
+                /* Check for ABNF '=' (not '==') or BNF '::=' */
+                if ((name_end - lp) >= 2 && (name_end - lp) <= 40) {
+                    if (eq < line_end && *eq == '=' &&
+                        (eq + 1 >= line_end || *(eq + 1) != '=')) {
+                        is_rule_start = 1;  /* ABNF: name = def */
+                    } else if (eq + 2 < line_end &&
+                               eq[0] == ':' && eq[1] == ':' && eq[2] == '=') {
+                        is_rule_start = 1;  /* BNF: name ::= def */
+                    }
                 }
             }
         }
@@ -631,10 +681,15 @@ static void score_sections(rfc_section_t *sections, int count,
                            const char *rfc_text,
                            const char *protocol_name)
 {
+    /* State-machine critical keywords — highest priority for fuzzer */
+    static const char *generic_state[] = {
+        "State Diagram", "State Machine", "Transaction",
+        "Handshake", NULL
+    };
     /* Generic high-value keywords (applicable to all protocols) */
     static const char *generic_high[] = {
         "ABNF", "BNF", "Grammar", "Syntax", "Format",
-        "Definition", NULL
+        "Definition", "Data Structure", "Constant", NULL
     };
     static const char *generic_mid[] = {
         "Command", "Request", "Response", "Reply", "Method",
@@ -644,7 +699,10 @@ static void score_sections(rfc_section_t *sections, int count,
     static const char *generic_low[] = {
         "Example", "Scenario", "Overview", "Introduction",
         "Security", "IANA", "Acknowledgement", "Reference",
-        "Appendix", "Author", "Copyright", "Abstract", NULL
+        "Author", "Copyright", "Abstract", NULL
+        /* Note: "Appendix" removed from penalty list — we now properly
+         * parse Appendix sections (Fix-21a) and they often contain
+         * critical state machine and data structure definitions */
     };
 
     const char * const *proto_kw = get_protocol_keywords(protocol_name);
@@ -654,13 +712,25 @@ static void score_sections(rfc_section_t *sections, int count,
         const char *title = sections[i].title;
         size_t sec_len = sections[i].end - sections[i].start;
 
-        /* Score based on title keyword matches */
+        /* Score based on title keyword matches — check tiers in priority order */
+        /* Tier 0: State-machine critical (+40) — highest priority for fuzzer */
+        int state_matched = 0;
+        for (int k = 0; generic_state[k]; k++) {
+            if (strcasestr(title, generic_state[k])) {
+                score += 40; state_matched = 1; break;
+            }
+        }
+        /* Tier 1: Grammar/syntax high (+30) */
         for (int k = 0; generic_high[k]; k++) {
             if (strcasestr(title, generic_high[k])) { score += 30; break; }
         }
-        for (int k = 0; generic_mid[k]; k++) {
-            if (strcasestr(title, generic_mid[k])) { score += 15; break; }
+        /* Tier 2: Protocol element mid (+15) */
+        if (!state_matched) {  /* avoid double-counting State/Machine */
+            for (int k = 0; generic_mid[k]; k++) {
+                if (strcasestr(title, generic_mid[k])) { score += 15; break; }
+            }
         }
+        /* Tier 3: Low-value penalty (-10) */
         for (int k = 0; generic_low[k]; k++) {
             if (strcasestr(title, generic_low[k])) { score -= 10; break; }
         }
@@ -668,8 +738,8 @@ static void score_sections(rfc_section_t *sections, int count,
         /* Protocol-specific keyword bonus: check section CONTENT */
         if (proto_kw) {
             const char *sec_text = rfc_text + sections[i].start;
-            /* Only scan first 3000 chars of section to keep fast */
-            size_t scan_len = sec_len < 3000 ? sec_len : 3000;
+            /* Scan first 5000 chars of section for broader coverage */
+            size_t scan_len = sec_len < 5000 ? sec_len : 5000;
             int hits = 0;
             for (int k = 0; proto_kw[k] && hits < 15; k++) {
                 /* Count up to 2 occurrences per keyword */
@@ -687,23 +757,59 @@ static void score_sections(rfc_section_t *sections, int count,
             score += hits * 5;  /* Each hit = +5 */
         }
 
-        /* ABNF content bonus: check if section contains rule definitions */
+        /* ABNF/BNF content bonus: check for rule definitions (= and ::=) */
         {
             const char *sec_text = rfc_text + sections[i].start;
             size_t scan_len = sec_len < 5000 ? sec_len : 5000;
-            const char *eq = sec_text;
+            const char *sp = sec_text;
             int abnf_count = 0;
-            while (eq < sec_text + scan_len - 2 && abnf_count < 5) {
-                eq = strstr(eq, " = ");
-                if (!eq || eq >= sec_text + scan_len) break;
+            while (sp < sec_text + scan_len - 2 && abnf_count < 5) {
+                /* Look for ' = ' (ABNF) */
+                const char *eq = strstr(sp, " = ");
+                /* Also look for ' ::= ' (BNF) */
+                const char *bnf = strstr(sp, " ::= ");
+                /* Take whichever comes first */
+                const char *match = NULL;
+                int advance = 3;
+                if (eq && (!bnf || eq <= bnf)) {
+                    match = eq; advance = 3;
+                } else if (bnf) {
+                    match = bnf; advance = 5;
+                }
+                if (!match || match >= sec_text + scan_len) break;
                 /* Check if preceded by alpha (rule-name) */
-                if (eq > sec_text && ((*(eq-1) >= 'A' && *(eq-1) <= 'Z') ||
-                                       (*(eq-1) >= 'a' && *(eq-1) <= 'z') ||
-                                       *(eq-1) == '-'))
+                if (match > sec_text &&
+                    ((*(match-1) >= 'A' && *(match-1) <= 'Z') ||
+                     (*(match-1) >= 'a' && *(match-1) <= 'z') ||
+                     *(match-1) == '-'))
                     abnf_count++;
-                eq += 3;
+                sp = match + advance;
             }
             score += abnf_count * 8;
+        }
+
+        /* State diagram content bonus: check for ASCII art state diagrams */
+        {
+            const char *sec_text = rfc_text + sections[i].start;
+            size_t scan_len = sec_len < 8000 ? sec_len : 8000;
+            int diagram_indicators = 0;
+            /* Look for ASCII art patterns: "+---+", "| B |", "--->", "<---" */
+            const char *sp = sec_text;
+            while (sp < sec_text + scan_len - 4 && diagram_indicators < 5) {
+                if ((sp[0] == '+' && sp[1] == '-' && sp[2] == '-' && sp[3] == '-') ||
+                    (sp[0] == '-' && sp[1] == '-' && sp[2] == '-' && sp[3] == '>') ||
+                    (sp[0] == '<' && sp[1] == '-' && sp[2] == '-' && sp[3] == '-') ||
+                    (sp[0] == '|' && sp[1] == ' ' &&
+                     ((sp[2] >= 'A' && sp[2] <= 'Z') || (sp[2] >= 'a' && sp[2] <= 'z')))) {
+                    diagram_indicators++;
+                }
+                sp++;
+            }
+            if (diagram_indicators >= 3) {
+                score += 25;  /* Strong state diagram bonus */
+            } else if (diagram_indicators >= 1) {
+                score += 10;  /* Weak diagram hint */
+            }
         }
 
         /* Penalty for very large sections (>15KB) — they dilute the budget */
@@ -768,6 +874,142 @@ char* extract_rfc_key_sections(const char *rfc_text, size_t max_chars,
     }
     out_len = grammar_len;
 
+    /* --- Step 1c: Extract ASCII state diagrams (10% budget) ---
+     * State diagrams use ASCII art: "+---+", "--->", "| B |"
+     * These are critical for LLM understanding of protocol state machines.
+     * We extract them as a dedicated pass before section scoring,
+     * so they are guaranteed to be included regardless of section scores. */
+    {
+        size_t diagram_budget = max_chars / 10;  /* 10% = ~5KB */
+        if (diagram_budget > max_chars - out_len)
+            diagram_budget = max_chars - out_len;
+        size_t diagram_len = 0;
+        char *diagram_buf = extracted + out_len;
+        int diagram_header_written = 0;
+
+        const char *dp = rfc_text;
+        const char *dp_end = rfc_text + rfc_len;
+        int in_diagram = 0;
+        const char *diag_start = NULL;
+        /* Ring buffer for 2 lines of pre-context */
+        const char *dprev[2] = { rfc_text, rfc_text };
+        int dprev_idx = 0;
+
+        while (dp < dp_end && diagram_len < diagram_budget - 200) {
+            const char *dl_start = dp;
+            const char *dl_end = dp;
+            while (dl_end < dp_end && *dl_end != '\n') dl_end++;
+            size_t dl_len = (size_t)(dl_end - dl_start);
+
+            /* Detect state diagram line patterns */
+            int is_diagram_line = 0;
+            if (dl_len >= 4) {
+                const char *dlp = dl_start;
+                while (dlp < dl_end && *dlp == ' ') dlp++;
+                size_t content_len = (size_t)(dl_end - dlp);
+                if (content_len >= 4) {
+                    /* +---+ box top/bottom */
+                    if (dlp[0] == '+' && dlp[1] == '-' && dlp[2] == '-' && dlp[3] == '-')
+                        is_diagram_line = 1;
+                    /* | X | box body */
+                    if (dlp[0] == '|' && dlp[1] == ' ' && content_len >= 5)
+                        is_diagram_line = 1;
+                    /* Arrow patterns: ---> or ----> or <--- */
+                    for (const char *ap = dlp; ap < dl_end - 3; ap++) {
+                        if ((ap[0] == '-' && ap[1] == '-' && ap[2] == '-' && ap[3] == '>') ||
+                            (ap[0] == '<' && ap[1] == '-' && ap[2] == '-' && ap[3] == '-') ||
+                            (ap[0] == '-' && ap[1] == '-' && ap[2] == '>')) {
+                            is_diagram_line = 1; break;
+                        }
+                    }
+                    /* Vertical connectors: lines that are mostly | and spaces */
+                    if (!is_diagram_line && in_diagram) {
+                        int pipe_count = 0, space_count = 0;
+                        for (const char *cp = dlp; cp < dl_end; cp++) {
+                            if (*cp == '|') pipe_count++;
+                            else if (*cp == ' ') space_count++;
+                        }
+                        if (pipe_count >= 1 && space_count + pipe_count >= (int)content_len * 7 / 10)
+                            is_diagram_line = 1;
+                    }
+                }
+            }
+
+            if (is_diagram_line && !in_diagram) {
+                /* Start new diagram — include 2 lines of pre-context for description */
+                in_diagram = 1;
+                diag_start = dprev[(dprev_idx) % 2];  /* 2 lines back */
+                if (!diagram_header_written) {
+                    int hw = snprintf(diagram_buf + diagram_len,
+                                      diagram_budget - diagram_len,
+                                      "\n[=== State Diagrams ===]\n");
+                    if (hw > 0) diagram_len += (size_t)hw;
+                    diagram_header_written = 1;
+                }
+            } else if (!is_diagram_line && in_diagram) {
+                /* Allow 1 blank line within diagram (common in RFC formatting) */
+                if (dl_len == 0) {
+                    /* Check if next non-empty line is also diagram */
+                    const char *peek = dl_end;
+                    if (peek < dp_end) peek++;  /* skip \n */
+                    const char *pk_end = peek;
+                    while (pk_end < dp_end && *pk_end != '\n') pk_end++;
+                    int next_is_diag = 0;
+                    if (pk_end - peek >= 4) {
+                        const char *pkp = peek;
+                        while (pkp < pk_end && *pkp == ' ') pkp++;
+                        if ((pkp[0] == '+' && pkp[1] == '-') ||
+                            (pkp[0] == '|' && pkp[1] == ' '))
+                            next_is_diag = 1;
+                        for (const char *a = pkp; a < pk_end - 3 && !next_is_diag; a++)
+                            if (a[0] == '-' && a[1] == '-' && a[2] == '>')
+                                next_is_diag = 1;
+                    }
+                    if (!next_is_diag) {
+                        /* End diagram */
+                        size_t dlen = (size_t)(dl_start - diag_start);
+                        if (dlen > 20 && diagram_len + dlen + 2 < diagram_budget) {
+                            memcpy(diagram_buf + diagram_len, diag_start, dlen);
+                            diagram_len += dlen;
+                            diagram_buf[diagram_len++] = '\n';
+                        }
+                        in_diagram = 0;
+                    }
+                } else {
+                    /* Non-diagram, non-blank: end diagram */
+                    size_t dlen = (size_t)(dl_start - diag_start);
+                    if (dlen > 20 && diagram_len + dlen + 2 < diagram_budget) {
+                        memcpy(diagram_buf + diagram_len, diag_start, dlen);
+                        diagram_len += dlen;
+                        diagram_buf[diagram_len++] = '\n';
+                    }
+                    in_diagram = 0;
+                }
+            }
+
+            /* Update pre-context ring buffer */
+            dprev[dprev_idx] = dl_start;
+            dprev_idx = (dprev_idx + 1) % 2;
+
+            dp = dl_end;
+            if (dp < dp_end) dp++;
+        }
+
+        /* Flush final diagram */
+        if (in_diagram && diag_start) {
+            size_t dlen = (size_t)(dp - diag_start);
+            if (dlen > 20 && diagram_len + dlen + 2 < diagram_budget) {
+                memcpy(diagram_buf + diagram_len, diag_start, dlen);
+                diagram_len += dlen;
+            }
+        }
+
+        if (diagram_len > 0) {
+            out_len += diagram_len;
+            printf("[RFC-Extract] Extracted %zu bytes of state diagrams\n", diagram_len);
+        }
+    }
+
     /* --- Pass 1: Parse section boundaries --- */
     rfc_section_t *sections = (rfc_section_t *)ck_alloc(
         MAX_RFC_SECTIONS * sizeof(rfc_section_t));
@@ -808,9 +1050,21 @@ char* extract_rfc_key_sections(const char *rfc_text, size_t max_chars,
         size_t sec_len = sections[i].end - sections[i].start;
         if (sections[i].score < 0) continue;  /* skip negatively-scored */
 
-        /* Cap individual section at 8KB to avoid one section consuming all budget */
+        /* Dynamic section cap: 12KB for state-machine sections, 8KB for others.
+         * State machine sections (score >= 40 from generic_state tier, or title
+         * contains 'State'/'Diagram'/'Transaction'/'Handshake') deserve more
+         * space because they contain ASCII art diagrams and transition logic. */
+        size_t section_cap = 8192;  /* default 8KB */
+        if (sections[i].score >= 60 ||
+            strcasestr(sections[i].title, "State") ||
+            strcasestr(sections[i].title, "Diagram") ||
+            strcasestr(sections[i].title, "Transaction") ||
+            strcasestr(sections[i].title, "Handshake")) {
+            section_cap = 12288;  /* 12KB for state-machine sections */
+        }
+
         size_t copy_len = sec_len;
-        if (copy_len > 8192) copy_len = 8192;
+        if (copy_len > section_cap) copy_len = section_cap;
         if (copy_len > remaining_budget - 50) copy_len = remaining_budget - 50;
 
         /* Write section with header marker */
