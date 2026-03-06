@@ -77,6 +77,12 @@ void chat_llm_global_init(void);
 /* Must be called once after all LLM calls are done */
 void chat_llm_global_cleanup(void);
 
+/* Per-call token usage filled by chat_with_llm().
+ * These are process-local (meaningful in the forked child).  The parent
+ * reads them back via a sidecar file written by the child. */
+extern unsigned long long llm_last_prompt_tokens;
+extern unsigned long long llm_last_completion_tokens;
+
 char *chat_with_llm(char *prompt, char *model, int tries, float temperature);
 char *construct_prompt_for_templates(char *protocol_name, char **final_msg);
 char *construct_prompt_for_remaining_templates(char *protocol_name, char *templates_prompt, char *templates_answer);
@@ -84,6 +90,8 @@ char *extract_protocol_commands_from_response(char *llm_response);
 char *construct_prompt_for_protocol_message_types(char *protocol_name);
 char *construct_prompt_for_requests_to_states(const char *protocol_name, const char *protocol_state, const char *example_requests);
 char *construct_prompt_stall(char *protocol_name, char *examples, char *history);
+/* ChatAFL-original prompt template — used only under CHATAFL_NO_STATE_PROMPT ablation */
+char *construct_prompt_stall_original(char *protocol_name, char *examples, char *history);
 
 /* Handle plateau: build prompt from examples/history, call LLM and
     return a formatted request message (NULL on failure). */

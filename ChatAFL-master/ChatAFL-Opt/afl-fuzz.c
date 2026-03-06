@@ -489,6 +489,42 @@ static u64 last_edges_check_time = 0;      /* Time of last edges check (ms) */
 static double edges_growth_rate = 0.0;     /* Edges/minute growth rate */
 static u32 adaptive_plateau_threshold = 100; /* Dynamic plateau threshold (starts at UNINTERESTING_THRESHOLD) */
 
+/* ============================================
+ * Ablation Control Flags (env-var toggled)
+ *
+ * Each flag DISABLES one optimization so that ablation experiments
+ * can isolate the contribution of individual mechanisms.
+ *   CHATAFL_NO_REFINEMENT=1  → disable Tier-2 hypothesis refinement
+ *   CHATAFL_NO_FRONTIER=1    → disable frontier bonus + error penalty
+ *   CHATAFL_NO_ADAPTIVE=1    → disable adaptive plateau threshold
+ *   CHATAFL_NO_STATE_PROMPT=1 → disable state-aware rich prompt + actions[]
+ *                               (falls back to ChatAFL's simple prompt)
+ * When unset (default), all optimizations are active.
+ * ============================================ */
+static u8 ablation_no_refinement   = 0;
+static u8 ablation_no_frontier     = 0;
+static u8 ablation_no_adaptive     = 0;
+static u8 ablation_no_state_prompt = 0;
+
+/* ============================================
+ * LLM Cost Tracking
+ *
+ * Accumulates prompt_tokens / completion_tokens from the OpenAI-compatible
+ * API "usage" object.  Written to fuzzer_stats and plot_data so the cost
+ * of each experimental configuration can be compared quantitatively.
+ * ============================================ */
+static u64 llm_total_prompt_tokens     = 0;
+static u64 llm_total_completion_tokens = 0;
+static u64 llm_total_calls             = 0;
+static u64 llm_dedup_hits              = 0;  /* prompt-hash cache hits */
+
+/* Simple prompt-hash dedup table for plateau handler.
+ * We store the last 64 prompt hashes (djb2) and skip LLM calls that
+ * produce an identical hash within the window. */
+#define LLM_DEDUP_SLOTS 64
+static u32 llm_prompt_hash_ring[LLM_DEDUP_SLOTS];
+static u32 llm_prompt_hash_count = 0;
+
 /* Implemented state machine */
 Agraph_t *ipsm;
 static FILE *ipsm_dot_file;
@@ -979,7 +1015,7 @@ u32 update_scores_and_select_next_state(u8 mode)
          *   out_degree 4+   → ×1.0  (well-explored, no bonus)
          */
         double frontier_bonus = 1.0;
-        {
+        if (!ablation_no_frontier) {
           char sid_str[STATE_STR_LEN];
           snprintf(sid_str, STATE_STR_LEN, "%d", state_id);
           Agnode_t *nd = agnode(ipsm, sid_str, FALSE);
@@ -995,29 +1031,29 @@ u32 update_scores_and_select_next_state(u8 mode)
             /* State not yet in IPSM graph → maximum frontier bonus */
             frontier_bonus = 4.0;
           }
-        }
 
-        /* Fix-19: Acceptability penalty — prevent error dead-ends from
-         * monopolizing the frontier bonus.  Three-tier logic:
-         *
-         * error_hint=1 (structural: 4xx/5xx, not yet proven productive)
-         *   → frontier_bonus × 0.25  (neutralize: 4.0→1.0, 2.0→0.5)
-         *
-         * error_hint=0 (unknown, e.g. binary protocols) AND
-         * behaviorally unproductive (selected≥20, productivity<0.01)
-         *   → frontier_bonus × 0.5   (softer penalty, data-driven)
-         *
-         * error_hint=2 (confirmed productive despite error code)
-         *   → no penalty (full bonus preserved)
-         */
-        if (state->error_hint == 1) {
-          frontier_bonus *= 0.25;
-        } else if (state->error_hint == 0 &&
-                   state->selected_times >= 20 &&
-                   state->productivity < 0.01) {
-          frontier_bonus *= 0.5;
+          /* Fix-19: Acceptability penalty — prevent error dead-ends from
+           * monopolizing the frontier bonus.  Three-tier logic:
+           *
+           * error_hint=1 (structural: 4xx/5xx, not yet proven productive)
+           *   → frontier_bonus × 0.25  (neutralize: 4.0→1.0, 2.0→0.5)
+           *
+           * error_hint=0 (unknown, e.g. binary protocols) AND
+           * behaviorally unproductive (selected≥20, productivity<0.01)
+           *   → frontier_bonus × 0.5   (softer penalty, data-driven)
+           *
+           * error_hint=2 (confirmed productive despite error code)
+           *   → no penalty (full bonus preserved)
+           */
+          if (state->error_hint == 1) {
+            frontier_bonus *= 0.25;
+          } else if (state->error_hint == 0 &&
+                     state->selected_times >= 20 &&
+                     state->productivity < 0.01) {
+            frontier_bonus *= 0.5;
+          }
+          /* error_hint == 2: confirmed productive → no penalty */
         }
-        /* error_hint == 2: confirmed productive → no penalty */
 
         state->score = (u32)(base * frontier_bonus);
         break;
@@ -5939,10 +5975,18 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
   
   fprintf(f, "plateau_calls      : %u\n"
              "plateau_threshold  : %u\n"
-             "edges_growth_rate  : %0.02f\n",
+             "edges_growth_rate  : %0.02f\n"
+             "llm_total_calls    : %llu\n"
+             "llm_prompt_tokens  : %llu\n"
+             "llm_completion_tok : %llu\n"
+             "llm_dedup_hits     : %llu\n",
           chat_times,
           adaptive_plateau_threshold,
-          edges_growth_rate);
+          edges_growth_rate,
+          (unsigned long long)llm_total_calls,
+          (unsigned long long)llm_total_prompt_tokens,
+          (unsigned long long)llm_total_completion_tokens,
+          (unsigned long long)llm_dedup_hits);
 
   fclose(f);
 }
@@ -5953,14 +5997,14 @@ static void maybe_update_plot_file(double bitmap_cvg, double eps)
 {
 
   static u32 prev_qp, prev_pf, prev_pnf, prev_ce, prev_md, prev_nodes, prev_edges, prev_chat_times;
-  static u64 prev_qc, prev_uc, prev_uh;
+  static u64 prev_qc, prev_uc, prev_uh, prev_llm_calls;
 
   if (prev_qp == queued_paths && prev_pf == pending_favored &&
       prev_pnf == pending_not_fuzzed && prev_ce == current_entry &&
       prev_qc == queue_cycle && prev_uc == unique_crashes &&
       prev_uh == unique_hangs && prev_md == max_depth &&
       prev_nodes == agnnodes(ipsm) && prev_edges == agnedges(ipsm) &&
-      prev_chat_times == chat_times)
+      prev_chat_times == chat_times && prev_llm_calls == llm_total_calls)
     return;
 
   prev_qp = queued_paths;
@@ -5974,18 +6018,42 @@ static void maybe_update_plot_file(double bitmap_cvg, double eps)
   prev_nodes = agnnodes(ipsm);
   prev_edges = agnedges(ipsm);
   prev_chat_times = chat_times;
+  prev_llm_calls = llm_total_calls;
+
+  /* Compute hypothesis aggregate metrics for plot row */
+  double hyp_fitness = 0.0;
+  u32 hyp_success = 0, hyp_failure = 0;
+  if (hypothesis_ctx && hypothesis_ctx->hypothesis_count > 0) {
+    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++) {
+      grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
+      if (hyp) {
+        hyp_success += hyp->parse_success;
+        hyp_failure += hyp->parse_failure;
+        hyp_fitness += hyp->fitness;
+      }
+    }
+    hyp_fitness /= hypothesis_ctx->hypothesis_count;
+  }
 
   /* Fields in the file:
 
      unix_time, cycles_done, cur_path, paths_total, paths_not_fuzzed,
      favored_not_fuzzed, unique_crashes, unique_hangs, max_depth,
-     execs_per_sec, n_nodes, n_edges, chat_times */
+     execs_per_sec, n_nodes, n_edges, chat_times,
+     llm_calls, llm_prompt_tok, llm_compl_tok, llm_dedup,
+     hyp_fitness, hyp_success, hyp_failure */
 
   fprintf(plot_file,
-          "%llu, %llu, %u, %u, %u, %u, %0.02f%%, %llu, %llu, %u, %0.02f, %d, %d, %d\n",
+          "%llu, %llu, %u, %u, %u, %u, %0.02f%%, %llu, %llu, %u, %0.02f, %d, %d, %d, "
+          "%llu, %llu, %llu, %llu, %0.03f, %u, %u\n",
           get_cur_time() / 1000, queue_cycle - 1, current_entry, queued_paths,
           pending_not_fuzzed, pending_favored, bitmap_cvg, unique_crashes,
-          unique_hangs, max_depth, eps, agnnodes(ipsm), agnedges(ipsm), chat_times); /* ignore errors */
+          unique_hangs, max_depth, eps, agnnodes(ipsm), agnedges(ipsm), chat_times,
+          (unsigned long long)llm_total_calls,
+          (unsigned long long)llm_total_prompt_tokens,
+          (unsigned long long)llm_total_completion_tokens,
+          (unsigned long long)llm_dedup_hits,
+          hyp_fitness, hyp_success, hyp_failure); /* ignore errors */
 
   fflush(plot_file);
 }
@@ -7801,20 +7869,24 @@ AFLNET_REGIONS_SELECTION:;
       double edges_gained = (double)(current_edges - last_edges_count);
       edges_growth_rate = edges_gained / time_elapsed_min;  // edges per minute
       
-      // Adaptive threshold adjustment:
-      // High growth (>5 edges/min): increase threshold to 150 (reduce LLM calls)
-      // Medium growth (1-5 edges/min): keep threshold at 100
-      // Low growth (<1 edge/min): decrease threshold to 50 (increase LLM calls)
-      if (edges_growth_rate > 5.0) {
-        adaptive_plateau_threshold = 150;
-      } else if (edges_growth_rate > 1.0) {
-        adaptive_plateau_threshold = 100;
-      } else {
-        adaptive_plateau_threshold = 50;
+      if (!ablation_no_adaptive) {
+        // Adaptive threshold adjustment:
+        // High growth (>5 edges/min): increase threshold to 150 (reduce LLM calls)
+        // Medium growth (1-5 edges/min): keep threshold at 100
+        // Low growth (<1 edge/min): decrease threshold to 50 (increase LLM calls)
+        if (edges_growth_rate > 5.0) {
+          adaptive_plateau_threshold = 150;
+        } else if (edges_growth_rate > 1.0) {
+          adaptive_plateau_threshold = 100;
+        } else {
+          adaptive_plateau_threshold = 50;
+        }
       }
+      /* else: ablation_no_adaptive keeps threshold at UNINTERESTING_THRESHOLD */
       
-      fprintf(stderr, "[adaptive-plateau] edges_growth_rate=%.2f/min, threshold=%u\n",
-              edges_growth_rate, adaptive_plateau_threshold);
+      fprintf(stderr, "[adaptive-plateau] edges_growth_rate=%.2f/min, threshold=%u%s\n",
+              edges_growth_rate, adaptive_plateau_threshold,
+              ablation_no_adaptive ? " (ABLATION: fixed)" : "");
     }
     last_edges_count = current_edges;
     last_edges_check_time = cur_ms;
@@ -7838,8 +7910,11 @@ AFLNET_REGIONS_SELECTION:;
     /* Fix-15 Tier-2: Check if any hypothesis needs refinement.
      * This is a natural place: we are already in the plateau handler
      * which tolerates LLM-level latency.  periodic_hypothesis_refinement()
-     * internally checks the validation count modulo gate. */
-    periodic_hypothesis_refinement();
+     * internally checks the validation count modulo gate.
+     * Gated by ablation_no_refinement for ablation experiments. */
+    if (!ablation_no_refinement) {
+      periodic_hypothesis_refinement();
+    }
 
     fprintf(stderr, "[plateau-trigger] Triggering LLM (growth_rate=%.2f, threshold=%u, chat_times=%u)\n",
             edges_growth_rate, adaptive_plateau_threshold, chat_times);
@@ -7947,8 +8022,11 @@ AFLNET_REGIONS_SELECTION:;
        * potential memory issues in network/parsing code. The child writes the
        * result to a temp file which the parent validates and consumes. */
       {
-        /* Build rich state-context JSON including per-state coverage details */
+        /* Build rich state-context JSON including per-state coverage details.
+         * ABLATION: When CHATAFL_NO_STATE_PROMPT is set, skip state_ctx entirely
+         * so the child falls back to the simple ChatAFL-style prompt. */
         char *state_ctx = NULL;
+        if (!ablation_no_state_prompt)
         {
           struct json_object *jctx = json_object_new_object();
           json_object_object_add(jctx, "nodes",           json_object_new_int(agnnodes(ipsm)));
@@ -8014,11 +8092,68 @@ AFLNET_REGIONS_SELECTION:;
         }
 
         char *out_path = alloc_printf("%s/stall-interactions/llm-suggest-%d", out_dir, chat_times);
+
+        /* ---- Prompt-hash dedup: skip redundant LLM calls ---- */
+        {
+          /* djb2 hash over the concatenation of examples+history+state_ctx */
+          u32 h = 5381;
+          if (examples) for (const char *p = examples; *p; p++) h = ((h << 5) + h) ^ (u8)*p;
+          if (history)  for (const char *p = history;  *p; p++) h = ((h << 5) + h) ^ (u8)*p;
+          if (state_ctx) for (const char *p = state_ctx; *p; p++) h = ((h << 5) + h) ^ (u8)*p;
+          if (h == 0) h = 1; /* avoid sentinel */
+          /* Check ring buffer */
+          u8 dup_found = 0;
+          for (u32 di = 0; di < LLM_DEDUP_SLOTS; di++) {
+            if (llm_prompt_hash_ring[di] == h) { dup_found = 1; break; }
+          }
+          if (dup_found) {
+            llm_dedup_hits++;
+            fprintf(stderr, "[plateau] Prompt-hash dedup hit (hash=%08x, total_dedup=%llu) — skipping LLM call\n",
+                    h, (unsigned long long)llm_dedup_hits);
+            if (state_ctx) { free(state_ctx); state_ctx = NULL; }
+            ck_free(out_path);
+            goto plateau_done;
+          }
+          /* Insert into ring */
+          llm_prompt_hash_ring[llm_prompt_hash_count % LLM_DEDUP_SLOTS] = h;
+          llm_prompt_hash_count++;
+        }
+
         pid_t pid = fork();
         if (pid == 0)
         {
-          /* Child */
-          char *res = llm_handle_plateau(protocol_name, examples, history, state_ctx);
+          /* Child — choose prompt strategy based on ablation flag.
+           * ablation_no_state_prompt → use ChatAFL's simple construct_prompt_stall
+           *                            (no state data, no actions[], suggested_request only)
+           * default                  → use rich llm_handle_plateau with state_ctx + actions[] */
+          char *res = NULL;
+          if (ablation_no_state_prompt) {
+            /* Ablation path: use ChatAFL's ORIGINAL prompt template
+             * (simple wording, "You are a helpful assistant" system msg)
+             * so the delta measures ALL prompt-engineering improvements. */
+            char *stall_prompt = construct_prompt_stall_original(
+                (char *)protocol_name, (char *)examples, (char *)history);
+            char *stall_resp = chat_with_llm(stall_prompt, "gpt-4o-mini", STALL_RETRIES, 1.2);
+            free(stall_prompt);
+            if (stall_resp) {
+              char *stall_msg = extract_stalled_message(stall_resp, strlen(stall_resp));
+              free(stall_resp);
+              if (stall_msg) {
+                char *formatted = format_request_message(stall_msg);
+                if (formatted) {
+                  /* Wrap into JSON so parent-side validator still works */
+                  struct json_object *jwrap = json_object_new_object();
+                  json_object_object_add(jwrap, "suggested_request",
+                                         json_object_new_string(formatted));
+                  res = strdup(json_object_to_json_string(jwrap));
+                  json_object_put(jwrap);
+                  ck_free(formatted);
+                }
+              }
+            }
+          } else {
+            res = llm_handle_plateau(protocol_name, examples, history, state_ctx);
+          }
           if (res) {
             int fd = open(out_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
             if (fd >= 0) {
@@ -8026,6 +8161,20 @@ AFLNET_REGIONS_SELECTION:;
               close(fd);
             }
             free(res);
+          }
+          /* Write sidecar .tokens file with per-call token usage so the
+           * parent process can accumulate cost metrics. */
+          {
+            char tokens_path[4096];
+            snprintf(tokens_path, sizeof(tokens_path), "%s.tokens", out_path);
+            int tfd = open(tokens_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+            if (tfd >= 0) {
+              char tbuf[128];
+              int tlen = snprintf(tbuf, sizeof(tbuf), "%llu %llu\n",
+                                  llm_last_prompt_tokens, llm_last_completion_tokens);
+              write(tfd, tbuf, tlen);
+              close(tfd);
+            }
           }
           _exit(res ? 0 : 1);
         }
@@ -8066,6 +8215,29 @@ AFLNET_REGIONS_SELECTION:;
           }
           close(fd);
         }
+
+        /* ---- Read sidecar .tokens file and accumulate LLM cost ---- */
+        {
+          char tokens_path[4096];
+          snprintf(tokens_path, sizeof(tokens_path), "%s.tokens", out_path);
+          int tfd = open(tokens_path, O_RDONLY);
+          if (tfd >= 0) {
+            char tbuf[128];
+            ssize_t tr = read(tfd, tbuf, sizeof(tbuf) - 1);
+            close(tfd);
+            unlink(tokens_path); /* clean up */
+            if (tr > 0) {
+              tbuf[tr] = '\0';
+              unsigned long long pt = 0, ct = 0;
+              if (sscanf(tbuf, "%llu %llu", &pt, &ct) == 2) {
+                llm_total_prompt_tokens     += pt;
+                llm_total_completion_tokens += ct;
+              }
+            }
+          }
+          llm_total_calls++;
+        }
+
         ck_free(out_path);
 
         /* Use centralized validator to parse/validate JSON schema and support actions[] */
@@ -8083,8 +8255,12 @@ AFLNET_REGIONS_SELECTION:;
           if (json_object_object_get_ex(jroot, "suggested_request", &jsr)) {
             const char *req = json_object_get_string(jsr);
             if (req) stall_message = strdup(req);
-          } else if (json_object_object_get_ex(jroot, "actions", &jsr)) {
-            /* Handle actions[] safely here by iterating and creating concrete candidates */
+          } else if (!ablation_no_state_prompt &&
+                     json_object_object_get_ex(jroot, "actions", &jsr)) {
+            /* Handle actions[] safely here — only when rich prompt is active.
+             * ABLATION: ablation_no_state_prompt disables this branch because the
+             * simple prompt never produces actions[], and even if it accidentally
+             * did, the state IDs would be meaningless without state_ctx. */
             size_t nal = json_object_array_length(jsr);
             for (size_t ai = 0; ai < nal; ai++) {
               struct json_object *act = json_object_array_get_idx(jsr, ai);
@@ -10873,7 +11049,9 @@ EXP_ST void setup_dirs_fds(void)
 
   fprintf(plot_file, "# unix_time, cycles_done, cur_path, paths_total, "
                      "pending_total, pending_favs, map_size, unique_crashes, "
-                     "unique_hangs, max_depth, execs_per_sec, n_nodes, n_edges, chat_times\n");
+                     "unique_hangs, max_depth, execs_per_sec, n_nodes, n_edges, "
+                     "chat_times, llm_calls, llm_prompt_tok, llm_compl_tok, "
+                     "llm_dedup, hyp_fitness, hyp_success, hyp_failure\n");
   /* ignore errors */
 }
 
@@ -11999,7 +12177,29 @@ int main(int argc, char **argv)
     fprintf(stderr, "[DEBUG] CHATAFL_HYPOTHESIS not set, hypothesis mode disabled\n");
     fflush(stderr);
   }
-  
+
+  /* ============================================
+   * Ablation Control: Read env vars
+   * ============================================ */
+  if (getenv("CHATAFL_NO_REFINEMENT")) {
+    ablation_no_refinement = 1;
+    OKF("ABLATION: Tier-2 hypothesis refinement DISABLED");
+  }
+  if (getenv("CHATAFL_NO_FRONTIER")) {
+    ablation_no_frontier = 1;
+    OKF("ABLATION: Frontier bonus + error penalty DISABLED");
+  }
+  if (getenv("CHATAFL_NO_ADAPTIVE")) {
+    ablation_no_adaptive = 1;
+    OKF("ABLATION: Adaptive plateau threshold DISABLED (fixed=%u)",
+        UNINTERESTING_THRESHOLD);
+  }
+  if (getenv("CHATAFL_NO_STATE_PROMPT")) {
+    ablation_no_state_prompt = 1;
+    OKF("ABLATION: State-aware rich prompt + actions[] DISABLED (simple prompt mode)");
+  }
+  memset(llm_prompt_hash_ring, 0, sizeof(llm_prompt_hash_ring));
+
   /* ============================================
    * Initialize Adaptive Plateau Variables
    * ============================================ */

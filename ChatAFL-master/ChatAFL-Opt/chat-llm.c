@@ -49,6 +49,12 @@ static int is_garbage_response(const char *response, size_t len);
 void chat_llm_global_init(void)  { curl_global_init(CURL_GLOBAL_DEFAULT); }
 void chat_llm_global_cleanup(void) { curl_global_cleanup(); }
 
+/* Per-call token usage — populated from the API "usage" object.
+ * In the forked child these are process-local; the parent reads them
+ * back via a sidecar .tokens file. */
+unsigned long long llm_last_prompt_tokens     = 0;
+unsigned long long llm_last_completion_tokens = 0;
+
 char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
 {
     CURL *curl;
@@ -143,6 +149,16 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
                     if (data[0] == '\n')
                         data++;
                     answer = strdup(data);
+
+                    /* ---- Extract token usage from the "usage" object ---- */
+                    json_object *jusage = NULL;
+                    if (json_object_object_get_ex(jobj, "usage", &jusage)) {
+                        json_object *jpt = NULL, *jct = NULL;
+                        if (json_object_object_get_ex(jusage, "prompt_tokens", &jpt))
+                            llm_last_prompt_tokens = (unsigned long long)json_object_get_int64(jpt);
+                        if (json_object_object_get_ex(jusage, "completion_tokens", &jct))
+                            llm_last_completion_tokens = (unsigned long long)json_object_get_int64(jct);
+                    }
                 }
                 else
                 {
@@ -221,6 +237,69 @@ char *construct_prompt_stall(char *protocol_name, char *examples, char *history)
     const char *json_str = json_object_to_json_string(messages_array);
     char *final_prompt = strdup(json_str);
     
+    json_object_put(messages_array);
+    free(prompt);
+
+    return final_prompt;
+}
+
+/*
+ * construct_prompt_stall_original:
+ * Exact replica of ChatAFL baseline's construct_prompt_stall template.
+ * Used ONLY when CHATAFL_NO_STATE_PROMPT ablation is active so the
+ * ablation precisely measures the contribution of Opt's improved
+ * prompt engineering (richer template + state-context + actions[]).
+ *
+ * Differences from Opt's construct_prompt_stall:
+ *   - Template text: ChatAFL's original wording ("the communication
+ *     history between the client and the server is as follows...")
+ *   - System prompt: "You are a helpful assistant." (not "protocol
+ *     fuzzing assistant that returns only valid JSON")
+ *   - No structured task / strategy / response-format sections
+ *
+ * We still use json-c for JSON escaping (rather than ChatAFL's raw
+ * asprintf) because that is a correctness fix (G1), not an
+ * algorithmic contribution.
+ */
+char *construct_prompt_stall_original(char *protocol_name, char *examples,
+                                      char *history)
+{
+    char *template =
+        "In the %s protocol, the communication history between the "
+        "%s client and the %s server is as follows."
+        "The next proper client request that can affect the server's "
+        "state are:\n\n"
+        "Desired format of real client requests:\n"
+        "%s"
+        "Communication History:\n"
+        "\"\"\"\n%s\"\"\"";
+
+    char *prompt = NULL;
+    asprintf(&prompt, template,
+             protocol_name, protocol_name, protocol_name,
+             examples ? examples : "",
+             history  ? history  : "");
+
+    /* Build JSON messages array with json-c (safe escaping). */
+    struct json_object *messages_array = json_object_new_array();
+
+    struct json_object *system_msg = json_object_new_object();
+    json_object_object_add(system_msg, "role",
+                           json_object_new_string("system"));
+    json_object_object_add(system_msg, "content",
+                           json_object_new_string("You are a helpful assistant."));
+    json_object_array_add(messages_array, system_msg);
+
+    struct json_object *user_msg = json_object_new_object();
+    json_object_object_add(user_msg, "role",
+                           json_object_new_string("user"));
+    json_object_object_add(user_msg, "content",
+                           json_object_new_string(prompt));
+    json_object_array_add(messages_array, user_msg);
+
+    const char *json_str = json_object_to_json_string(messages_array);
+    char *final_prompt = strdup(json_str);
+
     json_object_put(messages_array);
     free(prompt);
 

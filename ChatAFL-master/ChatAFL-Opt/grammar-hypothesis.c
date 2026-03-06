@@ -2318,6 +2318,128 @@ void update_hypothesis_fitness_dynamic(grammar_hypothesis_t *hyp, int is_success
  * Counterexample & Refinement
  * ============================================ */
 
+/* ============================================
+ * Field-level counterexample minimization for text protocols.
+ *
+ * Given a failing message, split it by CRLF into "lines" (protocol fields),
+ * then iteratively try removing each line.  If the message STILL fails
+ * validation after removing a line, that line is not needed to reproduce
+ * the violation — drop it.  The result is the minimal set of lines that
+ * together still violate the hypothesis.
+ *
+ * This is a 1-minimal delta-debugging variant:
+ *   for each line i in [0, N):
+ *     reconstruct message without line i
+ *     if still invalid → mark line i as removable
+ *   remove all removable lines
+ *
+ * Worst case: N lines × C constraints ≈ N×C check_constraint() calls.
+ * With typical text protocol messages (5-15 lines) and ≤5 constraints,
+ * this is ~75 calls — microseconds.
+ *
+ * Binary protocols are NOT minimized (fields are not line-delimited).
+ *
+ * Returns a NEW heap-allocated buffer with the minimized message and
+ * sets *out_len.  Caller must ck_free().  Returns NULL if minimization
+ * is not applicable (binary, too short, etc.)
+ * ============================================ */
+static unsigned char* minimize_counterexample_fields(
+    grammar_hypothesis_t *hyp,
+    const unsigned char *message,
+    size_t len,
+    size_t *out_len)
+{
+    *out_len = 0;
+
+    /* Only minimize text protocol messages with CRLF structure */
+    if (!hyp || !message || len < 4) return NULL;
+
+    /* Quick check: does it contain at least one \r\n? */
+    int has_crlf = 0;
+    for (size_t i = 0; i + 1 < len; i++) {
+        if (message[i] == '\r' && message[i+1] == '\n') { has_crlf = 1; break; }
+    }
+    if (!has_crlf) return NULL;
+
+    /* Split by \r\n into lines (keep each line INCLUDING its \r\n) */
+    #define MAX_MINIMIZE_LINES 32
+    struct { size_t start; size_t len; } lines[MAX_MINIMIZE_LINES];
+    int nlines = 0;
+    size_t pos = 0;
+    while (pos < len && nlines < MAX_MINIMIZE_LINES) {
+        size_t line_start = pos;
+        /* Find next \r\n */
+        size_t end = pos;
+        while (end + 1 < len && !(message[end] == '\r' && message[end+1] == '\n'))
+            end++;
+        if (end + 1 < len) end += 2; /* include \r\n */
+        else end = len;              /* last line without \r\n */
+        lines[nlines].start = line_start;
+        lines[nlines].len = end - line_start;
+        nlines++;
+        pos = end;
+    }
+
+    if (nlines <= 1) return NULL;  /* single line, nothing to minimize */
+
+    /* For each line, test if removing it still causes validation failure */
+    u8 keep[MAX_MINIMIZE_LINES];
+    memset(keep, 1, sizeof(keep));
+
+    for (int i = 0; i < nlines; i++) {
+        /* Build message without line i */
+        size_t new_len = 0;
+        for (int j = 0; j < nlines; j++) {
+            if (j != i && keep[j]) new_len += lines[j].len;
+        }
+        if (new_len < 2) continue; /* too short to be valid probe */
+
+        unsigned char *probe = (unsigned char*)ck_alloc(new_len);
+        size_t off = 0;
+        for (int j = 0; j < nlines; j++) {
+            if (j != i && keep[j]) {
+                memcpy(probe + off, message + lines[j].start, lines[j].len);
+                off += lines[j].len;
+            }
+        }
+
+        /* Check: does removing line i still fail? */
+        int still_invalid = !validate_message_against_hypothesis(hyp, probe, new_len);
+        ck_free(probe);
+
+        if (still_invalid) {
+            keep[i] = 0;  /* line i is not needed for the violation */
+        }
+    }
+
+    /* Count how many lines we kept */
+    int kept = 0;
+    for (int i = 0; i < nlines; i++) if (keep[i]) kept++;
+
+    /* If we didn't remove anything, minimization didn't help */
+    if (kept == nlines) return NULL;
+
+    /* Build minimized message */
+    size_t min_len = 0;
+    for (int i = 0; i < nlines; i++) if (keep[i]) min_len += lines[i].len;
+
+    unsigned char *result = (unsigned char*)ck_alloc(min_len);
+    size_t roff = 0;
+    for (int i = 0; i < nlines; i++) {
+        if (keep[i]) {
+            memcpy(result + roff, message + lines[i].start, lines[i].len);
+            roff += lines[i].len;
+        }
+    }
+
+    *out_len = min_len;
+    fprintf(stderr, "[minimize-ce] %s: %d/%d lines kept (%zu→%zu bytes)\n",
+            hyp->message_type ? hyp->message_type : "?",
+            kept, nlines, len, min_len);
+    return result;
+    #undef MAX_MINIMIZE_LINES
+}
+
 void add_counterexample(
     grammar_hypothesis_t *hyp,
     const unsigned char *message,
@@ -2327,18 +2449,34 @@ void add_counterexample(
     /* Cap counterexample storage to avoid unbounded memory growth */
     if (hyp->counterexample_count >= 200) return;
 
+    /* ---- Field-level minimization for text protocols ----
+     * Try to reduce the message to the minimal set of CRLF-delimited
+     * lines that still violate the hypothesis.  If successful, the
+     * minimized message replaces the original for storage, making
+     * the refinement prompt more precise and reducing LLM confusion. */
+    const unsigned char *store_msg = message;
+    size_t store_len = len;
+    unsigned char *minimized = NULL;
+    size_t min_len = 0;
+
+    minimized = minimize_counterexample_fields(hyp, message, len, &min_len);
+    if (minimized && min_len > 0) {
+        store_msg = minimized;
+        store_len = min_len;
+    }
+
     /* Limit individual counterexample to 128 bytes of hex (= 64 raw bytes)
      * to keep refinement prompts reasonably sized. */
-    size_t hex_bytes = len > 64 ? 64 : len;
+    size_t hex_bytes = store_len > 64 ? 64 : store_len;
 
-    /* Hex-encode the message so binary data is JSON-safe.
+    /* Hex-encode the (possibly minimized) message so binary data is JSON-safe.
      * Format:  HEX[0a1b2c...] [Reason: ...] */
     size_t ce_size = 4 + hex_bytes * 2 + 1 + 12 + strlen(error_reason) + 2;
     char *ce = (char*)ck_alloc(ce_size);
     int off = 0;
     off += snprintf(ce + off, ce_size - off, "HEX[");
     for (size_t i = 0; i < hex_bytes && (size_t)off < ce_size - 10; i++)
-        off += snprintf(ce + off, ce_size - off, "%02x", message[i]);
+        off += snprintf(ce + off, ce_size - off, "%02x", store_msg[i]);
     off += snprintf(ce + off, ce_size - off, "] [Reason: %s]", error_reason);
 
     hyp->counterexamples = (char**)ck_realloc(hyp->counterexamples,
@@ -2346,6 +2484,8 @@ void add_counterexample(
     hyp->counterexamples[hyp->counterexample_count++] = ce;
 
     log_hypothesis_event(hyp, "COUNTEREXAMPLE", error_reason);
+
+    if (minimized) ck_free(minimized);
 }
 
 int refine_hypothesis_with_counterexamples(
