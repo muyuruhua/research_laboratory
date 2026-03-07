@@ -4,6 +4,7 @@
 
 FILTER=$1
 TIME=${2:-1440}
+EXPLICIT_DIR=${3:-""}   # Optional: explicit results directory name
 
 reset="\e[0m"
 green="\e[0;92m"
@@ -12,7 +13,8 @@ function warn  { echo -e "${yellow}[!] $1$reset"; }
 function info  { echo -e "${green}[+]$reset $1"; }
 
 if [ -z "$FILTER" ]; then
-    echo "Usage: analyze.sh <subject names> <time in minutes>"
+    echo "Usage: analyze.sh <subject names> <time in minutes> [results-dir]"
+    echo "  results-dir: optional, e.g. results-exim_Mar-06_22-09-54"
     exit 1
 fi
 
@@ -35,7 +37,13 @@ do
     
     # OCP: Find timestamped results directory matching pattern results-${SUBJECT}_*
     # This supports both old format (results-lightftp) and new format (results-lightftp_Feb-02_12-34-56)
-    RESULTS_DIR=$(find . -maxdepth 1 -type d -name "results-${SUBJECT}_*" | sort -r | head -n 1)
+    # Also supports explicit directory via 3rd argument
+    if [ -n "$EXPLICIT_DIR" ]; then
+        RESULTS_DIR="$EXPLICIT_DIR"
+        info "Using explicitly specified directory: $RESULTS_DIR"
+    else
+        RESULTS_DIR=$(find . -maxdepth 1 -type d -name "results-${SUBJECT}_*" | sort -r | head -n 1)
+    fi
     
     # Fallback to old naming convention if no timestamped directory found
     if [ -z "$RESULTS_DIR" ]; then

@@ -12198,6 +12198,36 @@ int main(int argc, char **argv)
     ablation_no_state_prompt = 1;
     OKF("ABLATION: State-aware rich prompt + actions[] DISABLED (simple prompt mode)");
   }
+
+  /* ============================================
+   * Ablation Configuration Summary Banner
+   * Plain fprintf so it survives ANSI/UI clutter
+   * and is always visible in `docker logs`.
+   * ============================================ */
+  {
+    int any_ablation = ablation_no_refinement || ablation_no_frontier
+                     || ablation_no_adaptive  || ablation_no_state_prompt;
+    fprintf(stderr,
+      "\n"
+      "========== ABLATION CONFIG ==========\n"
+      "  NO_REFINEMENT   : %s\n"
+      "  NO_FRONTIER     : %s\n"
+      "  NO_ADAPTIVE     : %s\n"
+      "  NO_STATE_PROMPT : %s\n"
+      "  MODE            : %s\n"
+      "  HYPOTHESIS      : %s\n"
+      "  CHATAFL_OPT     : %s\n"
+      "=====================================\n\n",
+      ablation_no_refinement   ? "ON (disabled)" : "off",
+      ablation_no_frontier     ? "ON (disabled)" : "off",
+      ablation_no_adaptive     ? "ON (disabled)" : "off",
+      ablation_no_state_prompt ? "ON (disabled)" : "off",
+      any_ablation ? "ABLATION RUN" : "FULL (no ablation)",
+      getenv("CHATAFL_HYPOTHESIS") ? "enabled" : "disabled",
+      getenv("AFL_ENABLE_CHATAFL_OPT") ? "enabled" : "disabled");
+    fflush(stderr);
+  }
+
   memset(llm_prompt_hash_ring, 0, sizeof(llm_prompt_hash_ring));
 
   /* ============================================

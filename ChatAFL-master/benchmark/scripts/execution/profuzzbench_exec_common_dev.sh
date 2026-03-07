@@ -55,12 +55,23 @@ cids=()
 
 #create one container for each run
 for i in $(seq 1 $RUNS); do
+
+  # Build ablation env-var flags for chatafl-opt containers.
+  # If the host exports CHATAFL_NO_REFINEMENT / NO_FRONTIER / NO_ADAPTIVE,
+  # they are forwarded into the container via -e.
+  ABLATION_FLAGS=""
+  [[ -n "${CHATAFL_NO_REFINEMENT}" ]]   && ABLATION_FLAGS+=" -e CHATAFL_NO_REFINEMENT=1"
+  [[ -n "${CHATAFL_NO_FRONTIER}" ]]     && ABLATION_FLAGS+=" -e CHATAFL_NO_FRONTIER=1"
+  [[ -n "${CHATAFL_NO_ADAPTIVE}" ]]     && ABLATION_FLAGS+=" -e CHATAFL_NO_ADAPTIVE=1"
+  [[ -n "${CHATAFL_NO_STATE_PROMPT}" ]] && ABLATION_FLAGS+=" -e CHATAFL_NO_STATE_PROMPT=1"
+
   # Enable Grammar Hypothesis system only for chatafl-opt
   if [[ "$FUZZER" == "chatafl-opt" ]]; then
     # Volume挂载本地代码并在容器内重新编译
     id=$(docker run --cpus=1 \
       -e KEY="${KEY}" \
       -e CHATAFL_HYPOTHESIS=1 \
+      ${ABLATION_FLAGS} \
       -v "${PROJECT_ROOT}/ChatAFL-Opt:/tmp/chatafl-opt-src:ro" \
       ${SUBJECT_MOUNT} \
       -d -it $DOCIMAGE /bin/bash -c "\

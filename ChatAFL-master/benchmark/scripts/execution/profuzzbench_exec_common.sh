@@ -21,9 +21,18 @@ cids=()
 
 #create one container for each run
 for i in $(seq 1 $RUNS); do
+  # Build ablation env-var flags for chatafl-opt containers.
+  # If the host exports CHATAFL_NO_REFINEMENT / NO_FRONTIER / NO_ADAPTIVE / NO_STATE_PROMPT,
+  # they are forwarded into the container via -e.
+  ABLATION_FLAGS=""
+  [[ -n "${CHATAFL_NO_REFINEMENT}" ]]   && ABLATION_FLAGS+=" -e CHATAFL_NO_REFINEMENT=1"
+  [[ -n "${CHATAFL_NO_FRONTIER}" ]]     && ABLATION_FLAGS+=" -e CHATAFL_NO_FRONTIER=1"
+  [[ -n "${CHATAFL_NO_ADAPTIVE}" ]]     && ABLATION_FLAGS+=" -e CHATAFL_NO_ADAPTIVE=1"
+  [[ -n "${CHATAFL_NO_STATE_PROMPT}" ]] && ABLATION_FLAGS+=" -e CHATAFL_NO_STATE_PROMPT=1"
+
   # Enable Grammar Hypothesis system only for chatafl-opt
   if [[ "$FUZZER" == "chatafl-opt" ]]; then
-    id=$(docker run --cpus=1 -e KEY="${KEY}" -e CHATAFL_HYPOTHESIS=1 -d -it $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
+    id=$(docker run --cpus=1 -e KEY="${KEY}" -e CHATAFL_HYPOTHESIS=1 ${ABLATION_FLAGS} -d -it $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   else
     id=$(docker run --cpus=1 -e KEY="${KEY}" -d -it $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   fi

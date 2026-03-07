@@ -26,6 +26,15 @@ DICOM
 
 cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 1 100 lightftp,pure-ftpd,mosquitto chatafl,chatafl-opt,aflnet
 
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export CHATAFL_NO_REFINEMENT=1 && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 5 1470 exim chatafl-opt
+
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export CHATAFL_NO_FRONTIER=1 && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 5 1470 exim chatafl-opt
+
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export CHATAFL_NO_ADAPTIV=1 && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 5 1470 exim chatafl-opt
+
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export CHATAFL_NO_STATE_PROMPT=1 && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 5 1470 exim chatafl-opt
+
+
 sudo ./analyze.sh live555 95
 
 lightftp例子
@@ -184,4 +193,36 @@ k=3 理论上能触及三阶交互但 LLM 准确率下降且启动延迟翻倍�
 =
 4
 k=4 基本不可行。深层系统逻辑的探索由运行时闭环机制（前沿加权 + 自适应阈值 + 状态感知 LLM + 假设精炼）承担，enrichment 的组合只是提供初始多样性。
+
+
+
+
+通过 `docker exec <id> env` 读取容器的环境变量。
+
+原理是 `profuzzbench_exec_common_dev.sh` 启动容器时，把消融开关通过 `docker run -e` 注入了：
+
+```bash
+# profuzzbench_exec_common_dev.sh 第71-74行
+ABLATION_FLAGS=""
+[[ -n "${CHATAFL_NO_REFINEMENT}" ]]   && ABLATION_FLAGS+=" -e CHATAFL_NO_REFINEMENT=1"
+[[ -n "${CHATAFL_NO_FRONTIER}" ]]     && ABLATION_FLAGS+=" -e CHATAFL_NO_FRONTIER=1"
+[[ -n "${CHATAFL_NO_ADAPTIVE}" ]]     && ABLATION_FLAGS+=" -e CHATAFL_NO_ADAPTIVE=1"
+[[ -n "${CHATAFL_NO_STATE_PROMPT}" ]] && ABLATION_FLAGS+=" -e CHATAFL_NO_STATE_PROMPT=1"
+
+# 第79行 docker run 时传入
+docker run ... ${ABLATION_FLAGS} ...
+```
+
+`docker run -e KEY=VALUE` 设置的环境变量是**持久化在容器元数据中**的，跟容器内程序是否打印无关。所以：
+
+| 方法 | 命令 | 依赖新代码？ |
+|---|---|---|
+| **环境变量**（我用的） | `docker exec <id> env \| grep CHATAFL_NO_` | ❌ 不依赖，始终可用 |
+| **日志 banner**（新加的） | `docker logs <id> \| grep "ABLATION CONFIG"` | ✅ 需要新编译的 afl-fuzz |
+| **inspect 元数据** | `docker inspect <id> --format '{{.Config.Env}}'` | ❌ 不依赖 |
+
+当前 20 个容器虽然没有日志 banner，但 `docker exec env` 始终能查到消融配置。下次新启动的容器两种方法都能用。
+
+
+
 
