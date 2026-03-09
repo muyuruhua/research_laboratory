@@ -7969,9 +7969,24 @@ AFLNET_REGIONS_SELECTION:;
           response[i] = ' ';
       }
 
+      /* Fix-21: examples used to put the same request in both Request-1 and
+       * Request-2 (i==0 branch above), wasting the 400-token budget and
+       * giving LLM a misleading "two identical examples".
+       * Now Request-1 gets the first request, Request-2 gets the second.
+       * We build examples lazily across the first two loop iterations. */
       if (i == 0)
       {
-        examples_len = asprintf(&examples, "Request-1:\n%.*s\nRequest-2:\n%.*s\n", request_len, request, request_len, request);
+        /* First request → Request-1.  Request-2 filled below on i==1. */
+        examples_len = asprintf(&examples, "Request-1:\n%.*s\n", request_len, request);
+      }
+      else if (i == 1 && examples != NULL)
+      {
+        /* Second request → append as Request-2 */
+        char *old_examples = examples;
+        int new_len = asprintf(&examples, "%sRequest-2:\n%.*s\n",
+                               old_examples, request_len, request);
+        free(old_examples);
+        examples_len = new_len;
       }
 
       history = ck_realloc(history, history_len + request_len);

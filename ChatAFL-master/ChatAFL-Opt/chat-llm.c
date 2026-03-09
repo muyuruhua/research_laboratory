@@ -313,9 +313,60 @@ char *construct_prompt_stall_original(char *protocol_name, char *examples,
  * - Passes response back as raw JSON for parent-side validation
  * state_ctx: JSON string like {"nodes":N,"edges":M,"growth_rate":X,...}, may be NULL
  */
+
+/* Fix-23: Per-protocol format constraints injected into the plateau prompt.
+ * Without this, LLM generates <<VALUE>> placeholders or wrong wire format
+ * for SIP (kamailio) and DAAP (forked-daapd), producing protocol-rejected
+ * suggestions that waste the entire plateau LLM call.
+ *
+ * Each entry: { protocol_name, format_constraint_paragraph }
+ * The constraint is injected between the strategy description and the
+ * "Decision Guide" so it has high attention weight. */
+typedef struct { const char *name; const char *constraint; } ProtocolFormatConstraint;
+static const ProtocolFormatConstraint PLATEAU_FORMAT_CONSTRAINTS[] = {
+    {"SIP",
+     "**SIP FORMAT CONSTRAINT (MANDATORY):**\n"
+     "ALL suggested_request values MUST be complete SIP messages with REAL values.\n"
+     "Mandatory headers: Via, From, To, CSeq, Call-ID, Max-Forwards, Content-Length.\n"
+     "Use concrete values like: Via: SIP/2.0/UDP 127.0.0.1:5060;branch=z9hG4bKabc123\n"
+     "NEVER use <<VALUE>>, <<placeholder>>, or any placeholder syntax.\n"
+     "Example: \"REGISTER sip:127.0.0.1 SIP/2.0\\r\\nVia: SIP/2.0/UDP 127.0.0.1:5060;branch=z9hG4bK123\\r\\n"
+     "From: <sip:alice@127.0.0.1>;tag=abc\\r\\nTo: <sip:alice@127.0.0.1>\\r\\n"
+     "Call-ID: xyz@127.0.0.1\\r\\nCSeq: 1 REGISTER\\r\\nMax-Forwards: 70\\r\\nContent-Length: 0\\r\\n\\r\\n\"\n\n"},
+    {"DAAP",
+     "**DAAP FORMAT CONSTRAINT (MANDATORY):**\n"
+     "ALL suggested_request values MUST be complete HTTP/1.1 GET requests with REAL integer values.\n"
+     "session-id is a positive integer (use 1831879645 as default if unknown).\n"
+     "revision-number starts at 1 and increments. pairing-guid is 0x0000000000000001.\n"
+     "NEVER use <<session-id>>, <<VALUE>>, or any placeholder syntax.\n"
+     "Example: \"GET /databases?session-id=1831879645&revision-number=1 HTTP/1.1\\r\\n"
+     "Host: localhost:3689\\r\\nClient-DAAP-Version: 3.12\\r\\nAccept: */*\\r\\n\\r\\n\"\n\n"},
+    {"FTP",
+     "**FTP FORMAT CONSTRAINT:**\n"
+     "suggested_request must be a single FTP command with REAL values (no <<VALUE>> placeholders).\n"
+     "The command must end with \\r\\n. Use concrete paths like /pub, /tmp, filenames like test.txt.\n"
+     "Example: \"STOR test.txt\\r\\n\" or \"CWD /pub\\r\\n\" or \"SITE CHMOD 755 /pub\\r\\n\"\n\n"},
+    {"SMTP",
+     "**SMTP FORMAT CONSTRAINT:**\n"
+     "suggested_request must be a complete SMTP command sequence with REAL email addresses.\n"
+     "NEVER use <<USERNAME>>, <<ADDRESS>>, or <<VALUE>> placeholders.\n"
+     "Use concrete values: domains like test.com, addresses like user@test.com.\n"
+     "Example: \"EHLO fuzzer.test\\r\\nMAIL FROM:<fuzz@test.com>\\r\\nRCPT TO:<victim@localhost>\\r\\n\"\n\n"},
+    {NULL, NULL}
+};
+
 char *llm_handle_plateau(const char *protocol_name, const char *examples,
                          const char *history, const char *state_ctx) {
     if (!protocol_name) return NULL;
+
+    /* Look up per-protocol format constraint for plateau prompt (Fix-23) */
+    const char *proto_constraint = "";
+    for (int ci = 0; PLATEAU_FORMAT_CONSTRAINTS[ci].name != NULL; ci++) {
+        if (strcasecmp(protocol_name, PLATEAU_FORMAT_CONSTRAINTS[ci].name) == 0) {
+            proto_constraint = PLATEAU_FORMAT_CONSTRAINTS[ci].constraint;
+            break;
+        }
+    }
 
     /* Build state-aware prompt text */
     char *state_section = NULL;
@@ -349,6 +400,7 @@ char *llm_handle_plateau(const char *protocol_name, const char *examples,
         "  - productivity: paths_discovered / selected_times ratio (low = stuck, high = productive)\n\n"
         "**Communication History (most recent interactions):**\n\"\"\"%s\"\"\"\n\n"
         "**Example Request Formats:**\n%s\n\n"
+        "%s"  /* Fix-23: per-protocol format constraint injected here */
         "**Your Task:** Choose ONE strategy and return ONLY valid JSON:\n\n"
         "Strategy A - Send a new specific request:\n"
         "  {\"analysis\":\"...\", \"suggested_request\":\"EXACT_CMD\\r\\n\"}\n\n"
@@ -373,7 +425,8 @@ char *llm_handle_plateau(const char *protocol_name, const char *examples,
         protocol_name,
         state_section ? state_section : "",
         history ? history : "",
-        examples ? examples : "");
+        examples ? examples : "",
+        proto_constraint);  /* Fix-23: inject protocol-specific format constraint */
     free(state_section);
     if (!raw_prompt) return NULL;
 
@@ -1891,41 +1944,140 @@ static const EnrichHintEntry ENRICH_HINT_TABLE[] = {
      *  - The extra blank line between commands confused the FTP server and
      *    degraded IPSM state coverage (116 edges vs baseline's 185).
      * Fix: Tell the LLM to put one command per line WITHOUT literal \\r\\n.
-     *      clean_llm_response() will add the correct \\r\\n terminator. */
+     *      clean_llm_response() will add the correct \\r\\n terminator.
+     *
+     * Fix-22: Protocol-specific hint improvements for underperforming protocols.
+     * Root cause analysis (exim/proftpd/kamailio/forked-daapd):
+     *   - FTP (proftpd): Original hint only listed basic commands; advanced
+     *     ProFTPD-specific cmds (SITE CHMOD/CHOWN, MLSD, MLST, CLNT, HOST,
+     *     LANG, MOD_FACTS features) were never in the enrichment seeds.
+     *   - SMTP (exim): Missing DATA body content, BDAT chunking, AUTH variants
+     *     (GSSAPI/EXTERNAL), ESMTP SIZE/BODY/ENVID params, MIME multipart.
+     *   - SIP (kamailio): No concrete header values → LLM generated <<VALUE>>
+     *     placeholders → kamailio rejected 100% of enriched seeds (400 Bad Request).
+     *   - DAAP (forked-daapd): No concrete session-id/revision-number → every
+     *     enriched seed had placeholder values → forked-daapd rejected them all.
+     */
     {"FTP",
-     "ALLO+STOR, REST+RETR, REIN, PASV/PORT switches, MLSD/MLST",
-     "invalid paths (/../..), long filenames (256+ chars), permission denials, case variants (MKD vs mkd)",
+     /* Fix-22a: ProFTPD advanced commands and edge-case coverage */
+     "USER+PASS+CWD+LIST+RETR+STOR+DELE+MKD+RMD+RNFR+RNTO+QUIT, PASV+PORT transfers, "
+     "FEAT+OPTS negotiation, SITE CHMOD/CHOWN/SYMLINK extended commands, "
+     "MLSD+MLST machine-readable listing, CLNT client identification, "
+     "HOST virtual hosting, LANG language negotiation, "
+     "STAT+SYST+HELP+NOOP keepalive, TYPE A/I/E/L, MODE S/B/C, "
+     "APPE append, REST restart, SIZE+MDTM file info, STOU unique-store, "
+     "ALLO pre-allocate, REIN reinitialize session",
+     "oversized filenames (256+ chars), path traversal (/../../../etc/passwd), "
+     "invalid TYPE/MODE params, restart offsets beyond file size, MKD deeply nested paths, "
+     "RNFR without RNTO, SITE commands with boundary values, non-ASCII LANG tags",
      "One command per line, NO blank lines between commands. "
      "Do NOT write \\r\\n — just use normal line breaks. "
-     "Use concrete values, NOT placeholders like <<VALUE>>. "
-     "Example:\nUSER anonymous\nPASS guest\nSYST"},
+     "Use CONCRETE values — never <<VALUE>> placeholders. "
+     "Example:\nUSER anonymous\nPASS guest@\nSYST\nFEAT\nTYPE I\nPASV\nMLSD /\nSITE CHMOD 755 /pub\nSTAT\nQUIT"},
     {"SMTP",
-     "EHLO+MAIL+RCPT+DATA, AUTH LOGIN/PLAIN, VRFY/EXPN probing, RSET+MAIL chains",
-     "malformed addresses, oversized headers, repeated RSET, missing EHLO, bare CR/LF",
+     /* Fix-22b: exim advanced SMTP coverage with DATA body and BDAT */
+     "EHLO+MAIL+RCPT+DATA body+QUIT, AUTH LOGIN/PLAIN/GSSAPI/EXTERNAL, "
+     "VRFY/EXPN probing, RSET+MAIL chains, BDAT chunked transfer, "
+     "MAIL FROM with SIZE/BODY/ENVID/RET ESMTP params, "
+     "RCPT TO with NOTIFY/ORCPT params, STARTTLS negotiation, "
+     "DATA with MIME multipart bodies, oversized DATA content, "
+     "multi-recipient sessions, NOOP+HELP+RSET keepalive",
+     "malformed addresses (missing @, bare LF, null bytes in headers), "
+     "oversized headers (8KB+), repeated RSET without EHLO, bare CR/LF in DATA, "
+     "MAIL without RCPT, nested MIME boundaries, AUTH with invalid base64, "
+     "BDAT with wrong chunk size, RCPT to non-existent local user",
      "One command per line, NO blank lines between commands. "
      "Do NOT write \\r\\n — just use normal line breaks. "
-     "Use concrete values, NOT placeholders like <<USERNAME>>. "
-     "Example:\nEHLO test.com\nMAIL FROM:<user@test.com>\nRCPT TO:<dest@test.com>"},
+     "Use CONCRETE values — never <<USERNAME>> or <<VALUE>> placeholders. "
+     "For DATA body: write body lines directly, end with a line containing only a dot (.). "
+     "Example:\nEHLO fuzzer.test\nMAIL FROM:<fuzz@test.com> SIZE=1024\n"
+     "RCPT TO:<victim@localhost>\nDATA\nFrom: fuzz@test.com\nSubject: test\n\nHello body\n."},
     {"RTSP",
      "DESCRIBE+SETUP+PLAY+PAUSE+TEARDOWN, interleaved channel requests, OPTIONS probing",
      "invalid session IDs, malformed stream URIs, unsupported transport specs, bad CSeq",
      "Each request includes: command URL RTSP/1.0, headers (CSeq, Transport, Session), "
-     "and is terminated by a blank line (\\r\\n\\r\\n)"},
+     "and is terminated by a blank line (\\r\\n\\r\\n). "
+     "Use CONCRETE values. Example CSeq: 1, Session: 12345678"},
+    /* Fix-23: HTTP entry extended to cover BOTH lighttpd (plain HTTP) AND
+     * forked-daapd (DAAP-over-HTTP), since both are launched with -P HTTP.
+     * The old HTTP entry only described plain HTTP GET/POST; the DAAP paths
+     * (/login, /databases, /server-info, /update, /ctrl-int) were never
+     * included in enrichment seeds, so forked-daapd stayed at shallow
+     * coverage despite Fix-22d adding a dead "DAAP" key that was never matched.
+     *
+     * Fix: HTTP sequences now include DAAP subpaths with concrete session-id
+     * and revision-number values so forked-daapd enriched seeds are accepted
+     * by the server (session-id must be a real integer returned by /login).
+     *
+     * The existing {"DAAP", ...} entry below is kept for documentation but
+     * will never be reached at runtime — protocol_name is always "HTTP".
+     */
     {"HTTP",
-     "GET/POST/PUT/DELETE/OPTIONS/HEAD sequences, pipelining, chunked transfer, keep-alive",
-     "path traversal (/../), oversized headers, invalid methods, malformed URIs, HTTP/0.9",
+     /* General HTTP */
+     "GET/POST/PUT/DELETE/OPTIONS/HEAD sequences, pipelining, chunked transfer, keep-alive, "
+     /* DAAP-over-HTTP paths for forked-daapd */
+     "DAAP login (/login?pairing-guid=...), /server-info, /update?revision-number=N, "
+     "/databases?session-id=S, /databases/1/items?session-id=S, "
+     "/databases/1/containers?session-id=S, /databases/1/items/ID.mp3?session-id=S, "
+     "/ctrl-int/1/playstatus?session-id=S, /ctrl-int/1/pause?session-id=S, "
+     "/ctrl-int/1/nextitem?session-id=S, /logout?session-id=S, "
+     "/content-codes, /databases/1/browse/artists?session-id=S",
+     "path traversal (/../), oversized headers, invalid methods, malformed URIs, HTTP/0.9, "
+     "invalid DAAP session-id (0 or negative), mismatched revision-number, "
+     "missing Host header, malformed pairing-guid (wrong length), "
+     "requests with stale/too-large revision-number",
      "Each request includes: METHOD path HTTP/1.1, headers (Host, Content-Type, etc.), "
-     "and is terminated by a blank line (\\r\\n\\r\\n)"},
+     "terminated by blank line (\\r\\n\\r\\n). Use CONCRETE values — NEVER placeholders. "
+     "For DAAP: session-id is a positive integer (e.g. 1831879645), revision-number starts at 1. "
+     "Example sequence (lighttpd):\n"
+     "GET /index.html HTTP/1.1\nHost: localhost:8080\n\n"
+     "POST /upload HTTP/1.1\nHost: localhost:8080\nContent-Length: 5\n\nhello\n"
+     "Example sequence (forked-daapd):\n"
+     "GET /login?pairing-guid=0x0000000000000001 HTTP/1.1\nHost: localhost:3689\nClient-DAAP-Version: 3.12\nContent-Length: 0\n\n"
+     "GET /server-info HTTP/1.1\nHost: localhost:3689\nClient-DAAP-Version: 3.12\n\n"
+     "GET /databases?session-id=1831879645&revision-number=1 HTTP/1.1\nHost: localhost:3689\nClient-DAAP-Version: 3.12\n\n"
+     "GET /databases/1/items?session-id=1831879645&meta=dmap.itemname,daap.songartist HTTP/1.1\nHost: localhost:3689\nClient-DAAP-Version: 3.12\n"},
     {"SIP",
-     "REGISTER+INVITE+ACK+BYE, CANCEL, OPTIONS, re-registration, forked dialogs",
-     "malformed SIP URIs, missing Via/From/To headers, invalid CSeq, loop detection",
-     "Each request includes: METHOD sip:URI SIP/2.0, headers (Via, From, To, CSeq, Call-ID), "
-     "and is terminated by a blank line (\\r\\n\\r\\n)"},
+     /* Fix-22c: kamailio — concrete SIP header values prevent <<VALUE>> placeholders */
+     "REGISTER+INVITE+ACK+BYE stateful dialog, CANCEL mid-dialog, OPTIONS capability, "
+     "re-REGISTER with Expires: 0 (de-register), REFER blind/attended transfer, "
+     "SUBSCRIBE+NOTIFY event packages (presence/dialog/message-summary), "
+     "MESSAGE instant messaging, PUBLISH event state, INFO mid-dialog, "
+     "PRACK provisional ACK, UPDATE session refresh",
+     "malformed SIP URIs (sip:@, sip::5060, empty user), missing mandatory headers "
+     "(Via/From/To/CSeq/Call-ID/Max-Forwards), duplicate Via, invalid CSeq order, "
+     "loop detection (Max-Forwards: 0), oversized headers, INVITE without SDP body",
+     "Each request includes: METHOD sip:URI SIP/2.0, mandatory headers (Via, From, To, "
+     "CSeq, Call-ID, Max-Forwards, Content-Length), terminated by blank line (\\r\\n\\r\\n). "
+     "Use CONCRETE values — NEVER placeholders. "
+     "Use a DIFFERENT Call-ID for each distinct dialog (e.g. call-1@127.0.0.1, call-2@127.0.0.1). "
+     "Example REGISTER:\nREGISTER sip:127.0.0.1 SIP/2.0\n"
+     "Via: SIP/2.0/UDP 127.0.0.1:5060;branch=z9hG4bK776\n"
+     "From: <sip:alice@127.0.0.1>;tag=1928301774\nTo: <sip:alice@127.0.0.1>\n"
+     "Call-ID: a84b4c76e66710@127.0.0.1\nCSeq: 1 REGISTER\nMax-Forwards: 70\n"
+     "Contact: <sip:alice@127.0.0.1:5060>\nExpires: 3600\nContent-Length: 0\n"},
+    /* NOTE (Fix-23): This {"DAAP",...} entry is NEVER reached at runtime.
+     * forked-daapd is launched with -P HTTP, so protocol_name == "HTTP" always.
+     * All DAAP-over-HTTP knowledge has been merged into the {"HTTP",...} entry above.
+     * Kept here only as documentation / for any future -P DAAP experiment. */
     {"DAAP",
-     "login+server-info+update+databases+items+containers sequences, session management",
-     "invalid session tokens, malformed content-codes, unexpected revision numbers",
-     "Each request includes: GET path HTTP/1.1, headers (Host, Client-DAAP-Version), "
-     "and is terminated by a blank line (\\r\\n\\r\\n)"},
+     /* Fix-22d: forked-daapd — concrete session-id and revision-number values */
+     "login+server-info+update+databases+items+containers+playlists sequences, "
+     "session management (login with pairing-guid, logout with session-id), "
+     "content-codes enumeration (/content-codes), browse by artist/album/genre, "
+     "database update polling with revision-number, playlist item listing, "
+     "DACP remote control (ctrl-int, now-playing, playqueue-contents)",
+     "invalid session-id (random large int or zero), mismatched revision-number, "
+     "malformed pairing-guid (wrong length/format), unsupported meta tags, "
+     "requests without session-id, requests with stale/too-large revision-number",
+     "Each request is HTTP/1.1 GET with DAAP path and query params, "
+     "terminated by blank line (\\r\\n\\r\\n). Use CONCRETE integer values — never placeholders. "
+     "session-id is a positive integer (e.g. 1831879645), revision-number starts at 1. "
+     "Example sequence:\nGET /login?pairing-guid=0x0000000000000001 HTTP/1.1\n"
+     "Host: localhost:3689\nClient-DAAP-Version: 3.12\nAccept: */*\nContent-Length: 0\n\n"
+     "GET /server-info HTTP/1.1\nHost: localhost:3689\nClient-DAAP-Version: 3.12\n\n"
+     "GET /databases?session-id=1831879645&revision-number=1 HTTP/1.1\n"
+     "Host: localhost:3689\nClient-DAAP-Version: 3.12\n"},
     {"MQTT",
      "CONNECT+SUBSCRIBE+PUBLISH+UNSUBSCRIBE+DISCONNECT, PINGREQ/PINGRESP, QoS 0/1/2",
      "oversized client IDs, invalid topic filters, will message variations, clean session",

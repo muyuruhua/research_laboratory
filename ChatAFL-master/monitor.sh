@@ -83,34 +83,55 @@ get_stat() {
 
 # 自动探测容器内的 out-* 目录路径
 # 返回: /home/ubuntu/experiments/<target>/out-<target>-<fuzzer>
+#   或: /home/ubuntu/experiments/out-<target>-<fuzzer>  (部分协议如 mosquitto)
 detect_outdir() {
     local cid="$1"
-    docker exec "$cid" bash -c 'ls -d /home/ubuntu/experiments/*/out-* 2>/dev/null | head -1' 2>/dev/null || echo ""
+    # 先尝试两层结构 experiments/<target>/out-*, 再尝试单层 experiments/out-*
+    docker exec "$cid" bash -c '
+        d=$(ls -d /home/ubuntu/experiments/*/out-* 2>/dev/null | head -1)
+        if [ -z "$d" ]; then
+            d=$(ls -d /home/ubuntu/experiments/out-* 2>/dev/null | head -1)
+        fi
+        echo "$d"
+    ' 2>/dev/null || echo ""
 }
 
 # 从 out-dir 名称推断 fuzzer 标签
-# out-exim-chatafl_opt → CHATAFL-OPT
-# out-exim-chatafl     → CHATAFL
-# out-exim-aflnet      → AFLNET
+# out-exim-chatafl_opt      → CHATAFL-OPT
+# out-pure-ftpd-chatafl_opt → CHATAFL-OPT  (目标名含连字符)
+# out-exim-aflnet            → AFLNET
+# 方法: 从尾部匹配已知 fuzzer 后缀 (fuzzer 名用下划线, 不会与连字符冲突)
 fuzzer_label() {
     local outdir="$1"
-    local name
-    name=$(basename "$outdir" | sed 's/^out-[^-]*-//')
-    case "$name" in
-        chatafl_opt) echo "CHATAFL-OPT" ;;
-        chatafl_cl1) echo "CHATAFL-CL1" ;;
-        chatafl_cl2) echo "CHATAFL-CL2" ;;
-        chatafl)     echo "CHATAFL" ;;
-        aflnet)      echo "AFLNET" ;;
-        *)           echo "${name^^}" ;;
-    esac
+    local base rest
+    base=$(basename "$outdir")
+    rest="${base#out-}"          # 去掉 out- 前缀
+    if   [[ "$rest" == *-chatafl_opt ]]; then echo "CHATAFL-OPT"
+    elif [[ "$rest" == *-chatafl_cl1 ]]; then echo "CHATAFL-CL1"
+    elif [[ "$rest" == *-chatafl_cl2 ]]; then echo "CHATAFL-CL2"
+    elif [[ "$rest" == *-chatafl ]];     then echo "CHATAFL"
+    elif [[ "$rest" == *-aflnet ]];      then echo "AFLNET"
+    else echo "${rest##*-}" | tr '[:lower:]' '[:upper:]'
+    fi
 }
 
 # 从 out-dir 名称推断 target
-# out-exim-chatafl_opt → exim
+# out-exim-chatafl_opt      → exim
+# out-pure-ftpd-chatafl_opt → pure-ftpd  (正确保留连字符)
+# out-mosquitto-aflnet       → mosquitto
+# 方法: 去掉 out- 前缀后, 从尾部剥离已知 fuzzer 后缀, 剩余即为 target
 target_label() {
     local outdir="$1"
-    basename "$outdir" | sed 's/^out-\([^-]*\)-.*/\1/'
+    local base rest
+    base=$(basename "$outdir")
+    rest="${base#out-}"
+    if   [[ "$rest" == *-chatafl_opt ]]; then echo "${rest%-chatafl_opt}"
+    elif [[ "$rest" == *-chatafl_cl1 ]]; then echo "${rest%-chatafl_cl1}"
+    elif [[ "$rest" == *-chatafl_cl2 ]]; then echo "${rest%-chatafl_cl2}"
+    elif [[ "$rest" == *-chatafl ]];     then echo "${rest%-chatafl}"
+    elif [[ "$rest" == *-aflnet ]];      then echo "${rest%-aflnet}"
+    else echo "${rest%-*}"
+    fi
 }
 
 # 从 ipsm.dot 计算节点数和边数 (轻量: 只用 grep -c)
@@ -283,9 +304,10 @@ print_table() {
         return
     fi
 
-    # 按 T(min) 由大到小排序，同 runtime 按 target → fuzzer 排
+    # 按 target 分组 → fuzzer 分组 → T(min) 降序
+    # 确保同协议的容器聚在一起，不会被其他协议打断
     local sorted
-    sorted=$(printf '%s\n' "${data[@]}" | sort -t'|' -k4,4rn -k2,2 -k3,3)
+    sorted=$(printf '%s\n' "${data[@]}" | sort -t'|' -k2,2 -k3,3 -k4,4rn)
 
     local prev_target=""
 
@@ -367,22 +389,21 @@ print_table() {
 
     # ─── 按 fuzzer 分组的汇总统计 ───────────────────────────────────
     echo -e "${BOLD}  📈 Summary (mean across runs):${RST}"
-    printf "  ${DIM}%-14s %5s %8s %7s %8s %5s %5s %6s %6s${RST}\n" \
-        "FUZZER" "N" "Bitmap" "Paths" "Execs" "Crash" "Hangs" "Nodes" "Edges"
-    echo -e "  ${DIM}$(printf '─%.0s' {1..85})${RST}"
+    printf "  ${DIM}%-14s %5s %10s %8s %7s %8s %5s %5s %6s %6s${RST}\n" \
+        "FUZZER" "N" "AvgTime" "Bitmap" "Paths" "Execs" "Crash" "Hangs" "Nodes" "Edges"
+    echo -e "  ${DIM}$(printf '─%.0s' {1..95})${RST}"
 
     # 收集每个 fuzzer 类型的汇总
-    local -A sum_bitmap sum_paths sum_execs sum_crashes sum_hangs sum_nodes sum_edges count_by_fuzzer
+    local -A sum_bitmap sum_paths sum_execs sum_crashes sum_hangs sum_nodes sum_edges sum_runtime count_by_fuzzer
 
     while IFS='|' read -r cid target fuzzer runtime bitmap paths_total paths_fav execs execs_sec \
                           crashes hangs cycles pending stab nodes edges \
                           chat_t llm_calls llm_ptok llm_ctok hyp_cnt hyp_fit \
                           plat_calls plat_thresh last_upd; do
-        
         local key="${target}::${fuzzer}"
         local bval
         bval=$(echo "$bitmap" | tr -d '%')
-        
+
         sum_bitmap[$key]=$(awk "BEGIN{print ${sum_bitmap[$key]:-0} + ${bval:-0}}")
         sum_paths[$key]=$(( ${sum_paths[$key]:-0} + ${paths_total:-0} ))
         sum_execs[$key]=$(( ${sum_execs[$key]:-0} + ${execs:-0} ))
@@ -390,16 +411,16 @@ print_table() {
         sum_hangs[$key]=$(( ${sum_hangs[$key]:-0} + ${hangs:-0} ))
         sum_nodes[$key]=$(( ${sum_nodes[$key]:-0} + ${nodes:-0} ))
         sum_edges[$key]=$(( ${sum_edges[$key]:-0} + ${edges:-0} ))
+        sum_runtime[$key]=$(( ${sum_runtime[$key]:-0} + ${runtime:-0} ))
         count_by_fuzzer[$key]=$(( ${count_by_fuzzer[$key]:-0} + 1 ))
-
     done <<< "$sorted"
 
     for key in $(echo "${!count_by_fuzzer[@]}" | tr ' ' '\n' | sort); do
         local n=${count_by_fuzzer[$key]}
         local tgt="${key%%::*}"
         local fzr="${key##*::}"
-        
-        local avg_bmp avg_paths avg_execs avg_crashes avg_hangs avg_nodes avg_edges
+
+        local avg_bmp avg_paths avg_execs avg_crashes avg_hangs avg_nodes avg_edges avg_runtime
         avg_bmp=$(awk "BEGIN{printf \"%.2f%%\", ${sum_bitmap[$key]} / $n}")
         avg_paths=$(( ${sum_paths[$key]} / n ))
         avg_execs=$(( ${sum_execs[$key]} / n ))
@@ -407,6 +428,7 @@ print_table() {
         avg_hangs=$(( ${sum_hangs[$key]} / n ))
         avg_nodes=$(( ${sum_nodes[$key]} / n ))
         avg_edges=$(( ${sum_edges[$key]} / n ))
+        avg_runtime=$(( ${sum_runtime[$key]} / n ))
 
         local fc="$RST"
         case "$fzr" in
@@ -415,8 +437,8 @@ print_table() {
             AFLNET)      fc="$CYAN" ;;
         esac
 
-        printf "  ${fc}%-14s${RST} %5s %8s %7s %8s %5s %5s %6s %6s  ${DIM}[%s]${RST}\n" \
-            "$fzr" "$n" "$avg_bmp" "$avg_paths" "$avg_execs" \
+        printf "  ${fc}%-14s${RST} %5s %10s %8s %7s %8s %5s %5s %6s %6s  ${DIM}[%s]${RST}\n" \
+            "$fzr" "$n" "$avg_runtime" "$avg_bmp" "$avg_paths" "$avg_execs" \
             "$avg_crashes" "$avg_hangs" "$avg_nodes" "$avg_edges" "$tgt"
     done
     echo ""
