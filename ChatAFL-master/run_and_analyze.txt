@@ -7,7 +7,13 @@ sudo systemctl restart gdm3
 FTP 协议、SMTP 协议、RTSP 协议、SIP 协议、DAAP 协议、HTTP 协议、MQTT 协议
 
 协议
-
+FTP 协议：lightftp、bftpd、proftpd、pure-ftpd
+SMTP 协议：exim
+RTSP 协议：live555
+SIP 协议：kamailio
+DAAP 协议：forked-daapd
+HTTP 协议：lighttpd1
+MQTT 协议：mosquitto
 
 
 待二进制协议：
@@ -18,6 +24,8 @@ SSH
 DICOM
 
 每个协议实验数据下有 cov_over_time 和 state_over_time 两张PNG图以及相关的CSV数据。请读取读取对应CSV数据来精确分析
+
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 1 100 exim,proftpd,live555 chatafl,chatafl-opt,aflnet
 
 cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 1 100 lightftp,pure-ftpd,mosquitto chatafl,chatafl-opt,aflnet
 
