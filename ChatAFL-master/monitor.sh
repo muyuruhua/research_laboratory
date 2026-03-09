@@ -82,15 +82,19 @@ get_stat() {
 }
 
 # 自动探测容器内的 out-* 目录路径
-# 返回: /home/ubuntu/experiments/<target>/out-<target>-<fuzzer>
-#   或: /home/ubuntu/experiments/out-<target>-<fuzzer>  (部分协议如 mosquitto)
+# 支持结构:
+#   单层: /home/ubuntu/experiments/out-<target>-<fuzzer>          (mosquitto等)
+#   两层: /home/ubuntu/experiments/<target>/out-<target>-<fuzzer> (exim/proftpd等)
+#   三层: /home/ubuntu/experiments/<a>/<b>/out-<target>-<fuzzer>  (live555: live/testProgs/out-live555-*)
 detect_outdir() {
     local cid="$1"
-    # 先尝试两层结构 experiments/<target>/out-*, 再尝试单层 experiments/out-*
     docker exec "$cid" bash -c '
         d=$(ls -d /home/ubuntu/experiments/*/out-* 2>/dev/null | head -1)
         if [ -z "$d" ]; then
             d=$(ls -d /home/ubuntu/experiments/out-* 2>/dev/null | head -1)
+        fi
+        if [ -z "$d" ]; then
+            d=$(ls -d /home/ubuntu/experiments/*/*/out-* 2>/dev/null | head -1)
         fi
         echo "$d"
     ' 2>/dev/null || echo ""
