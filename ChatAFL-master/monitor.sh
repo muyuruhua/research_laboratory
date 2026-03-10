@@ -412,14 +412,23 @@ print_table() {
         local bval
         bval=$(echo "$bitmap" | tr -d '%')
 
+        # 截断浮点/非数字字段为整数（处理 execs_per_sec 误入、"?"、"-"、空值）
+        local _paths="${paths_total%%.*}"; _paths="${_paths//[^0-9]/}"
+        local _execs="${execs%%.*}";       _execs="${_execs//[^0-9]/}"
+        local _crashes="${crashes%%.*}";   _crashes="${_crashes//[^0-9]/}"
+        local _hangs="${hangs%%.*}";       _hangs="${_hangs//[^0-9]/}"
+        local _nodes="${nodes%%.*}";       _nodes="${_nodes//[^0-9]/}"
+        local _edges="${edges%%.*}";       _edges="${_edges//[^0-9]/}"
+        local _runtime="${runtime%%.*}";   _runtime="${_runtime//[^0-9]/}"
+
         sum_bitmap[$key]=$(awk "BEGIN{print ${sum_bitmap[$key]:-0} + ${bval:-0}}")
-        sum_paths[$key]=$(( ${sum_paths[$key]:-0} + ${paths_total:-0} ))
-        sum_execs[$key]=$(( ${sum_execs[$key]:-0} + ${execs:-0} ))
-        sum_crashes[$key]=$(( ${sum_crashes[$key]:-0} + ${crashes:-0} ))
-        sum_hangs[$key]=$(( ${sum_hangs[$key]:-0} + ${hangs:-0} ))
-        sum_nodes[$key]=$(( ${sum_nodes[$key]:-0} + ${nodes:-0} ))
-        sum_edges[$key]=$(( ${sum_edges[$key]:-0} + ${edges:-0} ))
-        sum_runtime[$key]=$(( ${sum_runtime[$key]:-0} + ${runtime:-0} ))
+        sum_paths[$key]=$(( ${sum_paths[$key]:-0} + ${_paths:-0} ))
+        sum_execs[$key]=$(( ${sum_execs[$key]:-0} + ${_execs:-0} ))
+        sum_crashes[$key]=$(( ${sum_crashes[$key]:-0} + ${_crashes:-0} ))
+        sum_hangs[$key]=$(( ${sum_hangs[$key]:-0} + ${_hangs:-0} ))
+        sum_nodes[$key]=$(( ${sum_nodes[$key]:-0} + ${_nodes:-0} ))
+        sum_edges[$key]=$(( ${sum_edges[$key]:-0} + ${_edges:-0} ))
+        sum_runtime[$key]=$(( ${sum_runtime[$key]:-0} + ${_runtime:-0} ))
         count_by_fuzzer[$key]=$(( ${count_by_fuzzer[$key]:-0} + 1 ))
     done <<< "$sorted"
 
