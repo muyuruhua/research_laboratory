@@ -236,27 +236,27 @@ do
 
             if [[ $FUZZER == "aflnet" ]] || [[ $FUZZER == "all" ]]
             then
-                profuzzbench_exec_common_dev.sh live555 $NUM_CONTAINERS ${RESULTS_DIR} aflnet out-live555-aflnet "-P RTSP -D 10000 -q 3 -s 3 -E -K -R -m none" $TIMEOUT $SKIPCOUNT &
+                profuzzbench_exec_common_dev.sh live555 $NUM_CONTAINERS ${RESULTS_DIR} aflnet out-live555-aflnet "-P RTSP -D 10000 -q 3 -s 3 -E -K -R -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
             if [[ $FUZZER == "chatafl" ]] || [[ $FUZZER == "all" ]]
             then
-                profuzzbench_exec_common_dev.sh live555 $NUM_CONTAINERS ${RESULTS_DIR} chatafl out-live555-chatafl "-P RTSP -D 10000 -q 3 -s 3 -E -K -R -m none" $TIMEOUT $SKIPCOUNT &
+                profuzzbench_exec_common_dev.sh live555 $NUM_CONTAINERS ${RESULTS_DIR} chatafl out-live555-chatafl "-P RTSP -D 10000 -q 3 -s 3 -E -K -R -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
             if [[ $FUZZER == "chatafl-cl1" ]] || [[ $FUZZER == "all" ]]
             then
-                profuzzbench_exec_common_dev.sh live555 $NUM_CONTAINERS ${RESULTS_DIR} chatafl-cl1 out-live555-chatafl_cl1 "-P RTSP -D 10000 -q 3 -s 3 -E -K -R -m none" $TIMEOUT $SKIPCOUNT &
+                profuzzbench_exec_common_dev.sh live555 $NUM_CONTAINERS ${RESULTS_DIR} chatafl-cl1 out-live555-chatafl_cl1 "-P RTSP -D 10000 -q 3 -s 3 -E -K -R -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
             if [[ $FUZZER == "chatafl-cl2" ]] || [[ $FUZZER == "all" ]]
             then
-                profuzzbench_exec_common_dev.sh live555 $NUM_CONTAINERS ${RESULTS_DIR} chatafl-cl2 out-live555-chatafl_cl2 "-P RTSP -D 10000 -q 3 -s 3 -E -K -R -m none" $TIMEOUT $SKIPCOUNT &
+                profuzzbench_exec_common_dev.sh live555 $NUM_CONTAINERS ${RESULTS_DIR} chatafl-cl2 out-live555-chatafl_cl2 "-P RTSP -D 10000 -q 3 -s 3 -E -K -R -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
             if [[ $FUZZER == "chatafl-opt" ]] || [[ $FUZZER == "all" ]]
             then
-                profuzzbench_exec_common_dev.sh live555 $NUM_CONTAINERS ${RESULTS_DIR} chatafl-opt out-live555-chatafl_opt "-P RTSP -D 10000 -q 3 -s 3 -E -K -R -m none" $TIMEOUT $SKIPCOUNT &
+                profuzzbench_exec_common_dev.sh live555 $NUM_CONTAINERS ${RESULTS_DIR} chatafl-opt out-live555-chatafl_opt "-P RTSP -D 10000 -q 3 -s 3 -E -K -R -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
         fi
