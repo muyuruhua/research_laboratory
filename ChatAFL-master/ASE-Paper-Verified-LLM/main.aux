@@ -1,0 +1,68 @@
+\relax 
+\citation{aflnet,stateafl}
+\citation{aflnet,stateafl}
+\citation{chatafl}
+\providecommand \oddpage@label [2]{}
+\@writefile{toc}{\contentsline {section}{\numberline {I}Introduction}{1}{}\protected@file@percent }
+\citation{aflnet}
+\citation{chatafl}
+\@writefile{toc}{\contentsline {section}{\numberline {II}Background and Motivation}{2}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {II-A}}Coverage-Guided Fuzzing vs. Network Targets}{2}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {II-B}}Stateful Greybox Fuzzing (SGF)}{2}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {II-C}}LLM Integration into Protocol Fuzzing}{2}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {II-D}}A Motivating Example: Cascading Semantic Drift}{2}{}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {I}{\ignorespaces Taxonomy and Comparison of Stateful Network Fuzzing Paradigms}}{3}{}\protected@file@percent }
+\newlabel{tab:taxonomy}{{I}{3}{}{table.1}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {III}State-Aware LLM Architecture}{3}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-A}}Runtime Controls and Refinement}{3}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {III-A}1}Structured Output Validation}{3}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {III-A}2}Sampled Hypothesis Validation}{3}{}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Architecture overview of the verified LLM-in-the-loop design, implemented in our artifact as ChatAFL-Opt. Three cooperating layers interact during a fuzzing campaign. The \textbf  {Grammar Hypothesis Loop} (top) performs Tier-1 sampling, counterexample collection, Tier-2 refinement, and hypothesis updates. The \textbf  {Fuzz Execution Loop} (middle) performs frontier-guided seed selection, mutation, target execution, IPSM-plus-coverage tracking, novelty checking, and plateau detection, with adaptive thresholds feeding the state-selection policy. If execution is novel, the seed is fed back into the queue; otherwise the run proceeds to plateau checking. When a plateau is detected, the \textbf  {LLM Assistance} path (bottom) is triggered: the prompt is deduplicated, state context is assembled from IPSM and coverage summaries, and a fork-isolated LLM call produces candidate actions that are JSON-validated before dispatch. Colored dashed arrows denote auxiliary feedback links: \emph  {sample} sends execution traces to Tier-1 sampling, \emph  {patterns} feeds updated hypotheses back to IPSM matching, \emph  {refine} routes refinement requests to the LLM, \emph  {trigger} activates the LLM path from plateau detection, and \emph  {feedback} returns validated actions to the seed queue.}}{4}{}\protected@file@percent }
+\newlabel{fig:arch}{{1}{4}{}{figure.1}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {III-A}3}Counterexample-Guided Refinement}{4}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-B}}Frontier Weighting and Stagnation Breaking}{4}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {IV}Implementation Details}{5}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-A}}Parallel Startup Enrichment and Bounded Execution}{5}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-B}}Fork-Isolated LLM Invocation and Structured Validation}{5}{}\protected@file@percent }
+\@writefile{loa}{\contentsline {algocf}{\numberline {1}{\ignorespaces State-Aware LLM Assistance and Hypothesis Refinement}}{5}{}\protected@file@percent }
+\newlabel{alg:fuzz}{{1}{5}{}{algocf.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-C}}Hypothesis Integration and Sampled Validation Cost Control}{5}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-D}}Reuse of Existing AFLNet-Style Instrumentation}{6}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {V}Experimental Evaluation Design}{6}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-A}}Experimental Setup}{6}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-B}}Baselines, Metrics, and Fairness Controls}{6}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-C}}Statistical Interpretation}{7}{}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {II}{\ignorespaces Controls used to preserve fairness across compared fuzzers}}{7}{}\protected@file@percent }
+\newlabel{tab:controls}{{II}{7}{}{table.2}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {VI}Results and Discussion}{7}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VI-A}}RQ1: System-Level Campaign Effects}{7}{}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {III}{\ignorespaces Mean $\pm $ sample SD of end-of-campaign results over five 24-hour trials for code-edge coverage and inferred protocol state transitions. Bold marks the highest mean per target per metric.}}{8}{}\protected@file@percent }
+\newlabel{tab:24h_results}{{III}{8}{}{table.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VI-B}}RQ2: State Space Convergence and Escape Mechanics}{8}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VI-C}}RQ3: Overall Branch and Edge Coverage}{8}{}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces State-discovery trajectories over 24 hours for the four reported targets. On several targets, the optimized variant continues to discover inferred states after the baselines begin to level off; the separation is most visible when progress depends on relatively narrow protocol transitions.}}{9}{}\protected@file@percent }
+\newlabel{fig:states}{{2}{9}{}{figure.2}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Cumulative code-edge coverage over 24 hours across Exim, Forked-daapd, Mosquitto, and ProFTPD. The optimized variant tends to maintain later-stage coverage growth by limiting low-value drift in the shared corpus.}}{9}{}\protected@file@percent }
+\newlabel{fig:coverage}{{3}{9}{}{figure.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VI-D}}Qualitative Discussion: Deep-State Behavior}{9}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VI-E}}Practical Takeaways for Deployment}{9}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {VII}Overhead and Practicality Analysis}{9}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {VIII}Discussion and Implications}{10}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {IX}Threats to Validity}{10}{}\protected@file@percent }
+\citation{peach,sulley,boofuzz}
+\citation{aflnet,stateafl}
+\citation{chatafl}
+\citation{nezha}
+\bibstyle{IEEEtran}
+\bibdata{references}
+\bibcite{aflnet}{1}
+\bibcite{stateafl}{2}
+\bibcite{chatafl}{3}
+\bibcite{peach}{4}
+\bibcite{sulley}{5}
+\bibcite{boofuzz}{6}
+\bibcite{nezha}{7}
+\@writefile{toc}{\contentsline {section}{\numberline {X}Related Work}{11}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {XI}Conclusion}{11}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{References}{11}{}\protected@file@percent }
+\gdef \@abspage@last{11}

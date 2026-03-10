@@ -226,7 +226,7 @@ docker run ... ${ABLATION_FLAGS} ...
 
 当前 20 个容器虽然没有日志 banner，但 `docker exec env` 始终能查到消融配置。下次新启动的容器两种方法都能用。
 
-
+模糊测试器里有没有对大模型单独 throughput / token cost 表或者数据？
 
 git add .
 git commit -m "update [work_and_data_flow.txt]"

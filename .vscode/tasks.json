@@ -1,0 +1,83 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "compile-verified-llm-main",
+			"type": "shell",
+			"command": "cd",
+			"args": [
+				"/Users/ketangchen/Documents/000_20260114dev/research_laboratory/ChatAFL-master/ASE-Paper-Verified-LLM",
+				"&&",
+				"pdflatex",
+				"-interaction=nonstopmode",
+				"main.tex"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "compile-verified-llm-main-caption-check",
+			"type": "shell",
+			"command": "cd",
+			"args": [
+				"/Users/ketangchen/Documents/000_20260114dev/research_laboratory/ChatAFL-master/ASE-Paper-Verified-LLM",
+				"&&",
+				"pdflatex",
+				"-interaction=nonstopmode",
+				"main.tex"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "compile-verified-title-update",
+			"type": "shell",
+			"command": "cd",
+			"args": [
+				"/Users/ketangchen/Documents/000_20260114dev/research_laboratory/ChatAFL-master/ASE-Paper-Verified-LLM",
+				"&&",
+				"pdflatex",
+				"-interaction=nonstopmode",
+				"main.tex"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "compile-verified-review-fixes",
+			"type": "shell",
+			"command": "cd",
+			"args": [
+				"/Users/ketangchen/Documents/000_20260114dev/research_laboratory/ChatAFL-master/ASE-Paper-Verified-LLM",
+				"&&",
+				"pdflatex",
+				"-interaction=nonstopmode",
+				"main.tex"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "compile-requirement-alignment-fixes",
+			"type": "shell",
+			"command": "cd",
+			"args": [
+				"/Users/ketangchen/Documents/000_20260114dev/research_laboratory/ChatAFL-master/ASE-Paper-Verified-LLM",
+				"&&",
+				"pdflatex",
+				"-interaction=nonstopmode",
+				"main.tex"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "compile-abstract-intro-rq-threats-soften",
+			"type": "shell",
+			"command": "cd",
+			"args": [
+				"/Users/ketangchen/Documents/000_20260114dev/research_laboratory/ChatAFL-master/ASE-Paper-Verified-LLM",
+				"&&",
+				"pdflatex",
+				"-interaction=nonstopmode",
+				"main.tex"
+			],
+			"isBackground": false
+		}
+	]
+}
