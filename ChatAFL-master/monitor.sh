@@ -369,10 +369,10 @@ print_table() {
     done <<< "$sorted"
 
     if [[ $has_llm -eq 1 ]]; then
-        echo -e "${BOLD}  🤖 LLM / Hypothesis Details:${RST}"
-        printf "  ${DIM}%-14s %-12s %8s %10s %10s %8s %8s %9s %8s${RST}\n" \
-            "FUZZER" "CID" "LLM#" "Prompt_Tok" "Compl_Tok" "Plateau" "Thresh" "Hyp_Cnt" "Fitness"
-        echo -e "  ${DIM}$(printf '─%.0s' {1..105})${RST}"
+        echo -e "${BOLD}  🤖 LLM / Token Cost (gpt-4o-mini: \$0.15/1M prompt, \$0.60/1M compl):${RST}"
+        printf "  ${DIM}%-14s %-12s %8s %10s %10s %9s %8s %11s %8s %8s${RST}\n" \
+            "FUZZER" "CID" "LLM#" "Prompt_Tok" "Compl_Tok" "Cost(\$)" "\$/24h" "Tok/24h" "Plateau" "Fitness"
+        echo -e "  ${DIM}$(printf '─%.0s' {1..115})${RST}"
 
         while IFS='|' read -r cid target fuzzer runtime bitmap paths_total paths_fav execs execs_sec \
                               crashes hangs cycles pending stab nodes edges \
@@ -387,9 +387,18 @@ print_table() {
                 CHATAFL*)    fc="$YELLOW" ;;
             esac
 
-            printf "  ${fc}%-14s${RST} %-12s %8s %10s %10s %8s %8s %9s %8s\n" \
+            # Cost calculation (gpt-4o-mini pricing)
+            local _ptok="${llm_ptok//[^0-9]/}"
+            local _ctok="${llm_ctok//[^0-9]/}"
+            local _rmin="${runtime//[^0-9]/}"
+            local _cost_usd _tok_per_24h _cost_per_24h
+            _cost_usd=$(awk "BEGIN{printf \"%.4f\", (${_ptok:-0} * 0.15 + ${_ctok:-0} * 0.60) / 1000000}")
+            _tok_per_24h=$(awk "BEGIN{ r=${_rmin:-0}; if(r>0) printf \"%.0f\", (${_ptok:-0}+${_ctok:-0})/r*1440; else print \"-\"}")
+            _cost_per_24h=$(awk "BEGIN{ r=${_rmin:-0}; if(r>0) printf \"%.4f\", (${_ptok:-0}*0.15+${_ctok:-0}*0.60)/1000000/r*1440; else print \"-\"}")
+
+            printf "  ${fc}%-14s${RST} %-12s %8s %10s %10s %9s %8s %11s %8s %8s\n" \
                 "$fuzzer" "${cid:0:12}" "$llm_calls" "$llm_ptok" "$llm_ctok" \
-                "$plat_calls" "$plat_thresh" "$hyp_cnt" "$hyp_fit"
+                "$_cost_usd" "$_cost_per_24h" "$_tok_per_24h" "$plat_calls" "$hyp_fit"
 
         done <<< "$sorted"
         echo ""
@@ -473,7 +482,7 @@ write_csv() {
     
     # 写表头 (仅首次)
     if [[ ! -f "$csv_file" ]]; then
-        echo "timestamp,human_time,container_id,target,fuzzer,runtime_min,bitmap_pct,paths_total,paths_favored,execs_done,execs_per_sec,unique_crashes,unique_hangs,cycles_done,pending_total,stability,ipsm_nodes,ipsm_edges,plateau_calls,llm_total_calls,llm_prompt_tokens,llm_completion_tokens,hypothesis_count,hypothesis_fitness,plateau_threshold" \
+        echo "timestamp,human_time,container_id,target,fuzzer,runtime_min,bitmap_pct,paths_total,paths_favored,execs_done,execs_per_sec,unique_crashes,unique_hangs,cycles_done,pending_total,stability,ipsm_nodes,ipsm_edges,plateau_calls,llm_total_calls,llm_prompt_tokens,llm_completion_tokens,hypothesis_count,hypothesis_fitness,plateau_threshold,cost_usd,prompt_per_24h,compl_per_24h,cost_per_24h" \
             > "$csv_file"
     fi
 
@@ -487,8 +496,18 @@ write_csv() {
         bval=$(echo "$bitmap" | tr -d '%')
         local stab_val
         stab_val=$(echo "$stab" | tr -d '%')
+
+        # LLM cost columns (gpt-4o-mini: $0.15/1M prompt, $0.60/1M completion)
+        local _csv_ptok="${llm_ptok//[^0-9]/}"
+        local _csv_ctok="${llm_ctok//[^0-9]/}"
+        local _csv_rmin="${runtime//[^0-9]/}"
+        local _csv_cost _csv_ptok24 _csv_ctok24 _csv_cost24
+        _csv_cost=$(awk "BEGIN{printf \"%.6f\", (${_csv_ptok:-0}*0.15+${_csv_ctok:-0}*0.60)/1000000}")
+        _csv_ptok24=$(awk "BEGIN{ r=${_csv_rmin:-0}; if(r>0) printf \"%.0f\", ${_csv_ptok:-0}/r*1440; else print 0}")
+        _csv_ctok24=$(awk "BEGIN{ r=${_csv_rmin:-0}; if(r>0) printf \"%.0f\", ${_csv_ctok:-0}/r*1440; else print 0}")
+        _csv_cost24=$(awk "BEGIN{ r=${_csv_rmin:-0}; if(r>0) printf \"%.6f\", (${_csv_ptok:-0}*0.15+${_csv_ctok:-0}*0.60)/1000000/r*1440; else print 0}")
         
-        echo "${ts},${human_ts},${cid:0:12},${target},${fuzzer},${runtime},${bval},${paths_total},${paths_fav},${execs},${execs_sec},${crashes},${hangs},${cycles},${pending},${stab_val},${nodes},${edges},${plat_calls:-},${llm_calls:-},${llm_ptok:-},${llm_ctok:-},${hyp_cnt:-},${hyp_fit:-},${plat_thresh:-}" \
+        echo "${ts},${human_ts},${cid:0:12},${target},${fuzzer},${runtime},${bval},${paths_total},${paths_fav},${execs},${execs_sec},${crashes},${hangs},${cycles},${pending},${stab_val},${nodes},${edges},${plat_calls:-},${llm_calls:-},${llm_ptok:-},${llm_ctok:-},${hyp_cnt:-},${hyp_fit:-},${plat_thresh:-},${_csv_cost},${_csv_ptok24},${_csv_ctok24},${_csv_cost24}" \
             >> "$csv_file"
     done
 

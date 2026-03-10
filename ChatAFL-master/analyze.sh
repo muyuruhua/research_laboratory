@@ -121,6 +121,44 @@ do
         printf "\n\n"
     done
     
+    # ─── LLM Token Cost Extraction ──────────────────────────────────
+    local llm_csv="llm_cost.csv"
+    echo "fuzzer,run,runtime_min,llm_calls,prompt_tokens,completion_tokens,dedup_hits,cost_usd,prompt_per_24h,compl_per_24h,cost_per_24h" > "$llm_csv"
+    local _llm_has_data=0
+    for _LF in $FUZZERS; do
+        for _LR in $(seq 1 $REPS); do
+            local _ltarf="out-${ORIGINAL_SUBJECT}-${_LF}_${_LR}.tar.gz"
+            [[ ! -f "$_ltarf" ]] && continue
+            local _lstats
+            _lstats=$(tar -xzOf "$_ltarf" --wildcards "*/fuzzer_stats" 2>/dev/null || true)
+            [[ -z "$_lstats" ]] && continue
+            local _lst _llu _lcalls _lptok _lctok _ldedup
+            _lst=$(echo "$_lstats"   | grep -m1 '^start_time'        | sed 's/.*: *//' | tr -d '[:space:]')
+            _llu=$(echo "$_lstats"   | grep -m1 '^last_update'       | sed 's/.*: *//' | tr -d '[:space:]')
+            _lcalls=$(echo "$_lstats" | grep -m1 '^llm_total_calls'  | sed 's/.*: *//' | tr -d '[:space:]')
+            _lptok=$(echo "$_lstats"  | grep -m1 '^llm_prompt_tokens'  | sed 's/.*: *//' | tr -d '[:space:]')
+            _lctok=$(echo "$_lstats"  | grep -m1 '^llm_completion_tok' | sed 's/.*: *//' | tr -d '[:space:]')
+            _ldedup=$(echo "$_lstats" | grep -m1 '^llm_dedup_hits'   | sed 's/.*: *//' | tr -d '[:space:]')
+            [[ -z "$_lcalls" ]] && continue
+            _lptok="${_lptok:-0}"; _lctok="${_lctok:-0}"
+            local _lrmin=0
+            [[ -n "$_lst" && -n "$_llu" ]] && _lrmin=$(( (_llu - _lst) / 60 ))
+            # gpt-4o-mini: $0.15/1M prompt, $0.60/1M completion
+            local _lcost _lptok24 _lctok24 _lcost24
+            _lcost=$(awk   "BEGIN{printf \"%.6f\", (${_lptok}*0.15+${_lctok}*0.60)/1000000}")
+            _lptok24=$(awk "BEGIN{ r=${_lrmin}; if(r>0) printf \"%.0f\", ${_lptok}/r*1440; else print 0}")
+            _lctok24=$(awk "BEGIN{ r=${_lrmin}; if(r>0) printf \"%.0f\", ${_lctok}/r*1440; else print 0}")
+            _lcost24=$(awk "BEGIN{ r=${_lrmin}; if(r>0) printf \"%.6f\", (${_lptok}*0.15+${_lctok}*0.60)/1000000/r*1440; else print 0}")
+            echo "${_LF},${_LR},${_lrmin},${_lcalls:-0},${_lptok},${_lctok},${_ldedup:-0},${_lcost},${_lptok24},${_lctok24},${_lcost24}" >> "$llm_csv"
+            _llm_has_data=1
+        done
+    done
+    if [[ $_llm_has_data -eq 1 ]]; then
+        info "LLM cost data → ${RESULTS_DIR}/llm_cost.csv"
+    else
+        rm -f "$llm_csv"
+    fi
+
     # Generate plots
     info "Generating plots..."
     PATH=$PATH:$PFBENCH/scripts/execution:$PFBENCH/scripts/analysis \
