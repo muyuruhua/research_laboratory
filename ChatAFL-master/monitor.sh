@@ -265,6 +265,26 @@ collect_one() {
     plateau_calls=${plateau_calls:-"-"}
     plateau_threshold=${plateau_threshold:-"-"}
 
+    # Fallback: chatafl baseline has no llm_* in fuzzer_stats → estimate from stall-interactions
+    local token_source="-"
+    if [[ "$llm_total_calls" == "-" ]]; then
+        local _si_dir="${outdir}/stall-interactions"
+        local _si_calls
+        _si_calls=$(docker exec "$cid" bash -c "ls \"${_si_dir}/prompt-\"* 2>/dev/null | wc -l" 2>/dev/null || echo "0")
+        _si_calls="${_si_calls//[^0-9]/}"
+        if [[ "${_si_calls:-0}" -gt 0 ]]; then
+            local _si_pbytes _si_cbytes
+            _si_pbytes=$(docker exec "$cid" bash -c "cat \"${_si_dir}/prompt-\"* 2>/dev/null | wc -c" 2>/dev/null || echo "0")
+            _si_cbytes=$(docker exec "$cid" bash -c "cat \"${_si_dir}/response-\"* 2>/dev/null | wc -c" 2>/dev/null || echo "0")
+            llm_total_calls="$_si_calls"
+            llm_prompt_tokens=$(( ${_si_pbytes//[^0-9]/} / 4 ))
+            llm_completion_tok=$(( ${_si_cbytes//[^0-9]/} / 4 ))
+            token_source="est"
+        fi
+    else
+        token_source="exact"
+    fi
+
     # IPSM 节点/边
     local ipsm_info nodes edges
     ipsm_info=$(get_ipsm_stats "$cid" "$dot_file")
@@ -286,7 +306,7 @@ collect_one() {
     fi
 
     # 输出结构体 (用 | 分隔, 方便后续格式化)
-    echo "${cid}|${target}|${fuzzer}|${runtime_min}|${bitmap}|${paths_total}|${paths_favored}|${execs_done}|${execs_per_sec}|${unique_crashes}|${unique_hangs}|${cycles_done}|${pending_total}|${stability}|${nodes}|${edges}|${chat_times}|${llm_total_calls}|${llm_prompt_tokens}|${llm_completion_tok}|${hyp_count}|${hyp_fitness}|${plateau_calls}|${plateau_threshold}|${last_update_ago}"
+    echo "${cid}|${target}|${fuzzer}|${runtime_min}|${bitmap}|${paths_total}|${paths_favored}|${execs_done}|${execs_per_sec}|${unique_crashes}|${unique_hangs}|${cycles_done}|${pending_total}|${stability}|${nodes}|${edges}|${chat_times}|${llm_total_calls}|${llm_prompt_tokens}|${llm_completion_tok}|${hyp_count}|${hyp_fitness}|${plateau_calls}|${plateau_threshold}|${last_update_ago}|${token_source}"
 }
 
 # ─── 格式化输出 ─────────────────────────────────────────────────────────────
@@ -322,7 +342,7 @@ print_table() {
     while IFS='|' read -r cid target fuzzer runtime bitmap paths_total paths_fav execs execs_sec \
                           crashes hangs cycles pending stab nodes edges \
                           chat_t llm_calls llm_ptok llm_ctok hyp_cnt hyp_fit \
-                          plat_calls plat_thresh last_upd; do
+                          plat_calls plat_thresh last_upd token_source; do
         
         # 新 target 分组
         if [[ "$target" != "$prev_target" ]]; then
@@ -361,7 +381,7 @@ print_table() {
     while IFS='|' read -r cid target fuzzer runtime bitmap paths_total paths_fav execs execs_sec \
                           crashes hangs cycles pending stab nodes edges \
                           chat_t llm_calls llm_ptok llm_ctok hyp_cnt hyp_fit \
-                          plat_calls plat_thresh last_upd; do
+                          plat_calls plat_thresh last_upd token_source; do
         if [[ "$llm_calls" != "-" && -n "$llm_calls" ]]; then
             has_llm=1
             break
@@ -370,14 +390,14 @@ print_table() {
 
     if [[ $has_llm -eq 1 ]]; then
         echo -e "${BOLD}  🤖 LLM / Token Cost (gpt-4o-mini: \$0.15/1M prompt, \$0.60/1M compl):${RST}"
-        printf "  ${DIM}%-14s %-12s %8s %10s %10s %9s %8s %11s %8s %8s${RST}\n" \
-            "FUZZER" "CID" "LLM#" "Prompt_Tok" "Compl_Tok" "Cost(\$)" "\$/24h" "Tok/24h" "Plateau" "Fitness"
-        echo -e "  ${DIM}$(printf '─%.0s' {1..115})${RST}"
+        printf "  ${DIM}%-14s %-12s %8s %11s %11s %9s %8s %11s %8s %8s %5s${RST}\n" \
+            "FUZZER" "CID" "LLM#" "Prompt_Tok" "Compl_Tok" "Cost(\$)" "\$/24h" "Tok/24h" "Plateau" "Fitness" "Src"
+        echo -e "  ${DIM}$(printf '─%.0s' {1..122})${RST}"
 
         while IFS='|' read -r cid target fuzzer runtime bitmap paths_total paths_fav execs execs_sec \
                               crashes hangs cycles pending stab nodes edges \
                               chat_t llm_calls llm_ptok llm_ctok hyp_cnt hyp_fit \
-                              plat_calls plat_thresh last_upd; do
+                              plat_calls plat_thresh last_upd token_source; do
             
             [[ "$llm_calls" == "-" || -z "$llm_calls" ]] && continue
 
@@ -396,9 +416,13 @@ print_table() {
             _tok_per_24h=$(awk "BEGIN{ r=${_rmin:-0}; if(r>0) printf \"%.0f\", (${_ptok:-0}+${_ctok:-0})/r*1440; else print \"-\"}")
             _cost_per_24h=$(awk "BEGIN{ r=${_rmin:-0}; if(r>0) printf \"%.4f\", (${_ptok:-0}*0.15+${_ctok:-0}*0.60)/1000000/r*1440; else print \"-\"}")
 
-            printf "  ${fc}%-14s${RST} %-12s %8s %10s %10s %9s %8s %11s %8s %8s\n" \
-                "$fuzzer" "${cid:0:12}" "$llm_calls" "$llm_ptok" "$llm_ctok" \
-                "$_cost_usd" "$_cost_per_24h" "$_tok_per_24h" "$plat_calls" "$hyp_fit"
+            # ~ prefix for estimated (bytes/4) values
+            local _disp_ptok="$llm_ptok" _disp_ctok="$llm_ctok"
+            [[ "$token_source" == "est" ]] && _disp_ptok="~${llm_ptok}" && _disp_ctok="~${llm_ctok}"
+
+            printf "  ${fc}%-14s${RST} %-12s %8s %11s %11s %9s %8s %11s %8s %8s %5s\n" \
+                "$fuzzer" "${cid:0:12}" "$llm_calls" "$_disp_ptok" "$_disp_ctok" \
+                "$_cost_usd" "$_cost_per_24h" "$_tok_per_24h" "$plat_calls" "$hyp_fit" "${token_source:--}"
 
         done <<< "$sorted"
         echo ""
@@ -416,7 +440,7 @@ print_table() {
     while IFS='|' read -r cid target fuzzer runtime bitmap paths_total paths_fav execs execs_sec \
                           crashes hangs cycles pending stab nodes edges \
                           chat_t llm_calls llm_ptok llm_ctok hyp_cnt hyp_fit \
-                          plat_calls plat_thresh last_upd; do
+                          plat_calls plat_thresh last_upd token_source; do
         local key="${target}::${fuzzer}"
         local bval
         bval=$(echo "$bitmap" | tr -d '%')
@@ -482,7 +506,7 @@ write_csv() {
     
     # 写表头 (仅首次)
     if [[ ! -f "$csv_file" ]]; then
-        echo "timestamp,human_time,container_id,target,fuzzer,runtime_min,bitmap_pct,paths_total,paths_favored,execs_done,execs_per_sec,unique_crashes,unique_hangs,cycles_done,pending_total,stability,ipsm_nodes,ipsm_edges,plateau_calls,llm_total_calls,llm_prompt_tokens,llm_completion_tokens,hypothesis_count,hypothesis_fitness,plateau_threshold,cost_usd,prompt_per_24h,compl_per_24h,cost_per_24h" \
+        echo "timestamp,human_time,container_id,target,fuzzer,runtime_min,bitmap_pct,paths_total,paths_favored,execs_done,execs_per_sec,unique_crashes,unique_hangs,cycles_done,pending_total,stability,ipsm_nodes,ipsm_edges,plateau_calls,llm_total_calls,llm_prompt_tokens,llm_completion_tokens,hypothesis_count,hypothesis_fitness,plateau_threshold,cost_usd,prompt_per_24h,compl_per_24h,cost_per_24h,token_source" \
             > "$csv_file"
     fi
 
@@ -490,7 +514,7 @@ write_csv() {
         IFS='|' read -r cid target fuzzer runtime bitmap paths_total paths_fav execs execs_sec \
                        crashes hangs cycles pending stab nodes edges \
                        chat_t llm_calls llm_ptok llm_ctok hyp_cnt hyp_fit \
-                       plat_calls plat_thresh last_upd <<< "$line"
+                       plat_calls plat_thresh last_upd token_source <<< "$line"
         
         local bval
         bval=$(echo "$bitmap" | tr -d '%')
@@ -507,7 +531,7 @@ write_csv() {
         _csv_ctok24=$(awk "BEGIN{ r=${_csv_rmin:-0}; if(r>0) printf \"%.0f\", ${_csv_ctok:-0}/r*1440; else print 0}")
         _csv_cost24=$(awk "BEGIN{ r=${_csv_rmin:-0}; if(r>0) printf \"%.6f\", (${_csv_ptok:-0}*0.15+${_csv_ctok:-0}*0.60)/1000000/r*1440; else print 0}")
         
-        echo "${ts},${human_ts},${cid:0:12},${target},${fuzzer},${runtime},${bval},${paths_total},${paths_fav},${execs},${execs_sec},${crashes},${hangs},${cycles},${pending},${stab_val},${nodes},${edges},${plat_calls:-},${llm_calls:-},${llm_ptok:-},${llm_ctok:-},${hyp_cnt:-},${hyp_fit:-},${plat_thresh:-},${_csv_cost},${_csv_ptok24},${_csv_ctok24},${_csv_cost24}" \
+        echo "${ts},${human_ts},${cid:0:12},${target},${fuzzer},${runtime},${bval},${paths_total},${paths_fav},${execs},${execs_sec},${crashes},${hangs},${cycles},${pending},${stab_val},${nodes},${edges},${plat_calls:-},${llm_calls:-},${llm_ptok:-},${llm_ctok:-},${hyp_cnt:-},${hyp_fit:-},${plat_thresh:-},${_csv_cost},${_csv_ptok24},${_csv_ctok24},${_csv_cost24},${token_source:-}" \
             >> "$csv_file"
     done
 

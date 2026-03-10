@@ -122,34 +122,46 @@ do
     done
     
     # ─── LLM Token Cost Extraction ──────────────────────────────────
-    local llm_csv="llm_cost.csv"
-    echo "fuzzer,run,runtime_min,llm_calls,prompt_tokens,completion_tokens,dedup_hits,cost_usd,prompt_per_24h,compl_per_24h,cost_per_24h" > "$llm_csv"
-    local _llm_has_data=0
+    # token_source: "exact" = from fuzzer_stats (chatafl-opt/cl1/cl2)
+    #               "estimated" = bytes/4 from stall-interactions files (chatafl baseline)
+    llm_csv="llm_cost.csv"
+    echo "fuzzer,run,runtime_min,llm_calls,prompt_tokens,completion_tokens,dedup_hits,cost_usd,prompt_per_24h,compl_per_24h,cost_per_24h,token_source" > "$llm_csv"
+    _llm_has_data=0
     for _LF in $FUZZERS; do
         for _LR in $(seq 1 $REPS); do
-            local _ltarf="out-${ORIGINAL_SUBJECT}-${_LF}_${_LR}.tar.gz"
+            _ltarf="out-${ORIGINAL_SUBJECT}-${_LF}_${_LR}.tar.gz"
             [[ ! -f "$_ltarf" ]] && continue
-            local _lstats
             _lstats=$(tar -xzOf "$_ltarf" --wildcards "*/fuzzer_stats" 2>/dev/null || true)
             [[ -z "$_lstats" ]] && continue
-            local _lst _llu _lcalls _lptok _lctok _ldedup
-            _lst=$(echo "$_lstats"   | grep -m1 '^start_time'        | sed 's/.*: *//' | tr -d '[:space:]')
-            _llu=$(echo "$_lstats"   | grep -m1 '^last_update'       | sed 's/.*: *//' | tr -d '[:space:]')
-            _lcalls=$(echo "$_lstats" | grep -m1 '^llm_total_calls'  | sed 's/.*: *//' | tr -d '[:space:]')
+            _lst=$(echo "$_lstats"    | grep -m1 '^start_time'         | sed 's/.*: *//' | tr -d '[:space:]')
+            _llu=$(echo "$_lstats"    | grep -m1 '^last_update'        | sed 's/.*: *//' | tr -d '[:space:]')
+            _lcalls=$(echo "$_lstats" | grep -m1 '^llm_total_calls'    | sed 's/.*: *//' | tr -d '[:space:]')
             _lptok=$(echo "$_lstats"  | grep -m1 '^llm_prompt_tokens'  | sed 's/.*: *//' | tr -d '[:space:]')
             _lctok=$(echo "$_lstats"  | grep -m1 '^llm_completion_tok' | sed 's/.*: *//' | tr -d '[:space:]')
-            _ldedup=$(echo "$_lstats" | grep -m1 '^llm_dedup_hits'   | sed 's/.*: *//' | tr -d '[:space:]')
-            [[ -z "$_lcalls" ]] && continue
+            _ldedup=$(echo "$_lstats" | grep -m1 '^llm_dedup_hits'     | sed 's/.*: *//' | tr -d '[:space:]')
+            _token_source="exact"
+
+            # Fallback: estimate from stall-interactions files (chatafl baseline has no llm_* in fuzzer_stats)
+            if [[ -z "$_lcalls" ]]; then
+                _lcalls=$(tar -tzf "$_ltarf" 2>/dev/null | grep -c "stall-interactions/prompt-" || true)
+                [[ "${_lcalls:-0}" -eq 0 ]] && continue
+                _ptot_bytes=$(tar -xzOf "$_ltarf" --wildcards "*/stall-interactions/prompt-*" 2>/dev/null | wc -c)
+                _ctot_bytes=$(tar -xzOf "$_ltarf" --wildcards "*/stall-interactions/response-*" 2>/dev/null | wc -c)
+                _lptok=$(( _ptot_bytes / 4 ))
+                _lctok=$(( _ctot_bytes / 4 ))
+                _ldedup=0
+                _token_source="estimated"
+            fi
+
             _lptok="${_lptok:-0}"; _lctok="${_lctok:-0}"
-            local _lrmin=0
+            _lrmin=0
             [[ -n "$_lst" && -n "$_llu" ]] && _lrmin=$(( (_llu - _lst) / 60 ))
             # gpt-4o-mini: $0.15/1M prompt, $0.60/1M completion
-            local _lcost _lptok24 _lctok24 _lcost24
             _lcost=$(awk   "BEGIN{printf \"%.6f\", (${_lptok}*0.15+${_lctok}*0.60)/1000000}")
             _lptok24=$(awk "BEGIN{ r=${_lrmin}; if(r>0) printf \"%.0f\", ${_lptok}/r*1440; else print 0}")
             _lctok24=$(awk "BEGIN{ r=${_lrmin}; if(r>0) printf \"%.0f\", ${_lctok}/r*1440; else print 0}")
             _lcost24=$(awk "BEGIN{ r=${_lrmin}; if(r>0) printf \"%.6f\", (${_lptok}*0.15+${_lctok}*0.60)/1000000/r*1440; else print 0}")
-            echo "${_LF},${_LR},${_lrmin},${_lcalls:-0},${_lptok},${_lctok},${_ldedup:-0},${_lcost},${_lptok24},${_lctok24},${_lcost24}" >> "$llm_csv"
+            echo "${_LF},${_LR},${_lrmin},${_lcalls:-0},${_lptok},${_lctok},${_ldedup:-0},${_lcost},${_lptok24},${_lctok24},${_lcost24},${_token_source}" >> "$llm_csv"
             _llm_has_data=1
         done
     done
