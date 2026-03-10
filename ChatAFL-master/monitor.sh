@@ -86,6 +86,7 @@ get_stat() {
 #   单层: /home/ubuntu/experiments/out-<target>-<fuzzer>          (mosquitto等)
 #   两层: /home/ubuntu/experiments/<target>/out-<target>-<fuzzer> (exim/proftpd等)
 #   三层: /home/ubuntu/experiments/<a>/<b>/out-<target>-<fuzzer>  (live555: live/testProgs/out-live555-*)
+#   四层: /home/ubuntu/experiments/<a>/<b>/<c>/out-<target>-<fuzzer> (lightftp: LightFTP/Source/Release/out-lightftp-*)
 detect_outdir() {
     local cid="$1"
     docker exec "$cid" bash -c '
@@ -95,6 +96,9 @@ detect_outdir() {
         fi
         if [ -z "$d" ]; then
             d=$(ls -d /home/ubuntu/experiments/*/*/out-* 2>/dev/null | head -1)
+        fi
+        if [ -z "$d" ]; then
+            d=$(ls -d /home/ubuntu/experiments/*/*/*/out-* 2>/dev/null | head -1)
         fi
         echo "$d"
     ' 2>/dev/null || echo ""
