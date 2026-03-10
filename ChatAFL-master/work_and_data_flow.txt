@@ -10,7 +10,7 @@ ChatAFL（基线）与 ChatAFL-Opt 的工作流、本质与底层逻辑
 
 第三阶段：变异与执行
 
-选定种子后，模糊测试器对其进行比特翻转、算术运算、字典替换、拼接等标准 AFL 变异操作。每次变异后，通过 send_over_network 函数将变异后的数据包序列发送给目标服务器，然后通过共享内存读取覆盖率位图，通过 IPSM 状态机记录协议状态转移。send_over_network 函数内部有两个关键的 while(1) 循环：第一个循环在发送完所有数据包后反复检查覆盖率位图是否稳定，只要发现新的覆盖位就继续等待；第二个循环在检测到子进程退出后反复检查进程是否真正终止。这两个循环都没有设置上限，意味着如果目标服务器响应异常缓慢或者进程卡住，模糊测试器会无限期地阻塞在这里。一旦 send_over_network 决定终止子进程，它发送 SIGKILL 信号，但在 Fix-14a 之前的版本中，SIGKILL 导致的非正常退出会被误判为 FAULT_CRASH，污染崩溃统计数据。
+选定种子后，模糊测试器对其进行比特翻转、算术运算、字典替换、拼接等标准 AFL 变异操作。每次变异后，通过 send_over_network 函数将变异后的数据包序列发送给目标服务器，然后通过共享内存读取覆盖率位图，通过 IPSM 状态机记录协议状态转移。send_over_network 函数内部有两个关键的 while(1) 循环：第一个循环在发送完所有数据包后反复检查覆盖率位图是否稳定，只要发现新的覆盖位就继续等待；第二个循环在检测到子进程退出后反复检查进程是否真正终止。这两个循环都没有设置上限，意味着如果目标服务器响应异常缓慢或者进程卡住，模糊测试器会无限期地阻塞在这里。一旦 send_over_network 决定终止子进程，它发送 SIGKILL 信号，而 SIGKILL 导致的非正常退出会被误判为 FAULT_CRASH——这是基线执行层的一个结构性缺陷，直接污染崩溃统计数据。
 
 第四阶段：停滞检测与 LLM 介入
 
@@ -29,25 +29,17 @@ ChatAFL 的 LLM 集成本质上是一个"定时触发的盲目翻译器"。它�
 二、ChatAFL-Opt 的完整工作流
 第一阶段：初始化（延迟加载设计）
 
-程序启动时，同样完成参数解析、共享内存、fork server 和 IPSM 的初始化。但与基线不同，Opt 在此阶段初始化了一系列额外的全局变量：child_force_killed 标志位（用于 Fix-14a 的 SIGKILL 误报修正）、last_edges_count 和 edges_growth_rate（用于自适应阈值计算）、adaptive_plateau_threshold（初始值 100）、以及假设系统的全局句柄指针（初始值 NULL）。关键的设计决策是"延迟初始化"：grammar-hypothesis、rfc-knowledge、hypothesis-adapter 等重量级模块不在启动时加载，而是推迟到第一次 LLM 交互时才初始化。这样做的好处是避免在模糊测试的前期探索阶段（此时新发现频繁，不需要 LLM 帮助）浪费资源。config.h 中 UNINTERESTING_THRESHOLD 设为 100（而非 512），但实际运行中这个值会被自适应机制动态覆盖。
+程序启动时，同样完成参数解析、共享内存、fork server 和 IPSM 的初始化。但与基线不同，Opt 在此阶段初始化了一系列额外的全局变量：child_force_killed 标志位（用于在进程被强制终止时准确区分退出原因，避免将强制终止误判为崩溃）、last_edges_count 和 edges_growth_rate（用于自适应阈值计算）、adaptive_plateau_threshold（初始值 100）、以及假设系统的全局句柄指针（初始值 NULL）。关键的设计决策是"延迟初始化"：grammar-hypothesis、rfc-knowledge、hypothesis-adapter 等重量级模块不在启动时加载，而是推迟到第一次 LLM 交互时才初始化。这样做的好处是避免在模糊测试的前期探索阶段（此时新发现频繁，不需要 LLM 帮助）浪费资源。config.h 中 UNINTERESTING_THRESHOLD 设为 100（而非 512），但实际运行中这个值会被自适应机制动态覆盖。
 
 第二阶段：种子选择与前沿加权
 
-Opt 的种子评分公式在基线的基础上增加了一个"前沿加权因子"（frontier bonus）。评分过程首先计算基线的基础得分，然后查询当前种子所属状态在 IPSM 图中的出度（out_degree），即从该状态出发有多少条已知的状态转移边。如果出度小于等于 1，说明这个状态几乎没有被探索，是真正的"前沿"，得分乘以 4 倍加权（实际效果是大幅提高被选中概率）。如果出度在 2 到 3 之间，得分乘以 2 倍。如果出度大于等于 4，说明该状态已经连接了较多的转移路径，不再给予额外加权。如果状态尚未出现在 IPSM 图中（全新节点），直接给予最高 4 倍加权。这是 Fix-5（前沿探索）的核心逻辑。
+Opt 的种子评分公式在基线的基础上增加了一个"前沿加权因子"（frontier bonus）。评分过程首先计算基线的基础得分，然后查询当前种子所属状态在 IPSM 图中的出度（out_degree），即从该状态出发有多少条已知的状态转移边。如果出度小于等于 1，说明这个状态几乎没有被探索，是真正的"前沿"，得分乘以 4 倍加权（实际效果是大幅提高被选中概率）。如果出度在 2 到 3 之间，得分乘以 2 倍。如果出度大于等于 4，说明该状态已经连接了较多的转移路径，不再给予额外加权。如果状态尚未出现在 IPSM 图中（全新节点），直接给予最高 4 倍加权。这是前沿优先调度策略的核心逻辑：出度越低说明向外扩展的空间越大，模糊测试器应把有限的执行预算优先投入这些"探索前线"。
 
-Fix-19（可接受性惩罚）在出度加权的基础上对错误响应状态进行进一步修正，分三层处理：
-
-  • error_hint=1（结构性错误状态，服务器返回 4xx/5xx，尚未证明有探索价值）：frontier_bonus × 0.25，将最高 4.0 倍压至 1.0，避免错误死端垄断调度资源。
-
-  • error_hint=0（响应类型未知，如 MQTT 等二进制协议）且行为性无效（该状态已被选中 ≥ 20 次但 productivity < 0.01）：frontier_bonus × 0.5，施加较温和的数据驱动惩罚。
-
-  • error_hint=2（尽管返回错误码但已确认具有探索价值）：不施加任何惩罚，保留完整加权。
-
-最终得分 = base × frontier_bonus（应用所有修正后的乘积）。这个机制的底层逻辑是：在协议模糊测试中，状态空间的边界（低出度节点）最有可能隐藏未发现的转移和代码路径，应该被优先探索，但已知的错误死端不应占用过多资源。这解释了为什么实验数据中 Opt 的边覆盖率提升如此显著（10 个目标全部获胜，平均提升 50.5%）——前沿加权直接引导模糊测试器去发现新的状态转移边。
+在出度加权的基础上，调度器还引入了可接受性修正层，依据服务器响应质量对前沿加权因子做最终校正。每个状态维护一个 `error_hint` 字段，由 `classify_state_error_hint()` 在状态创建时依据服务器首次响应设置，并随执行持续更新：若服务器明确返回 4xx/5xx，状态被标记为 `error_hint=1`，其 `frontier_bonus` 缩减至 0.25 倍——将最高 4.0 倍的前沿奖励压低至与普通已探索状态相当的水平，防止错误死端垄断调度资源；若响应类型无法明确分类（`error_hint=0`，典型如 MQTT 等二进制协议）且该状态已被选中 20 次以上但 `productivity`（新路径发现率）仍低于 0.01，则施加温和的数据驱动惩罚（`frontier_bonus × 0.5`）；一旦某状态确认产出了新路径（`error_hint=2`），惩罚立即解除，完整保留前沿加权。最终得分 = base × `frontier_bonus`（出度加权与可接受性修正的综合乘积）。这个调度设计的底层逻辑是：低出度边界节点最可能隐藏未发现的转移，应被优先探索；但响应特征已明确表明无价值的死端状态，不应持续占用探索预算——两条原则共同驱动了 Opt 边覆盖率的大幅提升（10 个目标全部获胜，平均 +50.5%）。
 
 第三阶段：变异与执行（有界循环 + SIGKILL 修正）
 
-变异操作本身与基线相同，但 send_over_network 函数内部的两个 while(1) 循环被改造为有界循环。覆盖率稳定性等待循环设置了 500 次迭代上限，循环体内无延时调用（busy-loop 检查 has_new_bits），在典型硬件上总耗时约 25–50 毫秒。进程终止确认循环改为：先发送 SIGTERM，然后每 200 微秒轮询一次进程状态，最多等待 50 毫秒（250 次轮询 × 200µs）；若进程在 50 毫秒内仍未退出，则升级为 SIGKILL 强制终止。这消除了主循环因异常服务器响应而无限阻塞的风险。同时，Fix-14a 的修正确保：当 child_force_killed 标志被设置（即进程是被 SIGKILL 强制终止的），即使 waitpid 返回的状态表明异常退出，也将结果标记为 FAULT_NONE 而非 FAULT_CRASH，避免污染崩溃统计。
+变异操作本身与基线相同，但 send_over_network 函数内部的两个 while(1) 循环被改造为有界循环。覆盖率稳定性等待循环设置了 500 次迭代上限，循环体内无延时调用（busy-loop 检查 has_new_bits），在典型硬件上总耗时约 25–50 毫秒。进程终止确认循环改为：先发送 SIGTERM，然后每 200 微秒轮询一次进程状态，最多等待 50 毫秒（250 次轮询 × 200µs）；若进程在 50 毫秒内仍未退出，则升级为 SIGKILL 强制终止。这消除了主循环因异常服务器响应而无限阻塞的风险。同时，通过 `child_force_killed` 标志确保执行结果的准确性：当进程是被强制终止的，即使 waitpid 返回的状态表明异常退出，也将结果标记为 FAULT_NONE 而非 FAULT_CRASH——与基线中强制终止被误判为崩溃的行为形成直接对比，从源头保证崩溃统计数据的可信度。
 
 第四阶段：自适应停滞检测
 
@@ -59,7 +51,7 @@ Opt 不使用固定的停滞阈值，而是每 60 秒（wall-clock 时间，由 
 
 首先是延迟初始化检查：如果假设系统（grammar-hypothesis）尚未初始化，在此时完成初始化，包括加载 RFC 知识库和创建假设适配器。
 
-然后是状态上下文构造：在 IPSM 图上为每个状态收集以下字段并编码为 JSON——状态编号（id）、关联路径总数（paths）、已发现的唯一新路径数（paths_discovered）、被选中次数（selected_times）、变异执行次数（fuzzs）、种子池大小（seeds_count）、是否为错误状态（is_error，取自 Fix-19 的 error_hint 字段）、生产率（productivity）、以及从该状态可达的最多 5 个种子索引（seed_ids）。state_ctx 对象还包含全局字段：当前 IPSM 节点数/边数、边增长率（growth_rate）、pending_favored、queued_paths、当前 LLM 调用次数（chat_times）和目标状态 ID（target_state_id）。各状态按"探索效率"（paths_discovered ÷ (selected_times + 1)）升序排序（最卡住的状态排在最前），最多输出 8 个状态，提示 LLM 重点关注这些"瓶颈"状态。
+然后是状态上下文构造：在 IPSM 图上为每个状态收集以下字段并编码为 JSON——状态编号（id）、关联路径总数（paths）、已发现的唯一新路径数（paths_discovered）、被选中次数（selected_times）、变异执行次数（fuzzs）、种子池大小（seeds_count）、是否为错误状态（is_error，源自调度层的 error_hint 字段）、生产率（productivity）、以及从该状态可达的最多 5 个种子索引（seed_ids）。state_ctx 对象还包含全局字段：当前 IPSM 节点数/边数、边增长率（growth_rate）、pending_favored、queued_paths、当前 LLM 调用次数（chat_times）和目标状态 ID（target_state_id）。各状态按"探索效率"（paths_discovered ÷ (selected_times + 1)）升序排序（最卡住的状态排在最前），最多输出 8 个状态，提示 LLM 重点关注这些"瓶颈"状态。
 
 提示词构造使用 json-c 库构建结构化的 JSON 消息，而非手工拼接字符串。提示词的内容远比基线丰富：包含协议名称、当前 IPSM 的节点总数和边总数、上述排序后的状态详细信息、以及明确的指令——要求 LLM 以两种策略之一回复：策略 A 是 suggested_request（建议一个具体的消息序列来探索某个低效率状态），策略 B 是 actions 数组，包含以下结构化操作类型：set_target_state（将目标状态 ID 重定向到指定状态）、prioritize_seeds（将指定种子索引标记为 favored 并更新所有状态的种子选择指针）、propose_mutations（对指定种子的指定字节偏移执行 insert/replace/flip 操作，生成候选并立即通过 common_fuzz_stuff 提交执行）。主路径调用 llm_handle_plateau() 函数（state_ctx 非空时走富提示词路径）；消融实验路径（ablation_no_state_prompt=1）退化为 ChatAFL 原始 construct_prompt_stall_original 提示词，此时 temperature 显式设为 1.2。
 
@@ -68,6 +60,8 @@ Opt 不使用固定的停滞阈值，而是每 60 秒（wall-clock 时间，由 
 LLM 调用使用 fork 隔离：主进程 fork 一个子进程来执行 HTTP 请求，子进程将结果写入临时文件（out_dir/stall-interactions/llm-suggest-N），并同步写入 .tokens sidecar 文件记录本次调用的 token 消耗（用于 fuzzer_stats 的 llm_prompt_tokens / llm_completion_tokens 累计）。主进程在 waitpid 返回后读取结果文件。如果子进程在 150 秒内没有返回，主进程杀掉子进程并继续运行。这意味着即使 LLM 服务出现超时或故障，模糊测试主循环最多阻塞 150 秒而不会无限挂起。
 
 响应解析使用 llm-validator 模块进行严格的 JSON 模式验证。验证器检查返回的 JSON 是否包含预期的字段名和类型，拒绝不合规的响应。通过验证后，按照操作类型分别处理：set_target_state 操作将全局 target_state_id 重定向到 LLM 指定的状态；prioritize_seeds 操作将指定种子标记为 favored（同时更新所有包含该种子的状态的 selected_seed_index 指针，确保 set_target_state 重定向后仍能生效）；propose_mutations 操作读取指定种子文件，依次对每个操作（insert/replace/flip）生成变异副本并立即通过 common_fuzz_stuff 提交执行和覆盖率采集；suggest_strategy 操作当前为 noop（保留扩展入口）。如果 LLM 返回的是 suggested_request，则直接将该消息序列转换为种子加入队列。
+
+plateau handler 还承担文法假设的周期性精炼职责，形成与停滞介入流程的协同闭环。在日常模糊执行中（common_fuzz_stuff()），系统每 500 次执行对当前 region 覆盖到的文法假设做一次轻量采样验证：复用已有的 extract_requests() 解析结果（零额外解析开销），对实际执行路径上的约束（正则、数值范围、枚举值）逐一检验，若失败则每 10 次收集一个反例（counterexample），全程性能开销低于 0.01%。当下一次 plateau handler 触发时，除了向 LLM 请求状态探索建议外，还会扫描各假设的 fitness 分数：若某假设 fitness 低于 0.7 且已积累 3 个以上反例，则将反例附带到提示词中发起假设精炼请求，由 LLM 修正约束规则，精炼结果重新集成到 IPSM 模式匹配。这构成了 Opt 文法假设系统的完整闭环：文法充实→假设生成→连续采样验证→反例积累→plateau 精炼→假设更新，与基线文法充实只有单向输入、无反馈校正的流程形成根本区别。
 
 第六阶段：并行协议文法充实
 
@@ -100,37 +94,6 @@ ChatAFL-Opt 是一个自适应闭环控制系统。它有三个可观测量：�
 
 吞吐量不受损（部分目标甚至提升），因为并行充实和 fork 隔离的 LLM 调用大幅减少了主循环的阻塞时间，有界循环消除了异常阻塞风险。
 
-==========
-Fix-15: 两层假设验证机制 (Two-Tier Hypothesis Validation)
-==========
-背景问题：
-  Fix-9b 为了修复 27% 吞吐量回归，将 validate_and_refine_hypotheses() 从 common_fuzz_stuff()
-  热路径中完全移除（__attribute__((unused))）。这导致"假设→验证→反例→精炼"闭环断裂。
-
-解决方案（Fix-15）：
-  用两层采样架构代替原来的 per-execution 全量验证：
-
-  Tier-1（采样验证）：在 common_fuzz_stuff() 中每 500 次执行做一次验证
-    - 复用已有的 extract_requests() 解析结果（零额外解析开销）
-    - 每次最多扫描 8 个 region × N 个假设的约束
-    - 性能开销：25000/500 = 50 次/秒 × ~1µs = <0.01%
-    - 失败时每 10 次收集一个反例（counterexample）
-
-  Tier-2（周期性精炼）：在 plateau handler 中每 5000 次验证检查一次
-    - 如果某假设 fitness < 0.7 且反例 ≥ 3 个，触发 LLM 精炼
-    - 每次最多精炼一个假设（限制延迟）
-    - 精炼后自动重新集成到 IPSM 模式匹配
-
-  约束检查修复：
-    - CONSTRAINT_REGEX：实现 PCRE2 编译匹配（之前为 placeholder return 1）
-    - CONSTRAINT_NUMERIC：实现 strtoll 范围检查（之前为 placeholder return 1）
-    - CONSTRAINT_ENUM：修复为精确长度+大小写不敏感匹配
-
-闭环数据流：
-  common_fuzz_stuff() → [每500次] validate_hypothesis_sampled()
-    → 更新 fitness / 收集 counterexample
-  plateau_handler → [每5000次验证] periodic_hypothesis_refinement()
-    → LLM refine → 更新 schema/constraints → 重新集成到 IPSM
 
 
 
