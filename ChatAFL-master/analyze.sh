@@ -122,8 +122,33 @@ do
     done
     
     # ─── LLM Token Cost Extraction ──────────────────────────────────
-    # token_source: "exact" = from fuzzer_stats (chatafl-opt/cl1/cl2)
-    #               "estimated" = bytes/4 from stall-interactions files (chatafl baseline)
+    # token_source:
+    #   "exact"    — from fuzzer_stats llm_prompt_tokens / llm_completion_tok
+    #                Both chatafl and chatafl-opt now write these fields,
+    #                covering ALL LLM call sites: grammar, enrichment, and
+    #                stall/plateau.  Sourced from the API "usage" object.
+    #   "tiktoken" — LEGACY fallback: precise stall-only token count via
+    #                tiktoken (o200k_base) on stall-interactions/ files.
+    #                Used for OLD chatafl data that lacks fuzzer_stats fields.
+    #                WARNING: this only counts stall calls, NOT grammar or
+    #                enrichment — treat as a lower bound.
+    _COUNT_TOKENS_PY="$PFBENCH/scripts/analysis/count_llm_tokens.py"
+
+    # Find a python3 with tiktoken available (sudo may strip PATH)
+    _TIKPY=""
+    for _pycandidate in python3 \
+        /home/*/miniconda3/bin/python3 \
+        /home/*/.conda/bin/python3 \
+        /home/*/anaconda3/bin/python3 \
+        /opt/conda/bin/python3; do
+        if command -v $_pycandidate &>/dev/null 2>&1 || [[ -x "$_pycandidate" ]]; then
+            if $_pycandidate -c "import tiktoken" 2>/dev/null; then
+                _TIKPY="$_pycandidate"
+                break
+            fi
+        fi
+    done
+
     llm_csv="llm_cost.csv"
     echo "fuzzer,run,runtime_min,llm_calls,prompt_tokens,completion_tokens,dedup_hits,cost_usd,prompt_per_24h,compl_per_24h,cost_per_24h,token_source" > "$llm_csv"
     _llm_has_data=0
@@ -141,16 +166,26 @@ do
             _ldedup=$(echo "$_lstats" | grep -m1 '^llm_dedup_hits'     | sed 's/.*: *//' | tr -d '[:space:]')
             _token_source="exact"
 
-            # Fallback: estimate from stall-interactions files (chatafl baseline has no llm_* in fuzzer_stats)
+            # Fallback: tiktoken-based counting from stall-interactions/ files
+            # (LEGACY: old chatafl data without llm_* in fuzzer_stats)
+            # WARNING: tiktoken only counts stall calls — missing grammar
+            # (~10 calls) and enrichment (variable) — this is a LOWER BOUND.
             if [[ -z "$_lcalls" ]]; then
-                _lcalls=$(tar -tzf "$_ltarf" 2>/dev/null | grep -c "stall-interactions/prompt-" || true)
-                [[ "${_lcalls:-0}" -eq 0 ]] && continue
-                _ptot_bytes=$(tar -xzOf "$_ltarf" --wildcards "*/stall-interactions/prompt-*" 2>/dev/null | wc -c)
-                _ctot_bytes=$(tar -xzOf "$_ltarf" --wildcards "*/stall-interactions/response-*" 2>/dev/null | wc -c)
-                _lptok=$(( _ptot_bytes / 4 ))
-                _lctok=$(( _ctot_bytes / 4 ))
-                _ldedup=0
-                _token_source="estimated"
+                if [[ -n "$_TIKPY" && -f "$_COUNT_TOKENS_PY" ]]; then
+                    _tik_out=$("$_TIKPY" "$_COUNT_TOKENS_PY" "$_ltarf" 2>/dev/null || true)
+                    if [[ -n "$_tik_out" ]]; then
+                        _lcalls=$(echo "$_tik_out" | awk '{print $1}')
+                        _lptok=$(echo "$_tik_out" | awk '{print $2}')
+                        _lctok=$(echo "$_tik_out" | awk '{print $3}')
+                        _ldedup=0
+                        _token_source="tiktoken_stall_only"
+                    fi
+                fi
+                # If tiktoken unavailable, skip this archive
+                if [[ -z "$_lcalls" || "${_lcalls:-0}" -eq 0 ]]; then
+                    warn "Skipping $_ltarf: no llm_* in fuzzer_stats and tiktoken unavailable (pip install tiktoken)"
+                    continue
+                fi
             fi
 
             _lptok="${_lptok:-0}"; _lctok="${_lctok:-0}"

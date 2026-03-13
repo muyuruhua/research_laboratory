@@ -29,6 +29,10 @@ cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && e
 
 cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 10 1470 pure-ftpd,mosquitto,live555 chatafl,chatafl-opt,aflnet
 
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 5 1470 kamailio,proftpd chatafl,chatafl-opt,aflnet
+
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 3 1470 proftpd chatafl
+
 cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export CHATAFL_NO_REFINEMENT=1 && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 5 1470 exim chatafl-opt
 
 cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export CHATAFL_NO_FRONTIER=1 && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 5 1470 exim chatafl-opt
@@ -225,6 +229,62 @@ docker run ... ${ABLATION_FLAGS} ...
 | **inspect 元数据** | `docker inspect <id> --format '{{.Config.Env}}'` | ❌ 不依赖 |
 
 当前 20 个容器虽然没有日志 banner，但 `docker exec env` 始终能查到消融配置。下次新启动的容器两种方法都能用。
+
+
+
+
+
+两条命令，分别在两个终端中运行：
+
+**终端 1 — exim：**
+```bash
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master
+export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS"
+export SKIPCOUNT=40
+sudo -E ./run_ablation.sh exim 5 1470
+```
+
+**终端 2 — pure-ftpd：**
+```bash
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master
+export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS"
+export SKIPCOUNT=40
+sudo -E ./run_ablation.sh pure-ftpd 5 1470
+```
+
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master
+export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS"
+export SKIPCOUNT=40
+sudo -E ./run_ablation.sh proftpd 5 1470
+
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master
+export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS"
+export SKIPCOUNT=40
+sudo -E ./run_ablation.sh kamailio 5 1470
+
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master
+export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS"
+export SKIPCOUNT=40
+sudo -E ./run_ablation.sh mosquitto 5 1470
+
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master
+export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS"
+export SKIPCOUNT=40
+sudo -E ./run_ablation.sh live555 5 1470
+
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master
+export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS"
+export SKIPCOUNT=40
+sudo -E ./run_ablation.sh forked-daapd 5 1470
+
+每个协议会启动 7 组 × 5 容器 = 35 个容器，两个共 70 个新容器。加上现有 32 个 = 102 个，预估 CPU 约 64%，内存约 7 GiB，完全安全。
+
+**注意事项：**
+- 必须在**两个不同终端**中运行，因为脚本会 `wait` 等待所有子进程
+- `sudo -E` 保证 `KEY`、`SKIPCOUNT` 环境变量传入
+- 结果目录会分别命名为 `benchmark/results-exim_ablation_<label>/` 和 `benchmark/results-pure-ftpd_ablation_<label>/`
+- 完成后用 `sudo ./analyze.sh exim 1470` 和 `sudo ./analyze.sh pure-ftpd 1470` 分析
+
 
 模糊测试器里有没有对大模型单独 throughput / token cost 表或者数据？
 

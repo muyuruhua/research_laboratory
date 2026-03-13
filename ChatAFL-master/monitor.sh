@@ -14,6 +14,12 @@
 # 原理:
 #   通过 docker exec 只读读取容器内 fuzzer_stats / plot_data / ipsm.dot
 #   仅使用 cat / grep / wc 等轻量命令，不影响容器内模糊测试进程
+#
+# LLM 统计说明（2026-03 起）:
+#   monitor.sh 优先且仅使用 fuzzer_stats 内的 llm_* 字段，
+#   这些字段来自 API usage（prompt_tokens/completion_tokens）精确值。
+#   若容器尚未写出 fuzzer_stats 或缺少 llm_* 字段，则显示为 missing，
+#   不再使用 bytes/4 近似估算，避免误导。
 # ============================================================================
 
 set -euo pipefail
@@ -265,23 +271,9 @@ collect_one() {
     plateau_calls=${plateau_calls:-"-"}
     plateau_threshold=${plateau_threshold:-"-"}
 
-    # Fallback: chatafl baseline has no llm_* in fuzzer_stats → estimate from stall-interactions
-    local token_source="-"
-    if [[ "$llm_total_calls" == "-" ]]; then
-        local _si_dir="${outdir}/stall-interactions"
-        local _si_calls
-        _si_calls=$(docker exec "$cid" bash -c "ls \"${_si_dir}/prompt-\"* 2>/dev/null | wc -l" 2>/dev/null || echo "0")
-        _si_calls="${_si_calls//[^0-9]/}"
-        if [[ "${_si_calls:-0}" -gt 0 ]]; then
-            local _si_pbytes _si_cbytes
-            _si_pbytes=$(docker exec "$cid" bash -c "cat \"${_si_dir}/prompt-\"* 2>/dev/null | wc -c" 2>/dev/null || echo "0")
-            _si_cbytes=$(docker exec "$cid" bash -c "cat \"${_si_dir}/response-\"* 2>/dev/null | wc -c" 2>/dev/null || echo "0")
-            llm_total_calls="$_si_calls"
-            llm_prompt_tokens=$(( ${_si_pbytes//[^0-9]/} / 4 ))
-            llm_completion_tok=$(( ${_si_cbytes//[^0-9]/} / 4 ))
-            token_source="est"
-        fi
-    else
+    # token source: exact (API usage) or missing (no llm_* yet)
+    local token_source="missing"
+    if [[ "$llm_total_calls" != "-" && "$llm_prompt_tokens" != "-" && "$llm_completion_tok" != "-" ]]; then
         token_source="exact"
     fi
 
@@ -390,9 +382,9 @@ print_table() {
 
     if [[ $has_llm -eq 1 ]]; then
         echo -e "${BOLD}  🤖 LLM / Token Cost (gpt-4o-mini: \$0.15/1M prompt, \$0.60/1M compl):${RST}"
-        printf "  ${DIM}%-14s %-12s %8s %11s %11s %9s %8s %11s %8s %8s %5s${RST}\n" \
+        printf "  ${DIM}%-14s %-12s %8s %11s %11s %9s %8s %11s %8s %8s %7s${RST}\n" \
             "FUZZER" "CID" "LLM#" "Prompt_Tok" "Compl_Tok" "Cost(\$)" "\$/24h" "Tok/24h" "Plateau" "Fitness" "Src"
-        echo -e "  ${DIM}$(printf '─%.0s' {1..122})${RST}"
+        echo -e "  ${DIM}$(printf '─%.0s' {1..124})${RST}"
 
         while IFS='|' read -r cid target fuzzer runtime bitmap paths_total paths_fav execs execs_sec \
                               crashes hangs cycles pending stab nodes edges \
@@ -416,12 +408,8 @@ print_table() {
             _tok_per_24h=$(awk "BEGIN{ r=${_rmin:-0}; if(r>0) printf \"%.0f\", (${_ptok:-0}+${_ctok:-0})/r*1440; else print \"-\"}")
             _cost_per_24h=$(awk "BEGIN{ r=${_rmin:-0}; if(r>0) printf \"%.4f\", (${_ptok:-0}*0.15+${_ctok:-0}*0.60)/1000000/r*1440; else print \"-\"}")
 
-            # ~ prefix for estimated (bytes/4) values
-            local _disp_ptok="$llm_ptok" _disp_ctok="$llm_ctok"
-            [[ "$token_source" == "est" ]] && _disp_ptok="~${llm_ptok}" && _disp_ctok="~${llm_ctok}"
-
-            printf "  ${fc}%-14s${RST} %-12s %8s %11s %11s %9s %8s %11s %8s %8s %5s\n" \
-                "$fuzzer" "${cid:0:12}" "$llm_calls" "$_disp_ptok" "$_disp_ctok" \
+            printf "  ${fc}%-14s${RST} %-12s %8s %11s %11s %9s %8s %11s %8s %8s %7s\n" \
+                "$fuzzer" "${cid:0:12}" "$llm_calls" "$llm_ptok" "$llm_ctok" \
                 "$_cost_usd" "$_cost_per_24h" "$_tok_per_24h" "$plat_calls" "$hyp_fit" "${token_source:--}"
 
         done <<< "$sorted"

@@ -60,10 +60,11 @@ for i in $(seq 1 $RUNS); do
   # If the host exports CHATAFL_NO_REFINEMENT / NO_FRONTIER / NO_ADAPTIVE,
   # they are forwarded into the container via -e.
   ABLATION_FLAGS=""
-  [[ -n "${CHATAFL_NO_REFINEMENT}" ]]   && ABLATION_FLAGS+=" -e CHATAFL_NO_REFINEMENT=1"
-  [[ -n "${CHATAFL_NO_FRONTIER}" ]]     && ABLATION_FLAGS+=" -e CHATAFL_NO_FRONTIER=1"
-  [[ -n "${CHATAFL_NO_ADAPTIVE}" ]]     && ABLATION_FLAGS+=" -e CHATAFL_NO_ADAPTIVE=1"
-  [[ -n "${CHATAFL_NO_STATE_PROMPT}" ]] && ABLATION_FLAGS+=" -e CHATAFL_NO_STATE_PROMPT=1"
+  [[ -n "${CHATAFL_NO_REFINEMENT}" ]]      && ABLATION_FLAGS+=" -e CHATAFL_NO_REFINEMENT=1"
+  [[ -n "${CHATAFL_NO_FRONTIER}" ]]        && ABLATION_FLAGS+=" -e CHATAFL_NO_FRONTIER=1"
+  [[ -n "${CHATAFL_NO_ADAPTIVE}" ]]        && ABLATION_FLAGS+=" -e CHATAFL_NO_ADAPTIVE=1"
+  [[ -n "${CHATAFL_NO_STATE_PROMPT}" ]]    && ABLATION_FLAGS+=" -e CHATAFL_NO_STATE_PROMPT=1"
+  [[ -n "${CHATAFL_ABLATION_THRESHOLD}" ]] && ABLATION_FLAGS+=" -e CHATAFL_ABLATION_THRESHOLD=${CHATAFL_ABLATION_THRESHOLD}"
 
   # Enable Grammar Hypothesis system only for chatafl-opt
   if [[ "$FUZZER" == "chatafl-opt" ]]; then

@@ -78,10 +78,10 @@ void chat_llm_global_init(void);
 void chat_llm_global_cleanup(void);
 
 /* Per-call token usage filled by chat_with_llm().
- * These are process-local (meaningful in the forked child).  The parent
- * reads them back via a sidecar file written by the child. */
-extern unsigned long long llm_last_prompt_tokens;
-extern unsigned long long llm_last_completion_tokens;
+ * __thread: safe for concurrent enrichment worker threads.
+ * In the forked plateau-handler child, TLS works normally. */
+extern __thread unsigned long long llm_last_prompt_tokens;
+extern __thread unsigned long long llm_last_completion_tokens;
 
 char *chat_with_llm(char *prompt, char *model, int tries, float temperature);
 char *construct_prompt_for_templates(char *protocol_name, char **final_msg);

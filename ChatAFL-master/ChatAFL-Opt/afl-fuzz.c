@@ -568,6 +568,9 @@ void setup_llm_grammars()
     klist_t(gram) *grammar_list = kl_init(gram);
 
     char *templates_answer = chat_with_llm(templates_prompt, "gpt-4o-mini", GRAMMAR_RETRIES, 0.5);
+    llm_total_prompt_tokens += llm_last_prompt_tokens;
+    llm_total_completion_tokens += llm_last_completion_tokens;
+    if (templates_answer != NULL) llm_total_calls++;
     if (templates_answer == NULL)
       goto free_templates_answer;
 
@@ -575,6 +578,9 @@ void setup_llm_grammars()
     char *remaining_prompt = construct_prompt_for_remaining_templates(protocol_name, first_question, templates_answer);
     // printf("remaining prompt is:\n %s\n", remaining_prompt);
     char *remaining_templates = chat_with_llm(remaining_prompt, "gpt-4o-mini", GRAMMAR_RETRIES, 0.5);
+    llm_total_prompt_tokens += llm_last_prompt_tokens;
+    llm_total_completion_tokens += llm_last_completion_tokens;
+    if (remaining_templates != NULL) llm_total_calls++;
     if (remaining_templates == NULL)
       goto free_remaining;
 
@@ -2945,6 +2951,8 @@ typedef struct {
     char *result;                 /* worker writes enriched string, or NULL */
     char *seed_file_name;         /* strdup'd, for output naming */
     int  combo_idx;               /* for output file naming */
+    unsigned long long prompt_tokens;     /* per-task token usage */
+    unsigned long long completion_tokens; /* per-task token usage */
 } enrich_task_t;
 
 typedef struct {
@@ -2964,6 +2972,10 @@ static void *enrich_worker(void *arg) {
 
         enrich_task_t *t = &pool->tasks[idx];
         t->result = enrich_sequence(t->seed_content, t->subset, t->protocol);
+        /* Capture TLS token usage into the task struct (thread-safe: each
+         * thread writes to its own task, llm_last_* are __thread). */
+        t->prompt_tokens     = llm_last_prompt_tokens;
+        t->completion_tokens = llm_last_completion_tokens;
     }
     return NULL;
 }
@@ -3182,6 +3194,15 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
       pthread_join(tids[t], NULL);
     free(tids);
     pthread_mutex_destroy(&pool.lock);
+
+    /* Accumulate per-task token usage into global counters (main thread).
+     * Tokens are always accumulated (even failed calls may have been billed
+     * by the API), but llm_total_calls only counts successful calls. */
+    for (int i = 0; i < n_tasks; i++) {
+      llm_total_prompt_tokens     += tasks[i].prompt_tokens;
+      llm_total_completion_tokens += tasks[i].completion_tokens;
+      if (tasks[i].result != NULL) llm_total_calls++;
+    }
   }
 
   /* ==== Phase 3: process results (main thread only) ==== */
@@ -12199,6 +12220,19 @@ int main(int argc, char **argv)
   if (getenv("CHATAFL_NO_REFINEMENT")) {
     ablation_no_refinement = 1;
     OKF("ABLATION: Tier-2 hypothesis refinement DISABLED");
+    /* Fix-Ablation-2: Warn if CHATAFL_HYPOTHESIS is not set.
+     * Without hypothesis_mode=1, periodic_hypothesis_refinement() returns
+     * immediately at its entry guard — NO_REFINEMENT has zero effect and
+     * Full vs w/o-Refinement runs are behaviorally identical, making the
+     * ablation data meaningless. */
+    if (!getenv("CHATAFL_HYPOTHESIS")) {
+      WARNF("ABLATION: CHATAFL_NO_REFINEMENT set but CHATAFL_HYPOTHESIS not set "
+            "— ablation has NO EFFECT (hypothesis_mode=0). "
+            "Set CHATAFL_HYPOTHESIS=1 to make this ablation valid.");
+      fprintf(stderr,
+              "[ABLATION WARNING] NO_REFINEMENT is a no-op without CHATAFL_HYPOTHESIS=1.\n");
+      fflush(stderr);
+    }
   }
   if (getenv("CHATAFL_NO_FRONTIER")) {
     ablation_no_frontier = 1;
@@ -12206,8 +12240,28 @@ int main(int argc, char **argv)
   }
   if (getenv("CHATAFL_NO_ADAPTIVE")) {
     ablation_no_adaptive = 1;
-    OKF("ABLATION: Adaptive plateau threshold DISABLED (fixed=%u)",
-        UNINTERESTING_THRESHOLD);
+    /* Fix-Ablation-1: Support CHATAFL_ABLATION_THRESHOLD to set a custom
+     * fixed threshold.  Without this, NO_ADAPTIVE always fixes at 100
+     * (Opt's UNINTERESTING_THRESHOLD), which is 5× more frequent than
+     * ChatAFL baseline's 512.  To align with baseline trigger frequency,
+     * use: export CHATAFL_NO_ADAPTIVE=1 CHATAFL_ABLATION_THRESHOLD=512 */
+    char *fixed_thresh_env = getenv("CHATAFL_ABLATION_THRESHOLD");
+    if (fixed_thresh_env) {
+      u32 custom_thresh = (u32)atoi(fixed_thresh_env);
+      if (custom_thresh > 0) {
+        /* Will be applied after adaptive_plateau_threshold is initialized below */
+        setenv("_CHATAFL_RESOLVED_THRESHOLD", fixed_thresh_env, 1);
+        OKF("ABLATION: Adaptive plateau threshold DISABLED (fixed=%u from CHATAFL_ABLATION_THRESHOLD)",
+            custom_thresh);
+      } else {
+        OKF("ABLATION: Adaptive plateau threshold DISABLED (fixed=%u, default)",
+            UNINTERESTING_THRESHOLD);
+      }
+    } else {
+      OKF("ABLATION: Adaptive plateau threshold DISABLED (fixed=%u, default — "
+          "note: ChatAFL baseline uses 512; set CHATAFL_ABLATION_THRESHOLD=512 to align)",
+          UNINTERESTING_THRESHOLD);
+    }
   }
   if (getenv("CHATAFL_NO_STATE_PROMPT")) {
     ablation_no_state_prompt = 1;
@@ -12240,6 +12294,19 @@ int main(int argc, char **argv)
       any_ablation ? "ABLATION RUN" : "FULL (no ablation)",
       getenv("CHATAFL_HYPOTHESIS") ? "enabled" : "disabled",
       getenv("AFL_ENABLE_CHATAFL_OPT") ? "enabled" : "disabled");
+    /* Warn in banner if NO_REFINEMENT is active but HYPOTHESIS is not set */
+    if (ablation_no_refinement && !getenv("CHATAFL_HYPOTHESIS")) {
+      fprintf(stderr,
+        "  *** ABLATION WARNING: NO_REFINEMENT is a NO-OP (hypothesis_mode=0) ***\n"
+        "  *** Set CHATAFL_HYPOTHESIS=1 for this ablation to be valid.         ***\n");
+    }
+    if (ablation_no_adaptive) {
+      fprintf(stderr,
+        "  NO_ADAPTIVE fixed threshold : %u%s\n",
+        adaptive_plateau_threshold,
+        adaptive_plateau_threshold == 512 ? " (matches ChatAFL baseline)" :
+        adaptive_plateau_threshold == 100 ? " (Opt default, 5x more frequent than baseline-512)" : "");
+    }
     fflush(stderr);
   }
 
@@ -12252,9 +12319,24 @@ int main(int argc, char **argv)
   last_edges_check_time = get_cur_time();
   edges_growth_rate = 0.0;
   adaptive_plateau_threshold = UNINTERESTING_THRESHOLD;  // Start with default 100
-  
-  fprintf(stderr, "[adaptive-plateau] Initialized: initial_edges=%u (IPSM), threshold=%u\n",
-          last_edges_count, adaptive_plateau_threshold);
+
+  /* Fix-Ablation-1: Apply custom fixed threshold from CHATAFL_ABLATION_THRESHOLD
+   * (only meaningful when CHATAFL_NO_ADAPTIVE=1).  Applied here so it overrides
+   * the UNINTERESTING_THRESHOLD default set two lines above. */
+  if (ablation_no_adaptive) {
+    char *resolved = getenv("_CHATAFL_RESOLVED_THRESHOLD");
+    if (resolved) {
+      u32 custom_thresh = (u32)atoi(resolved);
+      if (custom_thresh > 0) {
+        adaptive_plateau_threshold = custom_thresh;
+      }
+      unsetenv("_CHATAFL_RESOLVED_THRESHOLD");
+    }
+  }
+
+  fprintf(stderr, "[adaptive-plateau] Initialized: initial_edges=%u (IPSM), threshold=%u%s\n",
+          last_edges_count, adaptive_plateau_threshold,
+          ablation_no_adaptive ? " (ABLATION: fixed)" : "");
 
   cull_queue();
 

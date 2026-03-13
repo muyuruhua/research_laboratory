@@ -10,7 +10,8 @@ export TEST_TIMEOUT="${TEST_TIMEOUT:-20000}"
 export PROJECT_ROOT="${PROJECT_ROOT:-$PWD/..}"
 
 # Generate timestamp for results directory
-export TIMESTAMP=$(date "+%b-%d_%H-%M-%S")
+# Allow caller to pre-set TIMESTAMP (e.g., ablation scripts inject label here)
+export TIMESTAMP=${TIMESTAMP:-$(date "+%b-%d_%H-%M-%S")}
 
 export TARGET_LIST=$1
 export FUZZER_LIST=$2

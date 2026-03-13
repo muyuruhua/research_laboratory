@@ -1,0 +1,11 @@
+fuzzer,run,runtime_min,llm_calls,prompt_tokens,completion_tokens,dedup_hits,cost_usd,prompt_per_24h,compl_per_24h,cost_per_24h,token_source
+chatafl,1,1438,10,4076,17729,0,0.011249,4082,17754,0.011264,tiktoken_stall_only
+chatafl,2,1441,3,969,5219,0,0.003277,968,5215,0.003274,tiktoken_stall_only
+chatafl,3,1446,3,1028,6186,0,0.003866,1024,6160,0.003850,tiktoken_stall_only
+chatafl,4,1442,8,3535,14895,0,0.009467,3530,14874,0.009454,tiktoken_stall_only
+chatafl,5,1444,5,1734,9845,0,0.006167,1729,9818,0.006150,tiktoken_stall_only
+chatafl_opt,1,1466,53,90742,4339,0,0.016215,89133,4262,0.015927,exact
+chatafl_opt,2,1465,47,85446,3887,0,0.015149,83988,3821,0.014891,exact
+chatafl_opt,3,1465,54,100157,5700,0,0.018444,98448,5603,0.018129,exact
+chatafl_opt,4,1465,40,79329,4598,0,0.014658,77975,4520,0.014408,exact
+chatafl_opt,5,1466,54,90672,3914,0,0.015949,89064,3845,0.015666,exact

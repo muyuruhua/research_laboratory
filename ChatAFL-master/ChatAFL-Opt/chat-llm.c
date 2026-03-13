@@ -50,16 +50,22 @@ void chat_llm_global_init(void)  { curl_global_init(CURL_GLOBAL_DEFAULT); }
 void chat_llm_global_cleanup(void) { curl_global_cleanup(); }
 
 /* Per-call token usage — populated from the API "usage" object.
- * In the forked child these are process-local; the parent reads them
- * back via a sidecar .tokens file. */
-unsigned long long llm_last_prompt_tokens     = 0;
-unsigned long long llm_last_completion_tokens = 0;
+ * __thread: each enrichment worker thread gets its own copy so that
+ * concurrent enrich_sequence() calls don't clobber each other.
+ * In the forked plateau-handler child, TLS is inherited and works
+ * normally (single-threaded child). */
+__thread unsigned long long llm_last_prompt_tokens     = 0;
+__thread unsigned long long llm_last_completion_tokens = 0;
 
 char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
 {
     CURL *curl;
     CURLcode res = CURLE_OK;
     char *answer = NULL;
+
+    /* Reset per-call token counters so a failed call yields 0. */
+    llm_last_prompt_tokens = 0;
+    llm_last_completion_tokens = 0;
     char *url = NULL;
     if (strcmp(model, "gpt-4o") == 0)
     {
@@ -143,14 +149,13 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
                     else
                     {
                         json_object *jobj4 = json_object_object_get(first_choice, "message");
-                        json_object *jobj5 = json_object_object_get(jobj4, "content");
-                        data = json_object_get_string(jobj5);
+                        json_object *jobj5 = jobj4 ? json_object_object_get(jobj4, "content") : NULL;
+                        data = jobj5 ? json_object_get_string(jobj5) : NULL;
                     }
-                    if (data[0] == '\n')
-                        data++;
-                    answer = strdup(data);
 
-                    /* ---- Extract token usage from the "usage" object ---- */
+                    /* ---- Extract token usage FIRST (before any early-exit) ---- */
+                    /* Even if content extraction fails below, the API has
+                     * already billed for this request.  Record usage now. */
                     json_object *jusage = NULL;
                     if (json_object_object_get_ex(jobj, "usage", &jusage)) {
                         json_object *jpt = NULL, *jct = NULL;
@@ -159,6 +164,16 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
                         if (json_object_object_get_ex(jusage, "completion_tokens", &jct))
                             llm_last_completion_tokens = (unsigned long long)json_object_get_int64(jct);
                     }
+
+                    if (data == NULL) {
+                        printf("Error: could not extract LLM answer. Response: %s\n", chunk.memory);
+                        json_object_put(jobj);
+                        sleep(2);
+                        continue;
+                    }
+                    if (data[0] == '\n')
+                        data++;
+                    answer = strdup(data);
                 }
                 else
                 {
