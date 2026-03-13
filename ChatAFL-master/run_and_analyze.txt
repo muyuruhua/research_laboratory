@@ -25,11 +25,11 @@ DICOM
 
 每个协议实验数据下有 cov_over_time 和 state_over_time 两张PNG图以及相关的CSV数据。请读取读取对应CSV数据来精确分析
 
-cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 1 100 exim,proftpd,live555 chatafl,chatafl-opt,aflnet
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 5 1470 exim,live555 chatafl,chatafl-opt,aflnet
 
 cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 10 1470 pure-ftpd,mosquitto,live555 chatafl,chatafl-opt,aflnet
 
-cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 5 1470 kamailio,proftpd chatafl,chatafl-opt,aflnet
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 5 1470 kamailio chatafl,chatafl-opt,aflnet
 
 cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 3 1470 proftpd chatafl
 
@@ -291,3 +291,6 @@ sudo -E ./run_ablation.sh forked-daapd 5 1470
 git add .
 git commit -m "update [work_and_data_flow.txt]"
 git push origin dev8_with_testLLM
+
+
+git commit -m "add exact LLM cost for chatafl,and add some 24h data"
