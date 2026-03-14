@@ -1,28 +1,29 @@
 @inproceedings{sgf_usenix22,
-  author    = {Pham, Van-Thuan and B{"o}hme, Marcel and Roychoudhury, Abhik},
-  title     = {Stateful greybox fuzzing},
-  booktitle = {Proceedings of the 31st {USENIX} Security Symposium ({USENIX} Security)},
+  author    = {Pham and Van-Thuan and B{"o}hme, Marcel and Roychoudhury, Abhik},
+  title     = {Stateful Greybox Fuzzing},
+  booktitle = {31st USENIX Security Symposium ({USENIX} Security 2022)},
   pages     = {3245--3262},
   year      = {2022}
 }
 
 @inproceedings{aflnet,
-  author    = {Pham, Van-Thuan and B{"o}hme, Marcel and Roychoudhury, Abhik},
-  title     = {{AFLNet}: A greybox fuzzer for network protocols},
-  booktitle = {Proceedings of the 13th {IEEE} International Conference on Software Testing, Verification and Validation ({ICST})},
+  author    = {Pham and Van-Thuan and B{"o}hme, Marcel and Roychoudhury, Abhik},
+  title     = {{AFLNet}: A Greybox Fuzzer for Network Protocols},
+  booktitle = {2020 IEEE 13th International Conference on Software Testing, Verification and Validation ({ICST})},
   pages     = {460--465},
   year      = {2020}
 }
 
 @inproceedings{chatafl,
-  author    = {Meng, Ruijie and Mirchev, Martin and B{"o}hme, Marcel and Roychoudhury, Abhik},
-  title     = {Large language model guided protocol fuzzing},
-  booktitle = {Proceedings of the Network and Distributed System Security Symposium ({NDSS})},
-  year      = {2024}
+  author    = {Meng and Ruijie and Mirchev and Martin and B{"o}hme, Marcel and Roychoudhury, Abhik},
+  title     = {Large Language Model Guided Protocol Fuzzing},
+  booktitle = {31st Annual Network and Distributed System Security Symposium ({NDSS} 2024)},
+  year      = {2024},
+  doi       = {10.14722/ndss.2024.24556}
 }
 
 @techreport{rfc_ftp,
-  author      = {Postel, Jon and Reynolds, Joyce},
+  author      = {Postel and Jon and Reynolds and Joyce},
   title       = {File transfer protocol},
   type        = {{RFC}},
   number      = {959},
@@ -33,7 +34,7 @@
 }
 
 @techreport{rfc_smtp,
-  author      = {Klensin, John},
+  author      = {Klensin and John},
   title       = {Simple mail transfer protocol},
   type        = {{RFC}},
   number      = {5321},
@@ -43,7 +44,7 @@
 }
 
 @techreport{rfc_sip,
-  author      = {Rosenberg, Jonathan and Schulzrinne, Henning and Camarillo, Gonzalo and Johnston, Alan and Peterson, Jon and Sparks, Robert and Handley, Mark},
+  author      = {Rosenberg and Jonathan and Schulzrinne and Henning and Camarillo and Gonzalo and Johnston and Alan and Peterson and Jon and Sparks and Robert and Handley and Mark},
   title       = {{SIP}: Session Initiation Protocol},
   type        = {{RFC}},
   number      = {3261},
@@ -53,53 +54,449 @@
 }
 
 @misc{afl_whitepaper,
-  author = {Zalewski, Michal},
-  title  = {Technical ``whitepaper'' for afl-fuzz},
-  note   = {Technical white paper. Accessed: Mar. 10, 2026},
-  url    = {https://lcamtuf.coredump.cx/afl/technical_details.txt},
+  author = {Zalewski and Michal},
+  title  = {Technical ``whitepaper'' for {afl-fuzz}},
+  note   = {Technical white paper. [Online]. Available: \url{https://lcamtuf.coredump.cx/afl/}. Accessed: Mar. 11, 2026},
   year   = {2014}
 }
 
 @article{stateafl,
-  author  = {Natella, Roberto},
+  author  = {Natella and Roberto},
   title   = {{StateAFL}: Greybox fuzzing for stateful network servers},
   journal = {Empirical Software Engineering},
   volume  = {27},
+  number  = {8},
   note    = {Art. no. 191},
   year    = {2022}
 }
 
 @misc{peach,
-  author = {Eddington, Michael},
+  author = {Eddington and Michael},
   title  = {Peach fuzzer community},
-  note   = {Software project, online resource}
+  note   = {Software project. [Online]. Available: \url{https://www.peach.tech/}. Accessed: Mar. 11, 2026}
 }
 
 @misc{sulley,
   author = {{OpenRCE}},
   title  = {Sulley},
-  note   = {Software framework, online resource, Accessed: Mar. 10, 2026},
-  url    = {https://github.com/OpenRCE/sulley}
+  note   = {Software framework. [Online]. Available: \url{https://github.com/OpenRCE/sulley}. Accessed: Mar. 10, 2026}
 }
 
 @misc{boofuzz,
-  author = {Pereyda, J. T.},
+  author = {Pereyda and J. T.},
   title  = {boofuzz: Network protocol fuzzing for humans},
-  note   = {Software project, online resource, Accessed: Mar. 10, 2026},
-  url    = {https://github.com/jtpereyda/boofuzz}
-}
-
-@inproceedings{nezha,
-  author    = {Petsios, Theofilos and Tang, Adrian and Stolfo, Salvatore J. and Keromytis, Angelos D. and Jana, Suman},
-  title     = {{NEZHA}: Efficient domain-independent differential testing},
-  booktitle = {Proceedings of the {IEEE} Symposium on Security and Privacy ({SP})},
-  pages     = {615--632},
-  year      = {2017}
+  note   = {Software project. [Online]. Available: \url{https://github.com/jtpereyda/boofuzz}. Accessed: Mar. 10, 2026}
 }
 
 @misc{libfuzzer,
   author = {{LLVM Project}},
-  title  = {{libFuzzer}: A library for coverage-guided fuzz testing},
-  note   = {Online documentation, Accessed: Mar. 10, 2026},
-  url    = {https://llvm.org/docs/LibFuzzer.html}
+  title  = {{{libFuzzer}}: A library for coverage-guided fuzz testing},
+  note   = {Online documentation. [Online]. Available: \url{https://llvm.org/docs/LibFuzzer.html}. Accessed: Mar. 10, 2026}
+}
+
+@inproceedings{fuzz4all_universal_fuzzing_large_2024,
+  author = {Chunqiu Steven Xia and Matteo Paltenghi and Jia Le Tian and Michael Pradel and Lingming Zhang},
+  title = {{{Fuzz4All}}: Universal Fuzzing with Large Language Models},
+  booktitle = {Proceedings of the IEEE/ACM 46th International Conference on Software Engineering},
+  pages = {1-13},
+  year = {2024},
+  doi = {10.1145/3597503.3639121}
+}
+
+@inproceedings{snapfuzz_high_throughput_fuzzing_2022,
+  author = {Anastasios Andronidis and Cristian Cadar},
+  title = {{{SnapFuzz}}: high-throughput fuzzing of network applications},
+  booktitle = {Proceedings of the 31st ACM SIGSOFT International Symposium on Software Testing and Analysis},
+  pages = {340-351},
+  year = {2022},
+  doi = {10.1145/3533767.3534376}
+}
+
+@inproceedings{formatted_stateful_greybox_fuzzing_2024,
+  author = {Fan Hu and Jiangan Ji and Hui Shu and Zheming Li and Tieming Liu and Chao Zhang},
+  title = {Formatted Stateful Greybox Fuzzing of {TLS} Server},
+  booktitle = {2024 IEEE Conference on Software Testing, Verification and Validation (ICST)},
+  pages = {151-160},
+  year = {2024},
+  doi = {10.1109/icst60714.2024.00022}
+}
+
+@inproceedings{snipuzz_black_box_fuzzing_2021,
+  author = {Xiaotao Feng and Ruoxi Sun and Xiaogang Zhu and Minhui Xue and Sheng Wen and Dongxi Liu and Surya Nepal and Yang Xiang},
+  title = {Snipuzz: Black-box Fuzzing of {IoT} Firmware via Message Snippet Inference},
+  booktitle = {Proceedings of the 2021 ACM SIGSAC Conference on Computer and Communications Security},
+  pages = {337-350},
+  year = {2021},
+  doi = {10.1145/3460120.3484543}
+}
+
+@inproceedings{gramatron_effective_grammar_aware_2021,
+  author = {Prashast Srivastava and Mathias Payer},
+  title = {Gramatron: effective grammar-aware fuzzing},
+  booktitle = {Proceedings of the 30th ACM SIGSOFT International Symposium on Software Testing and Analysis},
+  pages = {244-256},
+  year = {2021},
+  doi = {10.1145/3460319.3464814}
+}
+
+@inproceedings{griffin_grammar_free_dbms_2022,
+  author = {Jingzhou Fu and Jie Liang and Zhiyong Wu and Mingzhe Wang and Yu Jiang},
+  title = {Griffin: Grammar-Free DBMS Fuzzing},
+  booktitle = {Proceedings of the 37th IEEE/ACM International Conference on Automated Software Engineering},
+  pages = {1-12},
+  year = {2022},
+  doi = {10.1145/3551349.3560431}
+}
+
+@inproceedings{sok_prudent_evaluation_practices_2024,
+  author = {Moritz Schloegel and Nils Bars and Nico Schiller and Lukas Bernhard and Tobias Scharnowski and Addison Crump and Arash Ale-Ebrahim and Nicolai Bissantz and Marius Muench and Thorsten Holz},
+  title = {{{SoK}}: Prudent Evaluation Practices for Fuzzing},
+  booktitle = {2024 IEEE Symposium on Security and Privacy (SP)},
+  pages = {1974-1993},
+  year = {2024},
+  doi = {10.1109/sp54263.2024.00137}
+}
+
+@inproceedings{docter_documentation_guided_fuzzing_2022,
+  author = {Danning Xie and Yitong Li and Mijung Kim and Hung Viet Pham and Lin Tan and Xiangyu Zhang and Michael W. Godfrey},
+  title = {{{DocTer}}: documentation-guided fuzzing for testing deep learning {API} functions},
+  booktitle = {Proceedings of the 31st ACM SIGSOFT International Symposium on Software Testing and Analysis},
+  pages = {176-188},
+  year = {2022},
+  doi = {10.1145/3533767.3534220}
+}
+
+@inproceedings{pgfuzz_policy_guided_fuzzing_2021,
+  author = {Hyungsub Kim and Muslum Ozgur Ozmen and Antonio Bianchi and Z. Berkay Celik and Dongyan Xu},
+  title = {{{PGFUZZ}}: Policy-Guided Fuzzing for Robotic Vehicles},
+  booktitle = {28th Annual Network and Distributed System Security Symposium ({NDSS} 2021)},
+  year = {2021},
+  doi = {10.14722/ndss.2021.24096}
+}
+
+@inproceedings{profuzzbench_benchmark_stateful_protocol_2021,
+  author = {Roberto Natella and Van-Thuan Pham},
+  title = {{{ProFuzzBench}}: A Benchmark for Stateful Protocol Fuzzing},
+  booktitle = {Proceedings of the 30th ACM SIGSOFT International Symposium on Software Testing and Analysis},
+  pages = {662-665},
+  year = {2021},
+  doi = {10.1145/3460319.3469077}
+}
+
+@inproceedings{fuzzusb_hybrid_stateful_fuzzing_2022,
+  author = {Kyungtae Kim and Taegyu Kim and Ertza Warraich and Byoungyoung Lee and Kevin R. B. Butler and Antonio Bianchi and Dave Jing Tian},
+  title = {{{FuzzUSB}}: Hybrid Stateful Fuzzing of {USB} Gadget Stacks},
+  booktitle = {2022 IEEE Symposium on Security and Privacy (SP)},
+  pages = {2212-2229},
+  year = {2022},
+  doi = {10.1109/sp46214.2022.9833593}
+}
+
+@inproceedings{edhoc_fuzzer_edhoc_protocol_2023,
+  author = {Konstantinos Sagonas and Thanasis Typaldos},
+  title = {{{EDHOC-Fuzzer}}: An {EDHOC} Protocol State Fuzzer},
+  booktitle = {Proceedings of the 32nd ACM SIGSOFT International Symposium on Software Testing and Analysis},
+  pages = {1495-1498},
+  year = {2023},
+  doi = {10.1145/3597926.3604922}
+}
+
+@inproceedings{dtls_fuzzer_dtls_protocol_2022,
+  author = {Paul Fiterau-Brostean and Bengt Jonsson and Konstantinos Sagonas and Fredrik Taquist},
+  title = {{{DTLS-Fuzzer}}: A {DTLS} Protocol State Fuzzer},
+  booktitle = {2022 IEEE Conference on Software Testing, Verification and Validation (ICST)},
+  pages = {456-458},
+  year = {2022},
+  doi = {10.1109/icst53961.2022.00051}
+}
+
+@inproceedings{no_grammar_no_problem_2023,
+  author = {Alexander Bulekov and Bandan Das and Stefan Hajnoczi and Manuel Egele},
+  title = {No Grammar, No Problem: Towards Fuzzing the {Linux} Kernel without System-Call Descriptions},
+  booktitle = {30th Annual Network and Distributed System Security Symposium ({NDSS} 2023)},
+  year = {2023},
+  doi = {10.14722/ndss.2023.24688}
+}
+
+@inproceedings{tron_fuzzing_linux_network_2025,
+  author = {Qiang Zhang and Yifei Chu and Yuheng Shen and Jianzhong Liu and Heyuan Shi and Yu Jiang and Wanli Chang},
+  title = {Tron: Fuzzing {Linux} Network Stack via Protocol-System Call Payload Synthesis},
+  booktitle = {2025 40th IEEE/ACM International Conference on Automated Software Engineering (ASE)},
+  pages = {3227-3238},
+  year = {2025},
+  doi = {10.1109/ase63991.2025.00266}
+}
+
+@inproceedings{llmif_augmented_large_language_2024,
+  author = {Jincheng Wang and Le Yu and Xiapu Luo},
+  title = {{{LLMIF}}: Augmented Large Language Model for Fuzzing {IoT} Devices},
+  booktitle = {2024 IEEE Symposium on Security and Privacy (SP)},
+  pages = {881-896},
+  year = {2024},
+  doi = {10.1109/sp54263.2024.00211}
+}
+
+@inproceedings{bleem_packet_sequence_2023,
+  author = {Zhengxiong Luo and Junze Yu and Feilong Zuo and Jianzhong Liu and Yu Jiang and Ting Chen and Abhik Roychoudhury and Jiaguang Sun},
+  title = {Bleem: Packet Sequence Oriented Fuzzing for Protocol Implementations},
+  booktitle = {32nd USENIX Security Symposium ({USENIX} Security 2023)},
+  year = {2023}
+}
+
+@inproceedings{matter_llm_specification_2024,
+  author = {Xiaoyue Ma and Lannan Luo and Qiang Zeng},
+  title = {From One Thousand Pages of Specification to Unveiling Hidden Bugs: Large Language Model Assisted Fuzzing of Matter {IoT} Devices},
+  booktitle = {33rd USENIX Security Symposium ({USENIX} Security 2024)},
+  year = {2024}
+}
+
+@inproceedings{resolverfuzz_query_response_2024,
+  author = {Qifan Zhang and Xuesong Bai and Xiang Li and Haixin Duan and Qi Li and Zhou Li},
+  title = {ResolverFuzz: Automated Discovery of {DNS} Resolver Vulnerabilities with Query-Response Fuzzing},
+  booktitle = {33rd USENIX Security Symposium ({USENIX} Security 2024)},
+  year = {2024}
+}
+
+@inproceedings{mbfuzzer_mqtt_2025,
+  author = {Xiangpu Song and Jianliang Wu and Yingpei Zeng and Hao Pan and Chaoshun Zuo and Qingchuan Zhao and Shanqing Guo},
+  title = {{MBFuzzer}: A Multi-Party Protocol Fuzzer for {MQTT} Brokers},
+  booktitle = {34th USENIX Security Symposium ({USENIX} Security 2025)},
+  year = {2025}
+}
+
+@inproceedings{fuzzing_hardware_like_software_2022,
+  author = {Timothy Trippel and Kang G. Shin and Alex Chernyakhovsky and Garret Kelly and Dominic Rizzo and Matthew Hicks},
+  title = {Fuzzing Hardware Like Software},
+  booktitle = {31st USENIX Security Symposium ({USENIX} Security 2022)},
+  pages = {3237-3254},
+  year = {2022}
+}
+
+@inproceedings{coverage_guided_fuzzing_embedded_2023,
+  author = {Maximilian Beckmann and Jan Steffan},
+  title = {Coverage-Guided Fuzzing of Embedded Systems Leveraging Hardware Tracing},
+  booktitle = {Computer Security -- {ESORICS} 2023},
+  pages = {362-378},
+  year = {2023},
+  doi = {10.1007/978-3-031-25460-4_21}
+}
+
+@inproceedings{logos_log_guided_fuzzing_2024,
+  author = {Feifan Wu and Zhengxiong Luo and Yanyang Zhao and Qingpeng Du and Junze Yu and Ruikang Peng and Heyuan Shi and Yu Jiang},
+  title = {Logos: Log Guided Fuzzing for Protocol Implementations},
+  booktitle = {Proceedings of the 33rd ACM SIGSOFT International Symposium on Software Testing and Analysis},
+  pages = {1720-1732},
+  year = {2024},
+  doi = {10.1145/3650212.3680394}
+}
+
+@inproceedings{msgfuzzer_message_sequence_guided_2024,
+  author = {Yang Zhang and Dongliang Fang and Puzhuo Liu and Laile Xi and Xiao Lu and Xin Chen and Shuaizong Si and Limin Sun},
+  title = {{{MSGFuzzer}}: Message Sequence Guided Industrial Robot Protocol Fuzzing},
+  booktitle = {2024 IEEE Conference on Software Testing, Verification and Validation (ICST)},
+  pages = {140-150},
+  year = {2024},
+  doi = {10.1109/icst60714.2024.00021}
+}
+
+@inproceedings{smartian_analyses_2021,
+  author = {Jaeseung Choi and Doyeon Kim and Soomin Kim and Gustavo Grieco and Alex Groce and Sang Kil Cha},
+  title = {{{SMARTIAN}}: Enhancing Smart Contract Fuzzing with Static and Dynamic Data-Flow Analyses},
+  booktitle = {Proceedings of the 36th IEEE/ACM International Conference on Automated Software Engineering},
+  year = {2021}
+}
+
+@inproceedings{many_stack_2022,
+  author = {Clement Poncelet and Konstantinos (Kostis) Sagonas and Nicolas Tsiftes},
+  title = {So Many Fuzzers, So Little Time: Experience from Evaluating Fuzzers on the Contiki-NG Network Stack},
+  booktitle = {Proceedings of the 37th IEEE/ACM International Conference on Automated Software Engineering},
+  year = {2022}
+}
+
+@inproceedings{reliability_benchmarking_2022,
+  author = {Marcel Böhme and Laszlo Szekeres and Jonathan Metzman},
+  title = {On the Reliability of Coverage-Based Fuzzer Benchmarking},
+  booktitle = {Proceedings of the 44th International Conference on Software Engineering},
+  year = {2022}
+}
+
+@inproceedings{directed_greybox_fuzzing_2017,
+  author = {Marcel B{"o}hme and Van-Thuan Pham and Manh-Dung Nguyen and Abhik Roychoudhury},
+  title = {Directed Greybox Fuzzing},
+  booktitle = {Proceedings of the 2017 ACM SIGSAC Conference on Computer and Communications Security},
+  pages = {2329-2344},
+  year = {2017},
+  doi = {10.1145/3133956.3134020}
+}
+
+@inproceedings{seed_selection_successful_fuzzing_2021,
+  author = {Adrian Herrera and Hendra Gunadi and Shane Magrath and Michael Norrish and Mathias Payer and Antony L. Hosking},
+  title = {Seed Selection for Successful Fuzzing},
+  booktitle = {Proceedings of the 30th ACM SIGSOFT International Symposium on Software Testing and Analysis},
+  pages = {230-243},
+  year = {2021},
+  doi = {10.1145/3460319.3464829}
+}
+
+@inproceedings{one_fuzzing_strategy_rule_2022,
+  author = {Mingyuan Wu and Ling Jiang and Jiahong Xiang and Yanwei Huang and Heming Cui and Lingming Zhang and Yuqun Zhang},
+  title = {One Fuzzing Strategy to Rule Them All},
+  booktitle = {Proceedings of the 44th International Conference on Software Engineering},
+  pages = {1634-1645},
+  year = {2022},
+  doi = {10.1145/3510003.3510174}
+}
+
+@inproceedings{regression_greybox_fuzzing_2021,
+  author = {Xiaogang Zhu and Marcel B{"o}hme},
+  title = {Regression Greybox Fuzzing},
+  booktitle = {Proceedings of the 2021 ACM SIGSAC Conference on Computer and Communications Security},
+  year = {2021}
+}
+
+@inproceedings{efficient_errors_2022,
+  author = {Jinsheng Ba and Gregory J. Duck and Abhik Roychoudhury},
+  title = {Efficient Greybox Fuzzing to Detect Memory Errors},
+  booktitle = {Proceedings of the 37th IEEE/ACM International Conference on Automated Software Engineering},
+  year = {2022}
+}
+
+@inproceedings{windranger_blocks_2022,
+  author = {Zhengjie Du and Yuekang Li and Yang Liu and Bing Mao},
+  title = {{WindRanger}: A Directed Greybox Fuzzer Driven by Deviation Basic Blocks},
+  booktitle = {Proceedings of the 44th International Conference on Software Engineering},
+  year = {2022}
+}
+
+@inproceedings{when_analysis_2025,
+  author = {Peihong Lin and Pengfei Wang and Xu Zhou and Wei Xie and Xin Ren and Kai Lu},
+  title = {When Control Flows Deviate: Directed Grey-box Fuzzing with Probabilistic Reachability Analysis},
+  booktitle = {Proceedings of the 40th IEEE/ACM International Conference on Automated Software Engineering},
+  year = {2025}
+}
+
+@inproceedings{carpetfuzz_documentation_2023,
+  author = {Dawei Wang and Ying Li and Zhiyu Zhang and Kai Chen},
+  title = {{CarpetFuzz}: Automatic Program Option Constraint Extraction from Documentation for Fuzzing},
+  booktitle = {32nd USENIX Security Symposium ({USENIX} Security 2023)},
+  pages = {1919-1936},
+  year = {2023}
+}
+
+@inproceedings{prompt_fuzzing_fuzz_driver_2024,
+  author = {Yunlong Lyu and Yuxuan Xie and Peng Chen and Hao Chen},
+  title = {Prompt Fuzzing for Fuzz Driver Generation},
+  booktitle = {Proceedings of the 2024 ACM SIGSAC Conference on Computer and Communications Security},
+  pages = {3793-3807},
+  year = {2024},
+  doi = {10.1145/3658644.3670396}
+}
+
+@inproceedings{large_language_models_are_2023,
+  author = {Yinlin Deng and Chunqiu Steven Xia and Haoran Peng and Chenyuan Yang and Lingming Zhang},
+  title = {Large Language Models Are Zero-Shot Fuzzers: Fuzzing Deep-Learning Libraries via Large Language Models},
+  booktitle = {Proceedings of the 32nd ACM SIGSOFT International Symposium on Software Testing and Analysis},
+  pages = {423-435},
+  year = {2023},
+  doi = {10.1145/3597926.3598067}
+}
+
+@inproceedings{large_language_models_are_2024,
+  author = {Yinlin Deng and Chunqiu Steven Xia and Chenyuan Yang and Shizhuo Zhang and Shujing Yang and Lingming Zhang},
+  title = {Large Language Models are Edge-Case Generators: Crafting Unusual Programs for Fuzzing Deep Learning Libraries},
+  booktitle = {Proceedings of the 46th IEEE/ACM International Conference on Software Engineering},
+  year = {2024}
+}
+
+@inproceedings{corecrisis_context_aware_2025,
+  author = {Yilu Dong and Syed Md. Mukit Rashid and Ali Ranjbar and Tianwei Wu and Syed Rafiul Hussain and Md. Sultan Mahmud and Abdullah Al Ishtiaq and Kai Tu and Tianchang Yang},
+  title = {{CoreCrisis}: Threat-Guided and Context-Aware Iterative Learning and Fuzzing of 5G Core Networks},
+  booktitle = {34th USENIX Security Symposium ({USENIX} Security 2025)},
+  year = {2025}
+}
+
+@inproceedings{rulf_rust_library_fuzzing_2021,
+  author = {Jianfeng Jiang and Hui Xu and Yangfan Zhou},
+  title = {{RULF}: Rust Library Fuzzing via API Dependency Graph Traversal},
+  booktitle = {Proceedings of the 36th IEEE/ACM International Conference on Automated Software Engineering},
+  year = {2021}
+}
+
+@inproceedings{differential_fuzzing_data_distribution_2024,
+  author = {Dohyun Ryu and Giyeol Kim and Daeun Lee and Seongjin Kim and Seungjin Bae and Junghwan Rhee and Taegyu Kim},
+  title = {Differential Fuzzing for Data Distribution Service Programs with Dynamic Configuration},
+  booktitle = {Proceedings of the 39th IEEE/ACM International Conference on Automated Software Engineering},
+  year = {2024}
+}
+
+@inproceedings{magneto_step_wise_approach_2024,
+  author = {Zhuotong Zhou and Yongzhuo Yang and Susheng Wu and Yiheng Huang and Bihuan Chen and Xin Peng},
+  title = {{Magneto}: A Step-Wise Approach to Exploit Vulnerabilities in Dependent Libraries via LLM-Empowered Directed Fuzzing},
+  booktitle = {Proceedings of the 39th IEEE/ACM International Conference on Automated Software Engineering},
+  pages = {1633-1644},
+  year = {2024},
+  doi = {10.1145/3691620.3695531}
+}
+
+@inproceedings{diane_identifying_fuzzing_triggers_2021,
+  author = {Nilo Redini and Andrea Continella and Dipanjan Das and Giulio De Pasquale and Noah Spahn and Aravind Machiry and Antonio Bianchi and Christopher Kruegel and Giovanni Vigna},
+  title = {{DIANE}: Identifying Fuzzing Triggers in Apps to Generate Under-constrained Inputs for IoT Devices},
+  booktitle = {2021 IEEE Symposium on Security and Privacy (SP)},
+  year = {2021}
+}
+
+@inproceedings{android_smarttvs_vulnerability_discovery_2021,
+  author = {Yousra Aafer and Wei You and Yi Sun and Yu Shi and Xiangyu Zhang and Heng Yin},
+  title = {Android SmartTVs Vulnerability Discovery via Log-Guided Fuzzing},
+  booktitle = {30th USENIX Security Symposium ({USENIX} Security 2021)},
+  year = {2021}
+}
+
+@inproceedings{token_level_fuzzing_2021,
+  author = {Christopher Salls and Chani Jindal and Jake Corina and Christopher Kruegel and Giovanni Vigna},
+  title = {Token-Level Fuzzing},
+  booktitle = {30th USENIX Security Symposium ({USENIX} Security 2021)},
+  year = {2021}
+}
+
+@inproceedings{apicraft_fuzz_driver_2021,
+  author = {Cen Zhang and Xingwei Lin and Yuekang Li and Yinxing Xue and Jundong Xie and Hongxu Chen and Xinlei Ying and Jiashui Wang and Yang Liu},
+  title = {{APICraft}: Fuzz Driver Generation for Closed-source SDK Libraries},
+  booktitle = {30th USENIX Security Symposium ({USENIX} Security 2021)},
+  year = {2021}
+}
+
+@inproceedings{likely_invariants_feedback_2021,
+  author = {Andrea Fioraldi and Daniele Cono D'Elia and Davide Balzarotti},
+  title = {The Use of Likely Invariants as Feedback for Fuzzers},
+  booktitle = {30th USENIX Security Symposium ({USENIX} Security 2021)},
+  year = {2021}
+}
+
+@inproceedings{mundofuzz_grammar_inference_2022,
+  author = {Cheolwoo Myung and Gwangmu Lee and Byoungyoung Lee},
+  title = {{MundoFuzz}: Hypervisor Fuzzing with Statistical Coverage Testing and Grammar Inference},
+  booktitle = {31st USENIX Security Symposium ({USENIX} Security 2022)},
+  year = {2022}
+}
+
+@inproceedings{fuzzware_mmio_2022,
+  author = {Tobias Scharnowski and Nils Bars and Moritz Schloegel and Eric Gustafson and Marius Muench and Giovanni Vigna and Christopher Kruegel and Thorsten Holz and Ali Abbasi},
+  title = {{Fuzzware}: Using Precise {MMIO} Modeling for Effective Firmware Fuzzing},
+  booktitle = {31st USENIX Security Symposium ({USENIX} Security 2022)},
+  year = {2022}
+}
+
+@inproceedings{statefuzz_linux_driver_2022,
+  author = {Bodong Zhao and Zheming Li and Shisong Qin and Zheyu Ma and Ming Yuan and Wenyu Zhu and Zhihong Tian and Chao Zhang},
+  title = {{StateFuzz}: System Call-Based State-Aware Linux Driver Fuzzing},
+  booktitle = {31st USENIX Security Symposium ({USENIX} Security 2022)},
+  year = {2022}
+}
+
+@inproceedings{one_engine_to_fuzz_em_all_2021,
+  author = {Yongheng Chen and Rui Zhong and Hong Hu and Hangfan Zhang and Yupeng Yang and Dinghao Wu and Wenke Lee},
+  title = {{One Engine to Fuzz 'em All}: Generic Language Processor Testing with Semantic Validation},
+  booktitle = {2021 IEEE Symposium on Security and Privacy (SP)},
+  year = {2021}
 }
