@@ -235,3 +235,13 @@ git push origin dev8_with_testLLM
 sudo git reset --hard && sudo git clean -fd
 
 git pull origin dev8_with_testLLM
+
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh mosquitto 5 1470
+
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh kamailio 5 1470
+
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh live555 5 1470
+
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh forked-daapd 5 1470
+
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_dev.sh 2 1470 kamailio,mosquitto,exim,live555,forked-daapd,pure-ftpd,proftpd chatafl,chatafl-opt
