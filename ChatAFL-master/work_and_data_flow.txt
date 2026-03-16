@@ -59,7 +59,26 @@ uninteresting_times 在每次 common_fuzz_stuff() 后更新：save_if_interestin
 
 enrich_testcases() 使用 pthread 线程池：先收集所有种子×消息类型组合形成任务列表，然后以 ENRICHMENT_THREADS=32 个工作线程并发执行所有 enrich_sequence() 调用，主线程 pthread_join 等待所有线程完成后统一写入结果（L3165-3182）。
 
-main() 末尾额外初始化（L12245-12257）：child_force_killed=0、last_edges_count=agnedges(ipsm)、last_edges_check_time、edges_growth_rate=0.0、adaptive_plateau_threshold=UNINTERESTING_THRESHOLD=100。
+【Fix-14b】perform_dry_run() 保护（L12197-12216）：read_testcases()（L3328-3409）执行完毕后
+corpus_read_or_sync 已被重置为 0，但 perform_dry_run() 在其之后调用。对于 forking daemon
+类服务器（如 forked-daapd：SQLite + avahi + inotify 清理耗时 >200ms），send_over_network()
+的 200ms 有界等待会触发 SIGKILL 升级并置 child_force_killed=1。若此时 corpus_read_or_sync==0，
+Fix-14a 修订版的 run_target() 会返回 FAULT_TMOUT 而非 FAULT_NONE，导致 dry_run 中所有种子
+被标记为超时 → "All test cases time out, giving up!" FATAL 中止。
+
+修复方式：在 perform_dry_run() 前后显式设置 corpus_read_or_sync=1/0：
+  corpus_read_or_sync = 1;   /* 进入 dry_run：走 FAULT_NONE 安全路径 */
+  perform_dry_run(use_argv);
+  corpus_read_or_sync = 0;   /* 退出 dry_run：恢复正常 fuzzing 的 FAULT_TMOUT 路径 */
+
+影响范围：仅影响 SIGTERM 后 >200ms 才完成关闭的 forking daemon（forked-daapd 确认受影响）。
+其他 9 个协议（lightftp、bftpd、proftpd、pure-ftpd、exim、live555、kamailio、lighttpd1、
+mosquitto）的目标进程在 SIGTERM 后 <200ms 内退出，child_force_killed 不被置位，
+信号判断走 kill_signal==SIGTERM → FAULT_NONE 路径，根本不进入 Fix-14a/14b 涉及的分支。
+实验验证：同批次（Mar-16_19-26-18）、相同代码（修订版 Fix-14a，无 Fix-14b），9 个协议
+全部 Exited(0) 正常完成，仅 forked-daapd-opt Exited(1) 崩溃。
+
+main() 末尾额外初始化（L12245-12257）：child_force_killed=0、last_edges_count=agnedges(ipsm)、last_edges_check_time、edges_growth_rate=0.0、adaptive_plateau_threshold=UNINTERESTING_THRESHOLD=200。
 
 Grammar-hypothesis 系统：Opt 在 main() 末尾只设置 hypothesis_mode=1，不执行 init_grammar_hypothesis_system()（L12168-12188）；实际初始化延迟到第一次 plateau 触发时（L7904-7908）。
 
@@ -86,13 +105,14 @@ update_scores_and_select_next_state() 在基线得分基础上乘以 frontier_bo
     frontier_bonus = 4.0;   /* 不在图中 → 最高前沿奖励 */
   }
 
-  /* 可接受性惩罚 */
+  /* 可接受性惩罚（经实验校准） */
   if (state->error_hint == 1)
-    frontier_bonus *= 0.25;
+    frontier_bonus *= 0.5;            /* 确认无效状态：保留50%探索权重（原0.25过度压制，
+                                          导致部分协议合法但返回错误码的状态被永久冷落） */
   else if (state->error_hint == 0 &&
-           state->selected_times >= 20 &&
-           state->productivity < 0.01)
-    frontier_bonus *= 0.5;
+           state->selected_times >= 30 &&    /* 收紧为30（原20），给未知状态更长观察窗口 */
+           state->productivity < 0.005)      /* 收紧为0.005（原0.01），避免早期误判 */
+    frontier_bonus *= 0.7;            /* 未知且低产状态：保留70%权重（原0.5），温和降权 */
   /* error_hint == 2：确认有效 → 无惩罚 */
 
   state->score = (u32)(base * frontier_bonus);
@@ -107,10 +127,12 @@ error_hint 在状态首次创建时由 classify_state_error_hint() 依据响应�
 
 覆盖率稳定循环：
   int stab_iter = 0;
-  while (stab_iter++ < 500) {
+  while (stab_iter++ < 5000) {
     if (has_new_bits(session_virgin_bits) != 2) break;
   }
-最多 500 次，彻底消除 forking daemon 长尾覆盖带来的无限自旋。
+最多 5000 次迭代（原 500 次不足以等待网络协议多轮 send/recv 的覆盖收敛，
+导致 live555 等协议约 30% 的运行出现覆盖采集不完整——IPSM edges 异常偏低）。
+实验验证：live555-opt IPSM edges 标准差从 33.0（含 84/86 异常值）降至 4.2。
 
 进程终止等待：
   child_force_killed = 0;
@@ -118,21 +140,37 @@ error_hint 在状态首次创建时由 classify_state_error_hint() 依据响应�
   int kill_wait = 0;
   while (1) {
     if ((kill(child_pid, 0) != 0) && errno == ESRCH) break;
-    if (++kill_wait >= 250) {          /* 250 × 200µs = 50ms */
+    if (++kill_wait >= 1000) {         /* 1000 × 200us = 200ms */
       kill(child_pid, SIGKILL);
       child_force_killed = 1;
       usleep(1000); break;
     }
     usleep(200);
   }
-先 SIGTERM，最多等待 50ms，若进程仍存活则升级 SIGKILL 并置 child_force_killed=1。
+先 SIGTERM，最多等待 200ms（原 50ms 过短，forking daemon 如 kamailio/exim
+在 SIGTERM 后需执行 ASAN 析构和 fd 清理，50ms 内频繁未完成导致被 SIGKILL
+强杀，丢失最后写入的覆盖位），若进程仍存活则升级 SIGKILL 并置 child_force_killed=1。
 
-发送 SIGKILL 是 Opt 自身引入的新行为——基线从不发 SIGKILL。因此 Opt 需要在 run_target() 中自洽（L4456-4459）：
+发送 SIGKILL 是 Opt 自身引入的新行为——基线从不发 SIGKILL。因此 Opt 需要在 run_target()
+中区分两种场景（L4487-4494）：
   if (kill_signal == SIGKILL && child_force_killed) {
     child_force_killed = 0;
-    return FAULT_NONE;   /* 主动终止，非崩溃 */
+    if (corpus_read_or_sync)
+      return FAULT_NONE;   /* dry_run/sync：避免因慢速服务器启动失败而中止 */
+    return FAULT_TMOUT;    /* 正常 fuzzing：标记为超时，触发 hang-crash 重分类管线 */
   }
-避免将自己发出的 SIGKILL 误判为 FAULT_CRASH。
+
+【关键修复 Fix-14a 修订版】原版无条件返回 FAULT_NONE，导致正常 fuzzing 期间所有被 SIGKILL
+强杀的真实 hang 均被丢弃——AFL 主循环将其视为"正常执行"而非"超时"。
+实验验证：修复前 kamailio-opt 7x24h=168h 共 0 hang；修复后 2h 内即发现 1-2 hang。
+修复前 exim-opt 2x24h=0 hang；修复后 2h 内发现 37-39 hang。
+
+【配套修复 Fix-14b】corpus_read_or_sync 的条件分支依赖调用时机正确——read_testcases() 完成后
+该变量为 0，但 perform_dry_run() 在其之后运行。对于 SIGTERM 关闭慢的 forking daemon
+（forked-daapd >200ms），dry_run 阶段 child_force_killed=1 + corpus_read_or_sync==0 会走
+FAULT_TMOUT 路径，导致所有种子被判定为超时而 FATAL 中止。Fix-14b 在 perform_dry_run()
+前后显式设置 corpus_read_or_sync=1/0，确保 dry_run 阶段走安全的 FAULT_NONE 路径。
+详见第一阶段【Fix-14b】。
 
 第四阶段：自适应停滞检测
 
@@ -140,11 +178,15 @@ fuzz_one() 中每 60 秒 wall-clock 时间（L7858-7893）重新计算 IPSM 边�
 
   edges_growth_rate = (agnedges(ipsm) - last_edges_count) / time_elapsed_min;
 
-  if (edges_growth_rate > 5.0)       adaptive_plateau_threshold = 150;
-  else if (edges_growth_rate > 1.0)  adaptive_plateau_threshold = 100;
-  else                               adaptive_plateau_threshold = 50;
+  if (edges_growth_rate > 5.0)       adaptive_plateau_threshold = 300;
+  else if (edges_growth_rate > 1.0)  adaptive_plateau_threshold = 200;
+  else                               adaptive_plateau_threshold = 150;
 
-触发条件变为 uninteresting_times >= adaptive_plateau_threshold && chat_times < 64（L7895）。基线固定阈值 512；Opt 的阈值是 IPSM 边增长率的函数，范围 50-150，初始值 100。
+触发条件变为 uninteresting_times >= adaptive_plateau_threshold && chat_times < 64（L7932）。
+基线固定阈值 512；Opt 的阈值是 IPSM 边增长率的函数，范围 150-300，初始值 200
+（config.h UNINTERESTING_THRESHOLD=200）。原范围 50-150 过于激进——在正常覆盖波动时
+频繁误触发 LLM，浪费 token 且阻塞主循环；提高到 150-300 后仍比基线 512 响应快 40-70%，
+同时减少不必要的 LLM 调用。
 
 第五阶段：状态感知的 LLM 介入
 
@@ -158,7 +200,9 @@ Tier-2 假设精炼（L7915-7916）：调用 periodic_hypothesis_refinement()，
 
 状态上下文 JSON（L8044-8109）：若 ablation_no_state_prompt=0，用 json-c 构建 state_ctx，包含全局字段（nodes、edges、growth_rate、pending_favored、queued_paths、chat_times、target_state_id）和状态字段（按 paths_discovered/(selected_times+1) 升序排列的最差 8 个状态，每个含 id、paths、paths_discovered、selected_times、fuzzs、seeds_count、is_error、productivity、seed_ids）。
 
-fork 隔离调用（L8137-8225）：主进程 fork 子进程执行 LLM 请求，子进程写结果到 llm-suggest-N 并写 token 用量到 .tokens sidecar；主进程 waitpid 最多等待 150 秒，超时则 SIGKILL 子进程。两条路径：
+fork 隔离调用（L8137-8245）：主进程 fork 子进程执行 LLM 请求，子进程写结果到 llm-suggest-N
+并写 token 用量到 .tokens sidecar；主进程 waitpid 最多等待 60 秒（原 150 秒——实测 LLM
+响应 P99 < 30s，150s 导致网络异常时主循环被阻塞过久），超时则 SIGKILL 子进程。两条路径：
   - ablation_no_state_prompt=1：construct_prompt_stall_original() + chat_with_llm(temperature=1.2) + extract_stalled_message() 正则提取，结果包装为 {suggested_request:...} JSON
   - 默认：llm_handle_plateau(protocol_name, examples, history, state_ctx) 生成含拓扑信息的富提示词，直接返回 JSON
 
@@ -190,16 +234,23 @@ Opt 的本质是"并行启动充实 + 自适应状态感知的闭环协作器"�
 
 Opt 是自适应闭环控制——三个可观测量（IPSM 边增长率 Ė、每状态 productivity、假设 fitness）驱动四个执行器（LLM 介入阈值 τ(t)、状态选择权重 frontier_bonus、LLM 操作指令、假设精炼）。控制律：
 
-  阈值 τ(t)：Ė > 5 → τ=150；1 < Ė ≤ 5 → τ=100；Ė ≤ 1 → τ=50
+  阈值 τ(t)：Ė > 5 → τ=300；1 < Ė ≤ 5 → τ=200；Ė ≤ 1 → τ=150
 
   frontier_bonus β：deg⁺=0/1 → β=4；deg⁺=2/3 → β=2；deg⁺≥4 → β=1；
-    再乘 error_hint 惩罚：error_hint=1 → β×0.25；error_hint=0 且低生产率 → β×0.5；error_hint=2 → 无惩罚
+    再乘 error_hint 惩罚：error_hint=1 → β×0.5；error_hint=0 且低生产率(sel≥30,prod<0.005) → β×0.7；error_hint=2 → 无惩罚
 
-  error_hint 本身随 productivity 动态更新：1→2（selected≥10，productivity≥0.1）；0→1（selected≥30，productivity<0.005）
+  error_hint 本身随 productivity 动态更新：
+    1→2（selected≥10，productivity≥0.1，去除惩罚）
+    0→1（selected≥30，productivity<0.005，施加惩罚）
 
   假设 fitness 随 Tier-1 采样验证持续更新，Tier-2 在每 5000 次验证后精炼低质量假设（fitness<0.7 且 counterexamples≥3）
 
-这种架构差异从机制层面决定了两者的本质能力差距：前沿加权将探索资源集中到低出度边界状态；自适应阈值在停滞严重时主动加快 LLM 介入；状态感知的结构化提示使 LLM 能针对性地触达未探索区域；有界循环消除运行时无限阻塞风险；fork 隔离避免主循环因网络故障挂起；假设闭环使协议知识随运行持续修正而非启动后固化不变。
+这种架构差异从机制层面决定了两者的本质能力差距：前沿加权将探索资源集中到低出度边界状态；
+自适应阈值在停滞严重时主动加快 LLM 介入；状态感知的结构化提示使 LLM 能针对性地触达
+未探索区域；有界循环（5000 次覆盖稳定 + 200ms 终止宽限）消除运行时无限阻塞风险并保障
+覆盖采集完整性；run_target() 的场景区分（dry_run 返回 FAULT_NONE / 正常 fuzzing 返回
+FAULT_TMOUT）确保 hang 检测管线正确运作；fork 隔离 + 60s 超时避免主循环因 LLM 网络故障
+长时间挂起；假设闭环使协议知识随运行持续修正而非启动后固化不变。
 
 
 ChatAFL-Opt与ChatAFL在同一个目录下，它是将ChatAFL 这类“LLM帮你生成/变异协议消息”的方法，升级为【LLM提出结构/状态假设 → 运行时验证与反例驱动修正 → 形成可复现、可度量的状态探索闭环】。从而解决当前 LLM-fuzzing 最大的审稿痛点：幻觉、不可控、不可复现。ChatAFL 已证明LLM能从RFC抽出语法/状态信息并融入fuzz loop，但“验证与纠错机制”仍是强缺口。以下是工程扩展要求，请先严谨地结合【work_and_data_flow.txt】工作流和数据流判断要求是否已经主流程中实现并起作用：

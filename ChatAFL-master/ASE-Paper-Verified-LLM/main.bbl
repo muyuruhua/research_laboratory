@@ -7,7 +7,8 @@
 \providecommand{\BIBentrySTDinterwordspacing}{\spaceskip=0pt\relax}
 \providecommand{\BIBentryALTinterwordstretchfactor}{4}
 \providecommand{\BIBentryALTinterwordspacing}{\spaceskip=\fontdimen2\font plus
-\BIBentryALTinterwordstretchfactor\fontdimen3\font minus \fontdimen4\font\relax}
+\BIBentryALTinterwordstretchfactor\fontdimen3\font minus
+  \fontdimen4\font\relax}
 \providecommand{\BIBforeignlanguage}[2]{{%
 \expandafter\ifx\csname l@#1\endcsname\relax
 \typeout{** WARNING: IEEEtran.bst: No hyphenation pattern has been}%
@@ -21,168 +22,301 @@
 \BIBdecl
 
 \bibitem{aflnet}
-Pham, Van-Thuan, M.~B{"o}hme, and A.~Roychoudhury, ``{AFLNet}: A greybox fuzzer for network protocols,'' in \emph{2020 IEEE 13th International Conference on Software Testing, Verification and Validation ({ICST})}, 2020, pp. 460--465.
+V.-T. Pham, M.~B{"o}hme, and A.~Roychoudhury, ``{AFLNet}: A greybox fuzzer for
+  network protocols,'' in \emph{2020 IEEE 13th International Conference on
+  Software Testing, Verification and Validation ({ICST})}, 2020, pp. 460--465.
 
 \bibitem{stateafl}
-Natella and Roberto, ``{StateAFL}: Greybox fuzzing for stateful network servers,'' \emph{Empirical Software Engineering}, vol.~27, no.~8, 2022, art. no. 191.
+R.~Natella, ``{StateAFL}: Greybox fuzzing for stateful network servers,''
+  \emph{Empirical Software Engineering}, vol.~27, no.~8, 2022, art. no. 191.
 
 \bibitem{sgf_usenix22}
-Pham, Van-Thuan, M.~B{"o}hme, and A.~Roychoudhury, ``Stateful greybox fuzzing,'' in \emph{31st USENIX Security Symposium ({USENIX} Security 2022)}, 2022, pp. 3245--3262.
+J.~Ba, M.~B{"o}hme, Z.~Mirzamomen, and A.~Roychoudhury, ``Stateful greybox
+  fuzzing,'' in \emph{31st USENIX Security Symposium ({USENIX} Security 2022)},
+  2022, pp. 3255--3272.
 
 \bibitem{formatted_stateful_greybox_fuzzing_2024}
-F.~Hu, J.~Ji, H.~Shu, Z.~Li, T.~Liu, and C.~Zhang, ``Formatted stateful greybox fuzzing of {TLS} server,'' in \emph{2024 IEEE Conference on Software Testing, Verification and Validation (ICST)}, 2024, pp. 151--160.
+F.~Hu, J.~Ji, H.~Shu, Z.~Li, T.~Liu, and C.~Zhang, ``Formatted stateful greybox
+  fuzzing of {TLS} server,'' in \emph{2024 IEEE Conference on Software Testing,
+  Verification and Validation (ICST)}, 2024, pp. 151--160.
 
 \bibitem{resolverfuzz_query_response_2024}
-Q.~Zhang, X.~Bai, X.~Li, H.~Duan, Q.~Li, and Z.~Li, ``Resolverfuzz: Automated discovery of {DNS} resolver vulnerabilities with query-response fuzzing,'' in \emph{33rd USENIX Security Symposium ({USENIX} Security 2024)}, 2024.
+Q.~Zhang, X.~Bai, X.~Li, H.~Duan, Q.~Li, and Z.~Li, ``Resolverfuzz: Automated
+  discovery of {DNS} resolver vulnerabilities with query-response fuzzing,'' in
+  \emph{33rd USENIX Security Symposium ({USENIX} Security 2024)}, 2024.
 
 \bibitem{mbfuzzer_mqtt_2025}
-X.~Song, J.~Wu, Y.~Zeng, H.~Pan, C.~Zuo, Q.~Zhao, and S.~Guo, ``{MBFuzzer}: A multi-party protocol fuzzer for {MQTT} brokers,'' in \emph{34th USENIX Security Symposium ({USENIX} Security 2025)}, 2025.
+X.~Song, J.~Wu, Y.~Zeng, H.~Pan, C.~Zuo, Q.~Zhao, and S.~Guo, ``{MBFuzzer}: A
+  multi-party protocol fuzzer for {MQTT} brokers,'' in \emph{34th USENIX
+  Security Symposium ({USENIX} Security 2025)}, 2025.
 
 \bibitem{bleem_packet_sequence_2023}
-Z.~Luo, J.~Yu, F.~Zuo, J.~Liu, Y.~Jiang, T.~Chen, A.~Roychoudhury, and J.~Sun, ``Bleem: Packet sequence oriented fuzzing for protocol implementations,'' in \emph{32nd USENIX Security Symposium ({USENIX} Security 2023)}, 2023.
+Z.~Luo, J.~Yu, F.~Zuo, J.~Liu, Y.~Jiang, T.~Chen, A.~Roychoudhury, and J.~Sun,
+  ``Bleem: Packet sequence oriented fuzzing for protocol implementations,'' in
+  \emph{32nd USENIX Security Symposium ({USENIX} Security 2023)}, 2023.
 
 \bibitem{logos_log_guided_fuzzing_2024}
-F.~Wu, Z.~Luo, Y.~Zhao, Q.~Du, J.~Yu, R.~Peng, H.~Shi, and Y.~Jiang, ``Logos: Log guided fuzzing for protocol implementations,'' in \emph{Proceedings of the 33rd ACM SIGSOFT International Symposium on Software Testing and Analysis}, 2024, pp. 1720--1732.
+F.~Wu, Z.~Luo, Y.~Zhao, Q.~Du, J.~Yu, R.~Peng, H.~Shi, and Y.~Jiang, ``Logos:
+  Log guided fuzzing for protocol implementations,'' in \emph{Proceedings of
+  the 33rd ACM SIGSOFT International Symposium on Software Testing and
+  Analysis}, 2024, pp. 1720--1732.
 
 \bibitem{diane_identifying_fuzzing_triggers_2021}
-N.~Redini, A.~Continella, D.~Das, G.~D. Pasquale, N.~Spahn, A.~Machiry, A.~Bianchi, C.~Kruegel, and G.~Vigna, ``{DIANE}: Identifying fuzzing triggers in apps to generate under-constrained inputs for iot devices,'' in \emph{2021 IEEE Symposium on Security and Privacy (SP)}, 2021.
+N.~Redini, A.~Continella, D.~Das, G.~D. Pasquale, N.~Spahn, A.~Machiry,
+  A.~Bianchi, C.~Kruegel, and G.~Vigna, ``{DIANE}: Identifying fuzzing triggers
+  in apps to generate under-constrained inputs for iot devices,'' in \emph{2021
+  IEEE Symposium on Security and Privacy (SP)}, 2021.
 
 \bibitem{corecrisis_context_aware_2025}
-Y.~Dong, S.~M.~M. Rashid, A.~Ranjbar, T.~Wu, S.~R. Hussain, M.~S. Mahmud, A.~A. Ishtiaq, K.~Tu, and T.~Yang, ``{CoreCrisis}: Threat-guided and context-aware iterative learning and fuzzing of 5g core networks,'' in \emph{34th USENIX Security Symposium ({USENIX} Security 2025)}, 2025.
+Y.~Dong, S.~M.~M. Rashid, A.~Ranjbar, T.~Wu, S.~R. Hussain, M.~S. Mahmud, A.~A.
+  Ishtiaq, K.~Tu, and T.~Yang, ``{CoreCrisis}: Threat-guided and context-aware
+  iterative learning and fuzzing of 5g core networks,'' in \emph{34th USENIX
+  Security Symposium ({USENIX} Security 2025)}, 2025.
 
 \bibitem{directed_greybox_fuzzing_2017}
-M.~B{"o}hme, V.-T. Pham, M.-D. Nguyen, and A.~Roychoudhury, ``Directed greybox fuzzing,'' in \emph{Proceedings of the 2017 ACM SIGSAC Conference on Computer and Communications Security}, 2017, pp. 2329--2344.
+M.~B{"o}hme, V.-T. Pham, M.-D. Nguyen, and A.~Roychoudhury, ``Directed greybox
+  fuzzing,'' in \emph{Proceedings of the 2017 ACM SIGSAC Conference on Computer
+  and Communications Security}, 2017, pp. 2329--2344.
 
 \bibitem{seed_selection_successful_fuzzing_2021}
-A.~Herrera, H.~Gunadi, S.~Magrath, M.~Norrish, M.~Payer, and A.~L. Hosking, ``Seed selection for successful fuzzing,'' in \emph{Proceedings of the 30th ACM SIGSOFT International Symposium on Software Testing and Analysis}, 2021, pp. 230--243.
+A.~Herrera, H.~Gunadi, S.~Magrath, M.~Norrish, M.~Payer, and A.~L. Hosking,
+  ``Seed selection for successful fuzzing,'' in \emph{Proceedings of the 30th
+  ACM SIGSOFT International Symposium on Software Testing and Analysis}, 2021,
+  pp. 230--243.
 
 \bibitem{one_fuzzing_strategy_rule_2022}
-M.~Wu, L.~Jiang, J.~Xiang, Y.~Huang, H.~Cui, L.~Zhang, and Y.~Zhang, ``One fuzzing strategy to rule them all,'' in \emph{Proceedings of the 44th International Conference on Software Engineering}, 2022, pp. 1634--1645.
+M.~Wu, L.~Jiang, J.~Xiang, Y.~Huang, H.~Cui, L.~Zhang, and Y.~Zhang, ``One
+  fuzzing strategy to rule them all,'' in \emph{Proceedings of the 44th
+  International Conference on Software Engineering}, 2022, pp. 1634--1645.
 
 \bibitem{regression_greybox_fuzzing_2021}
-X.~Zhu and M.~B{"o}hme, ``Regression greybox fuzzing,'' in \emph{Proceedings of the 2021 ACM SIGSAC Conference on Computer and Communications Security}, 2021.
+X.~Zhu and M.~B{"o}hme, ``Regression greybox fuzzing,'' in \emph{Proceedings of
+  the 2021 ACM SIGSAC Conference on Computer and Communications Security},
+  2021.
 
 \bibitem{efficient_errors_2022}
-J.~Ba, G.~J. Duck, and A.~Roychoudhury, ``Efficient greybox fuzzing to detect memory errors,'' in \emph{Proceedings of the 37th IEEE/ACM International Conference on Automated Software Engineering}, 2022.
+J.~Ba, G.~J. Duck, and A.~Roychoudhury, ``Efficient greybox fuzzing to detect
+  memory errors,'' in \emph{Proceedings of the 37th IEEE/ACM International
+  Conference on Automated Software Engineering}, 2022.
 
 \bibitem{profuzzbench_benchmark_stateful_protocol_2021}
-R.~Natella and V.-T. Pham, ``{{ProFuzzBench}}: A benchmark for stateful protocol fuzzing,'' in \emph{Proceedings of the 30th ACM SIGSOFT International Symposium on Software Testing and Analysis}, 2021, pp. 662--665.
+R.~Natella and V.-T. Pham, ``{{ProFuzzBench}}: A benchmark for stateful
+  protocol fuzzing,'' in \emph{Proceedings of the 30th ACM SIGSOFT
+  International Symposium on Software Testing and Analysis}, 2021, pp.
+  662--665.
 
 \bibitem{snapfuzz_high_throughput_fuzzing_2022}
-A.~Andronidis and C.~Cadar, ``{{SnapFuzz}}: high-throughput fuzzing of network applications,'' in \emph{Proceedings of the 31st ACM SIGSOFT International Symposium on Software Testing and Analysis}, 2022, pp. 340--351.
+A.~Andronidis and C.~Cadar, ``{{SnapFuzz}}: high-throughput fuzzing of network
+  applications,'' in \emph{Proceedings of the 31st ACM SIGSOFT International
+  Symposium on Software Testing and Analysis}, 2022, pp. 340--351.
 
 \bibitem{chatafl}
-Meng, Ruijie, Mirchev, Martin, M.~B{"o}hme, and A.~Roychoudhury, ``Large language model guided protocol fuzzing,'' in \emph{31st Annual Network and Distributed System Security Symposium ({NDSS} 2024)}, 2024.
+R.~Meng, M.~Mirchev, M.~B{"o}hme, and A.~Roychoudhury, ``Large language model
+  guided protocol fuzzing,'' in \emph{31st Annual Network and Distributed
+  System Security Symposium ({NDSS} 2024)}, 2024.
 
 \bibitem{fuzz4all_universal_fuzzing_large_2024}
-C.~S. Xia, M.~Paltenghi, J.~L. Tian, M.~Pradel, and L.~Zhang, ``{{Fuzz4All}}: Universal fuzzing with large language models,'' in \emph{Proceedings of the IEEE/ACM 46th International Conference on Software Engineering}, 2024, pp. 1--13.
+C.~S. Xia, M.~Paltenghi, J.~L. Tian, M.~Pradel, and L.~Zhang, ``{{Fuzz4All}}:
+  Universal fuzzing with large language models,'' in \emph{Proceedings of the
+  IEEE/ACM 46th International Conference on Software Engineering}, 2024, pp.
+  1--13.
 
 \bibitem{llmif_augmented_large_language_2024}
-J.~Wang, L.~Yu, and X.~Luo, ``{{LLMIF}}: Augmented large language model for fuzzing {IoT} devices,'' in \emph{2024 IEEE Symposium on Security and Privacy (SP)}, 2024, pp. 881--896.
+J.~Wang, L.~Yu, and X.~Luo, ``{{LLMIF}}: Augmented large language model for
+  fuzzing {IoT} devices,'' in \emph{2024 IEEE Symposium on Security and Privacy
+  (SP)}, 2024, pp. 881--896.
 
 \bibitem{matter_llm_specification_2024}
-X.~Ma, L.~Luo, and Q.~Zeng, ``From one thousand pages of specification to unveiling hidden bugs: Large language model assisted fuzzing of matter {IoT} devices,'' in \emph{33rd USENIX Security Symposium ({USENIX} Security 2024)}, 2024.
+X.~Ma, L.~Luo, and Q.~Zeng, ``From one thousand pages of specification to
+  unveiling hidden bugs: Large language model assisted fuzzing of matter {IoT}
+  devices,'' in \emph{33rd USENIX Security Symposium ({USENIX} Security 2024)},
+  2024.
 
 \bibitem{carpetfuzz_documentation_2023}
-D.~Wang, Y.~Li, Z.~Zhang, and K.~Chen, ``{CarpetFuzz}: Automatic program option constraint extraction from documentation for fuzzing,'' in \emph{32nd USENIX Security Symposium ({USENIX} Security 2023)}, 2023, pp. 1919--1936.
+D.~Wang, Y.~Li, Z.~Zhang, and K.~Chen, ``{CarpetFuzz}: Automatic program option
+  constraint extraction from documentation for fuzzing,'' in \emph{32nd USENIX
+  Security Symposium ({USENIX} Security 2023)}, 2023, pp. 1919--1936.
 
 \bibitem{prompt_fuzzing_fuzz_driver_2024}
-Y.~Lyu, Y.~Xie, P.~Chen, and H.~Chen, ``Prompt fuzzing for fuzz driver generation,'' in \emph{Proceedings of the 2024 ACM SIGSAC Conference on Computer and Communications Security}, 2024, pp. 3793--3807.
+Y.~Lyu, Y.~Xie, P.~Chen, and H.~Chen, ``Prompt fuzzing for fuzz driver
+  generation,'' in \emph{Proceedings of the 2024 ACM SIGSAC Conference on
+  Computer and Communications Security}, 2024, pp. 3793--3807.
 
 \bibitem{large_language_models_are_2023}
-Y.~Deng, C.~S. Xia, H.~Peng, C.~Yang, and L.~Zhang, ``Large language models are zero-shot fuzzers: Fuzzing deep-learning libraries via large language models,'' in \emph{Proceedings of the 32nd ACM SIGSOFT International Symposium on Software Testing and Analysis}, 2023, pp. 423--435.
+Y.~Deng, C.~S. Xia, H.~Peng, C.~Yang, and L.~Zhang, ``Large language models are
+  zero-shot fuzzers: Fuzzing deep-learning libraries via large language
+  models,'' in \emph{Proceedings of the 32nd ACM SIGSOFT International
+  Symposium on Software Testing and Analysis}, 2023, pp. 423--435.
 
 \bibitem{large_language_models_are_2024}
-Y.~Deng, C.~S. Xia, C.~Yang, S.~Zhang, S.~Yang, and L.~Zhang, ``Large language models are edge-case generators: Crafting unusual programs for fuzzing deep learning libraries,'' in \emph{Proceedings of the 46th IEEE/ACM International Conference on Software Engineering}, 2024.
+Y.~Deng, C.~S. Xia, C.~Yang, S.~Zhang, S.~Yang, and L.~Zhang, ``Large language
+  models are edge-case generators: Crafting unusual programs for fuzzing deep
+  learning libraries,'' in \emph{Proceedings of the 46th IEEE/ACM International
+  Conference on Software Engineering}, 2024.
 
 \bibitem{gramatron_effective_grammar_aware_2021}
-P.~Srivastava and M.~Payer, ``Gramatron: effective grammar-aware fuzzing,'' in \emph{Proceedings of the 30th ACM SIGSOFT International Symposium on Software Testing and Analysis}, 2021, pp. 244--256.
+P.~Srivastava and M.~Payer, ``Gramatron: effective grammar-aware fuzzing,'' in
+  \emph{Proceedings of the 30th ACM SIGSOFT International Symposium on Software
+  Testing and Analysis}, 2021, pp. 244--256.
 
 \bibitem{griffin_grammar_free_dbms_2022}
-J.~Fu, J.~Liang, Z.~Wu, M.~Wang, and Y.~Jiang, ``Griffin: Grammar-free dbms fuzzing,'' in \emph{Proceedings of the 37th IEEE/ACM International Conference on Automated Software Engineering}, 2022, pp. 1--12.
+J.~Fu, J.~Liang, Z.~Wu, M.~Wang, and Y.~Jiang, ``Griffin: Grammar-free dbms
+  fuzzing,'' in \emph{Proceedings of the 37th IEEE/ACM International Conference
+  on Automated Software Engineering}, 2022, pp. 1--12.
 
 \bibitem{snipuzz_black_box_fuzzing_2021}
-X.~Feng, R.~Sun, X.~Zhu, M.~Xue, S.~Wen, D.~Liu, S.~Nepal, and Y.~Xiang, ``Snipuzz: Black-box fuzzing of {IoT} firmware via message snippet inference,'' in \emph{Proceedings of the 2021 ACM SIGSAC Conference on Computer and Communications Security}, 2021, pp. 337--350.
+X.~Feng, R.~Sun, X.~Zhu, M.~Xue, S.~Wen, D.~Liu, S.~Nepal, and Y.~Xiang,
+  ``Snipuzz: Black-box fuzzing of {IoT} firmware via message snippet
+  inference,'' in \emph{Proceedings of the 2021 ACM SIGSAC Conference on
+  Computer and Communications Security}, 2021, pp. 337--350.
 
 \bibitem{token_level_fuzzing_2021}
-C.~Salls, C.~Jindal, J.~Corina, C.~Kruegel, and G.~Vigna, ``Token-level fuzzing,'' in \emph{30th USENIX Security Symposium ({USENIX} Security 2021)}, 2021.
+C.~Salls, C.~Jindal, J.~Corina, C.~Kruegel, and G.~Vigna, ``Token-level
+  fuzzing,'' in \emph{30th USENIX Security Symposium ({USENIX} Security 2021)},
+  2021.
 
 \bibitem{no_grammar_no_problem_2023}
-A.~Bulekov, B.~Das, S.~Hajnoczi, and M.~Egele, ``No grammar, no problem: Towards fuzzing the {Linux} kernel without system-call descriptions,'' in \emph{30th Annual Network and Distributed System Security Symposium ({NDSS} 2023)}, 2023.
+A.~Bulekov, B.~Das, S.~Hajnoczi, and M.~Egele, ``No grammar, no problem:
+  Towards fuzzing the {Linux} kernel without system-call descriptions,'' in
+  \emph{30th Annual Network and Distributed System Security Symposium ({NDSS}
+  2023)}, 2023.
 
 \bibitem{likely_invariants_feedback_2021}
-A.~Fioraldi, D.~C. D'Elia, and D.~Balzarotti, ``The use of likely invariants as feedback for fuzzers,'' in \emph{30th USENIX Security Symposium ({USENIX} Security 2021)}, 2021.
+A.~Fioraldi, D.~C. D'Elia, and D.~Balzarotti, ``The use of likely invariants as
+  feedback for fuzzers,'' in \emph{30th USENIX Security Symposium ({USENIX}
+  Security 2021)}, 2021.
 
 \bibitem{mundofuzz_grammar_inference_2022}
-C.~Myung, G.~Lee, and B.~Lee, ``{MundoFuzz}: Hypervisor fuzzing with statistical coverage testing and grammar inference,'' in \emph{31st USENIX Security Symposium ({USENIX} Security 2022)}, 2022.
+C.~Myung, G.~Lee, and B.~Lee, ``{MundoFuzz}: Hypervisor fuzzing with
+  statistical coverage testing and grammar inference,'' in \emph{31st USENIX
+  Security Symposium ({USENIX} Security 2022)}, 2022.
 
 \bibitem{msgfuzzer_message_sequence_guided_2024}
-Y.~Zhang, D.~Fang, P.~Liu, L.~Xi, X.~Lu, X.~Chen, S.~Si, and L.~Sun, ``{{MSGFuzzer}}: Message sequence guided industrial robot protocol fuzzing,'' in \emph{2024 IEEE Conference on Software Testing, Verification and Validation (ICST)}, 2024, pp. 140--150.
+Y.~Zhang, D.~Fang, P.~Liu, L.~Xi, X.~Lu, X.~Chen, S.~Si, and L.~Sun,
+  ``{{MSGFuzzer}}: Message sequence guided industrial robot protocol fuzzing,''
+  in \emph{2024 IEEE Conference on Software Testing, Verification and
+  Validation (ICST)}, 2024, pp. 140--150.
 
 \bibitem{fuzzusb_hybrid_stateful_fuzzing_2022}
-K.~Kim, T.~Kim, E.~Warraich, B.~Lee, K.~R.~B. Butler, A.~Bianchi, and D.~J. Tian, ``{{FuzzUSB}}: Hybrid stateful fuzzing of {USB} gadget stacks,'' in \emph{2022 IEEE Symposium on Security and Privacy (SP)}, 2022, pp. 2212--2229.
+K.~Kim, T.~Kim, E.~Warraich, B.~Lee, K.~R.~B. Butler, A.~Bianchi, and D.~J.
+  Tian, ``{{FuzzUSB}}: Hybrid stateful fuzzing of {USB} gadget stacks,'' in
+  \emph{2022 IEEE Symposium on Security and Privacy (SP)}, 2022, pp.
+  2212--2229.
 
 \bibitem{dtls_fuzzer_dtls_protocol_2022}
-P.~Fiterau-Brostean, B.~Jonsson, K.~Sagonas, and F.~Taquist, ``{{DTLS-Fuzzer}}: A {DTLS} protocol state fuzzer,'' in \emph{2022 IEEE Conference on Software Testing, Verification and Validation (ICST)}, 2022, pp. 456--458.
+P.~Fiterau-Brostean, B.~Jonsson, K.~Sagonas, and F.~Taquist, ``{{DTLS-Fuzzer}}:
+  A {DTLS} protocol state fuzzer,'' in \emph{2022 IEEE Conference on Software
+  Testing, Verification and Validation (ICST)}, 2022, pp. 456--458.
 
 \bibitem{edhoc_fuzzer_edhoc_protocol_2023}
-K.~Sagonas and T.~Typaldos, ``{{EDHOC-Fuzzer}}: An {EDHOC} protocol state fuzzer,'' in \emph{Proceedings of the 32nd ACM SIGSOFT International Symposium on Software Testing and Analysis}, 2023, pp. 1495--1498.
+K.~Sagonas and T.~Typaldos, ``{{EDHOC-Fuzzer}}: An {EDHOC} protocol state
+  fuzzer,'' in \emph{Proceedings of the 32nd ACM SIGSOFT International
+  Symposium on Software Testing and Analysis}, 2023, pp. 1495--1498.
 
 \bibitem{tron_fuzzing_linux_network_2025}
-Q.~Zhang, Y.~Chu, Y.~Shen, J.~Liu, H.~Shi, Y.~Jiang, and W.~Chang, ``Tron: Fuzzing {Linux} network stack via protocol-system call payload synthesis,'' in \emph{2025 40th IEEE/ACM International Conference on Automated Software Engineering (ASE)}, 2025, pp. 3227--3238.
+Q.~Zhang, Y.~Chu, Y.~Shen, J.~Liu, H.~Shi, Y.~Jiang, and W.~Chang, ``Tron:
+  Fuzzing {Linux} network stack via protocol-system call payload synthesis,''
+  in \emph{2025 40th IEEE/ACM International Conference on Automated Software
+  Engineering (ASE)}, 2025, pp. 3227--3238.
 
 \bibitem{pgfuzz_policy_guided_fuzzing_2021}
-H.~Kim, M.~O. Ozmen, A.~Bianchi, Z.~B. Celik, and D.~Xu, ``{{PGFUZZ}}: Policy-guided fuzzing for robotic vehicles,'' in \emph{28th Annual Network and Distributed System Security Symposium ({NDSS} 2021)}, 2021.
+H.~Kim, M.~O. Ozmen, A.~Bianchi, Z.~B. Celik, and D.~Xu, ``{{PGFUZZ}}:
+  Policy-guided fuzzing for robotic vehicles,'' in \emph{28th Annual Network
+  and Distributed System Security Symposium ({NDSS} 2021)}, 2021.
 
 \bibitem{android_smarttvs_vulnerability_discovery_2021}
-Y.~Aafer, W.~You, Y.~Sun, Y.~Shi, X.~Zhang, and H.~Yin, ``Android smarttvs vulnerability discovery via log-guided fuzzing,'' in \emph{30th USENIX Security Symposium ({USENIX} Security 2021)}, 2021.
+Y.~Aafer, W.~You, Y.~Sun, Y.~Shi, X.~Zhang, and H.~Yin, ``Android smarttvs
+  vulnerability discovery via log-guided fuzzing,'' in \emph{30th USENIX
+  Security Symposium ({USENIX} Security 2021)}, 2021.
 
 \bibitem{fuzzware_mmio_2022}
-T.~Scharnowski, N.~Bars, M.~Schloegel, E.~Gustafson, M.~Muench, G.~Vigna, C.~Kruegel, T.~Holz, and A.~Abbasi, ``{Fuzzware}: Using precise {MMIO} modeling for effective firmware fuzzing,'' in \emph{31st USENIX Security Symposium ({USENIX} Security 2022)}, 2022.
+T.~Scharnowski, N.~Bars, M.~Schloegel, E.~Gustafson, M.~Muench, G.~Vigna,
+  C.~Kruegel, T.~Holz, and A.~Abbasi, ``{Fuzzware}: Using precise {MMIO}
+  modeling for effective firmware fuzzing,'' in \emph{31st USENIX Security
+  Symposium ({USENIX} Security 2022)}, 2022.
 
 \bibitem{statefuzz_linux_driver_2022}
-B.~Zhao, Z.~Li, S.~Qin, Z.~Ma, M.~Yuan, W.~Zhu, Z.~Tian, and C.~Zhang, ``{StateFuzz}: System call-based state-aware linux driver fuzzing,'' in \emph{31st USENIX Security Symposium ({USENIX} Security 2022)}, 2022.
+B.~Zhao, Z.~Li, S.~Qin, Z.~Ma, M.~Yuan, W.~Zhu, Z.~Tian, and C.~Zhang,
+  ``{StateFuzz}: System call-based state-aware linux driver fuzzing,'' in
+  \emph{31st USENIX Security Symposium ({USENIX} Security 2022)}, 2022.
 
 \bibitem{differential_fuzzing_data_distribution_2024}
-D.~Ryu, G.~Kim, D.~Lee, S.~Kim, S.~Bae, J.~Rhee, and T.~Kim, ``Differential fuzzing for data distribution service programs with dynamic configuration,'' in \emph{Proceedings of the 39th IEEE/ACM International Conference on Automated Software Engineering}, 2024.
+D.~Ryu, G.~Kim, D.~Lee, S.~Kim, S.~Bae, J.~Rhee, and T.~Kim, ``Differential
+  fuzzing for data distribution service programs with dynamic configuration,''
+  in \emph{Proceedings of the 39th IEEE/ACM International Conference on
+  Automated Software Engineering}, 2024.
 
 \bibitem{fuzzing_hardware_like_software_2022}
-T.~Trippel, K.~G. Shin, A.~Chernyakhovsky, G.~Kelly, D.~Rizzo, and M.~Hicks, ``Fuzzing hardware like software,'' in \emph{31st USENIX Security Symposium ({USENIX} Security 2022)}, 2022, pp. 3237--3254.
+T.~Trippel, K.~G. Shin, A.~Chernyakhovsky, G.~Kelly, D.~Rizzo, and M.~Hicks,
+  ``Fuzzing hardware like software,'' in \emph{31st USENIX Security Symposium
+  ({USENIX} Security 2022)}, 2022, pp. 3237--3254.
 
 \bibitem{coverage_guided_fuzzing_embedded_2023}
-M.~Beckmann and J.~Steffan, ``Coverage-guided fuzzing of embedded systems leveraging hardware tracing,'' in \emph{Computer Security -- {ESORICS} 2023}, 2023, pp. 362--378.
+M.~Beckmann and J.~Steffan, ``Coverage-guided fuzzing of embedded systems
+  leveraging hardware tracing,'' in \emph{Computer Security -- {ESORICS} 2023},
+  2023, pp. 362--378.
 
 \bibitem{windranger_blocks_2022}
-Z.~Du, Y.~Li, Y.~Liu, and B.~Mao, ``{WindRanger}: A directed greybox fuzzer driven by deviation basic blocks,'' in \emph{Proceedings of the 44th International Conference on Software Engineering}, 2022.
+Z.~Du, Y.~Li, Y.~Liu, and B.~Mao, ``{WindRanger}: A directed greybox fuzzer
+  driven by deviation basic blocks,'' in \emph{Proceedings of the 44th
+  International Conference on Software Engineering}, 2022.
 
 \bibitem{when_analysis_2025}
-P.~Lin, P.~Wang, X.~Zhou, W.~Xie, X.~Ren, and K.~Lu, ``When control flows deviate: Directed grey-box fuzzing with probabilistic reachability analysis,'' in \emph{Proceedings of the 40th IEEE/ACM International Conference on Automated Software Engineering}, 2025.
+P.~Lin, P.~Wang, X.~Zhou, W.~Xie, X.~Ren, and K.~Lu, ``When control flows
+  deviate: Directed grey-box fuzzing with probabilistic reachability
+  analysis,'' in \emph{Proceedings of the 40th IEEE/ACM International
+  Conference on Automated Software Engineering}, 2025.
 
 \bibitem{one_engine_to_fuzz_em_all_2021}
-Y.~Chen, R.~Zhong, H.~Hu, H.~Zhang, Y.~Yang, D.~Wu, and W.~Lee, ``{One Engine to Fuzz 'em All}: Generic language processor testing with semantic validation,'' in \emph{2021 IEEE Symposium on Security and Privacy (SP)}, 2021.
+Y.~Chen, R.~Zhong, H.~Hu, H.~Zhang, Y.~Yang, D.~Wu, and W.~Lee, ``{One Engine
+  to Fuzz 'em All}: Generic language processor testing with semantic
+  validation,'' in \emph{2021 IEEE Symposium on Security and Privacy (SP)},
+  2021.
 
 \bibitem{apicraft_fuzz_driver_2021}
-C.~Zhang, X.~Lin, Y.~Li, Y.~Xue, J.~Xie, H.~Chen, X.~Ying, J.~Wang, and Y.~Liu, ``{APICraft}: Fuzz driver generation for closed-source sdk libraries,'' in \emph{30th USENIX Security Symposium ({USENIX} Security 2021)}, 2021.
+C.~Zhang, X.~Lin, Y.~Li, Y.~Xue, J.~Xie, H.~Chen, X.~Ying, J.~Wang, and Y.~Liu,
+  ``{APICraft}: Fuzz driver generation for closed-source sdk libraries,'' in
+  \emph{30th USENIX Security Symposium ({USENIX} Security 2021)}, 2021.
 
 \bibitem{rulf_rust_library_fuzzing_2021}
-J.~Jiang, H.~Xu, and Y.~Zhou, ``{RULF}: Rust library fuzzing via api dependency graph traversal,'' in \emph{Proceedings of the 36th IEEE/ACM International Conference on Automated Software Engineering}, 2021.
+J.~Jiang, H.~Xu, and Y.~Zhou, ``{RULF}: Rust library fuzzing via api dependency
+  graph traversal,'' in \emph{Proceedings of the 36th IEEE/ACM International
+  Conference on Automated Software Engineering}, 2021.
 
 \bibitem{smartian_analyses_2021}
-J.~Choi, D.~Kim, S.~Kim, G.~Grieco, A.~Groce, and S.~K. Cha, ``{{SMARTIAN}}: Enhancing smart contract fuzzing with static and dynamic data-flow analyses,'' in \emph{Proceedings of the 36th IEEE/ACM International Conference on Automated Software Engineering}, 2021.
+J.~Choi, D.~Kim, S.~Kim, G.~Grieco, A.~Groce, and S.~K. Cha, ``{{SMARTIAN}}:
+  Enhancing smart contract fuzzing with static and dynamic data-flow
+  analyses,'' in \emph{Proceedings of the 36th IEEE/ACM International
+  Conference on Automated Software Engineering}, 2021.
 
 \bibitem{magneto_step_wise_approach_2024}
-Z.~Zhou, Y.~Yang, S.~Wu, Y.~Huang, B.~Chen, and X.~Peng, ``{Magneto}: A step-wise approach to exploit vulnerabilities in dependent libraries via llm-empowered directed fuzzing,'' in \emph{Proceedings of the 39th IEEE/ACM International Conference on Automated Software Engineering}, 2024, pp. 1633--1644.
+Z.~Zhou, Y.~Yang, S.~Wu, Y.~Huang, B.~Chen, and X.~Peng, ``{Magneto}: A
+  step-wise approach to exploit vulnerabilities in dependent libraries via
+  llm-empowered directed fuzzing,'' in \emph{Proceedings of the 39th IEEE/ACM
+  International Conference on Automated Software Engineering}, 2024, pp.
+  1633--1644.
 
 \bibitem{docter_documentation_guided_fuzzing_2022}
-D.~Xie, Y.~Li, M.~Kim, H.~V. Pham, L.~Tan, X.~Zhang, and M.~W. Godfrey, ``{{DocTer}}: documentation-guided fuzzing for testing deep learning {API} functions,'' in \emph{Proceedings of the 31st ACM SIGSOFT International Symposium on Software Testing and Analysis}, 2022, pp. 176--188.
+D.~Xie, Y.~Li, M.~Kim, H.~V. Pham, L.~Tan, X.~Zhang, and M.~W. Godfrey,
+  ``{{DocTer}}: documentation-guided fuzzing for testing deep learning {API}
+  functions,'' in \emph{Proceedings of the 31st ACM SIGSOFT International
+  Symposium on Software Testing and Analysis}, 2022, pp. 176--188.
 
 \bibitem{sok_prudent_evaluation_practices_2024}
-M.~Schloegel, N.~Bars, N.~Schiller, L.~Bernhard, T.~Scharnowski, A.~Crump, A.~Ale-Ebrahim, N.~Bissantz, M.~Muench, and T.~Holz, ``{{SoK}}: Prudent evaluation practices for fuzzing,'' in \emph{2024 IEEE Symposium on Security and Privacy (SP)}, 2024, pp. 1974--1993.
+M.~Schloegel, N.~Bars, N.~Schiller, L.~Bernhard, T.~Scharnowski, A.~Crump,
+  A.~Ale-Ebrahim, N.~Bissantz, M.~Muench, and T.~Holz, ``{{SoK}}: Prudent
+  evaluation practices for fuzzing,'' in \emph{2024 IEEE Symposium on Security
+  and Privacy (SP)}, 2024, pp. 1974--1993.
 
 \bibitem{reliability_benchmarking_2022}
-M.~Böhme, L.~Szekeres, and J.~Metzman, ``On the reliability of coverage-based fuzzer benchmarking,'' in \emph{Proceedings of the 44th International Conference on Software Engineering}, 2022.
+M.~Böhme, L.~Szekeres, and J.~Metzman, ``On the reliability of coverage-based
+  fuzzer benchmarking,'' in \emph{Proceedings of the 44th International
+  Conference on Software Engineering}, 2022.
 
 \bibitem{many_stack_2022}
-C.~Poncelet, K.~K. Sagonas, and N.~Tsiftes, ``So many fuzzers, so little time: Experience from evaluating fuzzers on the contiki-ng network stack,'' in \emph{Proceedings of the 37th IEEE/ACM International Conference on Automated Software Engineering}, 2022.
+C.~Poncelet, K.~K. Sagonas, and N.~Tsiftes, ``So many fuzzers, so little time:
+  Experience from evaluating fuzzers on the contiki-ng network stack,'' in
+  \emph{Proceedings of the 37th IEEE/ACM International Conference on Automated
+  Software Engineering}, 2022.
 
 \end{thebibliography}

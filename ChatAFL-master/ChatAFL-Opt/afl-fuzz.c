@@ -487,7 +487,7 @@ u32 chat_times = 0;
 static u32 last_edges_count = 0;           /* Edges count at last check */
 static u64 last_edges_check_time = 0;      /* Time of last edges check (ms) */
 static double edges_growth_rate = 0.0;     /* Edges/minute growth rate */
-static u32 adaptive_plateau_threshold = 100; /* Dynamic plateau threshold (starts at UNINTERESTING_THRESHOLD) */
+static u32 adaptive_plateau_threshold = 200; /* Dynamic plateau threshold (starts at UNINTERESTING_THRESHOLD) */
 
 /* ============================================
  * Ablation Control Flags (env-var toggled)
@@ -1038,25 +1038,27 @@ u32 update_scores_and_select_next_state(u8 mode)
             frontier_bonus = 4.0;
           }
 
-          /* Fix-19: Acceptability penalty — prevent error dead-ends from
-           * monopolizing the frontier bonus.  Three-tier logic:
+          /* Fix-19 revised: Acceptability penalty — softer to preserve
+           * crash-finding in error states.  Three-tier logic:
            *
            * error_hint=1 (structural: 4xx/5xx, not yet proven productive)
-           *   → frontier_bonus × 0.25  (neutralize: 4.0→1.0, 2.0→0.5)
+           *   → frontier_bonus × 0.5   (was 0.25 — too aggressive, error
+           *     states in SIP/FTP/SMTP are where parser crashes live)
            *
            * error_hint=0 (unknown, e.g. binary protocols) AND
-           * behaviorally unproductive (selected≥20, productivity<0.01)
-           *   → frontier_bonus × 0.5   (softer penalty, data-driven)
+           * behaviorally unproductive (selected≥30, productivity<0.005)
+           *   → frontier_bonus × 0.7   (was 0.5 at selected≥20/prod<0.01
+           *     — tightened criteria to avoid premature penalty)
            *
            * error_hint=2 (confirmed productive despite error code)
            *   → no penalty (full bonus preserved)
            */
           if (state->error_hint == 1) {
-            frontier_bonus *= 0.25;
-          } else if (state->error_hint == 0 &&
-                     state->selected_times >= 20 &&
-                     state->productivity < 0.01) {
             frontier_bonus *= 0.5;
+          } else if (state->error_hint == 0 &&
+                     state->selected_times >= 30 &&
+                     state->productivity < 0.005) {
+            frontier_bonus *= 0.7;
           }
           /* error_hint == 2: confirmed productive → no penalty */
         }
@@ -1700,16 +1702,18 @@ HANDLE_RESPONSES:
    * Result: pure-ftpd OPT runs at 0.33 exec/sec (59.6% of samples
    * <1 exec/sec) while bftpd/proftpd are unaffected (<0.1%).
    *
-   * Fix: cap at 500 iterations (~25–50 ms on typical hardware).
-   * Protocol-relevant coverage (command parsing, state transitions, data
-   * handling) is captured within the first few iterations; the remaining
-   * bits come from non-protocol cleanup paths that are not useful for
-   * bug-finding.  Non-forking servers are unaffected — they already exit
-   * in 1–2 iterations. */
+   * Fix: cap at 5000 iterations (~250 ms on typical hardware).
+   * Protocol-relevant coverage is captured within the first few iterations.
+   * However, crash-specific paths (ASAN teardown, signal handlers) need
+   * more time to stabilize — the original 500-iteration cap truncated
+   * these signatures, causing unique crashes to appear as duplicates.
+   * 5000 iterations gives crash paths time to fully materialize while
+   * still bounding the loop.  Non-forking servers are unaffected — they
+   * already exit in 1–2 iterations. */
   memset(session_virgin_bits, 255, MAP_SIZE);
   {
     int stab_iter = 0;
-    while (stab_iter++ < 500)
+    while (stab_iter++ < 5000)
     {
       if (has_new_bits(session_virgin_bits) != 2)
         break;
@@ -1746,7 +1750,7 @@ HANDLE_RESPONSES:
       int kstat = kill(child_pid, 0);
       if ((kstat != 0) && (errno == ESRCH))
         break;
-      if (++kill_wait >= 250) {          /* 250 × 200 µs = 50 ms */
+      if (++kill_wait >= 1000) {          /* 1000 × 200 µs = 200 ms */
         kill(child_pid, SIGKILL);
         child_force_killed = 1;          /* Fix-14a: tell run_target() this is not a crash */
         usleep(1000);                    /* 1 ms for kernel cleanup */
@@ -4470,14 +4474,22 @@ static u8 run_target(char **argv, u32 timeout)
     if (kill_signal == SIGTERM)
       return FAULT_NONE;
 
-    /* Fix-14a: SIGKILL sent by send_over_network() SIGKILL escalation
-     * is a deliberate termination, not a crash.  Without this check,
-     * the 50 ms SIGKILL escalation in Fix-14 causes every slow-to-die
-     * process to be misreported as FAULT_CRASH, aborting dry_run. */
+    /* Fix-14a revised: SIGKILL sent by send_over_network() SIGKILL
+     * escalation is a deliberate termination.  However, returning
+     * FAULT_NONE here was WRONG — it silently suppressed real crashes
+     * that were still propagating when the 50 ms SIGKILL timer fired.
+     *
+     * Fix: during dry_run (corpus_read_or_sync), return FAULT_NONE to
+     * avoid aborting on slow-to-die servers.  During normal fuzzing,
+     * return FAULT_TMOUT so save_if_interesting() can re-run the input
+     * with hang_tmout and correctly detect latent crashes via the
+     * hang→crash reclassification pipeline. */
     if (kill_signal == SIGKILL && child_force_killed)
     {
       child_force_killed = 0;
-      return FAULT_NONE;
+      if (corpus_read_or_sync)
+        return FAULT_NONE;   /* dry_run: don't abort on slow servers */
+      return FAULT_TMOUT;    /* normal: let hang→crash pipeline catch real crashes */
     }
 
     return FAULT_CRASH;
@@ -7891,16 +7903,20 @@ AFLNET_REGIONS_SELECTION:;
       edges_growth_rate = edges_gained / time_elapsed_min;  // edges per minute
       
       if (!ablation_no_adaptive) {
-        // Adaptive threshold adjustment:
-        // High growth (>5 edges/min): increase threshold to 150 (reduce LLM calls)
-        // Medium growth (1-5 edges/min): keep threshold at 100
-        // Low growth (<1 edge/min): decrease threshold to 50 (increase LLM calls)
+        // Adaptive threshold adjustment (revised: raised floor to 150):
+        // High growth (>5 edges/min): threshold=300 (let fuzzer work undisturbed)
+        // Medium growth (1-5 edges/min): threshold=200 (moderate LLM frequency)
+        // Low growth (<1 edge/min): threshold=150 (more LLM calls, but bounded)
+        //
+        // Rationale: old floor of 50 caused LLM interrupt storms (~7sec interval)
+        // that reduced effective mutation time. New floor 150 ensures >=20sec
+        // between triggers, still 3x faster than baseline's fixed 512.
         if (edges_growth_rate > 5.0) {
-          adaptive_plateau_threshold = 150;
+          adaptive_plateau_threshold = 300;
         } else if (edges_growth_rate > 1.0) {
-          adaptive_plateau_threshold = 100;
+          adaptive_plateau_threshold = 200;
         } else {
-          adaptive_plateau_threshold = 50;
+          adaptive_plateau_threshold = 150;
         }
       }
       /* else: ablation_no_adaptive keeps threshold at UNINTERESTING_THRESHOLD */
@@ -8218,7 +8234,7 @@ AFLNET_REGIONS_SELECTION:;
         /* Parent: wait for child with timeout */
         int status = 0;
         int elapsed = 0;
-        const int max_wait = 150; /* seconds */
+        const int max_wait = 60; /* seconds (was 150 — too much blocking) */
         while (elapsed < max_wait)
         {
           pid_t w = waitpid(pid, &status, WNOHANG);
@@ -12180,8 +12196,24 @@ int main(int argc, char **argv)
 
   fprintf(stderr, "[DEBUG] ========== BEFORE perform_dry_run ==========\n");
   fflush(stderr);
-  
+
+  /* Fix-14b: perform_dry_run() runs AFTER read_testcases() which resets
+   * corpus_read_or_sync to 0.  But dry_run seeds on forking daemons
+   * (forked-daapd, kamailio, etc.) are routinely SIGKILL'd by
+   * send_over_network()'s bounded wait, setting child_force_killed=1.
+   * Without corpus_read_or_sync=1, Fix-14a's run_target() returns
+   * FAULT_TMOUT instead of FAULT_NONE, causing ALL seeds to be marked
+   * as timeouts → "All test cases time out, giving up!" FATAL.
+   *
+   * Setting corpus_read_or_sync=1 here ensures dry_run uses the
+   * FAULT_NONE path for self-inflicted SIGKILLs, matching the behavior
+   * of the baseline's infinite-wait loop where daemons always exit
+   * "normally" after processing. */
+  corpus_read_or_sync = 1;
+
   perform_dry_run(use_argv);
+
+  corpus_read_or_sync = 0;
 
   fprintf(stderr, "[DEBUG] ========== AFTER perform_dry_run ==========\n");
   fflush(stderr);
@@ -12305,7 +12337,7 @@ int main(int argc, char **argv)
         "  NO_ADAPTIVE fixed threshold : %u%s\n",
         adaptive_plateau_threshold,
         adaptive_plateau_threshold == 512 ? " (matches ChatAFL baseline)" :
-        adaptive_plateau_threshold == 100 ? " (Opt default, 5x more frequent than baseline-512)" : "");
+        adaptive_plateau_threshold == 200 ? " (Opt default, 2.5x more frequent than baseline-512)" : "");
     }
     fflush(stderr);
   }
@@ -12318,7 +12350,7 @@ int main(int argc, char **argv)
   last_edges_count = agnedges(ipsm);  // Use IPSM edges (FIXED: was count_bits)
   last_edges_check_time = get_cur_time();
   edges_growth_rate = 0.0;
-  adaptive_plateau_threshold = UNINTERESTING_THRESHOLD;  // Start with default 100
+  adaptive_plateau_threshold = UNINTERESTING_THRESHOLD;  // Start with default 200
 
   /* Fix-Ablation-1: Apply custom fixed threshold from CHATAFL_ABLATION_THRESHOLD
    * (only meaningful when CHATAFL_NO_ADAPTIVE=1).  Applied here so it overrides

@@ -1,0 +1,110 @@
+1 Ablation 结果自我推翻了核心论点，这是最严重的问题，足以直接导致拒稿。
+
+论文的核心主张是，Verified Control 的每个组件Runtime Verifier、CEGR、Frontier Scheduling、State Prompt对性能提升至关重要。然而Table 3 (Ablation Snapshot) 中的数据貌似直接反驳了这一主张，你需要确认？五个ablated变体全部在 code-edge coverage 上超过Full VeriSPFuzz，甚至关掉所有控制机制（All Controls Off）反而更好。论文用variance 变宽来辩解，但这无法合理化如此系统性的反转。一个有经验的审稿人会立即质疑：这些精心设计的控制机制究竟是否真的有效？
+
+2 实验结果严重不完整，论文在 10 个 Target 上只报告了 6 个
+
+
+3 缺乏统计显著性检验
+我看到你注释了计划使用 Mann-Whitney U检验（$p < 0.05$），但在实际报告的Table 2 中完全没有执行任何统计检验，这个可能是必须的。
+还有，我看了几个实验结果，好像不是很好[苦涩]
+ProFTPD 的 code-edge coverage 增益仅为+0.2% vs ChatAFL（5286 vs 5276），SD 分别为 202 和 107，差异极大可能不显著
+Exim 的 code-edge 增益仅为 +1.0% vs AFLNet和 +2.8% vs ChatAFL
+Kamailio 的 code-edge 甚至 低于ChatAFL（-0.7%）
+你引用了SoK方法论论文，强调统计严谨性，却未将其应用于自己的结果，是就容易被审稿人质疑自相矛盾
+
+
+4 主要指标Code-Edge Coverage的绝对提升幅度极小且不一致
+在 Fuzzing研究中code-edge coverage 是衡量 fuzzer 有效性的核心指标，但 VeriSPFuzz 的实际提升令审稿人失望，比如
+ProFTPD vs ChatAFL：仅 +0.2%（差异在 SD 范围内）
+Exim vs AFLNet：仅 +1.0%
+Kamailio：VeriSPFuzz 不如 ChatAFL
+IPSM-edge count 的提升更显著，但IPSM是由VeriSPFuzz 自身维护的内部数据结构，存在循环论证的嫌疑，VeriSPFuzz更擅长维护IPSM，自然会在基于 IPSM 的指标上表现更好[苦涩]
+
+5 没有发现任何新的？真实漏洞
+残酷的现实就是任何ASE fuzzing论文如果完全不报告发现的bug或CVE，会被审稿人质疑实用价值。VeriSPFuzz通篇讨论coverage和IPSM探索，没有任何一处提到找到了实际的安全漏洞或崩溃。这会让审稿人认为该工作停留在理论层面，尚未证明实际的漏洞挖掘能力[裂开]
+
+6 我发现，有一些论文引用BibTeX 作者格式有问题
+
+看到有论文中所有相关作者姓名显示错误。BibTeX 要求多词姓名必须写为 First Last and First Last（正序）或 Last, First and Last, First（逗号分隔），不能将姓和名当作两个独立作者用 and 连接。
+
+比如 sgf_usenix22/aflnet
+错误写法 Pham and Van-Thuan and B{"o}hme, Marcel
+正确写法 Van-Thuan Pham and Marcel B{"o}hme
+
+你确认下
+Meng and Ruijie and Mirchev and Martin
+
+正确是不是这个：Ruijie Meng and Martin Mirchev
+
+Postel and Jon and Reynolds and Joyce
+是不是？Jon Postel and Joyce Reynolds
+
+
+sulley 和 libfuzzer 使用了双花括号 {{OpenRCE}} / {{LLVM Project}} 表示机构作者，这是正确的 BibTeX 用法，无需修改。
+
+docter_documentation_guided_fuzzing_2022 的 BibTeX key 写成了 docter 而工具名为 DocTer，不影响编译但建议统一为 docter → docter 或改为 docTer，保持一致性即可
+
+
+7 Table 2 与 Table 3 数据好像有矛盾
+Target	主结果表 (Table 2) Full VeriSPFuzz	Ablation 表 (Table 3) Full VeriSPFuzz
+Pure-FTPd Code-Edge	1253 ± 33	                  1225 ± 39.1
+Exim Code-Edge	3818 ± 65	                  3893.8 ± 43.9
+
+两张表中 "Full VeriSPFuzz" 理应是同一配置的同一批实验，但数据、均值和标准差均不一致。这说明两张表来自不同批次的实验运行。审稿人会立即质疑：哪张表的数据是真实的？整个评估体系是否存在选择性报告？
+
+
+8 我其实之前看过类似的工作 不止有 AFLNet + ChatAFL
+
+你可以考虑除了和他们对比，还有这几个
+a) SGF (USENIX Security 2022) — 与 VeriSPFuzz 核心机制最相关的直接前驱，且作者列表几乎相同（Pham, Böhme, Roychoudhury），不比较极为可疑
+b) Bleem (USENIX Security 2023) — Packet Sequence Fuzzing
+c) Logos (ISSTA 2024) — Log-Guided 状态感知 Fuzzing
+d) MBFuzzer (USENIX Security 2025) — MQTT 专项 Fuzzer，与 Mosquitto 实验直接重叠
+
+审稿人会认为我们可能刻意回避了最具竞争力的对手，厉害的方法，选择最容易胜出的旧基线，找软柿子捏[机智]
+
+
+你检查一下，是不是将AFLNet的作者Van-Thuan Pham错误地写入了SGF的BibTeX，同时页码也错了10页
+@inproceedings{sgf_usenix22,
+  author    = {Jinsheng Ba and Marcel B{\"o}hme and 
+               Zahra Mirzamomen and Abhik Roychoudhury},
+  title     = {Stateful Greybox Fuzzing},
+  booktitle = {31st USENIX Security Symposium (USENIX Security 2022)},
+  pages     = {3255--3272},
+  year      = {2022}
+}
+
+9 Neither AFLNet nor ChatAFL originally shipped with MQTT support. We therefore implemented the MQTT response-code dissector and seed infrastructure for all three compared systems
+
+Mosquitto 实验的公平性存在重大疑点, 可能你要修改一下写法
+
+你琢磨一下，想想，你修改了对手系统AFLNet、ChatAFL以支持 MQTT，修改质量和深度完全由作者控制，无法独立核实
+任何实现上的不对等（无论有意与否）都会系统性地偏向 VeriSPFuzz，这一设置完全无法被其他研究者复现验证，Mosquitto恰好是VeriSPFuzz在code-edge coverage上提升最大的target+17.5% vs ChatAFL，这种巧合会引起怀疑[机智][奸笑]
+
+10 你是不是有提到将 semantic drift定义为核心问题，并以此作为设计的动机。
+然而通篇论文没有任何一处数字回答，ChatAFL中有多少百分比的 LLM 提案因语义漂移而被拒绝？VeriSPFuzz 的 Runtime Verifier 的实际拒绝率是多少？被 CEGR 修复的提案中，有多少最终被成功接受？admission rate（$P \land U \land R \land G$ 全部通过）在各 target 上是多少？没有量化semantic drift的发生率和VeriSPFuzz的修复率，semantic drift是核心问题的论断就是无法验证的叙事，会被直接抓住小鞭子拒稿[撇嘴]
+
+11 关键超参数缺乏任何依据
+我看到有
+β∈{4.0,2.0,1.0}，80 rounds,30%, 64次？×0.25 还是 0.5？selected_times ≥ 20 且 productivity < 0.01
+很多参数被直接使用，既没有敏感性分析，也没有理论推导或经验说明来源，如果把80改成40或160，结果会怎样？" 如果我们无法回答，意味着整个系统是针对特定实验精心调参的产物，而非具有普适性的设计原则，这就麻烦了
+
+12 Veri前缀在软件工程领域普遍指Formal Verification缩写，有点误导
+建议你考虑：
+GateFuzz: Admission-Controlled LLM Guidance for Stateful Protocol Fuzzing
+LoopFuzz: Closing the Loop on LLM-Guided Stateful Protocol Fuzzing
+GuardedFuzz: Runtime-Guarded LLM Proposals for Stateful Protocol Fuzzing
+BoundedLLMFuzz: Runtime-Bounded LLM Integration for Stateful Protocol Fuzzing
+你自己决定,最推荐选择【LoopFuzz: Closed-Loop Runtime Admission Control for LLM-Guided Stateful Protocol Fuzzing】，closed-loop是论文Design节反复出现的核心框架词，与ChatAFLopen-loop baseline的对比也最为直接，审稿人一眼可以识别技术定位
+
+
+
+
+
+
+
+
+
+
+
