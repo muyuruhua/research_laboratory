@@ -67,7 +67,7 @@ def main(csv_file, put, runs, cut_off, step, out_file, fuzzers):
   fuzzer_markers = {f.lower(): MARKERS[i % len(MARKERS)] for i, f in enumerate(fuzzers)}
   marker_every = max(1, cut_off // (step * 10))
 
-  fig, axes = plt.subplots(1, 2, figsize = (10, 20))
+  fig, axes = plt.subplots(1, 2, figsize = (20, 10))
   fig.suptitle("State coverage analysis")
 
   for key, grp in mean_df.groupby(['fuzzer', 'data_type']):
