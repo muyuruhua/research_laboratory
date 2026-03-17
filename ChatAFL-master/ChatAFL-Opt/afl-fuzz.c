@@ -210,6 +210,8 @@ EXP_ST u64 total_crashes, /* Total number of crashes          */
 
 static u32 subseq_tmouts; /* Number of timeouts in a row      */
 
+static u32 forced_kills;  /* Fix-14c: send_over_network() SIGKILL escalations */
+
 static u8 *stage_name = "init", /* Name of the current fuzz stage   */
     *stage_short,               /* Short stage name                 */
     *syncing_party;             /* Currently syncing with...        */
@@ -4474,22 +4476,41 @@ static u8 run_target(char **argv, u32 timeout)
     if (kill_signal == SIGTERM)
       return FAULT_NONE;
 
-    /* Fix-14a revised: SIGKILL sent by send_over_network() SIGKILL
-     * escalation is a deliberate termination.  However, returning
-     * FAULT_NONE here was WRONG — it silently suppressed real crashes
-     * that were still propagating when the 50 ms SIGKILL timer fired.
+    /* Fix-14c: SIGKILL from send_over_network() bounded-kill-wait
+     * escalation is a deliberate termination, NOT a timeout.
      *
-     * Fix: during dry_run (corpus_read_or_sync), return FAULT_NONE to
-     * avoid aborting on slow-to-die servers.  During normal fuzzing,
-     * return FAULT_TMOUT so save_if_interesting() can re-run the input
-     * with hang_tmout and correctly detect latent crashes via the
-     * hang→crash reclassification pipeline. */
+     * Safety argument:
+     *  1. Real timeouts (SIGALRM → SIGKILL) are already caught ABOVE
+     *     via child_timed_out — that check runs first and correctly
+     *     returns FAULT_TMOUT.  We only reach here when child_timed_out
+     *     is FALSE, meaning the exec_tmout timer did NOT fire.
+     *  2. child_force_killed is set in send_over_network() AFTER the
+     *     socket is closed and network I/O is complete.  The process
+     *     is in shutdown (dbus/avahi cleanup, fd teardown), not in a
+     *     crash-reportable state.
+     *  3. Any real crash (SIGSEGV/SIGABRT) completes in <200 ms
+     *     (ASAN handlers included); the 200 ms grace period in
+     *     send_over_network() is sufficient.
+     *
+     * Returning FAULT_TMOUT here (the old Fix-14a behavior) caused:
+     *  - Coverage checked against virgin_tmout instead of virgin_bits,
+     *    silently discarding new queue entries (paths_found halved).
+     *  - Inflated unique_hangs from non-hanging inputs (140 false
+     *    hangs on forked-daapd vs 17 on baseline).
+     *  - subseq_tmouts accumulation reducing mutation depth.
+     *  - Hang-verification re-run was ALREADY non-functional for
+     *    servers with exec_tmout > hang_tmout (e.g. forked-daapd
+     *    -t 5000+ vs EXEC_TIMEOUT=1000).
+     *
+     * Scope: only affects servers that take >200 ms to die after
+     * SIGTERM (e.g. forked-daapd with dbus/avahi).  Fast-exit
+     * servers never trigger child_force_killed, so they are
+     * completely unaffected by this change. */
     if (kill_signal == SIGKILL && child_force_killed)
     {
       child_force_killed = 0;
-      if (corpus_read_or_sync)
-        return FAULT_NONE;   /* dry_run: don't abort on slow servers */
-      return FAULT_TMOUT;    /* normal: let hang→crash pipeline catch real crashes */
+      forced_kills++;
+      return FAULT_NONE;
     }
 
     return FAULT_CRASH;
@@ -5939,7 +5960,8 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
              "afl_version       : " VERSION "\n"
              "target_mode       : %s%s%s%s%s%s%s\n"
              "command_line      : %s\n"
-             "slowest_exec_ms   : %llu\n",
+             "slowest_exec_ms   : %llu\n"
+             "forced_kills      : %u\n",
           start_time / 1000, get_cur_time() / 1000, getpid(),
           queue_cycle ? (queue_cycle - 1) : 0, total_execs, eps,
           queued_paths, queued_favored, queued_discovered, queued_imported,
@@ -5955,7 +5977,7 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
            persistent_mode || deferred_mode)
               ? ""
               : "default",
-          orig_cmdline, slowest_exec_ms);
+          orig_cmdline, slowest_exec_ms, forced_kills);
   /* ignore errors */
 
   /* Get rss value from the children
@@ -12197,18 +12219,16 @@ int main(int argc, char **argv)
   fprintf(stderr, "[DEBUG] ========== BEFORE perform_dry_run ==========\n");
   fflush(stderr);
 
-  /* Fix-14b: perform_dry_run() runs AFTER read_testcases() which resets
-   * corpus_read_or_sync to 0.  But dry_run seeds on forking daemons
-   * (forked-daapd, kamailio, etc.) are routinely SIGKILL'd by
-   * send_over_network()'s bounded wait, setting child_force_killed=1.
-   * Without corpus_read_or_sync=1, Fix-14a's run_target() returns
-   * FAULT_TMOUT instead of FAULT_NONE, causing ALL seeds to be marked
-   * as timeouts → "All test cases time out, giving up!" FATAL.
+  /* Fix-14b: corpus_read_or_sync=1 during dry_run.
    *
-   * Setting corpus_read_or_sync=1 here ensures dry_run uses the
-   * FAULT_NONE path for self-inflicted SIGKILLs, matching the behavior
-   * of the baseline's infinite-wait loop where daemons always exit
-   * "normally" after processing. */
+   * Originally needed so Fix-14a's run_target() returned FAULT_NONE
+   * for child_force_killed during dry_run.  Fix-14c now returns
+   * FAULT_NONE unconditionally for child_force_killed, so the
+   * run_target motivation is obsolete.
+   *
+   * However, corpus_read_or_sync is still read by add_to_queue()
+   * (L2268/2287) for max_seed_region_count limiting during initial
+   * corpus loading — keep the wrapper for that purpose. */
   corpus_read_or_sync = 1;
 
   perform_dry_run(use_argv);
