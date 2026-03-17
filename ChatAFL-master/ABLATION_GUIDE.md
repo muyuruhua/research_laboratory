@@ -1,402 +1,686 @@
-# ChatAFL-Opt 消融实验使用指南
+# ChatAFL-Opt 消融实验使用指南（按当前代码结构设计）
+
+本指南基于**当前实现本身**来设计消融，不依赖旧结果是否好看。
+
+> 代码核对状态（2026-03）：本文档已按当前 `ChatAFL-Opt/afl-fuzz.c`、`run_ablation.sh`、
+> `benchmark/scripts/execution/profuzzbench_exec_common*.sh` 的真实行为重新校对。
+> 其中最重要的更新有三点：
+> 1. `CHATAFL_NO_ADAPTIVE=1` 的默认固定阈值现在是 `UNINTERESTING_THRESHOLD=200`，
+>    只有显式设置 `CHATAFL_ABLATION_THRESHOLD` 才会变成 `150/300/512/...`；
+> 2. `CHATAFL_NO_REFINEMENT=1` 若没有 `CHATAFL_HYPOTHESIS=1` 会退化为 no-op，但
+>    `run_ablation.sh` / `run_dev.sh` 的容器链路当前会自动为 `chatafl-opt` 注入该变量；
+> 3. `legacy` 预设中的 `wo_adaptive_100` 现已在脚本中显式导出
+>    `CHATAFL_ABLATION_THRESHOLD=100`，因此它再次表示真正的 fixed-100 历史复现实验，
+>    但仍只建议用于旧结果对齐，不建议进入当前主表。
+
+目标只有两个：
+
+1. 让实验问题与当前代码结构严格对应；
+2. 在**不改功能逻辑**的前提下，把 `run_ablation.sh` 变成更合理的实验编排器。
 
 ---
 
-## 一、4 个消融开关：代码级精确描述
+## 一、先给结论：当前代码下最合理的设计
 
-| 环境变量 | 实际控制的代码路径 | 不受该开关影响的路径 |
-|---------|-----------------|-------------------|
-| `CHATAFL_NO_REFINEMENT=1` | 跳过 `periodic_hypothesis_refinement()` (L7915)，即 Tier-2 LLM 精炼 | **Tier-1** `validate_hypothesis_sampled()` (L7228) **仍每 500 次 exec 运行**；`hypothesis_ctx` 仍初始化；反例仍被收集 |
-| `CHATAFL_NO_FRONTIER=1` | `frontier_bonus` 恒为 1.0 (L1018)，同时关闭 `error_hint` 接受度惩罚 (L1040) | `error_hint` / `productivity` 字段仍被赋值、仍动态更新，只是不影响得分 |
-| `CHATAFL_NO_ADAPTIVE=1` | 跳过 `edges_growth_rate` 三挡调整 (L7872)，阈值固定在 **100** | `edges_growth_rate` 仍每 60s 计算并打印；初始 `adaptive_plateau_threshold=UNINTERESTING_THRESHOLD=100` |
-| `CHATAFL_NO_STATE_PROMPT=1` | 跳过 `state_ctx` JSON 构建 (L8029)；子进程用 `construct_prompt_stall_original()` (L8134)；禁用 `actions[]` 解析 (L8258) | dedup ring 仍 active；adaptive threshold 仍 active；fork 隔离 + 150s 超时仍 active |
+如果只看当前代码，而**不参考先前旧结果**，最合理的设计不是“固定 512 当唯一主锚点”，也不是“旧 bundled 7 组直接继续跑”。
 
-**不设任何变量 = 完整 ChatAFL-Opt（所有优化开启）。**
+更合理的做法是把实验分成两层：
 
----
+### 层 A：主消融表 —— 解释当前 shipped 策略的组成
 
-## 二、已知的混淆项（Confounders）——必须在论文中说明
+主表应该以**当前实际 shipped 行为**作为基线，即：
 
-### ⚠️ 混淆项 1：`NO_ADAPTIVE` 固定值是 100，不是 ChatAFL 基线的 512
+- `adaptive_full`
 
-```c
-// ChatAFL-Opt/config.h L76
-#define UNINTERESTING_THRESHOLD  100  // Opt 的编译值
+然后只回答当前代码中真正存在的 3 个策略 bundle 是否有净效应：
 
-// ChatAFL/config.h L76
-#define UNINTERESTING_THRESHOLD  512  // 基线的编译值
-```
+- `wo_refinement`
+- `wo_frontier`
+- `wo_state_prompt`
 
-设置 `NO_ADAPTIVE=1` 后阈值固定在 **100**，比 ChatAFL 基线的 512 **触发频繁 5 倍**。因此 "w/o Adaptive" 测量的不是"去掉自适应后等同于基线触发频率"，而是"固定在最激进频率下去掉自适应"。
+再补 2 个阈值对照，检验 adaptive 本身是否成立：
 
-**论文写法**：在 "w/o Adaptive" 一行明确注明固定值为 100（并可以加一组 fixed=512 对比组与基线对齐）。
+- `fixed200_full`
+- `fixed512_full`
 
-### ⚠️ 混淆项 2：`NO_REFINEMENT` 在没有 `CHATAFL_HYPOTHESIS` 时是**空操作**
+也就是说，当前最合理的主矩阵应当是 **6 组**，而不是旧的 7 组 bundled 表。
 
-```c
-// L7904-7908
-if (hypothesis_mode && !hypothesis_ctx) {
-    init_grammar_hypothesis_system();  // hypothesis_mode=0 时跳过
-}
-// L7914
-if (!ablation_no_refinement) {
-    periodic_hypothesis_refinement();  // 内部 L5035: if (!hypothesis_mode...) return;
-}
-```
+### 层 B：阈值子实验 —— 单独研究 plateau 触发策略
 
-若运行时**未设置 `CHATAFL_HYPOTHESIS` 环境变量**，则 `hypothesis_mode=0`，`periodic_hypothesis_refinement()` 入口直接 return —— Full 配置与 w/o Refinement 配置行为**完全相同**，消融无效。
+adaptive 在当前代码里只会把阈值调到：
 
-**结论**：`NO_REFINEMENT` 必须与 `CHATAFL_HYPOTHESIS=1` 配合使用，否则该组对比数据无意义。
+- `150`
+- `200`
+- `300`
 
-### ⚠️ 混淆项 3：`NO_FRONTIER` 捆绑了两个机制
+所以阈值子实验应该围绕这些**当前真实会出现的值**来做，而不是继续把 `100` 当主选项。
 
-```c
-if (!ablation_no_frontier) {
-    // 机制 A：拓扑感知前沿加权 (out_degree → ×4 / ×2 / ×1)
-    if (out_degree <= 1)      frontier_bonus = 4.0;
-    else if (out_degree <= 3) frontier_bonus = 2.0;
+因此阈值子实验应为：
 
-    // 机制 B：接受度惩罚 (error_hint → ×0.25 / ×0.5)
-    if (state->error_hint == 1) frontier_bonus *= 0.25;
-    else if (...productivity < 0.01) frontier_bonus *= 0.5;
-}
-```
+- `adaptive_full`
+- `fixed150_full`
+- `fixed200_full`
+- `fixed300_full`
+- `fixed512_full`
 
-一个开关同时关闭了"IPSM 拓扑感知调度"和"可接受性惩罚"两个独立机制，无法分离各自贡献。若需细粒度证明，需拆分为两个开关（见第七节）。
+其中：
 
-### ⚠️ 混淆项 4：Bounded Execution（50ms SIGKILL）永远无法消融
-
-```c
-// send_over_network() — Opt 独有，无任何 ablation 开关
-if (++kill_wait >= 250) {   // 250 × 200µs = 50ms
-    kill(child_pid, SIGKILL);
-    child_force_killed = 1;
-}
-```
-
-ChatAFL 基线的两个 `while(1)` 对 forking daemon（pure-ftpd / proftpd / bftpd）会**无限阻塞**；Opt 所有配置（含 w/o-everything）均有 50ms 上限。对这三个目标，任何 Opt 配置与基线之间的差异都包含该机制的贡献，**无法通过消融开关排除**。
-
-**论文写法**：在 forking daemon 目标的结果表格下加 footnote，说明 bounded-execution 始终 active，为 Opt 整体改进的组成部分之一。
-
-### ℹ️ 非混淆项：节点停滞随机扰动始终 active
-
-```c
-// L12315 — 无 ablation 开关
-if (node_stagnation_rounds > 80 && UR(100) < 30) {
-    effective_algo = RANDOM_SELECTION;  // 30% 概率临时覆盖 FAVOR
-}
-```
-
-该机制防止 FAVOR 热点锁定，但效果随机、幅度小（30% 概率、仅在节点 80 轮未增长后），在所有 Opt 配置中一致存在，不影响配置间对比的有效性。无需特别处理，在方法节描述即可。
+- `150/200/300` 对应当前 adaptive 的真实三档；
+- `512` 是外部参考锚点，用于与 ChatAFL 传统触发频率对齐。
 
 ---
 
-## 三、完整传递链路
+## 二、为什么当前代码就应该这样设计
 
-两条路径均已支持：
+原因不是旧结果，而是**代码耦合关系**本身。
 
-### 开发环境（volume 挂载，无需重建镜像）
+### 1）`adaptive` 是触发频率策略，不是普通局部开关
 
-```
-宿主机 export  →  sudo -E  →  run_dev.sh
-→  profuzzbench_exec_all_dev.sh（环境继承）
-→  profuzzbench_exec_common_dev.sh（ABLATION_FLAGS 构建 + docker run -e）
-→  容器内 afl-fuzz getenv()
-```
+当前 plateau handler 中：
 
-### 生产环境（使用镜像内预编译代码）
+- `adaptive` 直接决定多久进入一次 plateau 逻辑；
+- plateau 逻辑内部又会触发：
+  - lazy hypothesis init
+  - Tier-2 refinement
+  - rich state prompt / simple prompt
+  - actions[] 执行路径
+  - LLM 调用计数与 token 成本
 
-```
-宿主机 export  →  sudo -E  →  run.sh（显式转发 4 变量）
-→  profuzzbench_exec_all.sh
-→  profuzzbench_exec_common.sh（ABLATION_FLAGS 构建 + docker run -e）
-→  容器内 afl-fuzz getenv()
-```
+所以 `adaptive` 不是“和 refinement/frontier/state_prompt 平级的局部开关”，而是**上层调度策略**。
 
-| | run_dev.sh | run.sh |
+这意味着：
+
+- 主表里必须把 `adaptive` 当作一个单独问题来比较；
+- 不能再把它和其他 bundle 完全混在一起解释；
+- 但也不应该先验地把某个固定阈值直接设成唯一主基线。
+
+### 2）`NO_FRONTIER` 与 `NO_STATE_PROMPT` 仍然是 bundled ablation
+
+当前代码里：
+
+- `CHATAFL_NO_FRONTIER=1` 同时关掉：
+  - frontier out-degree bonus
+  - error/productivity penalty
+- `CHATAFL_NO_STATE_PROMPT=1` 同时关掉：
+  - `state_ctx`
+  - rich prompt 模板
+  - `actions[]` 路径
+
+因此主表最多只能回答：
+
+- “这个 bundle 在当前 shipped 策略下是否有净效果？”
+
+不能回答：
+
+- “frontier bonus 单独贡献多少”
+- “error penalty 单独贡献多少”
+- “state_ctx 和 actions[] 谁更重要”
+
+### 3）`NO_REFINEMENT` 是有效开关，但它依赖 plateau 触发
+
+当前脚本链路会自动为 `chatafl-opt` 容器注入 `CHATAFL_HYPOTHESIS=1`，所以 `NO_REFINEMENT` 在 `run_ablation.sh` 下是有效的。
+
+更具体地说，当前 `afl-fuzz.c` 在读取 `CHATAFL_NO_REFINEMENT=1` 时会打印
+`ABLATION: Tier-2 hypothesis refinement DISABLED`；若没有 `CHATAFL_HYPOTHESIS=1`，还会明确打印
+warning 说明该消融没有效果。因此：
+
+- 通过 `run_ablation.sh` / `run_dev.sh` 跑 `chatafl-opt`，该开关是有效的；
+- 手工直接起容器或绕开脚本时，必须自己确认 `CHATAFL_HYPOTHESIS=1` 已注入。
+
+但 refinement 只在 plateau handler 内被调用，因此其效果天然受触发策略影响。
+
+这也是为什么：
+
+- 主表里可以比较 `adaptive_full` vs `wo_refinement`；
+- 但如果要进一步研究 refinement 是否对某个静态阈值更敏感，那应当作为**后续补充实验**，而不是默认主表。
+
+---
+
+## 三、当前代码里真实存在的消融开关
+
+截至当前实现，`ChatAFL-Opt/afl-fuzz.c` 真正支持的开关只有这些：
+
+| 环境变量 | 当前实际作用 | 解释边界 |
 |---|---|---|
-| 消融变量转发方式 | 依赖 `sudo -E` 环境继承 | 显式传 `CHATAFL_NO_*="${CHATAFL_NO_*}"` (run.sh L23-L26) |
-| 代码来源 | volume 挂载本地 → 容器内编译 | 镜像内预编译（需先 `docker build`） |
+| `CHATAFL_NO_REFINEMENT=1` | 关闭 Tier-2 `periodic_hypothesis_refinement()` | **Tier-1 sampled validation 仍运行**；且必须有 `CHATAFL_HYPOTHESIS=1` 才不是空操作 |
+| `CHATAFL_NO_FRONTIER=1` | 同时关闭 frontier bonus 与 error/productivity penalty | 这是一个 **bundled** 开关，不是单一机制 |
+| `CHATAFL_NO_ADAPTIVE=1` | 关闭 adaptive plateau threshold | 固定阈值默认为 `200`（即 `UNINTERESTING_THRESHOLD`），也可由 `CHATAFL_ABLATION_THRESHOLD` 显式覆盖 |
+| `CHATAFL_NO_STATE_PROMPT=1` | 关闭 `state_ctx` 与 `actions[]` 路径，回退原始 prompt | 这同样是 **bundled** 开关 |
+| `CHATAFL_ABLATION_THRESHOLD=<N>` | 在 `NO_ADAPTIVE=1` 时指定固定阈值 | 建议总是显式写出，避免“默认 200”造成误读 |
+
+### 重要事实
+
+- `profuzzbench_exec_common_dev.sh` 与 `profuzzbench_exec_common.sh` 已自动为 `chatafl-opt` 容器注入 `CHATAFL_HYPOTHESIS=1`；
+- `run_ablation.sh` 每组都在独立子 shell 中先 `unset` 再 `export` 当前组变量，因此组与组之间不会串环境；
+- `benchmark/scripts/execution/profuzzbench_exec_common*.sh` 会把 `CHATAFL_NO_*` 与 `CHATAFL_ABLATION_THRESHOLD` 原样透传进容器；
+- 因此当前脚本里做 `NO_REFINEMENT` 对比是有效的；
+- 但 `frontier` 和 `state prompt` 仍然是 bundled ablation，**当前代码无法分离**：
+  - `frontier bonus` vs `error penalty`
+  - `state_ctx` vs `actions[]`
 
 ---
 
-## 四、执行命令（以 live555/RTSP 为例）
+## 四、当前推荐的主消融矩阵：`core` 预设
 
-以下所有命令在 ChatAFL-master 目录执行。live555 标准超时 **1470 分钟**（≈24.5 小时），每组 **5 次**重复。
+`run_ablation.sh` 默认执行 `core` 预设。这个预设不依赖旧结果，而是直接对齐当前代码的 4 类可观察策略：
 
-### ▶ 推荐：一键并行运行全部 7 组（约 24.5 小时完成）
+1. 当前 shipped 行为；
+2. refinement bundle；
+3. frontier bundle；
+4. state-prompt bundle；
+5. adaptive 触发策略的两个关键静态对照。
+
+### `core` 预设的 6 组
+
+| 组名 | 环境变量 | 解释目标 |
+|---|---|---|
+| `adaptive_full` | 无 | 当前 shipped 行为，主基线 |
+| `wo_refinement` | `NO_REFINEMENT=1` | 当前 adaptive 策略下，Tier-2 refinement 是否有净效果 |
+| `wo_frontier` | `NO_FRONTIER=1` | 当前 adaptive 策略下，frontier bundle 是否有净效果 |
+| `wo_state_prompt` | `NO_STATE_PROMPT=1` | 当前 adaptive 策略下，state-prompt bundle 是否有净效果 |
+| `fixed200_full` | `NO_ADAPTIVE=1`, `THR=200` | adaptive 相对于 Opt 默认静态频率是否有净效果 |
+| `fixed512_full` | `NO_ADAPTIVE=1`, `THR=512` | adaptive 相对于 ChatAFL 对齐频率是否有净效果 |
+
+### 为什么主表不默认带 `wo_all`
+
+`wo_all` 在当前代码下会同时改变多个 policy bundle，但：
+
+- 仍保留 fork 隔离、bounded execution、并行 enrichment、dedup ring；
+- 仍然不是 ChatAFL；
+- 也无法作为严格因果分解依据。
+
+因此更合理的做法是：
+
+- **主表不用 `wo_all`**；
+- 如果确实需要整体 sanity check，再放到 appendix 预设里单独跑。
+
+### 当前论文里主表怎么解释
+
+推荐主表口径：
+
+- `adaptive_full` 是当前系统；
+- `wo_refinement` / `wo_frontier` / `wo_state_prompt` 是对当前系统做的三组 bundled perturbation；
+- `fixed200_full` / `fixed512_full` 用来回答 adaptive 触发策略是否成立。
+
+这样最贴近当前代码语义，也最不容易过度解释。
+
+---
+
+## 五、辅助预设
+
+### 1）`threshold` 预设：阈值子实验
+
+用于单独回答“当前 adaptive 三挡策略是否优于静态阈值”的问题。
+
+包含 5 组：
+
+| 组名 | 环境变量 |
+|---|---|
+| `adaptive_full` | 无 |
+| `fixed150_full` | `NO_ADAPTIVE=1`, `THR=150` |
+| `fixed200_full` | `NO_ADAPTIVE=1`, `THR=200` |
+| `fixed300_full` | `NO_ADAPTIVE=1`, `THR=300` |
+| `fixed512_full` | `NO_ADAPTIVE=1`, `THR=512` |
+
+这 5 组的好处是：
+
+- `150/200/300` 全都来自当前 adaptive 真实会落到的阈值；
+- `512` 保留为外部参考锚点；
+- 不再把当前代码里不会自动出现的 `100` 当主实验一部分。
+
+### 2）`appendix` 预设：补充 sanity-check
+
+如果你仍希望保留“全关 policy bundle”的粗粒度检查，可使用 `appendix`：
+
+- `adaptive_full`
+- `wo_refinement`
+- `wo_frontier`
+- `wo_state_prompt`
+- `fixed200_full`
+- `fixed512_full`
+- `wo_all`
+
+这里的 `wo_all` 只建议放 appendix，不建议进主表。
+
+### 3）`legacy` 预设：旧 bundled 7 组复现
+
+包含旧脚本那 7 组：
+
+- `full_opt`
+- `wo_refinement`
+- `wo_frontier`
+- `wo_adaptive_100`（显式固定 100，仅用于历史复现）
+- `wo_adaptive_512`
+- `wo_state_prompt`
+- `wo_all`
+
+该预设保留的唯一目的：
+
+- 与旧结果目录命名保持兼容；
+- 复现旧论文表格；
+- 与历史归档直接对齐。
+
+注意：虽然 `wo_adaptive_100` 现在已经通过 `CHATAFL_ABLATION_THRESHOLD=100` 恢复为真正的 fixed-100 组，
+它仍然只服务于历史 bundled 7 组复现。由于 100 不是当前 adaptive controller 会自然落到的阈值，
+也不是当前 shipped 主矩阵的一部分，因此不建议再把它当作主论文中的默认 adaptive 对照。
+
+**不建议**再把 `legacy` 结果当作主消融证据。
+
+---
+
+## 六、推荐的报告口径
+
+### 强结论目标集
+
+当前只建议对以下目标做强结论：
+
+- `exim`
+- `live555`
+- `mosquitto`
+- `pure-ftpd`
+
+原因：这 4 个目标历史上有完整、平衡的消融 runs。
+
+### 弱证据 / appendix only
+
+- `kamailio`：补齐到每组 5 seeds 之前，只做弱证据；
+- `forked-daapd`：现有消融归档缺失，不能写强结论。
+
+### 每组至少报告的指标
+
+- `l_abs`, `b_abs`
+- `IPSM nodes`, `IPSM edges`
+- `paths_total`
+- `llm_total_calls`
+- prompt / completion tokens
+- `unique_crashes`, `unique_hangs`
+- 若可用，再加 `forced_kills`
+
+### 建议的判定语言
+
+- **Supported**：多数目标 coverage 提升且没有系统性成本膨胀；
+- **Mixed**：部分目标提升、部分目标下降，或成本明显变差；
+- **Not supported**：未能在多数目标上优于主锚点。
+
+---
+
+## 七、运行方式
+
+以下命令都在 `ChatAFL-master` 根目录执行。
+
+### 先准备环境
 
 ```bash
 cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master
 export KEY="sk-..."
 export SKIPCOUNT=40
-sudo -E ./run_ablation.sh                      # 默认：live555，n=5，1470min
-# 或显式指定：
+```
+
+说明：
+
+- `KEY` 是当前 LLM 调用所需的 API key；
+- `SKIPCOUNT` 是覆盖率统计间隔；
+- `run_ablation.sh` 默认调用 `run_dev.sh`，因此会使用当前本地 `ChatAFL-Opt/` 代码并在容器内重新编译；
+- `profuzzbench_exec_common_dev.sh` / `profuzzbench_exec_common.sh` 会自动为 `chatafl-opt` 容器注入 `CHATAFL_HYPOTHESIS=1`，因此 `wo_refinement` 在脚本路径下是有效的。
+
+### 默认：运行新的 `core` 预设
+
+```bash
 sudo -E ./run_ablation.sh live555 5 1470
 ```
 
-7 组同时在后台启动（35 个容器并行），结果目录自动按组命名：
+等价于：
 
-```
-benchmark/results-live555_ablation_full_opt/
-benchmark/results-live555_ablation_wo_refinement/
-benchmark/results-live555_ablation_wo_frontier/
-benchmark/results-live555_ablation_wo_adaptive_100/
-benchmark/results-live555_ablation_wo_adaptive_512/
-benchmark/results-live555_ablation_wo_state_prompt/
-benchmark/results-live555_ablation_wo_all/
-```
-
-启动后监控：
 ```bash
-docker ps | grep live555    # 应看到 35 个容器
-sudo ./monitor.sh           # 整体进度
+sudo -E ./run_ablation.sh live555 5 1470 core
 ```
 
----
+### 运行阈值子实验
 
-### ▶ 手动单组运行（调试 / 单独补跑某组）
+```bash
+sudo -E ./run_ablation.sh live555 5 1470 threshold
+```
 
-**前置准备**（仅需设置一次）：
+### 运行 appendix sanity-check
+
+```bash
+sudo -E ./run_ablation.sh live555 5 1470 appendix
+```
+
+### 复现旧 bundled 7 组
+
+```bash
+sudo -E ./run_ablation.sh live555 5 1470 legacy
+```
+
+### 结果目录命名
+
+每组都写入：
+
+```text
+benchmark/results-<target>_ablation_<label>/
+```
+
+例如：
+
+```text
+benchmark/results-live555_ablation_adaptive_full/
+benchmark/results-live555_ablation_wo_frontier/
+benchmark/results-live555_ablation_fixed512_full/
+```
+
+### 参数说明
+
+```bash
+sudo -E ./run_ablation.sh [TARGET] [RUNS] [TIMEOUT_MIN] [PRESET]
+```
+
+含义如下：
+
+- `TARGET`：目标协议实现，例如 `live555`、`exim`、`mosquitto`、`pure-ftpd`
+- `RUNS`：每组重复次数，例如 `5`
+- `TIMEOUT_MIN`：每组 campaign 运行分钟数，例如 `1470`
+- `PRESET`：实验预设，可选 `core` / `threshold` / `appendix` / `legacy`
+
+例如：
+
+```bash
+# 对 mosquitto 跑默认主矩阵，每组 5 次、24.5 小时
+sudo -E ./run_ablation.sh mosquitto 5 1470 core
+
+# 对 exim 跑阈值子实验
+sudo -E ./run_ablation.sh exim 5 1470 threshold
+
+# 对 pure-ftpd 跑 appendix 版本（含 wo_all）
+sudo -E ./run_ablation.sh pure-ftpd 5 1470 appendix
+```
+
+### 手动单组运行某个 ablation 的标准模板
+
+如果你不想走 `run_ablation.sh`，而是要手动只跑某一组，推荐固定按下面这个流程来，避免环境残留把 full 或别的组污染掉。
+
+#### 通用模板
 
 ```bash
 cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master
-export KEY="sk-..."        # 填入 API key
-export SKIPCOUNT=40        # 每 40 个 testcase 统计一次覆盖率
+
+# 1) 先清空所有 ablation 环境变量
+unset CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER \
+  CHATAFL_NO_ADAPTIVE CHATAFL_NO_STATE_PROMPT \
+  CHATAFL_ABLATION_THRESHOLD ABLATION_PRESET
+
+# 2) 只设置当前这一个实验组需要的变量
+# export CHATAFL_NO_...=1
+# export CHATAFL_ABLATION_THRESHOLD=...
+
+# 3) 运行单组
+sudo -E ./run_dev.sh <RUNS> <TIMEOUT_MIN> <TARGET> chatafl-opt
+
+# 4) 跑完后再次清理，避免污染后续 full / 其他实验
+unset CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER \
+  CHATAFL_NO_ADAPTIVE CHATAFL_NO_STATE_PROMPT \
+  CHATAFL_ABLATION_THRESHOLD ABLATION_PRESET
 ```
 
-> **关于 `CHATAFL_HYPOTHESIS=1`**：已由 `profuzzbench_exec_common_dev.sh` 自动注入所有 `chatafl-opt` 容器，无需手动 export。  
-> **关于结果目录**：每次运行自动创建 `results-live555_<时间戳>/`，不同组不会覆盖。
-
----
-
-### ① Full-Opt（消融基准，所有优化全开）
+#### 手动跑 full（无消融）
 
 ```bash
-unset CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER CHATAFL_NO_ADAPTIVE \
-      CHATAFL_NO_STATE_PROMPT CHATAFL_ABLATION_THRESHOLD
+unset CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER \
+  CHATAFL_NO_ADAPTIVE CHATAFL_NO_STATE_PROMPT \
+  CHATAFL_ABLATION_THRESHOLD ABLATION_PRESET
+
 sudo -E ./run_dev.sh 5 1470 live555 chatafl-opt
 ```
 
-### ② w/o Refinement（禁用 Tier-2 LLM 精炼，Tier-1 仍运行）
+#### 手动跑 `wo_refinement`
 
 ```bash
-unset CHATAFL_NO_FRONTIER CHATAFL_NO_ADAPTIVE CHATAFL_NO_STATE_PROMPT CHATAFL_ABLATION_THRESHOLD
+unset CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER \
+  CHATAFL_NO_ADAPTIVE CHATAFL_NO_STATE_PROMPT \
+  CHATAFL_ABLATION_THRESHOLD ABLATION_PRESET
+
 export CHATAFL_NO_REFINEMENT=1
 sudo -E ./run_dev.sh 5 1470 live555 chatafl-opt
+
+unset CHATAFL_NO_REFINEMENT
 ```
 
-> `CHATAFL_HYPOTHESIS=1` 由脚本自动注入；此处无需手动 export。Tier-1 (`validate_hypothesis_sampled`) 每 500 次 exec 仍运行，不受该开关影响。
-
-### ③ w/o Frontier（禁用拓扑加权 + 接受度惩罚，捆绑贡献）
+#### 手动跑 `wo_frontier`
 
 ```bash
-unset CHATAFL_NO_REFINEMENT CHATAFL_NO_ADAPTIVE CHATAFL_NO_STATE_PROMPT CHATAFL_ABLATION_THRESHOLD
+unset CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER \
+  CHATAFL_NO_ADAPTIVE CHATAFL_NO_STATE_PROMPT \
+  CHATAFL_ABLATION_THRESHOLD ABLATION_PRESET
+
 export CHATAFL_NO_FRONTIER=1
 sudo -E ./run_dev.sh 5 1470 live555 chatafl-opt
+
+unset CHATAFL_NO_FRONTIER
 ```
 
-### ④ w/o Adaptive —— 固定阈值 100（Opt 内部默认，最激进频率）
+#### 手动跑 `wo_state_prompt`
 
 ```bash
-unset CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER CHATAFL_NO_STATE_PROMPT CHATAFL_ABLATION_THRESHOLD
-export CHATAFL_NO_ADAPTIVE=1
-sudo -E ./run_dev.sh 5 1470 live555 chatafl-opt
-```
+unset CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER \
+  CHATAFL_NO_ADAPTIVE CHATAFL_NO_STATE_PROMPT \
+  CHATAFL_ABLATION_THRESHOLD ABLATION_PRESET
 
-> 阈值固定为 100，比 ChatAFL 基线的 512 **触发频繁 5 倍**。Δ 体现"自适应相对于最激进固定值"的增益，而非与基线等价的固定值。
-
-### ⑤ w/o Adaptive —— 固定阈值 512（与 ChatAFL 基线触发频率对齐）
-
-```bash
-unset CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER CHATAFL_NO_STATE_PROMPT
-export CHATAFL_NO_ADAPTIVE=1 CHATAFL_ABLATION_THRESHOLD=512
-sudo -E ./run_dev.sh 5 1470 live555 chatafl-opt
-```
-
-> 依赖 Fix 1（`afl-fuzz.c` 已实现）以及 `CHATAFL_ABLATION_THRESHOLD` 向容器的转发（已添加至两份 `exec_common` 脚本）。
-
-### ⑥ w/o State-Prompt（禁用 rich prompt + actions[] 执行，捆绑贡献）
-
-```bash
-unset CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER CHATAFL_NO_ADAPTIVE CHATAFL_ABLATION_THRESHOLD
 export CHATAFL_NO_STATE_PROMPT=1
 sudo -E ./run_dev.sh 5 1470 live555 chatafl-opt
+
+unset CHATAFL_NO_STATE_PROMPT
 ```
 
-### ⑦ w/o All（全禁用；量化不可消融工程改进的基础贡献）
+#### 手动跑 `fixed200_full`
 
 ```bash
-export CHATAFL_NO_REFINEMENT=1 CHATAFL_NO_FRONTIER=1 \
-       CHATAFL_NO_ADAPTIVE=1 CHATAFL_NO_STATE_PROMPT=1 \
-       CHATAFL_ABLATION_THRESHOLD=512
+unset CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER \
+  CHATAFL_NO_ADAPTIVE CHATAFL_NO_STATE_PROMPT \
+  CHATAFL_ABLATION_THRESHOLD ABLATION_PRESET
+
+export CHATAFL_NO_ADAPTIVE=1
+export CHATAFL_ABLATION_THRESHOLD=200
 sudo -E ./run_dev.sh 5 1470 live555 chatafl-opt
-# 实验结束后务必清除，避免污染后续实验
-unset CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER CHATAFL_NO_ADAPTIVE \
-      CHATAFL_NO_STATE_PROMPT CHATAFL_ABLATION_THRESHOLD
+
+unset CHATAFL_NO_ADAPTIVE CHATAFL_ABLATION_THRESHOLD
 ```
 
-> 此组 **≠ ChatAFL**：Fork 隔离、50ms SIGKILL bounded execution、32 线程并行 enrich、dedup ring 在所有 Opt 配置下始终 active，这 4 项没有消融开关。  
-> `Full − w/o-All = 4 个开关的纯净贡献之和`  
-> `w/o-All 与 ChatAFL 的差 ≈ 不可消融工程改进的基础增益`（见第六节矩阵 ⑦ 行说明）
+#### 手动跑 `fixed512_full`
+
+```bash
+unset CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER \
+  CHATAFL_NO_ADAPTIVE CHATAFL_NO_STATE_PROMPT \
+  CHATAFL_ABLATION_THRESHOLD ABLATION_PRESET
+
+export CHATAFL_NO_ADAPTIVE=1
+export CHATAFL_ABLATION_THRESHOLD=512
+sudo -E ./run_dev.sh 5 1470 live555 chatafl-opt
+
+unset CHATAFL_NO_ADAPTIVE CHATAFL_ABLATION_THRESHOLD
+```
+
+#### 手动跑 `wo_all`（只建议 appendix / 粗粒度 sanity-check）
+
+```bash
+unset CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER \
+  CHATAFL_NO_ADAPTIVE CHATAFL_NO_STATE_PROMPT \
+  CHATAFL_ABLATION_THRESHOLD ABLATION_PRESET
+
+export CHATAFL_NO_REFINEMENT=1
+export CHATAFL_NO_FRONTIER=1
+export CHATAFL_NO_ADAPTIVE=1
+export CHATAFL_NO_STATE_PROMPT=1
+export CHATAFL_ABLATION_THRESHOLD=512
+sudo -E ./run_dev.sh 5 1470 live555 chatafl-opt
+
+unset CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER \
+  CHATAFL_NO_ADAPTIVE CHATAFL_NO_STATE_PROMPT \
+  CHATAFL_ABLATION_THRESHOLD
+```
+
+#### 手动运行时的两个原则
+
+1. **先 `unset`，再 `export` 当前组需要的变量。**
+2. **跑完后再次 `unset`。**
+
+只要遵守这两条，手动跑单组一般不会污染后续 full 结果。
 
 ---
 
-**生产环境**（使用镜像内预编译代码）：将 `run_dev.sh` 替换为 `run.sh`，其他完全一致。
+## 八、哪些情况会污染 full 结果？怎么安全复原环境？
+
+### 什么叫“污染 full 结果”
+
+只要你的 full 运行意图是“按默认 LoopFuzz 行为跑”，那么**任何 ablation 环境变量残留**都会污染 full 结果。
+
+会污染 full 的变量只有这几类：
+
+- `CHATAFL_NO_REFINEMENT`
+- `CHATAFL_NO_FRONTIER`
+- `CHATAFL_NO_ADAPTIVE`
+- `CHATAFL_NO_STATE_PROMPT`
+- `CHATAFL_ABLATION_THRESHOLD`
+
+它们一旦被 `export`，再执行：
+
+- `sudo -E ./run_dev.sh ...`
+- `sudo -E ./run.sh ...`
+
+就会把 ablation 配置继续带进容器，从而不再是 full 行为。
+
+### 哪些情况最容易误污染
+
+最常见的是这几种：
+
+1. 你在当前 shell 里手动执行过：
+
+```bash
+export CHATAFL_NO_ADAPTIVE=1
+export CHATAFL_ABLATION_THRESHOLD=512
+```
+
+然后忘了 `unset`，直接继续跑 full。
+
+2. 你为了单独调试某组，手动执行过：
+
+```bash
+export CHATAFL_NO_REFINEMENT=1
+sudo -E ./run_dev.sh ...
+```
+
+然后下一次还在同一个 shell 里跑 full。
+
+3. 你在 root shell / sudo 保留环境下做过手动实验，没有清掉环境变量。
+
+### 为什么 `run_ablation.sh` 本身不会污染其他组
+
+因为 `run_ablation.sh` 里每个 ablation 组都在**独立子 shell**里运行，并且启动前都会先：
+
+```bash
+unset CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER \
+  CHATAFL_NO_ADAPTIVE CHATAFL_NO_STATE_PROMPT \
+  CHATAFL_ABLATION_THRESHOLD TIMESTAMP
+```
+
+然后再按需设置该组自己的变量。
+
+所以：
+
+- 组与组之间不会串；
+- `run_ablation.sh` 结束后也不会把这些变量写回你当前父 shell。
+
+换句话说，**真正容易污染 full 的不是 `run_ablation.sh`，而是你手工 `export` 后直接跑 `run_dev.sh` / `run.sh`。**
+
+### 最安全的复原方式
+
+如果你怀疑当前 shell 已经带了 ablation 变量，先执行：
+
+```bash
+unset CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER \
+  CHATAFL_NO_ADAPTIVE CHATAFL_NO_STATE_PROMPT \
+  CHATAFL_ABLATION_THRESHOLD ABLATION_PRESET
+```
+
+然后检查：
+
+```bash
+env | grep '^CHATAFL_' || true
+```
+
+如果没有输出，说明当前 shell 已经恢复到“无消融变量”状态。
+
+### 最稳妥的 full 跑法
+
+如果你要明确跑 full，而不是任何消融组，建议先清环境，再执行：
+
+```bash
+unset CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER \
+  CHATAFL_NO_ADAPTIVE CHATAFL_NO_STATE_PROMPT \
+  CHATAFL_ABLATION_THRESHOLD ABLATION_PRESET
+
+sudo -E ./run_dev.sh 5 1470 live555 chatafl-opt
+```
+
+如果你想进一步保险，最简单的方法是：
+
+- 新开一个干净 shell；
+- 只设置 `KEY` 和 `SKIPCOUNT`；
+- 不设置任何 `CHATAFL_*` 消融变量；
+- 再跑 full。
+
+### 一句话原则
+
+- **不设置 `CHATAFL_NO_*` / `CHATAFL_ABLATION_THRESHOLD`，就不会影响 full。**
+- **开关存在本身不会影响 full，只有你把它们带入运行环境才会影响。**
 
 ---
 
-## 五、验证消融是否生效
+## 九、验证是否生效
 
 ```bash
 docker logs <容器ID> 2>&1 | grep "ABLATION\|hypothesis"
 ```
 
+应看到类似日志：
+
 | 开关 | 期望日志 |
-|------|---------|
+|---|---|
 | `NO_REFINEMENT` | `ABLATION: Tier-2 hypothesis refinement DISABLED` |
 | `NO_FRONTIER` | `ABLATION: Frontier bonus + error penalty DISABLED` |
-| `NO_ADAPTIVE` | `ABLATION: Adaptive plateau threshold DISABLED (fixed=100)` |
+| `NO_ADAPTIVE=1 THR=512` | `ABLATION: Adaptive plateau threshold DISABLED (fixed=512 from CHATAFL_ABLATION_THRESHOLD)` |
 | `NO_STATE_PROMPT` | `ABLATION: State-aware rich prompt + actions[] DISABLED (simple prompt mode)` |
-| `CHATAFL_HYPOTHESIS` 生效 | `hypothesis mode DEFERRED (lazy init on first plateau)` |
 
-**无以上日志 = 该优化正常启用（或前置条件缺失）。**
+如果你手工跑 `NO_REFINEMENT` 且忘了注入 `CHATAFL_HYPOTHESIS=1`，当前代码还会额外打印：
 
-额外检查 Tier-1 是否运行（与 `NO_REFINEMENT` 无关，始终应出现）：
+- `ABLATION: CHATAFL_NO_REFINEMENT set but CHATAFL_HYPOTHESIS not set — ablation has NO EFFECT`
 
-```bash
-docker logs <容器ID> 2>&1 | grep "hypothesis-refine\|hypothesis\]" | head -5
-```
+这说明该次实验不应被当作有效 refinement 消融数据。
 
 ---
 
-## 六、消融矩阵设计（严格修订版）
+## 十、当前设计仍然有哪些限制
 
-### 关键前提：消融的逻辑起点
+即使换成新的 `core` 预设，以下限制仍然成立：
 
-**消融的比较对象必须是 Full-Opt，不是 ChatAFL**。ChatAFL 是主实验（§5.1）的对比对象；消融回答的是"组件 X 对 Opt 整体贡献多少"。
-
-另一关键约束：**同时关闭全部 4 个开关 ≠ ChatAFL**。以下机制无消融开关，始终生效：
-- Fork 隔离 LLM 调用（ChatAFL 主进程同步阻塞）
-- 50ms SIGKILL bounded execution（ChatAFL 对 forking daemon 无限阻塞）
-- 32 线程并行 seed enrichment（ChatAFL 串行）
-- djb2 64槽 prompt dedup ring
-
-因此必须增加 **w/o-All** 配置行，以量化这些不可消融的工程改进的基础贡献。
-
-### 严格消融矩阵（8 行）
-
-| 行 | 配置 | NO_REFINE | NO_FRONTIER | NO_ADAPTIVE | NO_STATE_PROMPT | 阈值 | 消融目标 |
-|----|------|:---------:|:-----------:|:-----------:|:---------------:|:---:|---------|
-| ① | **Full-Opt** | ✗ | ✗ | ✗ | ✗ | 50-150 | 基准（所有 Δ 的分母） |
-| ② | **w/o Refinement** ¹ | ✓ | ✗ | ✗ | ✗ | 50-150 | Tier-2 LLM精炼贡献（Tier-1 仍 active，不是完全无假设精炼） |
-| ③ | **w/o Frontier** | ✗ | ✓ | ✗ | ✗ | 50-150 | 拓扑加权+接受度惩罚的**联合**贡献 ² |
-| ④ | **w/o Adaptive (100)** | ✗ | ✗ | ✓ | ✗ | 100 | 自适应相对于固定最激进值（100）的增量 |
-| ⑤ | **w/o Adaptive (512)** ³ | ✗ | ✗ | ✓ | ✗ | 512 | 自适应相对于与 ChatAFL 对齐的固定值（512）的增量 |
-| ⑥ | **w/o State-Prompt** | ✗ | ✗ | ✗ | ✓ | 50-150 | rich prompt + actions[] 的**联合**贡献（含提示工程和结构化动作） ² |
-| ⑦ | **w/o All** | ✓ | ✓ | ✓ | ✓ | 512 | 不可消融工程改进的基础贡献；应 ≈ ChatAFL + bounded exec + parallel enrich |
-| ✦ | *(ChatAFL 参考行)* | — | — | — | — | 512 | 不参与 Δ 计算，仅作 context |
-
-¹ 必须同时设置 `CHATAFL_HYPOTHESIS=1`，否则 w/o Refinement ≡ Full（见第二节混淆项 2）。  
-² 此行测量捆绑贡献；若需细粒度分离，见第七节 Fix 3（`NO_ERROR_HINT`）和潜在的 `NO_ACTIONS` 开关。  
-³ 需设置 `CHATAFL_ABLATION_THRESHOLD=512`（已实现，见第七节 Fix 1）。
-
-每组 **Δ_X = metric(Full) − metric(w/o-X)**，Δ_X > 0 说明组件 X 有正向贡献。  
-组件重要性排序：Δ 越大、$\hat{A}_{12}$ 越高、p 越小，组件越关键。
-
-### 统计检验方法
-
-消融配置之间**共享相同代码基础**，随机性主要来自种子选择和 LLM 回复差异，**不建议用 Mann-Whitney U**（独立样本假设不完全成立）。推荐：
-
-**主要指标：Vargha-Delaney $\hat{A}_{12}$（效果量）**
-
-$$\hat{A}_{12}(A, B) = \frac{\#\{a > b\} + 0.5 \times \#\{a = b\}}{n_A \times n_B}$$
-
-| $\hat{A}_{12}$ | 效果大小 |
-|:---:|:---:|
-| 0.5 | 无效果 |
-| 0.56 | small |
-| 0.64 | medium |
-| 0.71 | large |
-| 1.0 | 完全分离 |
-
-**辅助指标：Wilcoxon 秩和检验**（单侧，α=0.05），报告精确 p 值。
-
-**n=5 vs n=10 的检验力**：
-
-| n（每组重复次数） | Mann-Whitney $P_{min}$（U=0时） | 中等效果量下 power |
-|:---:|:---:|:---:|
-| 5 | 0.0079 | **~30%**（大量漏报） |
-| 10 | $1.1 \times 10^{-5}$ | **~75%** |
-| 15 | $3.6 \times 10^{-9}$ | **~92%** |
-
-**n=5 时只有效果极显著（所有 A > 所有 B）才能 p<0.05**。推荐：**n=5 可接受，但以 $\hat{A}_{12}$ 为主要指标，p 值作为辅助**；在论文中明确说明 n=5 的检验力限制。
+1. `wo_frontier` 依然是 **frontier bonus + error penalty** 的联合关闭，不能拆因果；
+2. `wo_state_prompt` 依然是 **state_ctx + actions[]** 的联合关闭，不能拆因果；
+3. fork 隔离、bounded execution、并行 enrichment、dedup ring 仍然始终开启，没有对应开关；
+4. 因此当前最严谨的表述应是：
+  - “当前 shipped 行为下，某个 bundled policy 是否显示净效应”；
+  - “adaptive 相对于若干静态阈值是否成立”；
+  - 而不是“该模块的独立因果贡献已被严格证明”。
 
 ---
 
-## 七、当前代码的已知缺陷及修复方案
+## 十一、如果以后要做到真正正交消融，需要新增什么开关
 
-### Fix 1：`NO_ADAPTIVE` 支持参数化固定阈值 ✅ 已实现
+未来若要做更强的论文级因果分解，建议新增：
 
-**问题**：固定值硬编码为 100，无法与 ChatAFL 基线的 512 对齐。
+- `CHATAFL_NO_FRONTIER_BONUS`
+- `CHATAFL_NO_ERROR_PENALTY`
+- `CHATAFL_NO_STATE_CTX`
+- `CHATAFL_NO_ACTIONS`
 
-**已实现**（`afl-fuzz.c` L12198 附近）：读取 `CHATAFL_ABLATION_THRESHOLD` 环境变量覆盖默认固定值；banner 打印实际生效阈值及与基线的关系说明。
+届时再做真正的 Stage-A / Stage-B 正交矩阵。
 
-用法：
-```bash
-# 与 ChatAFL 基线触发频率对齐（512）
-export CHATAFL_NO_ADAPTIVE=1 CHATAFL_ABLATION_THRESHOLD=512
-
-# 保持 Opt 默认固定值（100，触发最激进）
-export CHATAFL_NO_ADAPTIVE=1
-```
-
-启动日志中会显示：
-```
-ABLATION: Adaptive plateau threshold DISABLED (fixed=512 from CHATAFL_ABLATION_THRESHOLD)
-...
-  NO_ADAPTIVE fixed threshold : 512 (matches ChatAFL baseline)
-```
-
-### Fix 2：`NO_REFINEMENT` 前置条件检查 ✅ 已实现
-
-**问题**：未设置 `CHATAFL_HYPOTHESIS` 时该开关无效，但当前无任何警告。
-
-**已实现**（`afl-fuzz.c` L12198 附近）：若 `CHATAFL_NO_REFINEMENT=1` 但未设 `CHATAFL_HYPOTHESIS`，同时触发 `WARNF()` 和 `fprintf(stderr)` 双重警告，并在 ABLATION CONFIG banner 中重复打印。
-
-验证：
-```bash
-docker logs <容器ID> 2>&1 | grep "NO-OP\|WARNING"
-# 期望输出：
-# [ABLATION WARNING] NO_REFINEMENT is a no-op without CHATAFL_HYPOTHESIS=1.
-# *** ABLATION WARNING: NO_REFINEMENT is a NO-OP (hypothesis_mode=0) ***
-```
-
-### Fix 3（可选，细粒度）：分离 `NO_ERROR_HINT` 开关
-
-**问题**：`NO_FRONTIER` 同时关闭了"拓扑加权"和"接受度惩罚"，无法分离两者贡献。
-
-```c
-static u8 ablation_no_error_hint = 0;  // 新增
-
-if (!ablation_no_frontier) {
-    // 机制 A：出度加权（始终由 NO_FRONTIER 控制）
-    frontier_bonus = ...;
-}
-if (!ablation_no_frontier && !ablation_no_error_hint) {
-    // 机制 B：接受度惩罚（可单独关闭）
-    if (state->error_hint == 1) frontier_bonus *= 0.25;
-    ...
-}
-```
-
----
-
-## 八、操作注意事项
-
-1. **`sudo -E` 必须保留**——否则 sudo 清除环境变量，消融设置不会传入
-2. **`CHATAFL_HYPOTHESIS=1` 是 `NO_REFINEMENT` 的前置条件**——两者必须同时设置
-3. **消融变量仅影响 `chatafl-opt`**——ChatAFL 基线和 AFLNet 的 `docker run` 不注入这些变量
-4. **每次实验前用 `unset` 清除所有消融变量**，避免上次残留
-5. **使用 `run_ablation.sh` 时结果目录已自动命名**（`results-live555_ablation_<label>/`）；手动单组运行时结果目录为 `results-live555_<时间戳>/`，需手动重命名区分
-6. **forking daemon 目标**（pure-ftpd / proftpd / bftpd）的实验结果：Bounded Execution（50ms SIGKILL）在所有 Opt 配置下始终 active，在论文结果分析中需单独说明
+在这些开关实现之前，**本文件与 `run_ablation.sh` 的默认设计就是当前最严谨、最可落地的版本**。

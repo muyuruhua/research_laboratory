@@ -165,6 +165,129 @@ calc_runtime_min() {
     echo $(( (now - start_ts) / 60 ))
 }
 
+# 读取宿主机 CPU 统计
+read_host_cpu_stat() {
+    awk '/^cpu / {print $2, $3, $4, $5, $6, $7, $8, $9, $10, $11}' /proc/stat
+}
+
+# 计算两次 CPU 采样之间的总体/用户态/内核态/IOWait 占用
+calc_host_cpu_usage() {
+    local prev=($1)
+    local curr=($2)
+
+    local prev_user=${prev[0]} prev_nice=${prev[1]} prev_system=${prev[2]} prev_idle=${prev[3]}
+    local prev_iowait=${prev[4]} prev_irq=${prev[5]} prev_softirq=${prev[6]} prev_steal=${prev[7]}
+
+    local curr_user=${curr[0]} curr_nice=${curr[1]} curr_system=${curr[2]} curr_idle=${curr[3]}
+    local curr_iowait=${curr[4]} curr_irq=${curr[5]} curr_softirq=${curr[6]} curr_steal=${curr[7]}
+
+    local prev_idle_all=$((prev_idle + prev_iowait))
+    local curr_idle_all=$((curr_idle + curr_iowait))
+    local prev_non_idle=$((prev_user + prev_nice + prev_system + prev_irq + prev_softirq + prev_steal))
+    local curr_non_idle=$((curr_user + curr_nice + curr_system + curr_irq + curr_softirq + curr_steal))
+    local prev_total=$((prev_idle_all + prev_non_idle))
+    local curr_total=$((curr_idle_all + curr_non_idle))
+
+    local totald=$((curr_total - prev_total))
+    local idled=$((curr_idle_all - prev_idle_all))
+    local userd=$(((curr_user + curr_nice) - (prev_user + prev_nice)))
+    local systemd=$((curr_system - prev_system))
+    local iowaitd=$((curr_iowait - prev_iowait))
+
+    if [[ "$totald" -le 0 ]]; then
+        echo "0.00 0.00 0.00 0.00"
+        return
+    fi
+
+    awk -v totald="$totald" -v idled="$idled" -v userd="$userd" -v systemd="$systemd" -v iowaitd="$iowaitd" 'BEGIN {
+        total_pct=(totald-idled)*100/totald;
+        user_pct=userd*100/totald;
+        system_pct=systemd*100/totald;
+        iowait_pct=iowaitd*100/totald;
+        printf "%.2f %.2f %.2f %.2f", total_pct, user_pct, system_pct, iowait_pct;
+    }'
+}
+
+# 宿主机内存 / swap 统计（MB）
+get_host_mem_stats() {
+    awk '
+        /^MemTotal:/ {mem_total=$2}
+        /^MemAvailable:/ {mem_avail=$2}
+        /^SwapTotal:/ {swap_total=$2}
+        /^SwapFree:/ {swap_free=$2}
+        END {
+            mem_used=mem_total-mem_avail;
+            swap_used=swap_total-swap_free;
+            mem_used_pct=(mem_total>0)?(mem_used*100/mem_total):0;
+            swap_used_pct=(swap_total>0)?(swap_used*100/swap_total):0;
+            printf "%.0f %.0f %.2f %.0f %.0f %.2f",
+                   mem_used/1024, mem_total/1024, mem_used_pct,
+                   swap_used/1024, swap_total/1024, swap_used_pct;
+        }
+    ' /proc/meminfo
+}
+
+get_host_loadavg() {
+    awk '{print $1, $2, $3}' /proc/loadavg
+}
+
+get_host_uptime_human() {
+    awk '{
+        total=int($1);
+        d=int(total/86400);
+        h=int((total%86400)/3600);
+        m=int((total%3600)/60);
+        if (d>0) printf "%dd %02dh %02dm", d, h, m;
+        else printf "%02dh %02dm", h, m;
+    }' /proc/uptime
+}
+
+print_system_overview() {
+    local prev_cpu curr_cpu cpu_stats mem_stats load_stats
+    local cpu_total cpu_user cpu_system cpu_iowait
+    local mem_used mem_total mem_used_pct swap_used swap_total swap_used_pct
+    local load1 load5 load15 uptime_human process_count docker_running top_cpu top_mem
+    local host_name cpu_line mem_line swap_line docker_line
+
+    prev_cpu="$(read_host_cpu_stat)"
+    sleep 1
+    curr_cpu="$(read_host_cpu_stat)"
+    cpu_stats="$(calc_host_cpu_usage "$prev_cpu" "$curr_cpu")"
+    mem_stats="$(get_host_mem_stats)"
+    load_stats="$(get_host_loadavg)"
+
+    read -r cpu_total cpu_user cpu_system cpu_iowait <<< "$cpu_stats"
+    read -r mem_used mem_total mem_used_pct swap_used swap_total swap_used_pct <<< "$mem_stats"
+    read -r load1 load5 load15 <<< "$load_stats"
+
+    uptime_human="$(get_host_uptime_human)"
+    process_count="$(ps -e --no-headers | wc -l | tr -d ' ')"
+    docker_running=$(docker ps -q 2>/dev/null | wc -l | tr -d ' ')
+    top_cpu=$(ps -eo comm,%cpu --sort=-%cpu --no-headers 2>/dev/null | head -1 | awk '{printf "%s (%s%%)", $1, $2}')
+    top_mem=$(ps -eo comm,%mem --sort=-%mem --no-headers 2>/dev/null | head -1 | awk '{printf "%s (%s%%)", $1, $2}')
+    host_name="$(hostname)"
+
+    cpu_line="${cpu_total}%  [user ${cpu_user}% | sys ${cpu_system}% | io ${cpu_iowait}%]"
+    mem_line="${mem_used_pct}%  (${mem_used}/${mem_total} MB)"
+    swap_line="${swap_used_pct}%  (${swap_used}/${swap_total} MB)"
+    docker_line="${docker_running} running"
+
+    [[ -z "$top_cpu" ]] && top_cpu="-"
+    [[ -z "$top_mem" ]] && top_mem="-"
+
+    echo -e "${BOLD}  🖥️  系统资源总览:${RST}"
+    echo -e "  ${DIM}$(printf '─%.0s' {1..92})${RST}"
+    printf "  ${DIM}Host:${RST} %-12s  ${DIM}Uptime:${RST} %-12s  ${DIM}Load:${RST} %s\n" \
+        "$host_name" "$uptime_human" "${load1} / ${load5} / ${load15}"
+    printf "  ${DIM}CPU:${RST}  %-34s  ${DIM}Memory:${RST} %s\n" \
+        "$cpu_line" "$mem_line"
+    printf "  ${DIM}Proc:${RST} %-12s  ${DIM}Docker:${RST} %-12s  ${DIM}Swap:${RST} %s\n" \
+        "$process_count" "$docker_line" "$swap_line"
+    printf "  ${DIM}Top CPU:${RST} %s\n" "$top_cpu"
+    printf "  ${DIM}Top MEM:${RST} %s\n" "$top_mem"
+    echo ""
+}
+
 # ─── 协议过滤 ───────────────────────────────────────────────────────────────
 
 # 检查 target 是否匹配过滤器
@@ -560,6 +683,7 @@ main() {
         # 清屏并输出
         clear 2>/dev/null || printf '\033c'
         print_header "$count"
+        print_system_overview
         print_table "${results[@]}"
 
         # CSV 输出

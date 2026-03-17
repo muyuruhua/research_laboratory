@@ -14,7 +14,7 @@
 
 \begin{document}
 
-\title{LoopFuzz: Runtime-Validated LLM-in-the-Loop Stateful Protocol Fuzzing}
+\title{LoopFuzz: Closed-Loop Runtime Admission Control for LLM-Guided Stateful Protocol Fuzzing}
 
 \author{
 \IEEEauthorblockN{Anonymous Authors}
@@ -27,11 +27,11 @@ anonymous@example.com}
 \maketitle
 
 \begin{abstract}
-Stateful protocol fuzzing often stalls because large language models (LLMs) can generate messages that look plausible but do not match the current protocol state. We present LoopFuzz, a runtime-validated LLM-in-the-loop stateful protocol fuzzer. LoopFuzz treats model outputs as hypotheses and subjects them to runtime admission control. It derives message hypotheses from RFC fragments, seed traces, and observed responses. A Runtime Verifier then checks parseability, response-grounded acceptability, state reachability, and coverage gain before queue admission. When validation fails, Counterexample-Guided Local Refinement (CEGR) feeds minimized request-response mismatches back to the model and patches one field constraint or production rule at a time. LoopFuzz also uses state-aware scheduling. It prioritizes underexplored inferred protocol state machine (IPSM) frontier states and triggers model assistance only under adaptive plateau conditions. The full benchmark suite contains 10 targets; this draft reports the six targets whose repeated 24-hour normalized comparisons are complete. On that reported subset, LoopFuzz reaches higher final code-edge coverage on five targets, with exact two-sided Mann-Whitney U significance versus both baselines on Pure-FTPd, Forked-daapd, and Mosquitto, and reaches higher final IPSM-edge counts on five targets.
+Stateful protocol fuzzing is difficult because a message can be syntactically fluent yet invalid for the live session state. This problem becomes sharper when large language models (LLMs) are inserted directly into the fuzzing loop. We present LoopFuzz, a closed-loop runtime admission-control design for LLM-guided stateful protocol fuzzing. LoopFuzz treats LLM outputs as bounded hypotheses rather than directly admissible inputs. It derives message hypotheses from RFC fragments, seed traces, and observed responses; checks candidate interventions through runtime admission control over parseability, response-grounded acceptability, state reachability, and downstream gain; and uses counterexample-guided local refinement to repair failed hypotheses. LoopFuzz further couples admission control with state-aware scheduling so that model assistance is triggered only under adaptive plateau conditions and is steered toward underexplored inferred protocol-state-machine frontier states. The full benchmark suite contains 10 targets; this draft reports the six targets whose repeated 24-hour normalized comparisons are complete. On that reported subset, LoopFuzz attains the highest final code-edge coverage on five targets, with exact two-sided Mann-Whitney U significance versus both baselines on Pure-FTPd, Forked-daapd, and Mosquitto, and reaches higher final IPSM-edge counts on five targets.
 \end{abstract}
 
 \begin{IEEEkeywords}
-Protocol Fuzzing, Large Language Models, Runtime Verification, Automated Refinement, Directed Exploration
+Protocol Fuzzing, Large Language Models, Runtime Admission Control, Stateful Testing, Counterexample-Guided Refinement
 \end{IEEEkeywords}
 
 \section{Introduction}
@@ -41,18 +41,18 @@ Traditional coverage-guided fuzzers work well for stateless parsers. They fit ne
 
 Large language models offer a plausible source of such messages. ChatAFL and later LLM-assisted fuzzers show that a model can extract structure from specifications, logs, or documentation and produce fluent candidates~\cite{chatafl,fuzz4all_universal_fuzzing_large_2024,llmif_augmented_large_language_2024,matter_llm_specification_2024,carpetfuzz_documentation_2023,prompt_fuzzing_fuzz_driver_2024,large_language_models_are_2023,large_language_models_are_2024}. But fluency is not enough. A request can be grammatically plausible and still be invalid for the live session state. Such executions spend budget without improving queue quality.
 
-LoopFuzz places a Runtime Verifier between LLM generation and queue admission. It treats the LLM as a hypothesis generator rather than an oracle. It derives message hypotheses from RFC fragments, seed traces, and observed responses. It stores failed executions as counterexamples and uses them for CEGR rather than unconstrained regeneration. It also uses inferred protocol state machine (IPSM) feedback to prioritize frontier states and rare transitions, and to trigger assistance only when ordinary mutation stalls. The name \emph{LoopFuzz} emphasizes closed-loop admission and refinement, avoiding any suggestion of formal verification of protocol semantics, model behavior, or server correctness.
+LoopFuzz places a runtime admission controller between LLM generation and queue admission. It treats the LLM as a hypothesis generator rather than an oracle. It derives message hypotheses from RFC fragments, seed traces, and observed responses. It stores failed executions as counterexamples and uses them for CEGR rather than unconstrained regeneration. It also uses inferred protocol state machine (IPSM) feedback to prioritize frontier states and rare transitions, and to trigger assistance only when ordinary mutation stalls. The name \emph{LoopFuzz} emphasizes closed-loop admission and refinement, avoiding any suggestion of formal verification of protocol semantics, model behavior, or server correctness.
 
 The contributions of this paper are as follows:
 \begin{itemize}
     \item \textbf{Hypothesis-Driven Message Modeling.} LoopFuzz derives message grammars and field constraints from RFC fragments, seed traces, and observed responses, and maintains them as explicit runtime hypotheses.
-    \item \textbf{A Runtime-Validated Admission Boundary.} LoopFuzz inserts a Runtime Verifier between the LLM and the queue. The verifier checks parseability, response-grounded acceptability, state reachability, and downstream gain before admission.
+    \item \textbf{A Closed-Loop Runtime Admission Boundary.} LoopFuzz inserts a runtime admission controller between the LLM and the queue. The controller checks parseability, response-grounded acceptability, state reachability, and downstream gain before admission.
     \item \textbf{Counterexample-Guided Local Refinement.} LoopFuzz preserves failed request-response traces as counterexamples and uses them to patch one field constraint or production at a time, which constrains model freedom and stabilizes refinement.
     \item \textbf{State-Aware Scheduling.} LoopFuzz leverages IPSM topology, state productivity, and adaptive plateau detection to prioritize underexplored frontier states and to request model assistance only when mutation alone stalls.
     \item \textbf{An Empirical Study of Runtime-Validated Assistance.} We evaluate LoopFuzz on a 10-target benchmark suite and report the currently completed repeated 24-hour normalized comparisons for the six targets whose repetition and trace-audit pipeline are complete in this draft.
 \end{itemize}
 
-Accordingly, the paper evaluates LoopFuzz as a campaign-control policy, not as a standalone message generator. In stateful protocol fuzzing, generation matters only when it survives runtime semantics and improves downstream queue quality.
+Accordingly, the paper evaluates LoopFuzz as a campaign-control policy, not as a standalone message generator. In stateful protocol fuzzing, generation matters only when it survives runtime evidence and improves downstream queue quality.
 
 \section{Background and Motivation}
 
@@ -76,7 +76,7 @@ ChatAFL~\cite{chatafl}            & LLM requests & History text & Direct admissi
 \normalsize
 \end{table*}
 
-Table~\ref{tab:taxonomy} contrasts LoopFuzz with representative fuzzers. Prior LLM-assisted protocol fuzzers improve input fluency, but they leave admission largely open-loop. We study a narrower question: does runtime verification make LLM proposals more useful in a long-running stateful campaign?
+Table~\ref{tab:taxonomy} contrasts LoopFuzz with representative fuzzers. Prior LLM-assisted protocol fuzzers improve input fluency, but they leave admission largely open-loop. We study a narrower question: does closed-loop runtime admission control make LLM proposals more useful in a long-running stateful campaign?
 
 \subsection{Coverage-Guided Fuzzing vs. Network Targets}
 A coverage-guided fuzzer operates through a repeated feedback cycle of seed selection, mutation, execution, coverage measurement, and novelty-based queue update~\cite{seed_selection_successful_fuzzing_2021,one_fuzzing_strategy_rule_2022,regression_greybox_fuzzing_2021,efficient_errors_2022}.
@@ -114,7 +114,7 @@ Large language models make it easier to propose structure-aware protocol message
 
 Consider an FTP fuzzing campaign against ProFTPD, as illustrated in Fig.~\ref{fig:motivation}. The fuzzer executes \texttt{USER} and \texttt{PASS}. It then queries the LLM for the next request, and the model returns \texttt{RETR example\_file.txt}. The request is syntactically fluent but semantically premature. The client lacks an active data channel via \texttt{PASV} or \texttt{PORT}. The server rejects it with \texttt{425 Use PORT or PASV first}.
 
-An open-loop LLM fuzzer admits this \texttt{RETR} request because it looks fluent. This is \emph{semantic drift}. The request is locally plausible, but it violates the protocol precondition for the current session state. The fuzzer then mutates a rejected branch instead of crossing the missing state transition. LoopFuzz blocks this drift. The Runtime Verifier treats the \texttt{425} reply as negative evidence, rejects the candidate, and records the failed trace as a counterexample. CEGR then repairs the missing state precondition instead of regenerating the full continuation. This example captures the paper's central claim. In stateful protocol fuzzing, the value of LLM assistance depends on runtime-validated admission, not on surface fluency. In the current draft, we use semantic drift as an operational motivation for verifier rejection and CEGR repair, not as a separately estimated global rate.
+An open-loop LLM fuzzer admits this \texttt{RETR} request because it looks fluent. This is \emph{semantic drift}. The request is locally plausible, but it violates the protocol precondition for the current session state. The fuzzer then mutates a rejected branch instead of crossing the missing state transition. LoopFuzz blocks this drift. The runtime admission controller treats the \texttt{425} reply as negative evidence, rejects the candidate, and records the failed trace as a counterexample. CEGR then repairs the missing state precondition instead of regenerating the full continuation. This example captures the paper's central claim: in stateful protocol fuzzing, the value of LLM assistance depends on closed-loop runtime admission, not on surface fluency. In the current draft, we use semantic drift as an operational motivation for rejection and CEGR repair, not as a separately estimated global rate.
 \section{Related Work}
 We position LoopFuzz against the prior lines that are closest in mechanism and evaluation.
 
@@ -146,7 +146,7 @@ Fig.~\ref{fig:arch} summarizes the three coupled loops in LoopFuzz: the Grammar 
 \vspace{-5mm}
 \end{figure*}
 
-LoopFuzz preserves the stateful greybox fuzzing execution path. It sets a strict control boundary between LLM generation and queue admission. A model output changes the campaign only after runtime evidence supports admission. The admission rule checks message structure, parseability, response behavior, inferred state reachability, and downstream campaign value. The method has four coupled components: grammar hypothesis generation, runtime verification, CEGR, and state-aware scheduling.
+LoopFuzz preserves the stateful greybox fuzzing execution path. It sets a strict control boundary between LLM generation and queue admission. A model output changes the campaign only after runtime evidence supports admission. The admission rule checks message structure, parseability, response behavior, inferred state reachability, and downstream campaign value. The method has four coupled components: grammar hypothesis generation, runtime admission control, CEGR, and state-aware scheduling.
 
 This control boundary is the core idea of the paper. ChatAFL is open-loop: it uses a fixed trigger, a plain-text prompt, and direct admission of the extracted request. LoopFuzz is closed-loop: IPSM growth, state productivity, and hypothesis fitness determine when the LLM is queried, what context it receives, and whether its output is admitted.
 
@@ -157,8 +157,8 @@ Let $\mathcal{L}(c, s, \Sigma)$ denote the LLM generation function under prompt 
 
 The Grammar Hypothesis Loop draws on three evidence sources: RFC fragments, queued seed traces or packet examples, and observed server responses, including response codes and error texts. For each message type $m$, the loop maintains a hypothesis $h_m=(G_m,\Phi_m)$. Here, $G_m$ is an ABNF-style or template-style production, and $\Phi_m$ is a set of field constraints. In LoopFuzz, $\Phi_m$ captures length bounds, enumerated values, token dependencies, and simple cross-field relations. This representation is more constrained than free-form text and lighter than a full formal protocol specification. We choose it because sampled online validation must remain cheap.
 
-\subsection{Runtime Verifier}
-The Runtime Verifier is the central mechanism in our design. It does not formally prove correctness. Instead, it enforces four runtime checks before an LLM contribution can affect the campaign: parseability, acceptability, state reachability, and coverage gain. A candidate intervention $x$ is admitted only if
+\subsection{Runtime Admission Controller}
+The runtime admission controller is the central mechanism in our design. It does not formally prove correctness. Instead, it enforces four runtime checks before an LLM contribution can affect the campaign: parseability, acceptability, state reachability, and coverage gain. A candidate intervention $x$ is admitted only if
 \[
 A(x)=P(x) \land U(x) \land R(x) \land G(x),
 \]
@@ -188,20 +188,21 @@ To address this, LoopFuzz augments state selection with a frontier bonus $\beta$
 \end{cases}
 \]
 States not yet present in the IPSM receive the maximum bonus $\beta{=}4$. LoopFuzz then modulates this bonus with a three-level error-productivity hint (0=unknown, 1=likely-error, 2=confirmed-productive). This hint downweights frontier states that repeatedly behave like rejection sinks, but it does not discard them outright. In the reported policy, hint level 1 applies a $\beta{\times}0.25$ penalty. Hint level 0 is reduced to $\beta{\times}0.5$ only after repeated low-productivity selections ($\mathit{selected\_times}{\ge}20$ and $\mathit{productivity}{<}0.01$). Hint level 2 receives no penalty. The hint is initialized from response-code classification and updated online. As a result, states can be promoted or demoted as evidence accumulates rather than being fixed by an early response pattern. This policy approximates a rare-transition preference without requiring an exact model of the full protocol state space.
+States not yet present in the IPSM receive the maximum bonus $\beta{=}4$. LoopFuzz then modulates this bonus with a three-level error-productivity hint (0=unknown, 1=likely-error, 2=confirmed-productive). This hint downweights frontier states that repeatedly behave like rejection sinks, but it does not discard them outright. In the current implementation, hint level 1 applies a softer $\beta{\times}0.5$ penalty. Hint level 0 is reduced to $\beta{\times}0.7$ only after repeated low-productivity selections ($\mathit{selected\_times}{\ge}30$ and $\mathit{productivity}{<}0.005$). Hint level 2 receives no penalty. The hint is initialized from response-code classification and updated online. As a result, states can be promoted or demoted as evidence accumulates rather than being fixed by an early response pattern. This policy approximates a rare-transition preference without requiring an exact model of the full protocol state space.
 
-These constants should be read as the reported control policy, not as a claim of global optimality. The three frontier-bonus levels $\{4.0,2.0,1.0\}$ separate unseen or low-out-degree frontier states from denser regions by coarse preference rather than by fine-grained tuning. The error-productivity penalties and the $(20,0.01)$ gate were chosen to reduce repeated investment in response-derived rejection sinks while still allowing those states to recover if later executions become productive. Likewise, the $(80,30\%)$ node-stagnation safeguard and the 64-call intervention budget are engineering bounds that prevent persistent hot-spot lock-in and unbounded LLM overhead. We report them to make the control policy auditable; this draft does not claim a full sensitivity analysis over the entire hyperparameter surface.
+These constants should be read as the reported control policy, not as a claim of global optimality. The three frontier-bonus levels $\{4.0,2.0,1.0\}$ separate unseen or low-out-degree frontier states from denser regions by coarse preference rather than by fine-grained tuning. The error-productivity penalties and the $(30,0.005)$ gate were chosen to reduce repeated investment in response-derived rejection sinks while still allowing those states to recover if later executions become productive. Likewise, the $(80,30\%)$ node-stagnation safeguard and the 64-call intervention budget are bounded control parameters that prevent persistent hot-spot lock-in and unbounded LLM overhead. We report them to make the control policy auditable; this draft does not claim a full sensitivity analysis over the entire hyperparameter surface.
 
 A complementary node-stagnation mechanism tracks whether IPSM growth has collapsed at the graph level rather than only at the local state level. When no new nodes appear for an extended interval, the scheduler intermittently injects random selection to avoid persistent hot-spot lock-in. In the reported configuration, that safeguard activates after 80 consecutive rounds without node growth and uses a 30\% random-selection probability.
 
 Plateau detection uses the IPSM edge growth rate $\dot{E}$ (edges gained per minute), recalculated every 60 seconds of wall-clock time, to set an adaptive threshold:
 \[
 \tau(\dot{E}) = \begin{cases}
-150 & \text{if } \dot{E} > 5 \\
-100 & \text{if } 1 < \dot{E} \le 5 \\
-50  & \text{if } \dot{E} \le 1
+300 & \text{if } \dot{E} > 5 \\
+200 & \text{if } 1 < \dot{E} \le 5 \\
+150 & \text{if } \dot{E} \le 1
 \end{cases}
 \]
-The initial value is $\tau{=}100$; the baseline uses a fixed threshold of 512. More generally, LoopFuzz treats plateau triggering as a rate-sensitive control decision, not as a fixed-frequency query rule. Assistance is invoked only when edge growth remains weak and the model-intervention budget is not exhausted. In the reported configuration, the plateau path opens when the unproductive streak reaches $\tau$ and prior model interventions remain below 64. Once inside that path, hypotheses are initialized lazily on first use. Refinement remains gated by validation count and accumulated counterexamples. Prompts are deduplicated over the most recent 64 LLM invocations. This prevents assistance from reacting to the same state summary again and again. For a novel prompt, the method builds a structured state summary from IPSM statistics, the least productive states, and seed identifiers, and then queries the model in an isolated subprocess. The model may return a concrete continuation toward an underexplored state or a bounded control action such as target-state redirection, seed reprioritization, or bounded mutation proposals. The result is admitted only after validation. In short, assistance is conditional, budgeted, and state-directed.
+The initial value is $\tau{=}200$; the baseline uses a fixed threshold of 512. More generally, LoopFuzz treats plateau triggering as a rate-sensitive control decision, not as a fixed-frequency query rule. Assistance is invoked only when edge growth remains weak and the model-intervention budget is not exhausted. In the reported configuration, the plateau path opens when the unproductive streak reaches $\tau$ and prior model interventions remain below 64. Once inside that path, hypotheses are initialized lazily on first use. Refinement remains gated by validation count and accumulated counterexamples. Prompts are deduplicated over the most recent 64 LLM invocations. This prevents assistance from reacting to the same state summary again and again. For a novel prompt, the method builds a structured state summary from IPSM statistics, the least productive states, and seed identifiers, and then queries the model in an isolated subprocess. The model may return a concrete continuation toward an underexplored state or a bounded control action such as target-state redirection, seed reprioritization, or bounded mutation proposals. The result is admitted only after validation. In short, assistance is conditional, budgeted, and state-directed.
 
 \begin{algorithm}[htbp]
 \caption{Runtime-Validated Plateau Recovery in LoopFuzz}
@@ -244,11 +245,11 @@ This integration also imposes an execution discipline. Startup enrichment is par
 
 \section{Experimental Evaluation Design}
 
-We organize the evaluation around three research questions that match the paper's main claims. We ask whether runtime validation changes whole-campaign behavior, whether state-aware intervention helps campaigns escape IPSM plateaus, and whether those effects persist in final 24-hour outcomes.
+We organize the evaluation around three research questions that match the paper's main claims. We ask whether closed-loop admission control changes whole-campaign behavior, whether the shipped state-aware control policy helps campaigns escape IPSM plateaus, and whether those effects persist in final 24-hour outcomes.
 \begin{itemize}
     \item \textbf{RQ1 (Whole-Campaign Effect):} Does runtime-validated LLM assistance prevent the coverage regressions that can arise from direct open-loop generation?
-    \item \textbf{RQ2 (IPSM Escape Dynamics):} Do frontier-aware scheduling and plateau-triggered intervention sustain IPSM growth after the baselines begin to stall?
-    \item \textbf{RQ3 (End-of-Campaign Outcome):} Under equal 24-hour budgets, what is the effect on final code-edge coverage and final IPSM-edge count relative to prior stateful greybox baselines?
+    \item \textbf{RQ2 (IPSM Escape Dynamics):} Does the shipped state-aware control policy---including frontier-aware scheduling and plateau-triggered intervention---sustain IPSM growth after the baselines begin to stall?
+    \item \textbf{RQ3 (End-of-Campaign Outcome):} Under equal 24-hour budgets, what is the effect of the shipped LoopFuzz control policy on final code-edge coverage and final IPSM-edge count relative to prior stateful greybox baselines?
 \end{itemize}
 
 \subsection{Experimental Setup}
@@ -278,13 +279,13 @@ We compare three systems: AFLNet as the stateful greybox baseline, ChatAFL as th
 
 The main dependent variables are end-of-campaign code-edge coverage and final IPSM-edge count. We treat code-edge coverage as the primary endpoint because it is the least system-specific measure among the available campaign summaries. We treat IPSM-edge count as a secondary diagnostic of state-exploration behavior rather than as a standalone efficacy claim, because it depends on a response-derived abstraction maintained within the fuzzing loop. For each reported target and metric, we summarize the terminal values over five 24-hour runs with mean and sample SD. We additionally apply a two-sided exact Mann-Whitney U test to the per-run terminal values. Because the current comparison still has only five runs per system-target pair, we use those p-values to distinguish stronger from weaker evidence, not to justify pointwise time-series claims. We use the time-series plots to show campaign dynamics, not to claim significance at every timestamp. We also preserve crash artifacts, but the current draft does not claim novel vulnerabilities because crash triage and root-cause validation are not yet normalized across the full suite.
 
-\subsection{Ablation Factors and Diagnostic Expectations}
-The ablation study asks a narrower question than the main comparison: which exposed control mechanisms account for the reported gains on representative targets? We answer this question with Exim and Pure-FTPd ablation snapshots from the completed repeated runs archived for those settings. The broader ablation matrix remains outside the present scope.
+\subsection{Code-Driven Ablation Design}
+The current ablation design follows the shipped implementation rather than an idealized orthogonal factorization. We therefore separate two questions. First, the core perturbation matrix compares the shipped adaptive controller against three bundled policy removals---``No Refinement,'' ``No Frontier,'' and ``No State Prompt''---plus two fixed-threshold controls at 200 and 512. Second, a threshold subexperiment compares the shipped adaptive policy against fixed thresholds at 150, 200, 300, and 512. This organization matches the current code path: frontier weighting and error penalties share one switch; state-aware context and structured \texttt{actions[]} share one switch; and disabling adaptive triggering changes how often the plateau path, lazy hypothesis initialization, and Tier-2 refinement are reached at all.
 
-These settings should be read as diagnostic perturbations, not as perfectly orthogonal factors. ``No Frontier'' removes both frontier weighting and the response-derived error penalty. ``No State Prompt'' removes both state-aware context and the richer structured-control path. ``No Refinement'' is meaningful only when hypothesis mode is active. ``Fixed-512'' restores the baseline trigger frequency. The ablation surface is also intentionally incomplete because the shared safeguards---isolated invocation, bounded execution, Asynchronous Startup Enrichment, and prompt deduplication---remain active in every setting. We therefore treat the ablation results as mechanism checks on terminal code-edge coverage and IPSM-edge count, not as a fully factorized attribution study.
+These ablations should therefore be read as code-driven policy perturbations, not as clean per-module causal isolates. ``No Refinement'' disables Tier-2 local repair while Tier-1 sampled validation remains active. ``No Frontier'' removes both out-degree bonus and error-productivity penalty. ``No State Prompt'' falls back to the simple ChatAFL-style prompt and disables structured control actions. ``No Adaptive'' fixes the threshold instead of updating it from IPSM edge-growth rate; in the current implementation, fixed-threshold runs should be interpreted through the explicit threshold value rather than through the legacy label alone. We use this structure because it is the most faithful way to evaluate the present controller without overstating what the current switches can prove.
 
 \subsection{Trace Accounting and Cost Reporting}
-Because LoopFuzz is a runtime-validated LLM-in-the-loop system, the evaluation must report more than coverage alone. We therefore log each plateau event with its prompt, raw model reply, and token use. We also log each refinement event with the affected hypothesis and its counterexamples. These logs are sufficient to recover target-level admission statistics such as parseability pass rate, response-grounded acceptance rate, and CEGR repair outcomes, but those summaries are not yet normalized across the reported subset and are therefore left out of the current draft. As a result, semantic drift remains a motivating failure mode and an auditable trace category here, not a quantified cross-target headline metric.
+Because LoopFuzz is a closed-loop LLM-in-the-loop system, the evaluation must report more than coverage alone. We therefore log each plateau event with its prompt, raw model reply, and token use. We also log each refinement event with the affected hypothesis and its counterexamples. These logs are sufficient to recover target-level admission statistics such as parseability pass rate, response-grounded acceptance rate, and CEGR repair outcomes, but those summaries are not yet normalized across the reported subset and are therefore left out of the current draft. As a result, semantic drift remains a motivating failure mode and an auditable trace category here, not a quantified cross-target headline metric.
 
 The cost-tracked targets include campaign-level token-use logs for Exim, Kamailio, Mosquitto, ProFTPD, and Pure-FTPd. Across the reported LoopFuzz campaigns, the system averages 48.0 LLM calls, 89.5K prompt tokens, 5.0K completion tokens, and \$0.0164 per 24-hour campaign. Mean per-target cost ranges from \$0.0121 to \$0.0210, and the single-run maximum is \$0.0256. The spend is prompt-heavy and completion-light because LoopFuzz asks for short structured control outputs. The available ChatAFL logs show the opposite shape and are markedly more expensive on Mosquitto and Pure-FTPd. We treat that dollar comparison descriptively because the ChatAFL traces mix stall-only tokenization and estimated completion counts across targets. Plateau handling is history-dependent, so selective reporting would be especially misleading here. We therefore use fixed hardware, a fixed model endpoint, identical runtime budgets, preserved per-run logs, and only those target summaries whose repeated runs and trace checks are complete.
 
@@ -323,13 +324,38 @@ MQTT & Mosquitto & TBD & TBD & TBD & TBD & TBD & TBD \\
 
 \begin{table*}[t]
 \centering
-\caption{Ablation-results template. Fill each cell with the mean change relative to full LoopFuzz under the same repeated 24-hour protocol; negative values indicate regressions.}
+\caption{Core ablation-results template. Fill each cell with the mean change relative to the shipped adaptive LoopFuzz control under the same repeated 24-hour protocol. The three bundled perturbations and the two fixed-threshold controls answer different questions and should not be over-interpreted as a full orthogonal factorization. Negative values indicate regressions.}
 \label{tab:ablation_results_template}
+\scriptsize
+\begin{tabular}{l l|c c c c c}
+\toprule
+\multirow{2}{*}{Target} & \multirow{2}{*}{Metric} & \multicolumn{5}{c}{Core ablation group} \\
+& & \texttt{WO\_REFINEMENT} & \texttt{WO\_FRONTIER} & \texttt{WO\_STATE\_PROMPT} & \texttt{FIXED200\_FULL} & \texttt{FIXED512\_FULL} \\
+\midrule
+Exim & Code-edge coverage $\Delta$ & TBD & TBD & TBD & TBD & TBD \\
+Exim & IPSM-edge count $\Delta$ & TBD & TBD & TBD & TBD & TBD \\
+Forked-daapd & Code-edge coverage $\Delta$ & TBD & TBD & TBD & TBD & TBD \\
+Forked-daapd & IPSM-edge count $\Delta$ & TBD & TBD & TBD & TBD & TBD \\
+Mosquitto & Code-edge coverage $\Delta$ & TBD & TBD & TBD & TBD & TBD \\
+Mosquitto & IPSM-edge count $\Delta$ & TBD & TBD & TBD & TBD & TBD \\
+ProFTPD & Code-edge coverage $\Delta$ & TBD & TBD & TBD & TBD & TBD \\
+ProFTPD & IPSM-edge count $\Delta$ & TBD & TBD & TBD & TBD & TBD \\
+Aggregate & Plateau calls $\Delta$ & TBD & TBD & TBD & TBD & TBD \\
+Aggregate & Accepted LLM actions/requests $\Delta$ & TBD & TBD & TBD & TBD & TBD \\
+\bottomrule
+\end{tabular}
+\normalsize
+\end{table*}
+
+\begin{table*}[t]
+\centering
+\caption{Threshold-policy template. Report mean changes relative to the shipped adaptive LoopFuzz controller under the same repeated 24-hour protocol. The fixed thresholds correspond to the values that are either reached by the current adaptive policy (150/200/300) or used as the historical ChatAFL-aligned reference (512).}
+\label{tab:ablation_threshold_template}
 \scriptsize
 \begin{tabular}{l l|c c c c}
 \toprule
-\multirow{2}{*}{Target} & \multirow{2}{*}{Metric} & \multicolumn{4}{c}{Ablation switch} \\
-& & \texttt{NO\_FRONTIER} & \texttt{NO\_ADAPTIVE} & \texttt{NO\_REFINEMENT} & \texttt{NO\_STATE\_PROMPT} \\
+\multirow{2}{*}{Target} & \multirow{2}{*}{Metric} & \multicolumn{4}{c}{Fixed-threshold control} \\
+& & \texttt{FIXED150\_FULL} & \texttt{FIXED200\_FULL} & \texttt{FIXED300\_FULL} & \texttt{FIXED512\_FULL} \\
 \midrule
 Exim & Code-edge coverage $\Delta$ & TBD & TBD & TBD & TBD \\
 Exim & IPSM-edge count $\Delta$ & TBD & TBD & TBD & TBD \\
@@ -429,46 +455,13 @@ Fig.~\ref{fig:coverage} reports the corresponding code-edge coverage trajectorie
 
 The code-edge coverage curves support the same reading. LoopFuzz reaches the highest final code-edge coverage on five reported targets, and the separation appears largest on Mosquitto and Forked-daapd. Exim and ProFTPD remain tighter races. Kamailio shows that stronger IPSM-edge exploration and higher final code-edge coverage need not come from the same system. These curves summarize whole campaigns, not dominance at every time point.
 
-The observed gains incur bounded overhead in the currently cost-tracked subset. On those targets, LoopFuzz averages 48 LLM calls and \$0.0164 per 24-hour campaign, with mean per-target cost below \$0.0211. Mosquitto, Forked-daapd, ProFTPD, and Pure-FTPd show joint gains in code-edge coverage and IPSM-edge count. Kamailio is the main trade-off case. Exim is the clearest same-target example in which LoopFuzz leads on both reported endpoints.
-
-\begin{table*}[htbp]
-\centering
-\caption{Ablation snapshot for Exim and Pure-FTPd over dedicated repeated 24-hour ablation batches. Cells report mean $\pm$ sample SD, $\Delta$ is relative to the within-batch full LoopFuzz control, and Fixed-100/512 denote fixed non-adaptive thresholds. Because these ablation batches were executed separately from the main comparison batches, the control row here should not be numerically compared against Table~\ref{tab:24h_results}.}
-\label{tab:ablation_snapshot}
-\scriptsize
-\begin{tabular}{l|cc|cc|cc|cc}
-\toprule
-\multirow{2}{*}{Variant} & \multicolumn{4}{c|}{Exim} & \multicolumn{4}{c}{Pure-FTPd} \\
-& Code-edge cov. & $\Delta$ & IPSM-edge count & $\Delta$ & Code-edge cov. & $\Delta$ & IPSM-edge count & $\Delta$ \\
-\midrule
-Within-batch Full LoopFuzz & $3893.8 {\pm} 43.9$ & $0.0$ & $110.8 {\pm} 7.3$ & $0.0$ & $1225.0 {\pm} 39.1$ & $0.0$ & $290.6 {\pm} 20.2$ & $0.0$ \\
-No Frontier & $3896.6 {\pm} 10.1$ & $+2.8$ & $112.6 {\pm} 5.6$ & $+1.8$ & $1233.6 {\pm} 56.9$ & $+8.6$ & $292.4 {\pm} 22.8$ & $+1.8$ \\
-Fixed-100 & $3917.8 {\pm} 24.4$ & $+24.0$ & $118.0 {\pm} 2.3$ & $+7.2$ & $1267.0 {\pm} 75.6$ & $+42.0$ & $282.4 {\pm} 42.4$ & $-8.2$ \\
-Fixed-512 & $3892.8 {\pm} 40.2$ & $-1.0$ & $110.2 {\pm} 6.6$ & $-0.6$ & $1262.2 {\pm} 54.5$ & $+37.2$ & $302.4 {\pm} 27.4$ & $+11.8$ \\
-No Refinement & $3877.0 {\pm} 21.5$ & $-16.8$ & $107.6 {\pm} 11.9$ & $-3.2$ & $1243.0 {\pm} 63.3$ & $+18.0$ & $276.2 {\pm} 22.1$ & $-14.4$ \\
-No State Prompt & $3905.0 {\pm} 13.7$ & $+11.2$ & $115.0 {\pm} 9.3$ & $+4.2$ & $1277.6 {\pm} 68.2$ & $+52.6$ & $298.4 {\pm} 33.2$ & $+7.8$ \\
-All Controls Off & $3910.4 {\pm} 31.4$ & $+16.6$ & $116.8 {\pm} 6.5$ & $+6.0$ & $1260.0 {\pm} 44.2$ & $+35.0$ & $298.6 {\pm} 17.6$ & $+8.0$ \\
-\bottomrule
-\end{tabular}
-\normalsize
-\end{table*}
-
-\subsection{Ablation Snapshot on Exim and Pure-FTPd}
-Table~\ref{tab:ablation_snapshot} reports the mechanism ablations for Exim and Pure-FTPd. These results cover only two targets with currently completed repeated 24-hour campaigns. They should therefore be read as mechanism diagnosis, not as a full factor study. The control row in this table comes from separate ablation batches, so its numeric values are only meaningful as the reference point for the listed $\Delta$ values, not as a second copy of the main-comparison result. The ``No Refinement'' row is valid only because hypothesis mode is enabled. ``All Controls Off'' still includes the non-ablatable shared controls noted above.
-
-For Exim, the largest observed decline appears when refinement is removed. ``No Refinement'' drops by $16.8$ code-edge-coverage units and $3.2$ IPSM edges relative to ``Full LoopFuzz.'' It also has the widest IPSM-edge variance among the Exim settings. By contrast, removing frontier weighting changes the observed mean only slightly. Fixing the threshold at 512 also remains close to the full setting. The Fixed-100 variant increases the observed mean slightly, which suggests that the trigger policy remains sensitive to threshold choice.
-
-Pure-FTPd displays a less stable ablation pattern. Several ablated settings exceed the within-batch control mean in code-edge coverage, especially ``No State Prompt'' and the two fixed-threshold variants. However, they also widen the variance substantially. The most repeatable adverse movement again appears when refinement is removed. There, IPSM-edge exploration falls by $14.4$ on average even though code-edge coverage increases slightly.
-
-Pure-FTPd is a forking daemon. Bounded execution therefore remains active in every LoopFuzz-derived configuration, including ``All Controls Off.'' The ablation distinguishes the exposed control toggles from one another, but it does not isolate them from the always-on safeguards that already separate LoopFuzz from the original ChatAFL runtime.
-
-Overall, the ablation subset supports a narrower claim than the main comparison table. It does not justify claiming that every exposed control switch is uniformly beneficial for terminal code-edge coverage. In the current snapshot, counterexample-guided refinement is the only exposed mechanism whose removal is associated with a decline on Exim and with lower IPSM-edge exploration on Pure-FTPd. Frontier weighting, state-context prompting, and adaptive triggering remain target-dependent and interact with threshold choice.
+The observed gains incur bounded overhead in the currently cost-tracked subset. On those targets, LoopFuzz averages 48 LLM calls and $\$0.0164 per 24-hour campaign, with mean per-target cost below $\$0.0211. Mosquitto, Forked-daapd, ProFTPD, and Pure-FTPd show joint gains in code-edge coverage and IPSM-edge count. Kamailio is the main trade-off case. Exim is the clearest same-target example in which LoopFuzz leads on both reported endpoints.
 
 \section{Discussion}
 
-The paper makes one central claim. In stateful protocol fuzzing, LLM generation is useful only when it is governed by a strict admission boundary. ChatAFL already showed that an LLM can generate protocol text~\cite{chatafl}. LoopFuzz asks a different question: when should such output be trusted by the campaign? Our answer is the Runtime Verifier. It checks structure, parseability, response-grounded acceptability, state reachability, and downstream gain before an LLM suggestion can strengthen the queue. This changes the role of the LLM from queue producer to hypothesis proposer.
+The paper makes one central claim. In stateful protocol fuzzing, LLM generation is useful only when it is governed by a strict admission boundary. ChatAFL already showed that an LLM can generate protocol text~\cite{chatafl}. LoopFuzz asks a different question: when should such output be trusted by the campaign? Our answer is closed-loop runtime admission control. It checks structure, parseability, response-grounded acceptability, state reachability, and downstream gain before an LLM suggestion can strengthen the queue. This changes the role of the LLM from queue producer to hypothesis proposer.
 
-The verifier and the scheduler solve different parts of the same problem. Verification filters low-value suggestions. It does not decide where to spend the recovered budget. State-aware scheduling decides where to search. Without runtime-validated intervention, however, it still depends on ordinary mutation to cross semantic bottlenecks. LoopFuzz combines the two because admission control and state-directed search reinforce each other.
+The admission controller and the scheduler solve different parts of the same problem. Admission control filters low-value suggestions. It does not decide where to spend the recovered budget. State-aware scheduling decides where to search. Without closed-loop intervention, however, it still depends on ordinary mutation to cross semantic bottlenecks. LoopFuzz combines the two because admission control and state-directed search reinforce each other.
 
 The results also show why response-derived state counts must be read carefully. A campaign can accumulate superficially different rejection paths without moving toward high-value logic. LoopFuzz therefore reads IPSM exploration together with code-edge coverage and demotes states that remain unproductive over repeated selections. In this setting, productive states matter more than raw state counts. For that reason, IPSM-edge count is best interpreted as a companion diagnostic for campaign behavior, not as a substitute for code-edge coverage.
 
@@ -480,16 +473,16 @@ Counterexample-guided local refinement is also a deliberate design choice. Repea
 
 \section{Threats to Validity}
 
-\textbf{Internal validity:} LLM-assisted fuzzing remains sensitive to generation variance, target nondeterminism, and campaign-level timing effects. We mitigate these threats by fixing the execution environment, pinning the model endpoint, using low temperatures for grammar extraction and refinement, and designing the campaign matrix around repeated 24-hour runs. Even so, plateau triggering and hypothesis refinement are history-dependent. Early differences can propagate into late-campaign variance. The study also cannot cleanly separate model variance from control-policy variance because both act within the same long-running campaigns. In addition, the current draft reports one concrete control policy rather than a full hyperparameter sensitivity study.
+\textbf{Internal validity:} LLM-assisted fuzzing remains sensitive to generation variance, target nondeterminism, and campaign-level timing effects. We mitigate these threats by fixing the execution environment, pinning the model endpoint, using low temperatures for grammar extraction and refinement, and designing the campaign matrix around repeated 24-hour runs. Even so, plateau triggering and hypothesis refinement are history-dependent. Early differences can propagate into late-campaign variance. The study also cannot cleanly separate model variance from control-policy variance because both act within the same long-running campaigns.
 
 \textbf{External validity:} The benchmark suite spans 10 implementations across seven protocol families, but the quantitative section emphasizes the subset for which trace-normalized end-of-campaign summaries are included in the reported comparison. The evidence is therefore strongest for textual or semi-textual protocols whose progress is visible in responses. We do not claim unchanged transfer to opaque binary or encrypted protocols without stronger format-specific adaptors. We also do not yet present direct reproduced comparisons against SGF, Bleem, Logos, or MBFuzzer, even though they are important nearby baselines.
 
-\textbf{Construct and reproducibility validity:} We use code-edge coverage and final IPSM-edge count as the main proxies for fuzzing effectiveness. These are standard SGF measurements, but neither fully captures semantic protocol progress. Our runtime-validated control boundary refers to structured output checks, sampled hypothesis checks, response-grounded acceptability, state-reachability signals, and counterexample-guided refinement. It does not mean formal verification or a perfect pre-execution oracle. We also do not yet report cross-target verifier-admission summaries such as parseability pass rate, response-grounded acceptance rate, or CEGR repair success rate, so the motivating semantic-drift narrative is operationalized through logs rather than reduced to one global prevalence number. We reduce fairness ambiguity where possible. ChatAFL and LoopFuzz share the same pinned model endpoint. Each reported target is drawn from one completed 24-hour directory under the same repetition protocol. Mosquitto is compared only after matched MQTT support was added to every system, so that row still depends on author-implemented baseline support and warrants more cautious interpretation than the off-the-shelf targets. The cost comparison is narrower because the available ChatAFL token logs do not use a uniform accounting path on every target. The evaluation package reconstructs the main plots for the reported targets, includes completed ablation folders for Exim and Pure-FTPd, and preserves token-cost logs for the cost-tracked targets. It does not yet provide one uniform trace-audit bundle for every plateau event and refinement step across the full suite.
+\textbf{Construct and reproducibility validity:} We use code-edge coverage and final IPSM-edge count as the main proxies for fuzzing effectiveness. These are standard SGF measurements, but neither fully captures semantic protocol progress. Our closed-loop runtime admission boundary refers to structured output checks, sampled hypothesis checks, response-grounded acceptability, state-reachability signals, and counterexample-guided refinement. It does not mean formal verification or a perfect pre-execution oracle. We also do not yet report cross-target admission summaries such as parseability pass rate, response-grounded acceptance rate, or CEGR repair success rate, so the motivating semantic-drift narrative is operationalized through logs rather than reduced to one global prevalence number. We reduce fairness ambiguity where possible. ChatAFL and LoopFuzz share the same pinned model endpoint. Each reported target is drawn from one completed 24-hour directory under the same repetition protocol. Mosquitto is compared only after matched MQTT support was added to every system, so that row still depends on author-implemented baseline support and warrants more cautious interpretation than the off-the-shelf targets. The cost comparison is narrower because the available ChatAFL token logs do not use a uniform accounting path on every target.
 
 \section{Conclusion}
-Fluent protocol text is insufficient for a stateful campaign. What matters is a runtime admission boundary that can reject semantically premature generations and refine them when they fail.
+Fluent protocol text is insufficient for a stateful campaign. What matters is a closed-loop runtime admission boundary that can reject semantically premature generations and refine them when they fail.
 
-On the reported targets, LoopFuzz avoids several of the coverage regressions seen in direct LLM assistance. It reaches the highest reported final code-edge coverage on five targets, but exact terminal-value significance versus both baselines appears on three of them: Pure-FTPd, Forked-daapd, and Mosquitto. It also attains higher final IPSM-edge counts on ProFTPD, Pure-FTPd, Kamailio, Forked-daapd, and Mosquitto, with the strongest same-target statistical support on ProFTPD, Exim, and Mosquitto. The Exim/Pure-FTPd ablation snapshot further suggests that CEGR is the most consistently supported exposed mechanism in the currently completed subset, while the broader scheduling policy remains target-dependent. The evidence is strongest for textual or semi-textual request-response protocols. Within that scope, the results support a narrower conclusion than the original draft: runtime-validated control of model output appears more robust than direct open-loop LLM insertion, but the exposed scheduling components are not yet individually validated as uniformly beneficial across targets.
+On the reported targets, LoopFuzz avoids several of the coverage regressions seen in direct LLM assistance. It reaches the highest reported final code-edge coverage on five targets, with exact terminal-value significance versus both baselines on Pure-FTPd, Forked-daapd, and Mosquitto. It also attains higher final IPSM-edge counts on five reported targets, with the strongest same-target statistical support on ProFTPD, Exim, and Mosquitto. The evidence is strongest for textual or semi-textual request-response protocols. Within that scope, the results support a narrower conclusion than the original draft: closed-loop runtime admission control appears more robust than direct open-loop LLM insertion for long-running stateful protocol fuzzing campaigns.
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}
