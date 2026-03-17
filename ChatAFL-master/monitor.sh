@@ -382,9 +382,9 @@ print_table() {
 
     if [[ $has_llm -eq 1 ]]; then
         echo -e "${BOLD}  🤖 LLM / Token Cost (gpt-4o-mini: \$0.15/1M prompt, \$0.60/1M compl):${RST}"
-        printf "  ${DIM}%-14s %-12s %8s %11s %11s %9s %8s %11s %8s %8s %7s${RST}\n" \
-            "FUZZER" "CID" "LLM#" "Prompt_Tok" "Compl_Tok" "Cost(\$)" "\$/24h" "Tok/24h" "Plateau" "Fitness" "Src"
-        echo -e "  ${DIM}$(printf '─%.0s' {1..124})${RST}"
+        printf "  ${DIM}%-14s %-14s %-12s %8s %11s %11s %9s %8s %11s %8s %8s %7s${RST}\n" \
+            "FUZZER" "Protocol" "CID" "LLM#" "Prompt_Tok" "Compl_Tok" "Cost(\$)" "\$/24h" "Tok/24h" "Plateau" "Fitness" "Src"
+        echo -e "  ${DIM}$(printf '─%.0s' {1..138})${RST}"
 
         while IFS='|' read -r cid target fuzzer runtime bitmap paths_total paths_fav execs execs_sec \
                               crashes hangs cycles pending stab nodes edges \
@@ -408,8 +408,8 @@ print_table() {
             _tok_per_24h=$(awk "BEGIN{ r=${_rmin:-0}; if(r>0) printf \"%.0f\", (${_ptok:-0}+${_ctok:-0})/r*1440; else print \"-\"}")
             _cost_per_24h=$(awk "BEGIN{ r=${_rmin:-0}; if(r>0) printf \"%.4f\", (${_ptok:-0}*0.15+${_ctok:-0}*0.60)/1000000/r*1440; else print \"-\"}")
 
-            printf "  ${fc}%-14s${RST} %-12s %8s %11s %11s %9s %8s %11s %8s %8s %7s\n" \
-                "$fuzzer" "${cid:0:12}" "$llm_calls" "$llm_ptok" "$llm_ctok" \
+            printf "  ${fc}%-14s${RST} %-14s %-12s %8s %11s %11s %9s %8s %11s %8s %8s %7s\n" \
+                "$fuzzer" "$target" "${cid:0:12}" "$llm_calls" "$llm_ptok" "$llm_ctok" \
                 "$_cost_usd" "$_cost_per_24h" "$_tok_per_24h" "$plat_calls" "$hyp_fit" "${token_source:--}"
 
         done <<< "$sorted"
