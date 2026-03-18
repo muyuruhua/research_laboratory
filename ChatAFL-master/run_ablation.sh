@@ -22,6 +22,9 @@ TIMEOUT="${3:-1470}"
 PRESET="${4:-${ABLATION_PRESET:-core}}"
 
 BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
+RESULTS_BASE_DIR="${BASE_DIR}/ablation"
+mkdir -p "${RESULTS_BASE_DIR}"
+export RESULTS_ROOT="../ablation"
 declare -a GROUP_PIDS=()
 declare -a GROUP_LABELS=()
 
@@ -45,7 +48,7 @@ run_group_bg() {
 
     export TIMESTAMP="ablation_${label}_$(date +%Y%m%dT%H%M%S)"
 
-    echo "[ABLATION:${label}] 启动 → benchmark/results-${TARGET}_ablation_${label}_${TIMESTAMP}/"
+    echo "[ABLATION:${label}] 启动 → ablation/results-${TARGET}_ablation_${label}_${TIMESTAMP}/"
     echo "  NO_REF=${CHATAFL_NO_REFINEMENT:-0} NO_FRONT=${CHATAFL_NO_FRONTIER:-0} NO_ADAPT=${CHATAFL_NO_ADAPTIVE:-0} NO_SP=${CHATAFL_NO_STATE_PROMPT:-0} THR=${CHATAFL_ABLATION_THRESHOLD:-adaptive}"
 
     cd "$BASE_DIR" || exit 1
@@ -187,5 +190,5 @@ echo "========================================================"
 echo "  [ABLATION] 预设 ${PRESET} 全部完成！"
 [[ $failed -gt 0 ]] && echo "  ⚠️  WARNING: ${failed} 组子进程返回非零退出码，请检查日志"
 echo "  结果目录："
-ls -d "$BASE_DIR/benchmark/results-${TARGET}_ablation_"* 2>/dev/null | sort | xargs -r -I{} basename {}
+ls -d "$BASE_DIR/ablation/results-${TARGET}_ablation_"* 2>/dev/null | sort | xargs -r -I{} basename {}
 echo "========================================================"

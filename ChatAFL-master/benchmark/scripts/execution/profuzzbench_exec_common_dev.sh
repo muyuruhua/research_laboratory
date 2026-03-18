@@ -137,13 +137,17 @@ wait
 
 #collect the fuzzing results from the containers
 printf "\n${LOG_TAG}: Collecting results and save them to ${SAVETO}"
+mkdir -p "${SAVETO}"
 index=1
 for id in ${cids[@]}; do
   printf "\n${LOG_TAG}: Collecting results from container ${id}"
-  docker cp ${id}:/home/ubuntu/experiments/${OUTDIR}.tar.gz ${SAVETO}/${OUTDIR}_${index}.tar.gz > /dev/null
-  if [ ! -z $DELETE ]; then
-    printf "\nDeleting ${id}"
-    docker rm ${id} # Remove container now that we don't need it
+  if docker cp ${id}:/home/ubuntu/experiments/${OUTDIR}.tar.gz ${SAVETO}/${OUTDIR}_${index}.tar.gz > /dev/null; then
+    if [ ! -z "$DELETE" ]; then
+      printf "\nDeleting ${id}"
+      docker rm ${id} > /dev/null # Remove container now that we don't need it
+    fi
+  else
+    printf "\n${LOG_TAG}: [ERROR] Failed to collect ${OUTDIR}_${index}.tar.gz from ${id}; container is kept for manual recovery"
   fi
   index=$((index+1))
 done

@@ -25,9 +25,11 @@ DICOM
 
 每个协议实验数据下有 cov_over_time 和 state_over_time 两张PNG图以及相关的CSV数据。请读取读取对应CSV数据来精确分析
 
+帮我分析这些消融实验并列一个每个消融项的线覆盖行数 l_abs、分支覆盖 b_abs，以及 ipsm.dot 中的状态转移边数）的对比表
+
 cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 1 100 exim,proftpd,live555 chatafl,chatafl-opt,aflnet
 
-cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 10 1470 pure-ftpd,mosquitto,live555 chatafl,chatafl-opt,aflnet
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 3 1470 kamailio chatafl-opt
 
 cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export CHATAFL_NO_REFINEMENT=1 && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 5 1470 exim chatafl-opt
 
@@ -241,7 +243,17 @@ git pull origin dev8_with_testLLM
 全量测试：
 cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 3 1480 exim,live555,kamailio,lighttpd1,pure-ftpd,mosquitto,forked-daapd,lightftp,bftpd,proftpd chatafl-opt,chatafl,aflnet
 
-cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 3 1480 live555 chatafl-opt
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 1 1480 lighttpd1 aflnet
+
+run_ablation 参数顺序：./run_ablation.sh <target> <runs> <timeout_min> [preset]
+
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh bftpd 3 147
+
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh proftpd 3 147
+
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh lighttpd1 3 147
+
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh exim 3 1470
 
 cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh mosquitto 5 1470
 
@@ -301,10 +313,28 @@ forked-daapd	134-146 (100% fake)	OPT 损失 67%	OPT 损失 99%	🔴 灾难性
 
 forked-daapd 收到 SIGTERM 后清理极慢（远超 200ms），导致几乎每次执行都触发 child_force_killed → 几乎所有新覆盖都被错误分类为 FAULT_TMOUT → 新路径写入 virgin_tmout 而非 virgin_bits → 后续相同覆盖不会被识别为新路径 → 路径发现几乎为零
 
-lighttpd1/proftpd/pure-ftpd/exim 收到 SIGTERM 后通常在 200ms 内退出，只有部分执行（可能是服务器忙于处理复杂请求时）会触发 child_force_killed。所以大部分新路径仍然正确进入 virgin_bits，覆盖率正常积累。
+lighttpd1,proftpd,pure-ftpd,exim 收到 SIGTERM 后通常在 200ms 内退出，只有部分执行（可能是服务器忙于处理复杂请求时）会触发 child_force_killed。所以大部分新路径仍然正确进入 virgin_bits，覆盖率正常积累。
 
 结论
 严重受影响的只有 forked-daapd — 这是唯一一个 OPT 性能远差于 baseline 的协议
 lighttpd1 受中等影响 — false hangs 数量大，路径发现略有下降（-15%），但覆盖率未受损
 proftpd/pure-ftpd/exim 仅轻微影响 — false hangs 只浪费磁盘和分类开销，不影响核心覆盖率指标
 Fix-14c 对所有协议都有益 — 消除 false hangs 可以提升信噪比，轻微改善路径发现效率，且完全无副作用
+
+
+
+results-bftpd_Mar-16_23-10-02
+
+
+
+  ┌─ FORKED-DAAPD ─────────────────────────────────────────────────────────────────┐
+  FUZZER         CID          T(min)   Bitmap   Paths  Favrd    Execs Exec/s Crash Hangs  Nodes  Edges
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  CHATAFL-OPT    2d4b6ba27fd8   1134    8.25%     443    102   106978  2.11     0     6      4     19  ●
+  CHATAFL-OPT    c07791faa680   1133    8.25%     434    103   106543  1.58     0     6      4     21  ○
+  CHATAFL-OPT    c7f884f0ad2a   1131    8.26%     434     91   104360  1.92     0     8      4     22  ○
+
+
+
+
+

@@ -8,6 +8,7 @@ export TIMEOUT="${TIMEOUT:-86400}"
 export SKIPCOUNT="${SKIPCOUNT:-1}"
 export TEST_TIMEOUT="${TEST_TIMEOUT:-20000}"
 export PROJECT_ROOT="${PROJECT_ROOT:-$PWD/..}"
+export RESULTS_ROOT="${RESULTS_ROOT:-.}"
 
 # Generate timestamp for results directory
 # Allow caller to pre-set TIMESTAMP (e.g., ablation scripts inject label here)
@@ -53,7 +54,8 @@ do
 
             cd $PFBENCH
             RESULTS_DIR="results-lightftp_${TIMESTAMP}"
-            mkdir -p ${RESULTS_DIR}
+            RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_DIR}"
+            mkdir -p "${RESULTS_DIR}"
 
             if [[ $FUZZER == "aflnet" ]] || [[ $FUZZER == "all" ]]
             then
@@ -89,7 +91,8 @@ do
 
             cd $PFBENCH
             RESULTS_DIR="results-bftpd_${TIMESTAMP}"
-            mkdir -p ${RESULTS_DIR}
+            RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_DIR}"
+            mkdir -p "${RESULTS_DIR}"
 
             if [[ $FUZZER == "aflnet" ]] || [[ $FUZZER == "all" ]]
             then
@@ -125,7 +128,8 @@ do
 
             cd $PFBENCH
             RESULTS_DIR="results-proftpd_${TIMESTAMP}"
-            mkdir -p ${RESULTS_DIR}
+            RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_DIR}"
+            mkdir -p "${RESULTS_DIR}"
 
             if [[ $FUZZER == "aflnet" ]] || [[ $FUZZER == "all" ]]
             then
@@ -161,7 +165,8 @@ do
 
             cd $PFBENCH
             RESULTS_DIR="results-pure-ftpd_${TIMESTAMP}"
-            mkdir -p ${RESULTS_DIR}
+            RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_DIR}"
+            mkdir -p "${RESULTS_DIR}"
 
             if [[ $FUZZER == "aflnet" ]] || [[ $FUZZER == "all" ]]
             then
@@ -197,7 +202,8 @@ do
 
             cd $PFBENCH
             RESULTS_DIR="results-exim_${TIMESTAMP}"
-            mkdir -p ${RESULTS_DIR}
+            RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_DIR}"
+            mkdir -p "${RESULTS_DIR}"
 
             if [[ $FUZZER == "aflnet" ]] || [[ $FUZZER == "all" ]]
             then
@@ -233,7 +239,8 @@ do
 
             cd $PFBENCH
             RESULTS_DIR="results-live555_${TIMESTAMP}"
-            mkdir -p ${RESULTS_DIR}
+            RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_DIR}"
+            mkdir -p "${RESULTS_DIR}"
 
             if [[ $FUZZER == "aflnet" ]] || [[ $FUZZER == "all" ]]
             then
@@ -269,7 +276,8 @@ do
 
             cd $PFBENCH
             RESULTS_DIR="results-kamailio_${TIMESTAMP}"
-            mkdir -p ${RESULTS_DIR}
+            RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_DIR}"
+            mkdir -p "${RESULTS_DIR}"
 
             if [[ $FUZZER == "aflnet" ]] || [[ $FUZZER == "all" ]]
             then
@@ -305,7 +313,8 @@ do
 
             cd $PFBENCH
             RESULTS_DIR="results-forked-daapd_${TIMESTAMP}"
-            mkdir -p ${RESULTS_DIR}
+            RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_DIR}"
+            mkdir -p "${RESULTS_DIR}"
 
             if [[ $FUZZER == "aflnet" ]] || [[ $FUZZER == "all" ]]
             then
@@ -341,7 +350,8 @@ do
 
             cd $PFBENCH
             RESULTS_DIR="results-lighttpd1_${TIMESTAMP}"
-            mkdir -p ${RESULTS_DIR}
+            RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_DIR}"
+            mkdir -p "${RESULTS_DIR}"
 
             if [[ $FUZZER == "aflnet" ]] || [[ $FUZZER == "all" ]]
             then
@@ -378,7 +388,8 @@ do
 
             cd $PFBENCH
             RESULTS_DIR="results-mosquitto_${TIMESTAMP}"
-            mkdir -p ${RESULTS_DIR}
+            RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_DIR}"
+            mkdir -p "${RESULTS_DIR}"
 
             if [[ $FUZZER == "aflnet" ]] || [[ $FUZZER == "all" ]]
             then
