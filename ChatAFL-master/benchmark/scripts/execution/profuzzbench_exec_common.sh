@@ -13,6 +13,16 @@ DELETE=$9
 
 WORKDIR="/home/ubuntu/experiments"
 
+RESULT_OWNER="${SUDO_USER:-$USER}"
+RESULT_GROUP="$(id -gn "${RESULT_OWNER}")"
+
+fix_result_permissions() {
+  local path="$1"
+  [[ -e "$path" ]] || return 0
+  chown -R "${RESULT_OWNER}:${RESULT_GROUP}" "$path"
+  chmod -R u+rwX "$path"
+}
+
 # Log tag: FUZZER(target) e.g. CHATAFL-OPT(bftpd)
 LOG_TAG="${FUZZER^^}(${DOCIMAGE})"
 
@@ -60,10 +70,12 @@ wait
 #collect the fuzzing results from the containers
 printf "\n${LOG_TAG}: Collecting results and save them to ${SAVETO}"
 mkdir -p "${SAVETO}"
+fix_result_permissions "${SAVETO}"
 index=1
 for id in ${cids[@]}; do
   printf "\n${LOG_TAG}: Collecting results from container ${id}"
   if docker cp ${id}:/home/ubuntu/experiments/${OUTDIR}.tar.gz ${SAVETO}/${OUTDIR}_${index}.tar.gz > /dev/null; then
+    fix_result_permissions "${SAVETO}/${OUTDIR}_${index}.tar.gz"
     if [ ! -z "$DELETE" ]; then
       printf "\nDeleting ${id}"
       docker rm ${id} > /dev/null # Remove container now that we don't need it
@@ -73,5 +85,7 @@ for id in ${cids[@]}; do
   fi
   index=$((index+1))
 done
+
+fix_result_permissions "${SAVETO}"
 
 printf "\n${LOG_TAG}: I am done!\n"

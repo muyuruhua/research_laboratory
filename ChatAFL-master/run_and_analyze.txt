@@ -23,6 +23,11 @@ TLS
 SSH	
 DICOM
 
+有问题
+bftpd,forked-daapd,,,,
+
+列出l_abs、b_abs、nodes、edges等指标
+
 每个协议实验数据下有 cov_over_time 和 state_over_time 两张PNG图以及相关的CSV数据。请读取读取对应CSV数据来精确分析
 
 帮我分析这些消融实验并列一个每个消融项的线覆盖行数 l_abs、分支覆盖 b_abs，以及 ipsm.dot 中的状态转移边数）的对比表
@@ -243,25 +248,29 @@ git pull origin dev8_with_testLLM
 全量测试：
 cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 3 1480 exim,live555,kamailio,lighttpd1,pure-ftpd,mosquitto,forked-daapd,lightftp,bftpd,proftpd chatafl-opt,chatafl,aflnet
 
-cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 3 1480 forked-daapd chatafl-opt
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 2 1480 proftpd chatafl
 
 run_ablation 参数顺序：./run_ablation.sh <target> <runs> <timeout_min> [preset]
 
-cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh bftpd 3 147
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh bftpd 1 1480
 
-cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh proftpd 3 147
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh proftpd 1 1480
 
-cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh lighttpd1 3 147
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh pure-ftpd 1 1480
 
-cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh exim 3 147
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh lightftp 1 1480
 
-cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh mosquitto 5 147
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh lighttpd1 1 1480
 
-cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh kamailio 5 147
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh exim 1 1480
 
-cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh live555 5 147
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh mosquitto 1 1480
 
-cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh forked-daapd 5 147
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh kamailio 1 1480
+
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh live555 1 1480
+
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_ablation.sh forked-daapd 1 1480
 
 cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS" && export SKIPCOUNT=40 && sudo -E ./run_dev.sh 2 1470 kamailio,mosquitto,exim,live555,forked-daapd,pure-ftpd,proftpd chatafl,chatafl-opt
 
@@ -334,7 +343,13 @@ results-bftpd_Mar-16_23-10-02
   CHATAFL-OPT    c07791faa680   1133    8.25%     434    103   106543  1.58     0     6      4     21  ○
   CHATAFL-OPT    c7f884f0ad2a   1131    8.26%     434     91   104360  1.92     0     8      4     22  ○
 
-
-
-
-
+./run_summary.sh results-lightftp_Mar-16_23-10-02_ten
+./run_summary.sh results-bftpd_Mar-16_23-10-02_ten
+./run_summary.sh results-proftpd_Mar-16_23-10-02_ten
+./run_summary.sh results-pure-ftpd_Mar-16_23-10-02_ten
+./run_summary.sh results-exim_Mar-16_23-10-02_ten
+./run_summary.sh results-live555_Mar-16_23-10-02_ten
+./run_summary.sh results-kamailio_Mar-16_23-10-02_ten
+./run_summary.sh results-forked-daapd_Mar-16_23-10-02_ten
+./run_summary.sh results-lighttpd1_Mar-16_23-10-02_ten
+./run_summary.sh results-mosquitto_Mar-16_23-10-02_ten

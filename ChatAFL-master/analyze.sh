@@ -19,6 +19,15 @@ if [ -z "$FILTER" ]; then
 fi
 
 PFBENCH="$PWD/benchmark"
+RESULT_OWNER="${SUDO_USER:-$USER}"
+RESULT_GROUP="$(id -gn "${RESULT_OWNER}")"
+
+fix_result_permissions() {
+    local path="$1"
+    [[ -e "$path" ]] || return 0
+    chown -R "${RESULT_OWNER}:${RESULT_GROUP}" "$path"
+    chmod -R u+rwX "$path"
+}
 
 # OCP Extension: Pre-flight permission check
 if [ ! -w "$PFBENCH" ]; then
@@ -97,7 +106,7 @@ do
     
     info "Extracting fuzzer names and replication count..."
     FUZZERS=$(ls *.tar.gz 2>/dev/null | perl -n -l -e 'print $1 if /^out-.+-(\w+)_\d+\.tar\.gz/;'|sort|uniq)
-    REPS=$(ls *.tar.gz 2>/dev/null | perl -n -l -e 'print $1 if /^out-.+-\w+_(\d+)\.tar\.gz/;'|sort -r|head -1)
+    REPS=$(ls *.tar.gz 2>/dev/null | perl -n -l -e 'print $1 if /^out-.+-\w+_(\d+)\.tar\.gz/;' | sort -n | tail -n 1)
     
     if [ -z "$FUZZERS" ] || [ -z "$REPS" ]; then
         warn "Cannot extract fuzzer names or replication count from $RESULTS_DIR"
@@ -105,7 +114,8 @@ do
         continue
     fi
     #echo $FUZZERS
-    info "Subject: $ORIGINAL_SUBJECT, Fuzzers: $FUZZERS, Replications: $REPS"
+    FUZZERS_DISPLAY=$(echo "$FUZZERS" | tr '\n' ',' | sed 's/,$//')
+    info "Subject: $ORIGINAL_SUBJECT, Fuzzers: $FUZZERS_DISPLAY, Replications: $REPS"
     
     # OCP Extension: Clean up previous analysis (suppress expected "file not found" warnings)
     rm -f results.csv states.csv 2>/dev/null
@@ -238,7 +248,9 @@ do
     RES_FOLDER=$(date "+res_${SUBJECT}_%b-%d_%H-%M-%S")
     
     info "Results from analysis for ${SUBJECT} are stored in $RES_FOLDER"
-    mkdir ../$RES_FOLDER
+    mkdir -p "../$RES_FOLDER"
+    fix_result_permissions "../$RES_FOLDER"
     cp -r *_${SUBJECT}.png ../$RES_FOLDER 2>/dev/null || true
     cp -r "$RESULTS_DIR" ../$RES_FOLDER
+    fix_result_permissions "../$RES_FOLDER"
 done

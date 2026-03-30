@@ -9,6 +9,15 @@ export SKIPCOUNT="${SKIPCOUNT:-1}"
 export TEST_TIMEOUT="${TEST_TIMEOUT:-20000}"
 export PROJECT_ROOT="${PROJECT_ROOT:-$PWD/..}"
 export RESULTS_ROOT="${RESULTS_ROOT:-.}"
+RESULT_OWNER="${SUDO_USER:-$USER}"
+RESULT_GROUP="$(id -gn "${RESULT_OWNER}")"
+
+fix_result_permissions() {
+    local path="$1"
+    [[ -e "$path" ]] || return 0
+    chown -R "${RESULT_OWNER}:${RESULT_GROUP}" "$path"
+    chmod -R u+rwX "$path"
+}
 
 # Generate timestamp for results directory
 # Allow caller to pre-set TIMESTAMP (e.g., ablation scripts inject label here)
@@ -428,6 +437,11 @@ done
 
 # 等待所有后台任务完成（移到这里实现并行执行）
 wait
+
+for RESULTS_DIR in ${RESULTS_ROOT}/results-*; do
+    [[ -d "$RESULTS_DIR" ]] || continue
+    fix_result_permissions "$RESULTS_DIR"
+done
 
 echo
 echo "=========================================="

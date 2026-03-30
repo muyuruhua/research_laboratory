@@ -24,6 +24,10 @@ PRESET="${4:-${ABLATION_PRESET:-core}}"
 BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
 RESULTS_BASE_DIR="${BASE_DIR}/ablation"
 mkdir -p "${RESULTS_BASE_DIR}"
+RESULT_OWNER="${SUDO_USER:-$USER}"
+RESULT_GROUP="$(id -gn "${RESULT_OWNER}")"
+chown "${RESULT_OWNER}:${RESULT_GROUP}" "${RESULTS_BASE_DIR}"
+chmod u+rwx "${RESULTS_BASE_DIR}"
 export RESULTS_ROOT="../ablation"
 declare -a GROUP_PIDS=()
 declare -a GROUP_LABELS=()
@@ -192,3 +196,13 @@ echo "  [ABLATION] 预设 ${PRESET} 全部完成！"
 echo "  结果目录："
 ls -d "$BASE_DIR/ablation/results-${TARGET}_ablation_"* 2>/dev/null | sort | xargs -r -I{} basename {}
 echo "========================================================"
+
+RESULT_OWNER="${SUDO_USER:-$USER}"
+RESULT_GROUP="$(id -gn "${RESULT_OWNER}")"
+chown "${RESULT_OWNER}:${RESULT_GROUP}" "${RESULTS_BASE_DIR}"
+chmod u+rwx "${RESULTS_BASE_DIR}"
+for RESULTS_DIR in "$BASE_DIR"/ablation/results-${TARGET}_ablation_*; do
+  [[ -d "$RESULTS_DIR" ]] || continue
+  chown -R "${RESULT_OWNER}:${RESULT_GROUP}" "$RESULTS_DIR"
+  chmod -R u+rwX "$RESULTS_DIR"
+done

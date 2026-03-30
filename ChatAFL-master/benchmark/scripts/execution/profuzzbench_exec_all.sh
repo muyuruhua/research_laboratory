@@ -4,6 +4,15 @@ export NUM_CONTAINERS="${NUM_CONTAINERS:-10}"
 export TIMEOUT="${TIMEOUT:-86400}"
 export SKIPCOUNT="${SKIPCOUNT:-1}"
 export TEST_TIMEOUT="${TEST_TIMEOUT:-20000}"
+RESULT_OWNER="${SUDO_USER:-$USER}"
+RESULT_GROUP="$(id -gn "${RESULT_OWNER}")"
+
+fix_result_permissions() {
+    local path="$1"
+    [[ -e "$path" ]] || return 0
+    chown -R "${RESULT_OWNER}:${RESULT_GROUP}" "$path"
+    chmod -R u+rwX "$path"
+}
 
 # Generate timestamp for results directory
 export TIMESTAMP=$(date "+%b-%d_%H-%M-%S")
@@ -409,6 +418,11 @@ done
 
 # 等待所有后台任务完成
 wait
+
+for RESULTS_DIR in results-*; do
+    [[ -d "$RESULTS_DIR" ]] || continue
+    fix_result_permissions "$RESULTS_DIR"
+done
 
 echo
 echo "=========================================="
