@@ -408,6 +408,40 @@ do
 
         fi
 
+        if [[ $TARGET == "mosquitto-v2.0.18" ]] || [[ $TARGET == "all" ]]
+        then
+
+            cd $PFBENCH
+            RESULTS_DIR="results-mosquitto-v2.0.18_${TIMESTAMP}"
+            mkdir -p ${RESULTS_DIR}
+
+            if [[ $FUZZER == "aflnet" ]] || [[ $FUZZER == "all" ]]
+            then
+                profuzzbench_exec_common.sh mosquitto-v2.0.18 $NUM_CONTAINERS ${RESULTS_DIR} aflnet out-mosquitto-v2.0.18-aflnet "-P MQTT -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+            fi
+
+            if [[ $FUZZER == "chatafl" ]] || [[ $FUZZER == "all" ]]
+            then
+                profuzzbench_exec_common.sh mosquitto-v2.0.18 $NUM_CONTAINERS ${RESULTS_DIR} chatafl out-mosquitto-v2.0.18-chatafl "-P MQTT -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+            fi
+
+            if [[ $FUZZER == "chatafl-cl1" ]] || [[ $FUZZER == "all" ]]
+            then
+                profuzzbench_exec_common.sh mosquitto-v2.0.18 $NUM_CONTAINERS ${RESULTS_DIR} chatafl-cl1 out-mosquitto-v2.0.18-chatafl_cl1 "-P MQTT -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+            fi
+
+            if [[ $FUZZER == "chatafl-cl2" ]] || [[ $FUZZER == "all" ]]
+            then
+                profuzzbench_exec_common.sh mosquitto-v2.0.18 $NUM_CONTAINERS ${RESULTS_DIR} chatafl-cl2 out-mosquitto-v2.0.18-chatafl_cl2 "-P MQTT -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+            fi
+
+            if [[ $FUZZER == "chatafl-opt" ]] || [[ $FUZZER == "all" ]]
+            then
+                profuzzbench_exec_common.sh mosquitto-v2.0.18 $NUM_CONTAINERS ${RESULTS_DIR} chatafl-opt out-mosquitto-v2.0.18-chatafl_opt "-P MQTT -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+            fi
+
+        fi
+
         # Brief pause so background process startup messages print in order
         # before the next fuzzer's messages begin (docker run -d returns in <1s)
         sleep 2

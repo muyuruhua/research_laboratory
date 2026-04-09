@@ -1,0 +1,33 @@
+nohup: ignoring input
+
+==========================================
+Volume挂载开发模式
+==========================================
+# NUM_CONTAINERS: 1
+# TIMEOUT: 600 s
+# SKIPCOUNT: 1
+# TEST TIMEOUT: 5000 ms
+# TARGET LIST: mosquitto-v2.0.18
+# FUZZER LIST: chatafl-opt
+# PROJECT_ROOT: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/..
+==========================================
+
+
+***** RUNNING chatafl-opt ON mosquitto-v2.0.18 (Volume Mode) *****
+
+
+CHATAFL-OPT(mosquitto-v2.0.18): [DEV] Subject dir mounted: /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/../benchmark/subjects/MQTT/Mosquitto-v2.0.18
+
+CHATAFL-OPT(mosquitto-v2.0.18): Fuzzing in progress ...
+CHATAFL-OPT(mosquitto-v2.0.18): Waiting for the following containers to stop: e6aa1e87dd7f
+CHATAFL-OPT(mosquitto-v2.0.18): You can check logs by: docker logs -f e6aa1e87dd7f
+
+CHATAFL-OPT(mosquitto-v2.0.18): Collecting results and save them to ./results-mosquitto-v2.0.18_Mar-31_21-31-40
+CHATAFL-OPT(mosquitto-v2.0.18): Collecting results from container e6aa1e87dd7f
+CHATAFL-OPT(mosquitto-v2.0.18): I am done!
+chown: changing ownership of './results-kamailio_Mar-30_18-30-45': Operation not permitted
+chmod: changing permissions of './results-kamailio_Mar-30_18-30-45': Operation not permitted
+
+==========================================
+✅ Volume挂载模式测试完成
+==========================================

@@ -45,6 +45,7 @@ get_subject_dir() {
         forked-daapd)  echo "${base}/DAAP/forked-daapd" ;;
         lighttpd1)     echo "${base}/HTTP/Lighttpd1" ;;
         mosquitto)     echo "${base}/MQTT/Mosquitto" ;;
+      mosquitto-v2.0.18) echo "${base}/MQTT/Mosquitto-v2.0.18" ;;
         *) echo "" ;;
     esac
 }
