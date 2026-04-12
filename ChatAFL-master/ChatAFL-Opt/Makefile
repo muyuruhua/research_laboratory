@@ -90,8 +90,17 @@ llm-validator.o: llm-validator.c chat-llm.h $(COMM_HDR)
 mqtt-builder.o: mqtt-builder.c mqtt-builder.h $(COMM_HDR)
 	$(CC) $(CFLAGS) -c mqtt-builder.c -o mqtt-builder.o
 
-afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet.o aflnet.h chat-llm.o chat-llm.h grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o llm-validator.o mqtt-builder.o | test_x86
-	$(CC) $(CFLAGS) $@.c aflnet.o chat-llm.o grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o llm-validator.o mqtt-builder.o -o $@ $(LDFLAGS) -lcurl -ljson-c -lpcre2-8 -lpthread
+mp-driver-mqtt.o: mp-driver-mqtt.c mp-driver.h mqtt-builder.h $(COMM_HDR)
+	$(CC) $(CFLAGS) -c mp-driver-mqtt.c -o mp-driver-mqtt.o
+
+mqtt-generate.o: mqtt-generate.c mqtt-generate.h $(COMM_HDR)
+	$(CC) $(CFLAGS) -c mqtt-generate.c -o mqtt-generate.o
+
+mqtt-scheduler.o: mqtt-scheduler.c mqtt-scheduler.h mqtt-generate.h $(COMM_HDR)
+	$(CC) $(CFLAGS) -c mqtt-scheduler.c -o mqtt-scheduler.o
+
+afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet.o aflnet.h chat-llm.o chat-llm.h grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o llm-validator.o mqtt-builder.o mp-driver-mqtt.o mqtt-generate.o mqtt-scheduler.o | test_x86
+	$(CC) $(CFLAGS) $@.c aflnet.o chat-llm.o grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o llm-validator.o mqtt-builder.o mp-driver-mqtt.o mqtt-generate.o mqtt-scheduler.o -o $@ $(LDFLAGS) -lcurl -ljson-c -lpcre2-8 -lpthread
 
 afl-replay: afl-replay.c $(COMM_HDR) aflnet.o aflnet.h | test_x86
 	$(CC) $(CFLAGS) $@.c aflnet.o -o $@ $(LDFLAGS)

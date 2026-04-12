@@ -461,6 +461,7 @@ static const char* get_command_pattern(const char *protocol_name) {
     if (strcasecmp(protocol_name, "RTSP") == 0) return RFC_COMMAND_PATTERN_RTSP;
     if (strcasecmp(protocol_name, "SIP") == 0) return RFC_COMMAND_PATTERN_SIP;
     if (strcasecmp(protocol_name, "HTTP") == 0) return RFC_COMMAND_PATTERN_HTTP;
+    if (strcasecmp(protocol_name, "MQTT") == 0) return RFC_COMMAND_PATTERN_MQTT;
     return NULL;
 }
 
@@ -562,15 +563,102 @@ char** extract_rfc_response_codes(const char *rfc_text, const char *protocol_nam
 
 char* extract_rfc_state_machine(const char *rfc_text, const char *protocol_name) {
     if (!rfc_text || !protocol_name) return NULL;
-    
-    // Search for state machine diagrams or descriptions
-    // Keywords: "state", "transition", "sequence", "flow"
-    
-    // For now, return a simplified extraction
-    // In production, this would parse state transition tables
-    
+
     printf("[*] Extracting state machine from RFC for %s...\n", protocol_name);
-    return ck_strdup((u8*)"State machine extraction not yet implemented");
+
+    if (strcasecmp(protocol_name, "MQTT") == 0) {
+        size_t cmd_count = 0;
+        char **commands = extract_rfc_commands(rfc_text, protocol_name, &cmd_count);
+        size_t cap = 4096;
+        size_t len = 0;
+        char *out = (char *)malloc(cap);
+        int has_connect = 0, has_subscribe = 0, has_publish = 0,
+            has_unsubscribe = 0, has_pingreq = 0, has_disconnect = 0,
+            has_pubrel = 0;
+
+        if (!out) return NULL;
+        out[0] = '\0';
+
+#define APPEND_FMT(_fmt, ...) do { \
+            int _n = snprintf(out + len, cap - len, _fmt, ##__VA_ARGS__); \
+            if (_n < 0) break; \
+            if ((size_t)_n >= cap - len) { \
+                cap = (cap + (size_t)_n + 128) * 2; \
+                out = (char *)realloc(out, cap); \
+                if (!out) return NULL; \
+                _n = snprintf(out + len, cap - len, _fmt, ##__VA_ARGS__); \
+                if (_n < 0) break; \
+            } \
+            len += (size_t)_n; \
+        } while (0)
+
+        APPEND_FMT("MODEL MQTT\\n");
+        APPEND_FMT("SOURCE OASIS\\n");
+
+        for (size_t i = 0; i < cmd_count; i++) {
+            if (!commands[i]) continue;
+            APPEND_FMT("CMD %s\\n", commands[i]);
+            if (strcasecmp(commands[i], "CONNECT") == 0) has_connect = 1;
+            if (strcasecmp(commands[i], "SUBSCRIBE") == 0) has_subscribe = 1;
+            if (strcasecmp(commands[i], "PUBLISH") == 0) has_publish = 1;
+            if (strcasecmp(commands[i], "UNSUBSCRIBE") == 0) has_unsubscribe = 1;
+            if (strcasecmp(commands[i], "PINGREQ") == 0) has_pingreq = 1;
+            if (strcasecmp(commands[i], "DISCONNECT") == 0) has_disconnect = 1;
+            if (strcasecmp(commands[i], "PUBREL") == 0) has_pubrel = 1;
+        }
+
+        /* Role declarations */
+        APPEND_FMT("ROLE SUBSCRIBE=SUB\\n");
+        APPEND_FMT("ROLE UNSUBSCRIBE=SUB\\n");
+        APPEND_FMT("ROLE PUBLISH=PUB\\n");
+        APPEND_FMT("ROLE PUBREL=PUB\\n");
+        APPEND_FMT("ROLE CONNECT=CTRL\\n");
+        APPEND_FMT("ROLE PINGREQ=CTRL\\n");
+        APPEND_FMT("ROLE DISCONNECT=CTRL\\n");
+
+        /* Transition skeleton constrained by extracted commands */
+        if (has_connect) APPEND_FMT("TRANS START->CONNECT\\n");
+        if (has_connect && has_subscribe) APPEND_FMT("TRANS CONNECT->SUBSCRIBE\\n");
+        if (has_connect && has_publish) APPEND_FMT("TRANS CONNECT->PUBLISH\\n");
+        if (has_connect && has_pingreq) APPEND_FMT("TRANS CONNECT->PINGREQ\\n");
+        if (has_connect && has_disconnect) APPEND_FMT("TRANS CONNECT->DISCONNECT\\n");
+
+        if (has_subscribe && has_publish) APPEND_FMT("TRANS SUBSCRIBE->PUBLISH\\n");
+        if (has_subscribe && has_unsubscribe) APPEND_FMT("TRANS SUBSCRIBE->UNSUBSCRIBE\\n");
+        if (has_subscribe && has_pingreq) APPEND_FMT("TRANS SUBSCRIBE->PINGREQ\\n");
+        if (has_subscribe && has_disconnect) APPEND_FMT("TRANS SUBSCRIBE->DISCONNECT\\n");
+
+        if (has_unsubscribe && has_subscribe) APPEND_FMT("TRANS UNSUBSCRIBE->SUBSCRIBE\\n");
+        if (has_unsubscribe && has_publish) APPEND_FMT("TRANS UNSUBSCRIBE->PUBLISH\\n");
+        if (has_unsubscribe && has_pingreq) APPEND_FMT("TRANS UNSUBSCRIBE->PINGREQ\\n");
+        if (has_unsubscribe && has_disconnect) APPEND_FMT("TRANS UNSUBSCRIBE->DISCONNECT\\n");
+
+        if (has_publish) APPEND_FMT("TRANS PUBLISH->PUBLISH\\n");
+        if (has_publish && has_subscribe) APPEND_FMT("TRANS PUBLISH->SUBSCRIBE\\n");
+        if (has_publish && has_pingreq) APPEND_FMT("TRANS PUBLISH->PINGREQ\\n");
+        if (has_publish && has_disconnect) APPEND_FMT("TRANS PUBLISH->DISCONNECT\\n");
+        if (has_publish && has_pubrel) APPEND_FMT("TRANS PUBLISH->PUBREL\\n");
+
+        if (has_pingreq) APPEND_FMT("TRANS PINGREQ->PINGREQ\\n");
+        if (has_pingreq && has_publish) APPEND_FMT("TRANS PINGREQ->PUBLISH\\n");
+        if (has_pingreq && has_subscribe) APPEND_FMT("TRANS PINGREQ->SUBSCRIBE\\n");
+        if (has_pingreq && has_unsubscribe) APPEND_FMT("TRANS PINGREQ->UNSUBSCRIBE\\n");
+        if (has_pingreq && has_disconnect) APPEND_FMT("TRANS PINGREQ->DISCONNECT\\n");
+
+        if (has_pubrel && has_publish) APPEND_FMT("TRANS PUBREL->PUBLISH\\n");
+        if (has_pubrel && has_pingreq) APPEND_FMT("TRANS PUBREL->PINGREQ\\n");
+        if (has_pubrel && has_disconnect) APPEND_FMT("TRANS PUBREL->DISCONNECT\\n");
+
+        if (commands) {
+            for (size_t i = 0; i < cmd_count; i++) free(commands[i]);
+            free(commands);
+        }
+
+#undef APPEND_FMT
+        return out;
+    }
+
+    return ck_strdup((u8*)"State machine extraction not yet implemented for this protocol");
 }
 
 /* ============================================

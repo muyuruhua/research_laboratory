@@ -1,0 +1,58 @@
+Here is a comprehensive list of MQTT client request message templates, formatted as you specified:
+
+```plaintext
+CONNECT: ["CONNECT <<VALUE>>\r\n", "ClientId: <<VALUE>>\r\n", "CleanSession: <<VALUE>>\r\n", "KeepAlive: <<VALUE>>\r\n", "WillTopic: <<VALUE>>\r\n", "WillMessage: <<VALUE>>\r\n", "WillQoS: <<VALUE>>\r\n", "WillRetain: <<VALUE>>\r\n", "Username: <<VALUE>>\r\n", "Password: <<VALUE>>\r\n"]
+CONNACK: ["CONNACK <<VALUE>>\r\n", "SessionPresent: <<VALUE>>\r\n", "ReturnCode: <<VALUE>>\r\n"]
+SUBSCRIBE: ["SUBSCRIBE <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "TopicFilter: <<VALUE>>\r\n", "RequestedQoS: <<VALUE>>\r\n"]
+SUBACK: ["SUBACK <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "GrantedQoS: <<VALUE>>\r\n"]
+UNSUBSCRIBE: ["UNSUBSCRIBE <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "TopicFilter: <<VALUE>>\r\n"]
+UNSUBACK: ["UNSUBACK <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+PUBLISH: ["PUBLISH <<VALUE>>\r\n", "TopicName: <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "QoS: <<VALUE>>\r\n", "Retain: <<VALUE>>\r\n", "Payload: <<VALUE>>\r\n"]
+PUBACK: ["PUBACK <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+PUBREC: ["PUBREC <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+PUBREL: ["PUBREL <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+PUBCOMP: ["PUBCOMP <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+PINGREQ: ["PINGREQ\r\n"]
+PINGRESP: ["PINGRESP\r\n"]
+DISCONNECT: ["DISCONNECT\r\n"]
+```
+
+### Notes:
+- `<<VALUE>>` placeholders can be replaced with actual values as required.
+- The message types include various request and response types in the MQTT protocol.
+- The list includes messages that support Quality of Service (QoS) levels and other features like Will messages, authentication, and session management.
+- The sequence mentioned (CONNECT -> SUBSCRIBE -> PUBLISH -> UNSUBSCRIBE -> DISCONNECT) can be followed using these message templates.
+In addition to the basic MQTT client request message templates provided earlier, there are some additional templates and variations that can be considered as part of the MQTT protocol. Here are some other client request templates that you might find useful:
+
+```plaintext
+CONNECT: ["CONNECT <<VALUE>>\r\n", "ClientId: <<VALUE>>\r\n", "CleanSession: <<VALUE>>\r\n", "KeepAlive: <<VALUE>>\r\n", "WillTopic: <<VALUE>>\r\n", "WillMessage: <<VALUE>>\r\n", "WillQoS: <<VALUE>>\r\n", "WillRetain: <<VALUE>>\r\n", "Username: <<VALUE>>\r\n", "Password: <<VALUE>>\r\n"]
+CONNACK: ["CONNACK <<VALUE>>\r\n", "SessionPresent: <<VALUE>>\r\n", "ReturnCode: <<VALUE>>\r\n"]
+SUBSCRIBE: ["SUBSCRIBE <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "TopicFilter: <<VALUE>>\r\n", "RequestedQoS: <<VALUE>>\r\n"]
+SUBACK: ["SUBACK <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "GrantedQoS: <<VALUE>>\r\n"]
+UNSUBSCRIBE: ["UNSUBSCRIBE <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "TopicFilter: <<VALUE>>\r\n"]
+UNSUBACK: ["UNSUBACK <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+PUBLISH: ["PUBLISH <<VALUE>>\r\n", "TopicName: <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "QoS: <<VALUE>>\r\n", "Retain: <<VALUE>>\r\n", "Payload: <<VALUE>>\r\n"]
+PUBACK: ["PUBACK <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+PUBREC: ["PUBREC <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+PUBREL: ["PUBREL <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+PUBCOMP: ["PUBCOMP <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+PINGREQ: ["PINGREQ\r\n"]
+PINGRESP: ["PINGRESP\r\n"]
+DISCONNECT: ["DISCONNECT\r\n"]
+
+// Additional templates
+AUTH: ["AUTH <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "AuthMethod: <<VALUE>>\r\n", "AuthData: <<VALUE>>\r\n"]
+WILDCARD_SUBSCRIBE: ["SUBSCRIBE <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "TopicFilter: <<VALUE>>/#\r\n", "RequestedQoS: <<VALUE>>\r\n"]
+WILDCARD_UNSUBSCRIBE: ["UNSUBSCRIBE <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "TopicFilter: <<VALUE>>/#\r\n"]
+RECONNECT: ["CONNECT <<VALUE>>\r\n", "ClientId: <<VALUE>>\r\n", "CleanSession: <<VALUE>>\r\n", "KeepAlive: <<VALUE>>\r\n"]
+DUPLICATE_CONNECT: ["CONNECT <<VALUE>>\r\n", "ClientId: <<VALUE>>\r\n", "CleanSession: <<VALUE>>\r\n", "KeepAlive: <<VALUE>>\r\n", "WillTopic: <<VALUE>>\r\n", "WillMessage: <<VALUE>>\r\n", "WillQoS: <<VALUE>>\r\n", "WillRetain: <<VALUE>>\r\n", "Username: <<VALUE>>\r\n", "Password: <<VALUE>>\r\n", "Duplicate: true\r\n"]
+```
+
+### Explanation of Additional Templates:
+- **AUTH**: This message is used for authentication and can include an authentication method and data.
+- **WILDCARD_SUBSCRIBE**: This allows subscribing to topics with wildcard characters (e.g., `#` for matching multiple levels).
+- **WILDCARD_UNSUBSCRIBE**: This allows unsubscribing from topics with wildcard characters.
+- **RECONNECT**: This is a variant of the CONNECT message that can be used to reconnect to the broker.
+- **DUPLICATE_CONNECT**: This represents a CONNECT message that can be sent with a duplicate flag, indicating a reconnection attempt.
+
+These templates provide a more comprehensive overview of the various client requests that can be made using the MQTT protocol.

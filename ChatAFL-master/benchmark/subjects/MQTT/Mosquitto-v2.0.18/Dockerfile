@@ -91,8 +91,15 @@ ENV AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
 
 RUN mkdir $WORKDIR
 
-# Set up environment variables for ASAN
-ENV ASAN_OPTIONS='abort_on_error=1:symbolize=0:detect_leaks=0:detect_stack_use_after_return=1:detect_container_overflow=0:poison_array_cookie=0:malloc_fill_byte=0:max_malloc_fill_size=16777216'
+# Set up environment variables for ASAN  (P0 — aggressive bug detection)
+# Changes vs old:
+#   detect_container_overflow=1  (was 0) — catch C++ container OOB
+#   poison_array_cookie=1        (was 0) — catch array-new overflows
+#   check_initialization_order=1 (new)   — catch global-init-order bugs
+#   strict_init_order=1          (new)   — stricter init-order checking
+#   alloc_dealloc_mismatch=1     (new)   — catch malloc/free vs new/delete
+#   strict_string_checks=1       (new)   — catch sloppy string ops
+ENV ASAN_OPTIONS='abort_on_error=1:symbolize=0:detect_leaks=0:detect_stack_use_after_return=1:detect_container_overflow=1:poison_array_cookie=1:malloc_fill_byte=0:max_malloc_fill_size=16777216:check_initialization_order=1:strict_init_order=1:alloc_dealloc_mismatch=1:strict_string_checks=1'
 
 # ── Only change vs Mosquitto (v1.6.8): git checkout v2.0.18 ──
 # Download and compile Mosquitto for fuzzing (v2.0.18)

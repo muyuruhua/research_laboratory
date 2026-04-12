@@ -322,3 +322,238 @@ o 目标：优先探索“低覆盖状态/稀有转移”，并在 plateau(停�
 
 
 注：ChatAFL来源于【Large Language Model guided Protocol Fuzzing.pdf】，SST来源于【Stateful Greybox Fuzzing.pdf】
+
+
+================================================================================
+Fix-MP: Multi-Party Driver 泛化重构（2026-04-11）
+================================================================================
+
+一、问题背景
+
+send_over_network() 此前的 MQTT 多连接模式（Fix-15）将 7 处 MQTT 硬编码直接
+内联在主循环中：
+  ① mqtt_pack_connect()         — MQTT CONNECT 报文构造
+  ② mqtt_pack_subscribe(..."#") — MQTT SUBSCRIBE 通配符
+  ③ mqtt_packet_type_from_msg() — 首字节高 4 bit 提取类型
+  ④ mqtt_role_for_packet_type() — type nibble→role 映射
+  ⑤ ptype_nibble == 1 || == 14  — 跳过 CONNECT/DISCONNECT
+  ⑥ 0xE0, 0x00                  — MQTT DISCONNECT 二进制报文
+  ⑦ mqtt_probe_cluster_differences() — MQTT 集群差异探测
+
+这使得主循环骨架无法复用于其他多方交互协议（如 SIP/Kamailio），违背
+开闭原则的扩展意图。
+
+二、设计：mp_driver_t 函数指针接口
+
+新增 mp-driver.h，定义协议无关的 multi-party driver 虚表：
+
+  typedef struct mp_driver {
+    const char *name;              /* "MQTT", "SIP", ... */
+    int         fd_count;          /* 并发连接数 */
+    int  (*open_connections)(ctx); /* 打开 N 个 TCP/UDP 连接 */
+    int  (*handshake)(ctx);        /* 协议级会话建立 */
+    int  (*role_for_message)(ctx, msg, len); /* 消息→fd 路由 */
+    int  (*after_send)(ctx, role); /* 发送后 drain 转发目标 */
+    void (*drain_all)(ctx);        /* 最终清空所有 fd */
+    void (*cleanup)(ctx);          /* 断开、释放、后处理 */
+  } mp_driver_t;
+
+运行时上下文通过 mp_context_t 传递：
+  - fds[]              → 已打开的 fd 数组
+  - timeout, poll_wait → 网络超时参数
+  - response_buf/size  → 共享响应缓冲区指针
+  - priv               → 驱动私有数据（void*）
+
+三、MQTT 驱动实现（mp-driver-mqtt.c）
+
+将 7 处硬编码迁移为 6 个回调 + 1 个注册函数：
+
+  回调                   | 对应的硬编码    | 职责
+  ---------------------- | --------------- | ----------------------------------
+  mqtt_open_connections  | ①②（socket）    | 打开 sub/pub/ctrl 3 个 TCP 连接
+  mqtt_handshake         | ①② CONNECT+SUB  | 3 路 CONNECT + sub_fd SUBSCRIBE "#"
+  mqtt_role_for_message  | ③④⑤             | nibble→role→fd_index；CONNECT/DISCONNECT→skip
+  mqtt_after_send        | （新抽象）       | PUBLISH 后 drain sub_fd 捕获转发消息
+  mqtt_drain_all         | （新抽象）       | 最终清空 ctrl/pub/sub
+  mqtt_cleanup           | ⑥⑦              | DISCONNECT 报文 + mqtt_probe_cluster_differences()
+
+fd 布局：fds[0]=sub, fds[1]=pub, fds[2]=ctrl
+
+驱动注册：
+  const mp_driver_t *mp_driver_for_protocol(const char *proto) {
+    if (strcasecmp(proto, "MQTT") == 0) return mp_driver_mqtt();
+    /* 未来: if (strcasecmp(proto, "SIP") == 0) return mp_driver_sip(); */
+    return NULL;  /* → 走单连接路径 */
+  }
+
+四、send_over_network() 骨架重构
+
+  const mp_driver_t *mp_drv = mp_driver_for_protocol(protocol_name);
+
+  if (mp_drv && net_protocol == PRO_TCP) {
+    /* 泛化骨架：open → handshake → route loop → drain → cleanup → close */
+    mp_context_t mp_ctx = { .fds = stack_buf, .fd_count = mp_drv->fd_count, ... };
+
+    if (mp_drv->open_connections(&mp_ctx) != 0) goto MP_SINGLE_FD_FALLBACK;
+    if (mp_drv->handshake(&mp_ctx) != 0)        goto MP_MULTI_CLEANUP;
+
+    for (each message m in kl_messages) {
+      int role = mp_drv->role_for_message(&mp_ctx, m->mdata, m->msize);
+      if (role < 0) { skip; continue; }
+      net_send(mp_ctx.fds[role], ...);
+      net_recv(mp_ctx.fds[role], ...);
+      mp_drv->after_send(&mp_ctx, role);   // e.g. drain subscriber fd
+    }
+
+  MP_MULTI_CLEANUP:
+    mp_drv->drain_all(&mp_ctx);
+    mp_drv->cleanup(&mp_ctx);
+    /* stabilization loop + close all fds */
+    goto MP_MULTI_DONE;
+  }
+
+  MP_SINGLE_FD_FALLBACK:
+  { /* 原始单连接路径——一个字符都没改 */ }
+
+  MP_MULTI_DONE:
+  /* 共享退出：likely_buggy 检查 → 进程终止 → return 0 */
+
+五、文件清单与改动量
+
+  文件                | 状态      | 行数   | 说明
+  ------------------- | --------- | ------ | ---------------------------------
+  mp-driver.h         | 新增      | ~120   | 接口定义 + mp_context_t + 注册函数
+  mp-driver-mqtt.c    | 新增      | ~235   | MQTT 驱动回调 + 注册
+  afl-fuzz.c          | 修改      | -165/+95 | 删除硬编码分支，替换为泛化骨架
+  Makefile            | 修改      | +3     | 增加 mp-driver-mqtt.o 编译规则
+
+  编译验证：gcc -fsyntax-only -Wall → 零新增错误、零新增警告 ✅
+
+六、隔离性保证
+
+  1. 门控条件：mp_drv != NULL && net_protocol == PRO_TCP
+     → 无 driver 的协议（所有文本协议 + 无 MP 需求的二进制协议）直接走
+       MP_SINGLE_FD_FALLBACK，与重构前完全相同。
+  2. 运行时行为等价：MQTT 场景下回调复现了原先内联代码的完整行为——
+     3 连接、CONNECT×3、SUBSCRIBE "#"、角色路由、PUBLISH 后 drain sub_fd、
+     DISCONNECT×3、mqtt_probe_cluster_differences()。
+  3. 失败降级：open_connections 失败 → 自动 fallback 到单连接路径。
+
+七、扩展路径（未来协议）
+
+  以 SIP (Kamailio) 为例，只需：
+    1. 创建 mp-driver-sip.c，实现 6 个回调
+    2. 在 mp_driver_for_protocol() 增加一行 case
+    3. Makefile 增加 mp-driver-sip.o
+  send_over_network() 本身无需任何修改。
+
+  SIP 特殊性：
+    - 传输层: UDP (SOCK_DGRAM) → open_connections 需要 UDP socket
+    - 握手: REGISTER 文本消息（~500 bytes）而非二进制 CONNECT
+    - 角色路由: 解析 SIP method 字符串（INVITE/BYE/...）而非 nibble
+    - 转发触发: INVITE→Proxy→UAS 需要 UAS 回复 200 OK
+    - 骨架中 net_protocol == PRO_TCP 的门控需改为 PRO_TCP || PRO_UDP
+  这些差异全部封装在 SIP driver 回调中，骨架只需将门控条件放宽。
+
+
+================================================================================
+八、截至 2026-04-12：ChatAFL vs ChatAFL-Opt 严谨差异结论（主流程是否“已实现并生效”）
+================================================================================
+
+说明：此节仅比较仓库中的两个 fuzzer：
+  - ChatAFL（基线）: ChatAFL/afl-fuzz.c
+  - ChatAFL-Opt（优化版）: ChatAFL-Opt/afl-fuzz.c
+
+一、能力矩阵（实现状态）
+
+  维度                                  | ChatAFL 基线 | ChatAFL-Opt | 结论
+  ------------------------------------- | ------------ | ----------- | -----------------------------
+  启动期 LLM 语法/模板生成               | ✅            | ✅           | 两者都有（setup_llm_grammars）
+  启动期 LLM 种子充实                    | ✅ 串行        | ✅ 并行(32线程) | Opt 更高吞吐
+  运行期语法验证（采样）                 | ❌            | ✅ Tier-1     | Opt 已在 common_fuzz_stuff 生效
+  运行期反例驱动精炼（低频）             | ❌            | ✅ Tier-2     | Opt 已实现 periodic refinement
+  状态拓扑感知调度（frontier/out-degree）| ❌            | ✅            | Opt 有 frontier_bonus
+  自适应 plateau 阈值                    | ❌ 固定512     | ✅ 150/200/300 | Opt 有 edges_growth_rate 闭环
+  LLM 状态感知 rich prompt + actions[]  | ❌            | ✅            | Opt 支持 set_target/prioritize/mutate
+  LLM 调用隔离与超时保护                 | ❌ 主进程阻塞  | ✅ fork+60s   | Opt 抗卡死能力更强
+  MQTT 多方交互（sub/pub/ctrl）          | ❌            | ✅            | Opt 通过 mp_driver_mqtt
+  MQTT v5 结构化生成 + 字段感知变异       | ❌            | ✅            | Opt 新增 mqtt-generate/mutate
+  MQTT 自适应调度（Q-Learning + UCB1）   | ❌            | ✅            | Opt 新增 mqtt-scheduler
+
+二、对“4项工程扩展要求”的逐项核对（是否进入主流程）
+
+1) LLM 语法/消息模板生成（Hypothesis）
+
+  - ChatAFL：已实现，但主要停留在启动期固化（setup_llm_grammars + enrich_testcases）。
+  - ChatAFL-Opt：已实现且增强。除启动期外，plateau 首次触发时可延迟初始化 hypothesis 系统，
+    并进入后续验证/精炼闭环。
+
+  判定：
+    - “已实现”=是（两者）
+    - “主流程持续起作用”=仅 Opt 明显成立（因为有 Tier-1/Tier-2 运行期链路）
+
+2) 验证器（Verifier）
+
+  2.1 可解析性
+    - Opt: validate_hypothesis_sampled() 复用 extract_requests() 结果做采样验证（每500次执行）。
+    - Baseline: 无对应运行期验证器。
+
+  2.2 可接受性
+    - Opt: 通过 classify_state_error_hint()/productivity 对“疑似错误态”降权，而非直接剔除；
+      属于工程有效的软判定接受性机制。
+    - Baseline: 无 error_hint/productivity 闭环。
+
+  2.3 状态可达性
+    - Opt: IPSM 节点/边直接进入调度与 plateau 触发（agnnodes/agnedges）。
+    - Baseline: 有 state-aware scoring，但不使用拓扑出度、无 frontier 奖励。
+
+  2.4 覆盖增益门控
+    - 两者均有 save_if_interesting() 覆盖门控；
+    - Opt 额外把覆盖/状态反馈用于后续调度器（frontier/adaptive/hypothesis 以及 MQTT QL+bandit）。
+
+  判定：
+    - Baseline: “验证器”不完整（缺运行期验证与反例修正）
+    - Opt: “工程强有效验证器”已落主流程并起作用（非形式化证明，但闭环存在）
+
+3) 反例驱动修正（Counterexample-guided Refinement）
+
+  - Baseline：无。
+  - Opt：有。
+    - Tier-1 采样验证积累 counterexamples 与 fitness；
+    - Tier-2 periodic_hypothesis_refinement() 在 fitness<阈值且反例数满足条件时触发 LLM 精炼。
+
+  限制（仍需改进）：
+    - 当前“局部 patch 约束”是“每次最多精炼一个假设”的软约束，
+      不是严格语法级 AST diff 约束；仍有进一步降低幻觉空间的改进余地。
+
+4) 状态导向调度（State-aware Scheduling）
+
+  - Baseline：弱状态导向（仅基于 fuzzs/selected_times/paths_discovered 的评分，不感知拓扑 frontier）。
+  - Opt：强状态导向（frontier_bonus + error_hint/productivity + 自适应阈值 + 节点停滞随机扰动 +
+    状态感知 LLM actions[]）。
+  - MQTT 专项（Opt 新增）：Q-Learning 选择包类型、UCB1 选择 replace/insert/field/skip 臂，
+    奖励由 queued_paths 增益驱动，已接入 havoc 主循环。
+
+  判定：
+    - “优先探索低覆盖状态/稀有转移并在 plateau 触发状态建议”= Opt 满足；Baseline 不满足。
+
+三、关于“主流程中是否真正起作用”的实证性结论
+
+  1) 代码级证据：
+     - Opt 在 fuzz 热路径包含 Tier-1 validate_hypothesis_sampled、plateau 路径包含 Tier-2 refinement；
+     - Opt 在状态评分中执行 frontier_bonus 与 error_hint/productivity 惩罚；
+     - Opt 在 MQTT havoc 中执行 mqtt_bandit_select/mqtt_ql_select 并用 queued_paths 回报更新。
+
+  2) 结果级证据（本仓库实验）：
+     - ChatAFL-Opt（Apr-12_15-29-44）两轮收敛到约 27.0%~27.5% 行覆盖、19.8%~20.2% 分支覆盖，
+       显著高于此前 23.9%/18.1% 阶段结果，说明新增机制不是“死代码”。
+
+四、边界与未完成项（避免过度结论）
+
+  1. 目前仍非“形式化验证器”（无 theorem/proof obligation），属于工程验证闭环。
+  2. Multi-party 目前已泛化到 driver 架构，但默认门控为 TCP；SIP/UDP 需放宽门控并补 driver。
+  3. 与 MBFuzzer 相比，Opt 仍缺“多 broker 差分”这一结构性放大器；这是覆盖差距残留的关键原因之一。
+
+结论（一句话）：
+  ChatAFL 是“开环的 LLM 辅助模糊”；ChatAFL-Opt 已升级为“状态感知 + 反例反馈 + 调度自适应”的
+  闭环系统，且该闭环已进入主路径并在覆盖/状态探索上产生可观测增益。

@@ -145,6 +145,9 @@ static const rfc_info_t RFC_DATABASE[] = {
 #define RFC_COMMAND_PATTERN_RTSP  "^[A-Z_]+:"       // DESCRIBE:, SETUP:, etc.
 #define RFC_COMMAND_PATTERN_SIP   "^[A-Z]+\\s+sip:" // INVITE sip:, etc.
 #define RFC_COMMAND_PATTERN_HTTP  "^[A-Z]+\\s+/"    // GET /, POST /, etc.
+/* MQTT spec is OASIS HTML; after HTML->text stripping we extract canonical
+ * control packet names globally (not line-anchored). */
+#define RFC_COMMAND_PATTERN_MQTT  "\\b(CONNECT|CONNACK|PUBLISH|PUBACK|PUBREC|PUBREL|PUBCOMP|SUBSCRIBE|SUBACK|UNSUBSCRIBE|UNSUBACK|PINGREQ|PINGRESP|DISCONNECT|AUTH)\\b"
 
 // Response code extraction patterns
 #define RFC_RESPONSE_PATTERN_FTP  "\\b[1-5][0-9]{2}\\b"  // 220, 331, 530, etc.

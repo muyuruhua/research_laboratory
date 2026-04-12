@@ -46,6 +46,9 @@
 #include "grammar-hypothesis.h"
 #include "hypothesis-adapter.h"
 #include "mqtt-builder.h"
+#include "mqtt-generate.h"
+#include "mqtt-scheduler.h"
+#include "mp-driver.h"
 
 #include <stdio.h>
 #include <unistd.h>
@@ -72,6 +75,7 @@
 #include <sys/ioctl.h>
 #include <sys/file.h>
 #include <sys/capability.h>
+#include <netdb.h>
 #include <pthread.h>
 
 #include "aflnet.h"
@@ -211,6 +215,10 @@ EXP_ST u64 total_crashes, /* Total number of crashes          */
 static u32 subseq_tmouts; /* Number of timeouts in a row      */
 
 static u32 forced_kills;  /* Fix-14c: send_over_network() SIGKILL escalations */
+
+static u32 mp_multi_ok,          /* multi-fd path completed successfully     */
+           mp_multi_fallback,    /* open_connections failed → single-fd      */
+           mp_multi_hshake_fail; /* handshake failed → cleanup & MP_MULTI_DONE */
 
 static u8 *stage_name = "init", /* Name of the current fuzz stage   */
     *stage_short,               /* Short stage name                 */
@@ -455,6 +463,11 @@ u32 state_ids_count = 0;
 u32 selected_state_index = 0;
 u32 state_cycles = 0;
 u32 messages_sent = 0;
+char *mqtt_cluster_diff_summary = NULL;
+u32 mqtt_cluster_broker_count = 0;
+u32 mqtt_cluster_unique_signatures = 0;
+u8 mqtt_cluster_diverged = 0;
+static u8 mqtt_cluster_probe_logged = 0;
 EXP_ST u8 session_virgin_bits[MAP_SIZE]; /* Regions yet untouched while the SUT is still running */
 EXP_ST u8 *cleanup_script;               /* script to clean up the environment of the SUT -- make fuzzing more deterministic */
 EXP_ST u8 *netns_name;                   /* network namespace name to run server in */
@@ -482,6 +495,19 @@ u8 false_negative_reduction = 0;
 u32 uninteresting_times = 0;
 /* Track how much times we ask for breaking coverage plateau */
 u32 chat_times = 0;
+
+/* ============================================
+ * MQTT-specific Enhancement Flags  (P1/P2)
+ * ============================================ */
+u8 mqtt_field_mutate_enabled  = 0;  /* P2a: field-aware MQTT mutation in havoc (extern in mp-driver-mqtt.c) */
+u8 mqtt_cross_session_enabled = 0;         /* P2b: cross-session state fuzzing (extern in mp-driver-mqtt.c) */
+
+/* ============================================
+ * P3: Q-Learning + UCB1 Bandit Schedulers (MQTT only)
+ * ============================================ */
+static mqtt_ql_t     mqtt_ql;              /* Q-Learning message type scheduler */
+static mqtt_bandit_t mqtt_bandit;          /* UCB1 arm selector (replace/insert/field/skip) */
+static u8 mqtt_scheduler_enabled = 0;      /* Set to 1 after init for MQTT */
 
 /* ============================================
  * Adaptive Plateau Triggering Variables
@@ -526,6 +552,548 @@ static u64 llm_dedup_hits              = 0;  /* prompt-hash cache hits */
 #define LLM_DEDUP_SLOTS 64
 static u32 llm_prompt_hash_ring[LLM_DEDUP_SLOTS];
 static u32 llm_prompt_hash_count = 0;
+
+extern char *protocol_name;
+extern klist_t(lms) *kl_messages;
+
+typedef struct {
+  u8 *ip;
+  u32 port;
+} mqtt_broker_endpoint_t;
+
+static void reset_mqtt_cluster_diff_summary(void) {
+  if (mqtt_cluster_diff_summary) {
+    ck_free(mqtt_cluster_diff_summary);
+    mqtt_cluster_diff_summary = NULL;
+  }
+  mqtt_cluster_broker_count = 0;
+  mqtt_cluster_unique_signatures = 0;
+  mqtt_cluster_diverged = 0;
+}
+
+static int mqtt_open_cluster_socket(const char *ip, u32 port) {
+  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+  struct sockaddr_in serv_addr;
+  struct sockaddr_in local_serv_addr;
+  struct hostent *host_entry = NULL;
+  int n;
+
+  if (sockfd < 0) {
+    return -1;
+  }
+
+  memset(&serv_addr, 0, sizeof(serv_addr));
+  serv_addr.sin_family = AF_INET;
+  serv_addr.sin_port = htons(port);
+  if (inet_pton(AF_INET, ip, &serv_addr.sin_addr) != 1) {
+    host_entry = gethostbyname(ip);
+    if (!host_entry || !host_entry->h_addr_list || !host_entry->h_addr_list[0]) {
+      close(sockfd);
+      return -1;
+    }
+    memcpy(&serv_addr.sin_addr, host_entry->h_addr_list[0], (size_t)host_entry->h_length);
+  }
+
+  if (local_port > 0) {
+    local_serv_addr.sin_family = AF_INET;
+    local_serv_addr.sin_addr.s_addr = INADDR_ANY;
+    local_serv_addr.sin_port = htons(local_port);
+    local_serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    if (bind(sockfd, (struct sockaddr *)&local_serv_addr, sizeof(struct sockaddr_in))) {
+      close(sockfd);
+      return -1;
+    }
+  }
+
+  if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+    for (n = 0; n < 1000; n++) {
+      if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == 0)
+        break;
+      usleep(1000);
+    }
+    if (n == 1000) {
+      close(sockfd);
+      return -1;
+    }
+  }
+
+  return sockfd;
+}
+
+static u32 mqtt_pack_connect(u8 *out, u32 out_cap, const char *client_id) {
+  u32 cid_len = (u32)strlen(client_id);
+  u32 rem_len = 10 + 2 + cid_len;
+  if (!out || out_cap < (2 + rem_len) || cid_len > 23) {
+    return 0;
+  }
+
+  out[0] = 0x10;
+  out[1] = (u8)rem_len;
+  out[2] = 0x00; out[3] = 0x04;
+  out[4] = 'M';  out[5] = 'Q'; out[6] = 'T'; out[7] = 'T';
+  out[8] = 0x04;
+  out[9] = 0x02;
+  out[10] = 0x00; out[11] = 0x3C;
+  out[12] = (u8)((cid_len >> 8) & 0xFF);
+  out[13] = (u8)(cid_len & 0xFF);
+  memcpy(out + 14, client_id, cid_len);
+  return 14 + cid_len;
+}
+
+static u32 mqtt_pack_subscribe(u8 *out, u32 out_cap, u16 pkt_id, const char *topic, u8 qos) {
+  u32 tlen = (u32)strlen(topic);
+  u32 rem_len = 2 + 2 + tlen + 1;
+  if (!out || out_cap < (2 + rem_len) || tlen > 65535) {
+    return 0;
+  }
+
+  out[0] = 0x82;
+  out[1] = (u8)rem_len;
+  out[2] = (u8)((pkt_id >> 8) & 0xFF);
+  out[3] = (u8)(pkt_id & 0xFF);
+  out[4] = (u8)((tlen >> 8) & 0xFF);
+  out[5] = (u8)(tlen & 0xFF);
+  memcpy(out + 6, topic, tlen);
+  out[6 + tlen] = (u8)(qos & 0x03);
+  return 7 + tlen;
+}
+
+static u32 mqtt_pack_publish(u8 *out, u32 out_cap, const char *topic, const char *payload) {
+  u32 tlen = (u32)strlen(topic);
+  u32 plen = (u32)strlen(payload);
+  u32 rem_len = 2 + tlen + plen;
+  if (!out || out_cap < (2 + rem_len) || tlen > 65535) {
+    return 0;
+  }
+
+  out[0] = 0x30;
+  out[1] = (u8)rem_len;
+  out[2] = (u8)((tlen >> 8) & 0xFF);
+  out[3] = (u8)(tlen & 0xFF);
+  memcpy(out + 4, topic, tlen);
+  memcpy(out + 4 + tlen, payload, plen);
+  return 4 + tlen + plen;
+}
+
+static void mqtt_pack_disconnect(u8 *out, u32 out_cap, u32 *out_len) {
+  if (!out || out_cap < 2 || !out_len) {
+    return;
+  }
+  out[0] = 0xE0;
+  out[1] = 0x00;
+  *out_len = 2;
+}
+
+static u8 mqtt_packet_type_from_msg(const char *msg, u32 len) {
+  if (!msg || len == 0) {
+    return 0;
+  }
+  return (u8)(((u8)msg[0]) >> 4);
+}
+
+static char *mqtt_probe_multi_party_interaction(const char *ip, u32 port) {
+  struct timeval timeout;
+  int subfd = -1;
+  int pubfd = -1;
+  int ctrlfd = -1;
+  char *sub_resp = NULL;
+  unsigned int sub_resp_len = 0;
+  unsigned int *state_sequence = NULL;
+  unsigned int state_count = 0;
+  char *result = NULL;
+  u8 pkt[256];
+  u32 pkt_len = 0;
+  u32 i = 0;
+  u8 prev_ptype = 0;
+  u8 have_prev_ptype = 0;
+  u32 saved_local_port = local_port;
+  kliter_t(lms) *it;
+
+  mqtt_init_spec_state_model();
+
+  timeout.tv_sec = 0;
+  timeout.tv_usec = socket_timeout_usecs > 50000 ? socket_timeout_usecs : 50000;
+
+  local_port = 0;
+  subfd = mqtt_open_cluster_socket(ip, port);
+  pubfd = mqtt_open_cluster_socket(ip, port);
+  ctrlfd = mqtt_open_cluster_socket(ip, port);
+  local_port = saved_local_port;
+
+  if (subfd < 0 || pubfd < 0 || ctrlfd < 0) {
+    result = ck_strdup((u8 *)"mp-connect-failed");
+    goto cleanup;
+  }
+
+  setsockopt(subfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
+  setsockopt(subfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout));
+  setsockopt(pubfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
+  setsockopt(pubfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout));
+  setsockopt(ctrlfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
+  setsockopt(ctrlfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout));
+
+  pkt_len = mqtt_pack_connect(pkt, sizeof(pkt), "chatafl_sub");
+  if (!pkt_len || net_send(subfd, timeout, (char *)pkt, pkt_len) != (int)pkt_len) {
+    result = ck_strdup((u8 *)"mp-sub-connect-send-failed");
+    goto cleanup;
+  }
+  net_recv(subfd, timeout, poll_wait_msecs, &sub_resp, &sub_resp_len);
+
+  pkt_len = mqtt_pack_connect(pkt, sizeof(pkt), "chatafl_pub");
+  if (!pkt_len || net_send(pubfd, timeout, (char *)pkt, pkt_len) != (int)pkt_len) {
+    result = ck_strdup((u8 *)"mp-pub-connect-send-failed");
+    goto cleanup;
+  }
+  net_recv(pubfd, timeout, poll_wait_msecs, &sub_resp, &sub_resp_len);
+
+  pkt_len = mqtt_pack_connect(pkt, sizeof(pkt), "chatafl_ctrl");
+  if (!pkt_len || net_send(ctrlfd, timeout, (char *)pkt, pkt_len) != (int)pkt_len) {
+    result = ck_strdup((u8 *)"mp-ctrl-connect-send-failed");
+    goto cleanup;
+  }
+  net_recv(ctrlfd, timeout, poll_wait_msecs, &sub_resp, &sub_resp_len);
+
+  pkt_len = mqtt_pack_subscribe(pkt, sizeof(pkt), 1, "#", 0);
+  if (!pkt_len || net_send(subfd, timeout, (char *)pkt, pkt_len) != (int)pkt_len) {
+    result = ck_strdup((u8 *)"mp-subscribe-send-failed");
+    goto cleanup;
+  }
+  net_recv(subfd, timeout, poll_wait_msecs, &sub_resp, &sub_resp_len);
+
+  for (it = kl_begin(kl_messages); it != kl_end(kl_messages); it = kl_next(it)) {
+    int target_fd = ctrlfd;
+    message_t *m = kl_val(it);
+    u8 ptype = mqtt_packet_type_from_msg(m->mdata, m->msize);
+    int role;
+
+    if (!m || !m->mdata || m->msize == 0) {
+      continue;
+    }
+
+    if (have_prev_ptype && !mqtt_spec_transition_allowed(prev_ptype, ptype)) {
+      continue;
+    }
+
+    role = mqtt_role_for_packet_type(ptype);
+    if (role == 2) target_fd = pubfd;
+    else if (role == 1) target_fd = subfd;
+    else target_fd = ctrlfd;
+
+    if (!mqtt_spec_transition_allowed(0, ptype) && !have_prev_ptype) {
+      if (ptype != 1) {
+        continue;
+      }
+    }
+
+    if (net_send(target_fd, timeout, m->mdata, m->msize) != (int)m->msize) {
+      continue;
+    }
+
+    prev_ptype = ptype;
+    have_prev_ptype = 1;
+
+    net_recv(target_fd, timeout, poll_wait_msecs, &sub_resp, &sub_resp_len);
+    if (target_fd != subfd) {
+      net_recv(subfd, timeout, poll_wait_msecs, &sub_resp, &sub_resp_len);
+    }
+  }
+
+  pkt_len = mqtt_pack_publish(pkt, sizeof(pkt), "chatafl/probe", "ping");
+  if (pkt_len) {
+    net_send(pubfd, timeout, (char *)pkt, pkt_len);
+    net_recv(pubfd, timeout, poll_wait_msecs, &sub_resp, &sub_resp_len);
+    for (i = 0; i < 4; i++) {
+      if (net_recv(subfd, timeout, poll_wait_msecs, &sub_resp, &sub_resp_len) != 0) {
+        break;
+      }
+    }
+  }
+
+  if (sub_resp && sub_resp_len > 0) {
+    state_sequence = extract_response_codes_mqtt((unsigned char *)sub_resp, sub_resp_len, &state_count);
+    if (state_sequence) {
+      result = (char *)state_sequence_to_string(state_sequence, state_count);
+      ck_free(state_sequence);
+      state_sequence = NULL;
+    }
+  }
+
+  if (!result) {
+    result = ck_strdup((u8 *)"mp-no-response");
+  }
+
+cleanup:
+  pkt_len = 0;
+  mqtt_pack_disconnect(pkt, sizeof(pkt), &pkt_len);
+  if (pkt_len && subfd >= 0) {
+    net_send(subfd, timeout, (char *)pkt, pkt_len);
+  }
+  if (pkt_len && pubfd >= 0) {
+    net_send(pubfd, timeout, (char *)pkt, pkt_len);
+  }
+  if (pkt_len && ctrlfd >= 0) {
+    net_send(ctrlfd, timeout, (char *)pkt, pkt_len);
+  }
+
+  if (sub_resp) ck_free(sub_resp);
+  if (state_sequence) ck_free(state_sequence);
+  if (subfd >= 0) close(subfd);
+  if (pubfd >= 0) close(pubfd);
+  if (ctrlfd >= 0) close(ctrlfd);
+
+  return result;
+}
+
+static void mqtt_probe_cluster_differences(void) {
+  const char *broker_spec = getenv("CHATAFL_MQTT_BROKERS");
+  mqtt_broker_endpoint_t *endpoints = NULL;
+  char **signatures = NULL;
+  char *spec_copy = NULL;
+  char *token = NULL;
+  char *saveptr = NULL;
+  char self_hostname[256];
+  int have_self_hostname = 0;
+  u32 endpoint_count = 0;
+  u32 i = 0;
+
+  reset_mqtt_cluster_diff_summary();
+
+  if (!protocol_name || strcasecmp(protocol_name, "MQTT") != 0) {
+    return;
+  }
+
+  if (net_protocol != PRO_TCP) {
+    return;
+  }
+
+  /* Even if no CHATAFL_MQTT_BROKERS is set, still run multi-party
+   * probe against the target broker (once). */
+  if (!broker_spec || !*broker_spec) {
+    static u8 mp_standalone_done = 0;
+    if (!mp_standalone_done && net_ip && net_port) {
+      char *mp_sig = mqtt_probe_multi_party_interaction((char *)net_ip, net_port);
+      if (mp_sig) {
+        fprintf(stderr, "[mqtt-mpi] standalone multi-party probe: %s\n", mp_sig);
+        ck_free(mp_sig);
+      }
+      mp_standalone_done = 1;
+    }
+    return;
+  }
+
+  if (gethostname(self_hostname, sizeof(self_hostname) - 1) == 0) {
+    self_hostname[sizeof(self_hostname) - 1] = '\0';
+    have_self_hostname = 1;
+  }
+
+  spec_copy = ck_strdup((u8 *)broker_spec);
+  if (!spec_copy) {
+    return;
+  }
+
+  token = strtok_r(spec_copy, ",", &saveptr);
+  while (token) {
+    u8 *ip = NULL;
+    u32 port = 0;
+    u8 proto = 0;
+
+    while (*token && isspace((unsigned char)*token)) token++;
+    if (*token) {
+      char *end = token + strlen(token) - 1;
+      while (end >= token && isspace((unsigned char)*end)) {
+        *end = '\0';
+        end--;
+      }
+    }
+
+    if (*token && !parse_net_config((u8 *)token, &proto, &ip, &port) && proto == PRO_TCP) {
+      if (have_self_hostname && ip && strcmp((char *)ip, self_hostname) == 0) {
+        if (ip) free(ip);
+        token = strtok_r(NULL, ",", &saveptr);
+        continue;
+      }
+      mqtt_broker_endpoint_t *next = (mqtt_broker_endpoint_t *)ck_realloc(endpoints, (endpoint_count + 1) * sizeof(mqtt_broker_endpoint_t));
+      if (!next) {
+        if (ip) free(ip);
+        break;
+      }
+      endpoints = next;
+      endpoints[endpoint_count].ip = ip;
+      endpoints[endpoint_count].port = port;
+      endpoint_count++;
+    } else if (ip) {
+      free(ip);
+    }
+
+    token = strtok_r(NULL, ",", &saveptr);
+  }
+
+  ck_free(spec_copy);
+
+  if (endpoint_count < 2) {
+    if (broker_spec && !mqtt_cluster_probe_logged) {
+      fprintf(stderr, "[mqtt-cluster] disabled: brokers=%u diverged=%u summary=%s\n",
+              endpoint_count, mqtt_cluster_diverged,
+              mqtt_cluster_diff_summary ? mqtt_cluster_diff_summary : "(none)");
+      mqtt_cluster_probe_logged = 1;
+    }
+    if (endpoints) {
+      for (i = 0; i < endpoint_count; i++) {
+        if (endpoints[i].ip) free(endpoints[i].ip);
+      }
+      ck_free(endpoints);
+    }
+
+    /* Even without cluster diff, still run multi-party interaction probe
+     * against the TARGET broker.  This exercises sub/pub/ctrl role
+     * splitting on the same broker — useful even in single-container mode.
+     * We run it on the first call only to avoid per-exec overhead. */
+    {
+      static u8 mp_local_done = 0;
+      if (!mp_local_done && net_ip && net_port) {
+        char *mp_sig = mqtt_probe_multi_party_interaction((char *)net_ip, net_port);
+        if (mp_sig) {
+          fprintf(stderr, "[mqtt-mpi] local multi-party probe: %s\n", mp_sig);
+          ck_free(mp_sig);
+        }
+        mp_local_done = 1;
+      }
+    }
+
+    return;
+  }
+
+  signatures = (char **)ck_alloc(endpoint_count * sizeof(char *));
+  if (!signatures) {
+    for (i = 0; i < endpoint_count; i++) {
+      if (endpoints[i].ip) free(endpoints[i].ip);
+    }
+    ck_free(endpoints);
+    return;
+  }
+  memset(signatures, 0, endpoint_count * sizeof(char *));
+
+  for (i = 0; i < endpoint_count; i++) {
+    int sockfd = mqtt_open_cluster_socket((char *)endpoints[i].ip, endpoints[i].port);
+    struct timeval timeout;
+    char *cluster_response_buf = NULL;
+    unsigned int cluster_response_len = 0;
+    unsigned int *cluster_state_sequence = NULL;
+    unsigned int cluster_state_count = 0;
+    kliter_t(lms) *it;
+
+    if (sockfd < 0) {
+      signatures[i] = ck_strdup((u8 *)"connect-failed");
+      continue;
+    }
+
+    timeout.tv_sec = 0;
+    timeout.tv_usec = socket_timeout_usecs;
+    setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
+    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout));
+
+    for (it = kl_begin(kl_messages); it != kl_end(kl_messages); it = kl_next(it)) {
+      if (net_send(sockfd, timeout, kl_val(it)->mdata, kl_val(it)->msize) != kl_val(it)->msize) {
+        break;
+      }
+      if (net_recv(sockfd, timeout, poll_wait_msecs, &cluster_response_buf, &cluster_response_len)) {
+        break;
+      }
+    }
+
+    net_recv(sockfd, timeout, poll_wait_msecs, &cluster_response_buf, &cluster_response_len);
+
+    if (cluster_response_buf && cluster_response_len > 0) {
+      cluster_state_sequence = extract_response_codes_mqtt((unsigned char *)cluster_response_buf, cluster_response_len, &cluster_state_count);
+      if (cluster_state_sequence) {
+        signatures[i] = (char *)state_sequence_to_string(cluster_state_sequence, cluster_state_count);
+        ck_free(cluster_state_sequence);
+      }
+    }
+
+    if (!signatures[i]) {
+      signatures[i] = ck_strdup((u8 *)"no-response");
+    }
+
+    if (cluster_response_buf) {
+      ck_free(cluster_response_buf);
+    }
+
+    close(sockfd);
+
+    {
+      char *mp_sig = mqtt_probe_multi_party_interaction((char *)endpoints[i].ip, endpoints[i].port);
+      if (mp_sig) {
+        u8 owns_base_sig = 0;
+        char *base_sig = signatures[i];
+        if (!base_sig) {
+          base_sig = (char *)ck_strdup((u8 *)"no-response");
+          owns_base_sig = 1;
+        }
+        char *merged = alloc_printf("%s|mp:%s", base_sig, mp_sig);
+        if (signatures[i]) ck_free(signatures[i]);
+        signatures[i] = merged;
+        if (owns_base_sig) ck_free(base_sig);
+        ck_free(mp_sig);
+      }
+    }
+  }
+
+  {
+    u32 unique = 0;
+    char *summary = ck_strdup((u8 *)"{\"enabled\":1,\"details\":\"");
+
+    for (i = 0; i < endpoint_count; i++) {
+      u32 j;
+      u8 seen = 0;
+
+      for (j = 0; j < i; j++) {
+        if (signatures[j] && signatures[i] && strcmp(signatures[j], signatures[i]) == 0) {
+          seen = 1;
+          break;
+        }
+      }
+      if (!seen) {
+        unique++;
+      }
+
+      if (i == 0) {
+        char *next = alloc_printf("%s%s:%u=%s", summary, (char *)endpoints[i].ip, endpoints[i].port, signatures[i]);
+        ck_free(summary);
+        summary = next;
+      } else {
+        char *next = alloc_printf("%s;%s:%u=%s", summary, (char *)endpoints[i].ip, endpoints[i].port, signatures[i]);
+        ck_free(summary);
+        summary = next;
+      }
+    }
+
+    {
+      char *final_summary = alloc_printf("%s\",\"brokers\":%u,\"unique_signatures\":%u,\"diverged\":%u}",
+                                         summary, endpoint_count, unique, unique > 1);
+      ck_free(summary);
+      reset_mqtt_cluster_diff_summary();
+      mqtt_cluster_diff_summary = final_summary;
+      mqtt_cluster_broker_count = endpoint_count;
+      mqtt_cluster_unique_signatures = unique;
+      mqtt_cluster_diverged = (unique > 1);
+
+      if (!mqtt_cluster_probe_logged) {
+        fprintf(stderr, "[mqtt-cluster] enabled: brokers=%u diverged=%u summary=%s\n",
+                mqtt_cluster_broker_count, mqtt_cluster_diverged,
+                mqtt_cluster_diff_summary ? mqtt_cluster_diff_summary : "(none)");
+        mqtt_cluster_probe_logged = 1;
+      }
+    }
+  }
+
+  for (i = 0; i < endpoint_count; i++) {
+    if (signatures[i]) ck_free(signatures[i]);
+    if (endpoints[i].ip) free(endpoints[i].ip);
+  }
+  ck_free(signatures);
+  ck_free(endpoints);
+}
 
 /* Implemented state machine */
 Agraph_t *ipsm;
@@ -1555,6 +2123,99 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
     ck_free(state_sequence);
 }
 
+/* ── MQTT remaining_length fixer ──────────────────────────────────────
+ *
+ * After AFL's byte-level mutations, the MQTT remaining_length field
+ * inside each packet may be inconsistent with the actual body length.
+ * This causes the broker to reject or misparsee the packet, wasting
+ * the execution.
+ *
+ * mqtt_fix_message_length() is called on each individual message_t
+ * (already split by extract_requests_mqtt) BEFORE net_send().
+ * It re-encodes remaining_length so it matches the actual body size.
+ *
+ * Activation: only when protocol is MQTT.
+ *   - Default: ON for MQTT.
+ *   - Override: CHATAFL_MQTT_FIX_LENGTH=0 to disable.
+ *
+ * Protocol isolation: this function is never called for non-MQTT
+ * protocols; the call site is guarded by mqtt_fix_length_enabled.
+ * ──────────────────────────────────────────────────────────────────── */
+static u8 mqtt_fix_length_enabled = 0;  /* set once at startup */
+
+/* Encode MQTT variable-length integer into out[].  Returns number of
+ * bytes written (1–4), or 0 on overflow (value > 268435455). */
+static u32 mqtt_encode_remaining_length(u32 value, u8 *out) {
+  u32 i = 0;
+  do {
+    u8 byte = (u8)(value % 128);
+    value /= 128;
+    if (value > 0) byte |= 0x80;
+    out[i++] = byte;
+  } while (value > 0 && i < 4);
+  return (value == 0) ? i : 0;
+}
+
+/* Decode MQTT variable-length integer starting at buf[1..].
+ * Returns bytes consumed (1–4) or 0 on error.
+ * *out_len receives the decoded value. */
+static u32 mqtt_decode_remaining_length(const u8 *buf, u32 buf_size,
+                                        u32 *out_len) {
+  u32 multiplier = 1, value = 0, pos = 1; /* skip fixed header byte 0 */
+  for (u32 i = 0; i < 4; i++) {
+    if (pos >= buf_size) return 0;
+    u8 encoded = buf[pos++];
+    value += (encoded & 0x7F) * multiplier;
+    if ((encoded & 0x80) == 0) { *out_len = value; return pos - 1; }
+    multiplier *= 128;
+  }
+  return 0;
+}
+
+/* Fix remaining_length in message m (in-place, may reallocate m->mdata).
+ * Only operates on messages ≥ 2 bytes with a valid type nibble (1–15). */
+static void mqtt_fix_message_length(message_t *m) {
+  if (!m || !m->mdata || m->msize < 2) return;
+
+  u8 type_nibble = ((u8)m->mdata[0] >> 4) & 0x0F;
+  if (type_nibble < 1 || type_nibble > 15) return;
+
+  /* Decode current remaining_length */
+  u32 cur_rem_len = 0;
+  u32 rl_bytes = mqtt_decode_remaining_length((u8 *)m->mdata, m->msize,
+                                              &cur_rem_len);
+  if (rl_bytes == 0) return;  /* can't parse → leave untouched */
+
+  u32 header_size = 1 + rl_bytes;  /* fixed header byte + RL encoding */
+  u32 body_size = m->msize - header_size;
+
+  /* If remaining_length already matches, nothing to do */
+  if (cur_rem_len == body_size) return;
+
+  /* Re-encode with correct body_size */
+  u8 new_rl[4];
+  u32 new_rl_bytes = mqtt_encode_remaining_length(body_size, new_rl);
+  if (new_rl_bytes == 0) return;  /* overflow → leave untouched */
+
+  u32 new_header_size = 1 + new_rl_bytes;
+  u32 new_total = new_header_size + body_size;
+
+  if (new_rl_bytes == rl_bytes) {
+    /* Same encoding size → patch in place */
+    memcpy(m->mdata + 1, new_rl, new_rl_bytes);
+  } else {
+    /* Different encoding size → must reallocate */
+    char *new_buf = (char *)ck_alloc(new_total);
+    new_buf[0] = m->mdata[0];               /* keep fixed header byte */
+    memcpy(new_buf + 1, new_rl, new_rl_bytes);  /* new RL encoding */
+    memcpy(new_buf + new_header_size,
+           m->mdata + header_size, body_size);   /* body unchanged */
+    ck_free(m->mdata);
+    m->mdata = new_buf;
+    m->msize = new_total;
+  }
+}
+
 /* Send (mutated) messages in order to the server under test */
 int send_over_network()
 {
@@ -1584,145 +2245,284 @@ int send_over_network()
     response_bytes = NULL;
   }
 
-  // Create a TCP/UDP socket
+  /* ── Multi-Party Driver Skeleton ─────────────────────────────────────
+   *
+   * Generic multi-connection mode driven by mp_driver_t (mp-driver.h).
+   * The skeleton is protocol-agnostic; all protocol-specific logic lives
+   * in the driver callbacks (e.g., mp-driver-mqtt.c).
+   *
+   * Flow: look up driver → open N fds → handshake → route messages →
+   *       drain → cleanup → close.  If no driver exists or any setup
+   *       step fails, fall through to the original single-fd path.
+   *
+   * Open-Closed: the single-fd text protocol path below is completely
+   * untouched.  New protocols add a driver .c file and register it in
+   * mp_driver_for_protocol() — send_over_network() never changes.
+   * ─────────────────────────────────────────────────────────────────── */
+
   int sockfd = -1;
-  if (net_protocol == PRO_TCP)
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-  else if (net_protocol == PRO_UDP)
-    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-
-  if (sockfd < 0)
-  {
-    PFATAL("Cannot create a socket");
-  }
-
-  // Set timeout for socket data sending/receiving -- otherwise it causes a big delay
-  // if the server is still alive after processing all the requests
   struct timeval timeout;
   timeout.tv_sec = 0;
   timeout.tv_usec = socket_timeout_usecs;
-  setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
-
-  memset(&serv_addr, '0', sizeof(serv_addr));
-
-  serv_addr.sin_family = AF_INET;
-  serv_addr.sin_port = htons(net_port);
-  serv_addr.sin_addr.s_addr = inet_addr(net_ip);
-
-  // This piece of code is only used for targets that send responses to a specific port number
-  // The Kamailio SIP server is an example. After running this code, the intialized sockfd
-  // will be bound to the given local port
-  if (local_port > 0)
-  {
-    local_serv_addr.sin_family = AF_INET;
-    local_serv_addr.sin_addr.s_addr = INADDR_ANY;
-    local_serv_addr.sin_port = htons(local_port);
-
-    local_serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-    if (bind(sockfd, (struct sockaddr *)&local_serv_addr, sizeof(struct sockaddr_in)))
-    {
-      FATAL("Unable to bind socket on local source port");
-    }
-  }
-
-  if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
-  {
-    // If it cannot connect to the server under test
-    // try it again as the server initial startup time is varied
-    for (n = 0; n < 1000; n++)
-    {
-      if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == 0)
-        break;
-      usleep(1000);
-    }
-    if (n == 1000)
-    {
-      close(sockfd);
-      return 1;
-    }
-  }
-
-  // retrieve early server response if needed
-  if (net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size))
-    goto HANDLE_RESPONSES;
-
-  // write the request messages
-  kliter_t(lms) * it;
+  kliter_t(lms) *it;
   messages_sent = 0;
 
-  for (it = kl_begin(kl_messages); it != kl_end(kl_messages); it = kl_next(it))
+  const mp_driver_t *mp_drv = mp_driver_for_protocol(protocol_name);
+
+  if (mp_drv && net_protocol == PRO_TCP)
   {
-    n = net_send(sockfd, timeout, kl_val(it)->mdata, kl_val(it)->msize);
-    messages_sent++;
+    /* ── Generic multi-fd path via driver callbacks ── */
+    int mp_fds_buf[8];   /* stack-allocated; fd_count is always small */
+    mp_context_t mp_ctx;
+    memset(&mp_ctx, 0, sizeof(mp_ctx));
+    mp_ctx.fds              = mp_fds_buf;
+    mp_ctx.fd_count         = mp_drv->fd_count;
+    mp_ctx.timeout          = timeout;
+    mp_ctx.poll_wait_msecs  = poll_wait_msecs;
+    mp_ctx.server_ip        = (const char *)net_ip;
+    mp_ctx.server_port      = net_port;
+    mp_ctx.response_buf     = &response_buf;
+    mp_ctx.response_buf_size = &response_buf_size;
+    mp_ctx.priv             = NULL;
 
-    // Allocate memory to store new accumulated response buffer size
-    response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
+    for (int i = 0; i < mp_ctx.fd_count; i++)
+      mp_ctx.fds[i] = -1;
 
-    // Jump out if something wrong leading to incomplete message sent
-    if (n != kl_val(it)->msize)
-    {
-      goto HANDLE_RESPONSES;
+    /* Step 1: Open connections */
+    if (mp_drv->open_connections(&mp_ctx) != 0) {
+      mp_multi_fallback++;
+      for (int i = 0; i < mp_ctx.fd_count; i++)
+        if (mp_ctx.fds[i] >= 0) close(mp_ctx.fds[i]);
+      goto MP_SINGLE_FD_FALLBACK;
     }
 
-    // retrieve server response
-    u32 prev_buf_size = response_buf_size;
-    if (net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size))
-    {
-      goto HANDLE_RESPONSES;
+    /* Step 2: Protocol-level handshake */
+    if (mp_drv->handshake(&mp_ctx) != 0) {
+      mp_multi_hshake_fail++;
+      goto MP_MULTI_CLEANUP;
     }
 
-    // Update accumulated response buffer size
-    response_bytes[messages_sent - 1] = response_buf_size;
+    /* Step 3: Route each message from the mutated queue */
+    for (it = kl_begin(kl_messages); it != kl_end(kl_messages); it = kl_next(it))
+    {
+      message_t *m = kl_val(it);
 
-    // set likely_buggy flag if AFLNet does not receive any feedback from the server
-    // it could be a signal of a potentiall server crash, like the case of CVE-2019-7314
-    if (prev_buf_size == response_buf_size)
-      likely_buggy = 1;
+      if (!m || !m->mdata || m->msize == 0) {
+        messages_sent++;
+        response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
+        response_bytes[messages_sent - 1] = response_buf_size;
+        continue;
+      }
+
+      int role = mp_drv->role_for_message(&mp_ctx,
+                                          (const unsigned char *)m->mdata,
+                                          m->msize);
+      if (role < 0) {
+        /* Driver says skip this message (e.g. CONNECT/DISCONNECT) */
+        messages_sent++;
+        response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
+        response_bytes[messages_sent - 1] = response_buf_size;
+        continue;
+      }
+
+      int target_fd = mp_ctx.fds[role];
+
+      /* MQTT: fix remaining_length before sending */
+      if (mqtt_fix_length_enabled) mqtt_fix_message_length(m);
+
+      n = net_send(target_fd, timeout, m->mdata, m->msize);
+      messages_sent++;
+      response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
+
+      if (n != (int)m->msize) {
+        response_bytes[messages_sent - 1] = response_buf_size;
+        goto MP_MULTI_CLEANUP;
+      }
+
+      /* Collect response from the target fd */
+      u32 prev_buf_size = response_buf_size;
+      net_recv(target_fd, timeout, poll_wait_msecs, &response_buf, &response_buf_size);
+
+      /* Let the driver drain other fds if needed (e.g. forwarded msgs) */
+      if (mp_drv->after_send(&mp_ctx, role) != 0)
+        goto MP_MULTI_CLEANUP;
+
+      response_bytes[messages_sent - 1] = response_buf_size;
+
+      if ((u32)prev_buf_size == (u32)response_buf_size)
+        likely_buggy = 1;
+      else
+        likely_buggy = 0;
+    }
+
+MP_MULTI_CLEANUP:
+    /* Final drain of all fds */
+    mp_drv->drain_all(&mp_ctx);
+
+    if (messages_sent > 0 && response_bytes != NULL)
+      response_bytes[messages_sent - 1] = response_buf_size;
+
+    /* Protocol-specific cleanup (disconnect, free priv, post-processing) */
+    mp_drv->cleanup(&mp_ctx);
+
+    /* Post-cleanup: protocol-specific probes that live in afl-fuzz.c
+     * (static functions, cannot be called from the driver .c file) */
+    if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0)
+      mqtt_probe_cluster_differences();
     else
-      likely_buggy = 0;
+      reset_mqtt_cluster_diff_summary();
+
+    /* Stabilization loop */
+    memset(session_virgin_bits, 255, MAP_SIZE);
+    {
+      int stab_iter = 0;
+      while (stab_iter++ < 5000) {
+        if (has_new_bits(session_virgin_bits) != 2)
+          break;
+      }
+    }
+
+    /* Close all fds */
+    for (int i = 0; i < mp_ctx.fd_count; i++)
+      if (mp_ctx.fds[i] >= 0) close(mp_ctx.fds[i]);
+
+    mp_multi_ok++;
+    sockfd = -1;
+    goto MP_MULTI_DONE;
   }
+
+MP_SINGLE_FD_FALLBACK:
+
+  /* ── Original single-fd path (ALL text protocols + MQTT fallback) ── */
+  {
+    if (net_protocol == PRO_TCP)
+      sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    else if (net_protocol == PRO_UDP)
+      sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+
+    if (sockfd < 0)
+    {
+      PFATAL("Cannot create a socket");
+    }
+
+    // Set timeout for socket data sending/receiving -- otherwise it causes a big delay
+    // if the server is still alive after processing all the requests
+    setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
+
+    memset(&serv_addr, '0', sizeof(serv_addr));
+
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(net_port);
+    serv_addr.sin_addr.s_addr = inet_addr(net_ip);
+
+    // This piece of code is only used for targets that send responses to a specific port number
+    // The Kamailio SIP server is an example. After running this code, the intialized sockfd
+    // will be bound to the given local port
+    if (local_port > 0)
+    {
+      local_serv_addr.sin_family = AF_INET;
+      local_serv_addr.sin_addr.s_addr = INADDR_ANY;
+      local_serv_addr.sin_port = htons(local_port);
+
+      local_serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+      if (bind(sockfd, (struct sockaddr *)&local_serv_addr, sizeof(struct sockaddr_in)))
+      {
+        FATAL("Unable to bind socket on local source port");
+      }
+    }
+
+    if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+    {
+      // If it cannot connect to the server under test
+      // try it again as the server initial startup time is varied
+      for (n = 0; n < 1000; n++)
+      {
+        if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == 0)
+          break;
+        usleep(1000);
+      }
+      if (n == 1000)
+      {
+        close(sockfd);
+        return 1;
+      }
+    }
+
+    // retrieve early server response if needed
+    if (net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size))
+      goto HANDLE_RESPONSES;
+
+    // write the request messages
+    for (it = kl_begin(kl_messages); it != kl_end(kl_messages); it = kl_next(it))
+    {
+      /* MQTT: fix remaining_length before sending */
+      if (mqtt_fix_length_enabled) mqtt_fix_message_length(kl_val(it));
+
+      n = net_send(sockfd, timeout, kl_val(it)->mdata, kl_val(it)->msize);
+      messages_sent++;
+
+      // Allocate memory to store new accumulated response buffer size
+      response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
+
+      // Jump out if something wrong leading to incomplete message sent
+      if (n != kl_val(it)->msize)
+      {
+        goto HANDLE_RESPONSES;
+      }
+
+      // retrieve server response
+      u32 prev_buf_size = response_buf_size;
+      if (net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size))
+      {
+        goto HANDLE_RESPONSES;
+      }
+
+      // Update accumulated response buffer size
+      response_bytes[messages_sent - 1] = response_buf_size;
+
+      // set likely_buggy flag if AFLNet does not receive any feedback from the server
+      // it could be a signal of a potentiall server crash, like the case of CVE-2019-7314
+      if (prev_buf_size == response_buf_size)
+        likely_buggy = 1;
+      else
+        likely_buggy = 0;
+    }
 
 HANDLE_RESPONSES:
 
-  net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size);
+    net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size);
 
-  if (messages_sent > 0 && response_bytes != NULL)
-  {
-    response_bytes[messages_sent - 1] = response_buf_size;
-  }
-
-  /* Fix-14: Bounded coverage-stabilization loop.
-   *
-   * Original: unbounded while(1) spinning on has_new_bits() until
-   * trace_bits stops changing (no new pristine coverage bytes).
-   *
-   * Problem: forking daemons (e.g. pure-ftpd, which forks a child per
-   * FTP session) keep generating new coverage bits long after the
-   * protocol-relevant processing is done — ASAN destructors, fd cleanup,
-   * child-reaping, and other teardown code produce a long tail of "new"
-   * bits that keeps this loop spinning for 1–2+ seconds per execution.
-   * Result: pure-ftpd OPT runs at 0.33 exec/sec (59.6% of samples
-   * <1 exec/sec) while bftpd/proftpd are unaffected (<0.1%).
-   *
-   * Fix: cap at 5000 iterations (~250 ms on typical hardware).
-   * Protocol-relevant coverage is captured within the first few iterations.
-   * However, crash-specific paths (ASAN teardown, signal handlers) need
-   * more time to stabilize — the original 500-iteration cap truncated
-   * these signatures, causing unique crashes to appear as duplicates.
-   * 5000 iterations gives crash paths time to fully materialize while
-   * still bounding the loop.  Non-forking servers are unaffected — they
-   * already exit in 1–2 iterations. */
-  memset(session_virgin_bits, 255, MAP_SIZE);
-  {
-    int stab_iter = 0;
-    while (stab_iter++ < 5000)
+    if (messages_sent > 0 && response_bytes != NULL)
     {
-      if (has_new_bits(session_virgin_bits) != 2)
-        break;
+      response_bytes[messages_sent - 1] = response_buf_size;
     }
-  }
 
-  close(sockfd);
+    if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0)
+    {
+      mqtt_probe_cluster_differences();
+    }
+    else
+    {
+      reset_mqtt_cluster_diff_summary();
+    }
+
+    /* Fix-14: Bounded coverage-stabilization loop. */
+    memset(session_virgin_bits, 255, MAP_SIZE);
+    {
+      int stab_iter = 0;
+      while (stab_iter++ < 5000)
+      {
+        if (has_new_bits(session_virgin_bits) != 2)
+          break;
+      }
+    }
+
+    close(sockfd);
+    sockfd = -1;
+  } /* end single-fd block */
+
+MP_MULTI_DONE:
+  (void)0;  /* label requires a statement */
 
   if (likely_buggy && false_negative_reduction)
     return 0;
@@ -3312,6 +4112,14 @@ static void enrich_testcases(void)
     ACTF("MQTT: supplementing LLM enrichment with programmatic binary seeds");
     int n = mqtt_enrich_seeds(in_dir, message_types_set);
     OKF("MQTT supplementation: generated %d binary seeds", n);
+
+    /* P0+P2: Generate MQTT v5 seeds for v5 code path coverage.
+     * These exercise mosquitto's v5-specific code: property__read_all(),
+     * handle__auth(), v5 DISCONNECT with reason code, subscription
+     * options (No Local, Retain Handling), Topic Alias mapping, etc. */
+    ACTF("MQTT: generating v5 structured seeds");
+    u32 nv5 = mqtt_generate_v5_seeds(in_dir);
+    OKF("MQTT v5 seeds: generated %u files", nv5);
   }
 }
 
@@ -6043,6 +6851,11 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)llm_total_completion_tokens,
           (unsigned long long)llm_dedup_hits);
 
+  fprintf(f, "mp_multi_ok        : %u\n"
+             "mp_multi_fallback  : %u\n"
+             "mp_multi_hshake_fail : %u\n",
+          mp_multi_ok, mp_multi_fallback, mp_multi_hshake_fail);
+
   fclose(f);
 }
 
@@ -7731,6 +8544,164 @@ static u8 could_be_interest(u32 old_val, u32 new_val, u8 blen, u8 check_le)
   return 0;
 }
 
+/* ============================================
+ * P2a: MQTT Field-Aware Mutation
+ *
+ * Applied as a post-havoc pass with 25% probability when protocol is
+ * MQTT.  Understands MQTT v3.1.1 packet structure and performs
+ * targeted mutations that generic byte-level havoc rarely produces:
+ *
+ *   - Packet type nibble swap (e.g., SUBSCRIBE→UNSUBSCRIBE)
+ *   - QoS / DUP / Retain flag mutation for PUBLISH
+ *   - Packet ID corruption (triggers broker duplicate handling)
+ *   - Topic content mutation (exercises ACL / wildcard matching)
+ *   - Wildcard injection in SUBSCRIBE topics
+ *   - Remaining-length corruption (boundary conditions)
+ *   - Invalid QoS 3 in SUBSCRIBE (spec violation)
+ *
+ * Returns: number of mutations applied.
+ * ============================================ */
+static u32 mqtt_field_aware_mutate(u8 *buf, u32 len) {
+  if (len < 2) return 0;
+  u32 mutations_applied = 0;
+  u32 pos = 0;
+
+  while (pos < len - 1) {
+    u8 type_nibble = (buf[pos] >> 4) & 0x0F;
+    u8 flags       = buf[pos] & 0x0F;
+
+    /* Decode MQTT remaining length (variable-length encoding) */
+    u32 rem_len = 0, multiplier = 1;
+    u32 rl_pos = pos + 1;
+    while (rl_pos < len) {
+      u8 byte = buf[rl_pos];
+      rem_len += (byte & 0x7F) * multiplier;
+      multiplier *= 128;
+      rl_pos++;
+      if (!(byte & 0x80)) break;
+      if (multiplier > 128u * 128 * 128 * 128) break; /* max 4 bytes */
+    }
+
+    u32 pkt_end  = rl_pos + rem_len;
+    if (pkt_end > len) pkt_end = len;
+    u32 payload_start = rl_pos;  /* first byte after header */
+
+    /* Pick one targeted mutation per packet */
+    switch (UR(8)) {
+
+    case 0: /* Swap packet type to a related type */
+    {
+      /* Prefer valid MQTT types 1-14; 0 and 15 are reserved → good
+       * for testing error paths */
+      static const u8 type_pool[] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+      buf[pos] = (u8)((type_pool[UR(sizeof(type_pool))] << 4) | flags);
+      mutations_applied++;
+      break;
+    }
+
+    case 1: /* Mutate PUBLISH flags: DUP/QoS/Retain */
+      if (type_nibble == 3) {
+        u8 new_qos    = UR(4);  /* 0,1,2 valid; 3 = spec violation → error path */
+        u8 new_dup    = UR(2);
+        u8 new_retain = UR(2);
+        buf[pos] = (u8)((3 << 4) | (new_dup << 3) | (new_qos << 1) | new_retain);
+        mutations_applied++;
+      }
+      break;
+
+    case 2: /* Corrupt packet ID (for QoS>0 PUBLISH, SUB, UNSUB, etc.) */
+      if (type_nibble >= 3 && type_nibble <= 11 && payload_start + 1 < pkt_end) {
+        u32 pid_offset = payload_start;
+        if (type_nibble == 3) {
+          /* PUBLISH: skip topic-length (2B) + topic before packet ID */
+          if (payload_start + 2 <= pkt_end) {
+            u32 topic_len = ((u32)buf[payload_start] << 8) | buf[payload_start + 1];
+            pid_offset = payload_start + 2 + topic_len;
+          }
+        }
+        if (pid_offset + 1 < pkt_end) {
+          buf[pid_offset]     = (u8)UR(256);
+          buf[pid_offset + 1] = (u8)UR(256);
+          mutations_applied++;
+        }
+      }
+      break;
+
+    case 3: /* Mutate topic content in PUBLISH / SUBSCRIBE */
+      if ((type_nibble == 3 || type_nibble == 8) && payload_start + 2 < pkt_end) {
+        u32 topic_off = payload_start;
+        if (type_nibble == 8) topic_off += 2;  /* skip packet ID */
+        if (topic_off + 2 < pkt_end) {
+          u32 topic_len = ((u32)buf[topic_off] << 8) | buf[topic_off + 1];
+          if (topic_off + 2 + topic_len <= pkt_end && topic_len > 0) {
+            u32 idx = topic_off + 2 + UR(topic_len);
+            buf[idx] = (u8)UR(256);
+            mutations_applied++;
+          }
+        }
+      }
+      break;
+
+    case 4: /* Inject MQTT wildcard in SUBSCRIBE topic */
+      if (type_nibble == 8 && payload_start + 4 < pkt_end) {
+        u32 topic_off = payload_start + 2; /* after packet ID */
+        if (topic_off + 2 < pkt_end) {
+          u32 topic_len = ((u32)buf[topic_off] << 8) | buf[topic_off + 1];
+          if (topic_off + 2 + topic_len <= pkt_end && topic_len > 0) {
+            u32 idx = topic_off + 2 + UR(topic_len);
+            buf[idx] = UR(2) ? '#' : '+';
+            mutations_applied++;
+          }
+        }
+      }
+      break;
+
+    case 5: /* Corrupt remaining length → boundary conditions */
+      if (pos + 1 < len) {
+        switch (UR(4)) {
+          case 0: buf[pos + 1] = 0;    break; /* zero-length payload */
+          case 1: buf[pos + 1] = 0x01; break; /* minimal */
+          case 2: buf[pos + 1] = 0x7F; break; /* max single-byte (127) */
+          case 3: buf[pos + 1] = 0xFF; break; /* requires continuation byte */
+        }
+        mutations_applied++;
+      }
+      break;
+
+    case 6: /* Inject zero-length CONNECT or malformed DISCONNECT */
+    {
+      /* Overwrite current packet header to test error handling */
+      static const u8 trap_headers[][2] = {
+        {0x10, 0x00},  /* CONNECT with 0 remaining length */
+        {0xE0, 0x00},  /* DISCONNECT */
+        {0xC0, 0x00},  /* PINGREQ */
+        {0x00, 0x00},  /* Reserved type 0 → error path */
+        {0xF0, 0x00},  /* Reserved type 15 → error path */
+      };
+      u32 choice = UR(sizeof(trap_headers) / sizeof(trap_headers[0]));
+      buf[pos]     = trap_headers[choice][0];
+      buf[pos + 1] = trap_headers[choice][1];
+      mutations_applied++;
+      break;
+    }
+
+    case 7: /* Set invalid QoS 3 in SUBSCRIBE topic filter */
+      if (type_nibble == 8 && pkt_end > payload_start + 4) {
+        /* Last byte in each topic filter entry is the QoS byte */
+        buf[pkt_end - 1] = 3; /* Invalid QoS → SUBACK error code */
+        mutations_applied++;
+      }
+      break;
+    }
+
+    /* Advance to next packet */
+    pos = pkt_end;
+    if (pos <= rl_pos && pos > 0) break; /* safety: avoid infinite loop */
+  }
+
+  return mutations_applied;
+}
+
 /* Take the current entry from the queue, fuzz it for a while. This
    function is a tad too long... returns 0 if fuzzed successfully, 1 if
    skipped or bailed out. */
@@ -7930,15 +8901,18 @@ AFLNET_REGIONS_SELECTION:;
         // Medium growth (1-5 edges/min): threshold=200 (moderate LLM frequency)
         // Low growth (<1 edge/min): threshold=150 (more LLM calls, but bounded)
         //
-        // Rationale: old floor of 50 caused LLM interrupt storms (~7sec interval)
-        // that reduced effective mutation time. New floor 150 ensures >=20sec
-        // between triggers, still 3x faster than baseline's fixed 512.
+        // P1-MQTT: For MQTT binary protocol, use higher thresholds to
+        // reduce wasteful LLM calls (hypothesis has <10% parse success).
+        u32 floor_low  = 150, floor_mid = 200, floor_high = 300;
+        if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0) {
+          floor_low = 500; floor_mid = 600; floor_high = 800;
+        }
         if (edges_growth_rate > 5.0) {
-          adaptive_plateau_threshold = 300;
+          adaptive_plateau_threshold = floor_high;
         } else if (edges_growth_rate > 1.0) {
-          adaptive_plateau_threshold = 200;
+          adaptive_plateau_threshold = floor_mid;
         } else {
-          adaptive_plateau_threshold = 150;
+          adaptive_plateau_threshold = floor_low;
         }
       }
       /* else: ablation_no_adaptive keeps threshold at UNINTERESTING_THRESHOLD */
@@ -8110,6 +9084,13 @@ AFLNET_REGIONS_SELECTION:;
           json_object_object_add(jctx, "queued_paths",    json_object_new_int(queued_paths));
           json_object_object_add(jctx, "chat_times",      json_object_new_int(chat_times));
           json_object_object_add(jctx, "target_state_id", json_object_new_int(target_state_id));
+          if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0 && mqtt_cluster_diff_summary)
+          {
+            json_object_object_add(jctx, "mqtt_cluster_diff", json_object_new_string(mqtt_cluster_diff_summary));
+            json_object_object_add(jctx, "mqtt_cluster_brokers", json_object_new_int(mqtt_cluster_broker_count));
+            json_object_object_add(jctx, "mqtt_cluster_unique_signatures", json_object_new_int(mqtt_cluster_unique_signatures));
+            json_object_object_add(jctx, "mqtt_cluster_diverged", json_object_new_boolean(mqtt_cluster_diverged));
+          }
 
           /* Per-state coverage: sort all states by effectiveness ascending (stuck states first) */
           struct json_object *jstates = json_object_new_array();
@@ -10250,8 +11231,81 @@ havoc_stage:
       }
     }
 
+    /* P3: MQTT scheduler-guided generation + field-aware mutation.
+     * When mqtt_scheduler_enabled:
+     *   - UCB1 bandit selects which arm (replace/insert/field/skip)
+     *   - Q-Learning selects which packet type to generate
+     *   - Reward signal from queued_paths change updates both schedulers
+     * Falls back to static dice probabilities during warmup. */
+    u32 mqtt_last_arm = 3;          /* default: skip */
+    u8  mqtt_last_pkt_type = 0;
+    u32 mqtt_qp_snap = queued_paths;
+
+    if (mqtt_field_mutate_enabled) {
+      u32 arm;
+      if (mqtt_scheduler_enabled) {
+        arm = mqtt_bandit_select(&mqtt_bandit);
+      } else {
+        /* Static fallback: 30%/15%/15%/40% */
+        u32 mqtt_dice = UR(20);
+        if      (mqtt_dice < 6)  arm = 0;
+        else if (mqtt_dice < 9)  arm = 1;
+        else if (mqtt_dice < 12) arm = 2;
+        else                     arm = 3;
+      }
+      mqtt_last_arm = arm;
+
+      switch (arm) {
+      case 0: /* Replace region with generated MQTT packet */ {
+        u8 gen_buf[MQTG_MAX_PKT];
+        u8 pt = mqtt_scheduler_enabled
+                    ? mqtt_ql_select(&mqtt_ql, selected_state_index)
+                    : 0;
+        mqtt_last_pkt_type = pt;
+        u32 gen_len = mqtt_gen_packet(gen_buf, sizeof(gen_buf), 0, pt);
+        if (gen_len > 0 && gen_len <= (u32)temp_len) {
+          u32 rpos = UR(temp_len - gen_len + 1);
+          memcpy(out_buf + rpos, gen_buf, gen_len);
+        }
+        break;
+      }
+      case 1: /* Insert generated MQTT packet */ {
+        u8 gen_buf[MQTG_MAX_PKT];
+        u8 pt = mqtt_scheduler_enabled
+                    ? mqtt_ql_select(&mqtt_ql, selected_state_index)
+                    : 0;
+        mqtt_last_pkt_type = pt;
+        u32 gen_len = mqtt_gen_packet(gen_buf, sizeof(gen_buf), MQTG_PROTO_V5, pt);
+        if (gen_len > 0 && temp_len + (s32)gen_len < MAX_FILE) {
+          u32 ipos = UR(temp_len + 1);
+          u8 *new_buf = ck_alloc_nozero(temp_len + gen_len);
+          memcpy(new_buf, out_buf, ipos);
+          memcpy(new_buf + ipos, gen_buf, gen_len);
+          memcpy(new_buf + ipos + gen_len, out_buf + ipos, temp_len - ipos);
+          ck_free(out_buf);
+          out_buf = new_buf;
+          temp_len += gen_len;
+        }
+        break;
+      }
+      case 2: /* Field-aware byte-level mutation */
+        mqtt_field_aware_mutate(out_buf, temp_len);
+        break;
+      case 3: /* Skip — rely on generic havoc alone */
+        break;
+      }
+    }
+
     if (common_fuzz_stuff(argv, out_buf, temp_len))
       goto abandon_entry;
+
+    /* P3: Update schedulers with coverage-based reward */
+    if (mqtt_scheduler_enabled) {
+      double reward = (queued_paths != mqtt_qp_snap) ? 1.0 : 0.0;
+      mqtt_bandit_update(&mqtt_bandit, mqtt_last_arm, reward);
+      if (mqtt_last_pkt_type > 0)
+        mqtt_ql_update(&mqtt_ql, selected_state_index, mqtt_last_pkt_type, reward);
+    }
 
     /* out_buf might have been mangled a bit, so let's restore it to its
        original size and shape. */
@@ -12365,6 +13419,67 @@ int main(int argc, char **argv)
   memset(llm_prompt_hash_ring, 0, sizeof(llm_prompt_hash_ring));
 
   /* ============================================
+   * MQTT remaining_length fixer (protocol-specific)
+   * Default: ON for MQTT, OFF for everything else.
+   * Override: CHATAFL_MQTT_FIX_LENGTH=0 to disable.
+   * ============================================ */
+  if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0) {
+    const char *fix_env = getenv("CHATAFL_MQTT_FIX_LENGTH");
+    if (fix_env && fix_env[0] == '0') {
+      mqtt_fix_length_enabled = 0;
+      OKF("MQTT remaining_length fixer DISABLED (CHATAFL_MQTT_FIX_LENGTH=0)");
+    } else {
+      mqtt_fix_length_enabled = 1;
+      OKF("MQTT remaining_length fixer ENABLED (set CHATAFL_MQTT_FIX_LENGTH=0 to disable)");
+    }
+
+    /* ============================================
+     * P1: MQTT-specific — suppress Hypothesis (S4).
+     *
+     * Binary protocols like MQTT have <10% hypothesis parse success.
+     * The LLM-generated textual grammars cannot describe variable-
+     * length binary fields, so hypothesis validation is wasted work.
+     *
+     * Default: OFF for MQTT.
+     * Override: CHATAFL_MQTT_FORCE_HYPOTHESIS=1 to re-enable.
+     * ============================================ */
+    if (!getenv("CHATAFL_MQTT_FORCE_HYPOTHESIS")) {
+      hypothesis_mode = 0;
+      OKF("MQTT mode: Hypothesis (S4) auto-DISABLED "
+          "(set CHATAFL_MQTT_FORCE_HYPOTHESIS=1 to override)");
+    }
+
+    /* P2a: Enable field-aware MQTT mutation in havoc.
+     * Default: ON for MQTT.
+     * Override: CHATAFL_MQTT_NO_FIELD_MUTATE=1 to disable. */
+    if (!getenv("CHATAFL_MQTT_NO_FIELD_MUTATE")) {
+      mqtt_field_mutate_enabled = 1;
+      OKF("MQTT mode: Field-aware mutation ENABLED "
+          "(set CHATAFL_MQTT_NO_FIELD_MUTATE=1 to disable)");
+    }
+
+    /* P2b: Enable cross-session state fuzzing.
+     * Default: ON for MQTT.
+     * Override: CHATAFL_MQTT_NO_CROSS_SESSION=1 to disable. */
+    if (!getenv("CHATAFL_MQTT_NO_CROSS_SESSION")) {
+      mqtt_cross_session_enabled = 1;
+      OKF("MQTT mode: Cross-session state fuzzing ENABLED "
+          "(set CHATAFL_MQTT_NO_CROSS_SESSION=1 to disable)");
+    }
+
+    /* P3: Initialize Q-Learning + UCB1 bandit schedulers.
+     * Default: ON for MQTT when field mutation is also enabled.
+     * Override: CHATAFL_MQTT_NO_SCHEDULER=1 to disable. */
+    if (mqtt_field_mutate_enabled && !getenv("CHATAFL_MQTT_NO_SCHEDULER")) {
+      mqtt_ql_init(&mqtt_ql);
+      mqtt_bandit_init(&mqtt_bandit);
+      mqtt_scheduler_enabled = 1;
+      OKF("MQTT mode: Q-Learning + UCB1 scheduler ENABLED "
+          "(set CHATAFL_MQTT_NO_SCHEDULER=1 to disable)");
+    }
+  }
+
+  /* ============================================
    * Initialize Adaptive Plateau Variables
    * ============================================ */
   last_edges_count = agnedges(ipsm);  // Use IPSM edges (FIXED: was count_bits)
@@ -12389,6 +13504,33 @@ int main(int argc, char **argv)
   fprintf(stderr, "[adaptive-plateau] Initialized: initial_edges=%u (IPSM), threshold=%u%s\n",
           last_edges_count, adaptive_plateau_threshold,
           ablation_no_adaptive ? " (ABLATION: fixed)" : "");
+
+  /* ============================================
+   * P1: MQTT-specific — raise adaptive plateau floor.
+   *
+   * For MQTT, the default floor (150-300) triggers LLM calls every
+   * ~20-40 sec.  Since MQTT hypotheses have <10% parse success, most
+   * LLM calls are wasted.  Raise floor to 500 so LLM triggers only
+   * every ~60-80s, giving the fuzzer more uninterrupted mutation time.
+   *
+   * This runs AFTER the ablation override so it doesn't clobber
+   * ablation experiments (ablation_no_adaptive keeps a fixed threshold).
+   *
+   * Override: CHATAFL_MQTT_LLM_THRESHOLD=N
+   * ============================================ */
+  if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0 && !ablation_no_adaptive) {
+    char *mqtt_thr = getenv("CHATAFL_MQTT_LLM_THRESHOLD");
+    if (mqtt_thr) {
+      u32 custom = (u32)atoi(mqtt_thr);
+      if (custom > 0) adaptive_plateau_threshold = custom;
+      OKF("MQTT mode: Plateau threshold=%u (from CHATAFL_MQTT_LLM_THRESHOLD)",
+          adaptive_plateau_threshold);
+    } else {
+      adaptive_plateau_threshold = 500;
+      OKF("MQTT mode: Plateau threshold raised to 500 "
+          "(set CHATAFL_MQTT_LLM_THRESHOLD=N to override)");
+    }
+  }
 
   cull_queue();
 

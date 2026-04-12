@@ -145,4 +145,27 @@ unsigned char *mqtt_text_to_binary(const char *text, size_t *out_len);
  * Caller must ck_free(). */
 char *mqtt_extract_type_from_region(const unsigned char *buf, unsigned int start_byte);
 
+/* ============================================
+ * MQTT official-spec state model (OASIS-derived)
+ *
+ * These APIs expose a protocol model used by:
+ *   1) seed generation (state-machine aware sequence construction)
+ *   2) runtime multi-party executor routing / transition validation
+ *
+ * All logic is gated to MQTT call sites only.
+ * ============================================ */
+
+/* Initialize in-memory MQTT spec model from OASIS RFC text.
+ * Returns 1 on success (or cached already-initialized), 0 on failure. */
+int mqtt_init_spec_state_model(void);
+
+/* Return role id for packet type nibble (1..15):
+ * 0=controller, 1=subscriber, 2=publisher */
+int mqtt_role_for_packet_type(unsigned char type_nibble);
+
+/* Check whether transition prev_type -> next_type is allowed by model.
+ * If prev_type==0, this means start-of-sequence transition.
+ * Returns 1 if allowed, 0 otherwise. */
+int mqtt_spec_transition_allowed(unsigned char prev_type, unsigned char next_type);
+
 #endif /* __MQTT_BUILDER_H */

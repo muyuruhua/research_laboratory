@@ -76,8 +76,15 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
         url = "https://lingyunapi.com/v1/chat/completions";
     }
     const char *api_key = getenv("KEY");
-    if (!api_key) {
-        fprintf(stderr, "KEY environment variable not set\n");
+    if (!api_key || api_key[0] == '\0') {
+        static int key_warning_shown = 0;
+        if (!key_warning_shown) {
+            fprintf(stderr, "\n[LLM] ⚠ KEY environment variable is %s!\n"
+                            "[LLM]   All LLM features (grammar, enrichment, plateau) are DISABLED.\n"
+                            "[LLM]   Fix: export KEY=\"sk-...\" before launching.\n\n",
+                    !api_key ? "not set" : "empty");
+            key_warning_shown = 1;
+        }
         return NULL;
     }
     char auth_header[256];
@@ -178,6 +185,19 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
                 else
                 {
                     printf("Error response is: %s\n", chunk.memory);
+                    /* Detect authentication errors and abort immediately
+                     * instead of burning all retries on a bad key. */
+                    if (chunk.memory &&
+                        (strstr(chunk.memory, "无效的令牌") ||
+                         strstr(chunk.memory, "invalid_api_key") ||
+                         strstr(chunk.memory, "Unauthorized") ||
+                         strstr(chunk.memory, "401"))) {
+                        fprintf(stderr, "[LLM] Auth error detected — aborting retries. "
+                                        "Check your KEY env variable.\n");
+                        free(chunk.memory);
+                        if (data) free(data);
+                        return NULL;
+                    }
                     sleep(2); // Sleep for a small amount of time to ensure that the service can recover
                 }
                 json_object_put(jobj);
@@ -383,6 +403,15 @@ char *llm_handle_plateau(const char *protocol_name, const char *examples,
         }
     }
 
+    const char *mqtt_state_hint = "";
+    if (strcasecmp(protocol_name, "MQTT") == 0) {
+        mqtt_state_hint =
+            "**MQTT-SPECIFIC EXPLORATION HINTS:**\n"
+            "- Prioritize reconnect edges (CONNECT after DISCONNECT), duplicate CONNECT, and missing PacketId cases.\n"
+            "- Use QoS 1/2 handshake chains, wildcard topics, retain toggles, and will/auth boundaries to force response diversity.\n"
+            "- If the same request reaches a stable state, bias toward a nearby MQTT-only variant that changes QoS, topic scope, or session flags.\n\n";
+    }
+
     /* Build state-aware prompt text */
     char *state_section = NULL;
     if (state_ctx && strlen(state_ctx) > 2) {
@@ -436,12 +465,14 @@ char *llm_handle_plateau(const char *protocol_name, const char *examples,
         "- Prefer states with is_error=false AND highest productivity — they are most likely to yield new coverage\n"
         "- Use the EXACT state id and seed_ids numbers from the states[] data — do NOT invent IDs\n"
         "- Strategy A (suggested_request) is best when history shows unrecognized commands\n\n"
+        "%s"
         "Respond with ONLY valid JSON. No markdown, no code blocks, no explanation outside JSON.",
         protocol_name,
         state_section ? state_section : "",
         history ? history : "",
         examples ? examples : "",
-        proto_constraint);  /* Fix-23: inject protocol-specific format constraint */
+        proto_constraint,    /* Fix-23: inject protocol-specific format constraint */
+        mqtt_state_hint);
     free(state_section);
     if (!raw_prompt) return NULL;
 
@@ -554,7 +585,9 @@ static const ProtocolExampleEntry PROTOCOL_EXAMPLE_TABLE[] = {
      "CONNECT: [\"CONNECT <<VALUE>>\\r\\n\","
      "\"ClientId: <<VALUE>>\\r\\n\","
      "\"CleanSession: <<VALUE>>\\r\\n\","
-     "\"KeepAlive: <<VALUE>>\\r\\n\"]"},
+        "\"KeepAlive: <<VALUE>>\\r\\n\"]\n"
+        "Prefer MQTT state-edge sequences such as CONNECT -> SUBSCRIBE -> PUBLISH -> UNSUBSCRIBE -> DISCONNECT,"
+        " and include QoS 0/1/2, reconnect, will, auth, wildcard-topic, and duplicate-CONNECT variations."},
     {"DNS",  "QUERY",
      "For the DNS protocol, the QUERY request template is:\n"
      "QUERY: [\"<<VALUE>>\\x01\\x00\\x00\\x01\\x00\\x00\\x00\\x00\\x00\\x00<<VALUE>>\"]"},
