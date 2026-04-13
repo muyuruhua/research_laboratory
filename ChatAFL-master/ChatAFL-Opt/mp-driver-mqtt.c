@@ -213,12 +213,25 @@ static u32 pack_subscribe_v5(u8 *out, u32 cap, u16 pid,
 static int mqtt_open_connections(mp_context_t *ctx) {
   u32 saved = local_port;
 
-  /* sub + pub use ephemeral ports; ctrl uses configured local_port */
+  /* Determine whether the target is "local" (127.0.0.1 / localhost).
+   * For remote brokers (Docker hostnames like mqttb1, mqttb2) we must NOT
+   * bind ctrl_fd to 127.0.0.1:local_port — binding a loopback source to
+   * a non-loopback destination fails on Linux.  local_port binding is only
+   * needed for SIP-style protocols on the single-fd path, not for MQTT. */
+  int is_local = 0;
+  if (ctx->server_ip) {
+    if (strcmp(ctx->server_ip, "127.0.0.1") == 0 ||
+        strcmp(ctx->server_ip, "localhost") == 0)
+      is_local = 1;
+  }
+  u32 ctrl_bind_port = is_local ? saved : 0;
+
+  /* sub + pub use ephemeral ports; ctrl uses configured local_port only for local targets */
   local_port = 0;
   ctx->fds[SUB_IDX] = mqtt_mp_open_one(ctx->server_ip, ctx->server_port, 0);
   ctx->fds[PUB_IDX] = mqtt_mp_open_one(ctx->server_ip, ctx->server_port, 0);
   local_port = saved;
-  ctx->fds[CTRL_IDX] = mqtt_mp_open_one(ctx->server_ip, ctx->server_port, saved);
+  ctx->fds[CTRL_IDX] = mqtt_mp_open_one(ctx->server_ip, ctx->server_port, ctrl_bind_port);
 
   for (int i = 0; i < ctx->fd_count; i++) {
     if (ctx->fds[i] < 0) return -1;

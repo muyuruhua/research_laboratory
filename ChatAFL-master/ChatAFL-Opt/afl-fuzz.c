@@ -49,6 +49,7 @@
 #include "mqtt-generate.h"
 #include "mqtt-scheduler.h"
 #include "mp-driver.h"
+#include "mqtt-differential.h"
 
 #include <stdio.h>
 #include <unistd.h>
@@ -318,6 +319,11 @@ struct queue_entry
   u32 generating_state_id; /* ID of the start at which the new seed was generated */
   u8 is_initial_seed;      /* Is this an initial seed */
   u32 unique_state_count;  /* Unique number of states traversed by this queue entry */
+
+  /* P5: MQTT differential feedback — queue-level divergence score.
+   * 0=no divergence, 1-100 = severity (higher → more interesting).
+   * Set by mqtt_diff_analyze_and_annotate() after multi-broker exec. */
+  u8 mqtt_diff_score;
 };
 
 static struct queue_entry *queue, /* Fuzzing queue (linked list)      */
@@ -442,6 +448,8 @@ char **use_argv; /* argument to run the target program. In vanilla AFL, this is 
 static u8 run_target(char **argv, u32 timeout);
 static inline u32 UR(u32 limit);
 static inline u8 has_new_bits(u8 *virgin_map);
+static void mqtt_fix_message_length(message_t *m);
+static u8 mqtt_fix_length_enabled;
 
 /* AFLNet-specific variables & functions */
 
@@ -468,6 +476,55 @@ u32 mqtt_cluster_broker_count = 0;
 u32 mqtt_cluster_unique_signatures = 0;
 u8 mqtt_cluster_diverged = 0;
 static u8 mqtt_cluster_probe_logged = 0;
+static u8 mqtt_diff_feedback_enabled = 0;   /* MQTT-only: enable diff reward loop */
+static u32 mqtt_diff_probe_period = 32;     /* Probe CHATAFL_MQTT_BROKERS every N execs */
+static u64 mqtt_diff_last_probe_exec = 0;   /* Last exec index when cluster probe ran */
+static double mqtt_last_diff_signal = 0.0;  /* Last normalized divergence signal [0,1] */
+/* Runtime-observable differential telemetry (cumulative over run). */
+static u64 mqtt_diff_obs_count = 0;         /* #executions with diff signal sampled */
+static u64 mqtt_diff_pos_count = 0;         /* #samples where diff_signal > 0 */
+static double mqtt_diff_signal_sum = 0.0;   /* Sum of sampled diff signals */
+static u32 mqtt_diff_warn_obs_threshold = 500;   /* warn if obs >= this */
+static double mqtt_diff_warn_avg_threshold = 0.01; /* and avg <= this */
+
+/* Per-state differential productivity (MQTT-only, state-aware mode).
+ * Indexed by state_ids[] index; tracks how often a target state produces
+ * cross-broker divergence, then feeds back into state desirability score. */
+static double *mqtt_state_diff_reward_sum = NULL;
+static u32 *mqtt_state_diff_obs = NULL;
+static u32 mqtt_state_diff_cap = 0;
+
+/* ════════════════════════════════════════════════════════════════════
+ * P5: Enhanced MQTT Differential Feedback — runtime-observable metrics
+ *
+ * Tracks field-level (G-field/H-field) divergence following MBFuzzer's
+ * three-tier decomposition: type sequence, return codes, payload content.
+ * ════════════════════════════════════════════════════════════════════ */
+static u64 mqtt_diff_type_divergences    = 0;  /* Type-sequence divergences   */
+static u64 mqtt_diff_code_divergences    = 0;  /* Return-code divergences     */
+static u64 mqtt_diff_payload_divergences = 0;  /* Payload-content divergences */
+static u64 mqtt_diff_queue_promotions    = 0;  /* Inputs promoted by diff     */
+
+/* P6: Deep-path state promotion metrics */
+static u64 mqtt_deep_state_promotions    = 0;  /* Deep-state energy boosts    */
+static u64 mqtt_state_stall_resets       = 0;  /* Stall-triggered resets      */
+
+/* Per-state consecutive zero-discovery counter for stall detection.
+ * Indexed by selected_state_index; reset on new path discovery. */
+static u32 *mqtt_state_stall_counter = NULL;
+static u32  mqtt_state_stall_cap     = 0;
+#define MQTT_STALL_THRESHOLD 200  /* consecutive execs w/o discovery before penalty */
+
+/* Divergence pattern dedup bitmap (4096-entry hash table).
+ * Tracks which divergence pattern_hash values have been seen,
+ * so we only promote queue entries for NEW divergence patterns. */
+#define MQTT_DIV_BITMAP_SIZE 4096
+static u8 mqtt_div_pattern_bitmap[MQTT_DIV_BITMAP_SIZE];
+
+/* Last field-level differential result from multi-broker execution.
+ * Used by save_if_interesting() to annotate the queue entry. */
+static mqtt_diff_result_t mqtt_last_field_diff;
+static u8 mqtt_last_field_diff_valid = 0;  /* 1 if mqtt_last_field_diff is fresh */
 EXP_ST u8 session_virgin_bits[MAP_SIZE]; /* Regions yet untouched while the SUT is still running */
 EXP_ST u8 *cleanup_script;               /* script to clean up the environment of the SUT -- make fuzzing more deterministic */
 EXP_ST u8 *netns_name;                   /* network namespace name to run server in */
@@ -569,6 +626,7 @@ static void reset_mqtt_cluster_diff_summary(void) {
   mqtt_cluster_broker_count = 0;
   mqtt_cluster_unique_signatures = 0;
   mqtt_cluster_diverged = 0;
+  mqtt_last_diff_signal = 0.0;
 }
 
 static int mqtt_open_cluster_socket(const char *ip, u32 port) {
@@ -844,6 +902,11 @@ cleanup:
   return result;
 }
 
+/* Forward declaration — defined after helper functions. */
+static void mqtt_diff_analyze_responses(char **raw_responses,
+                                        unsigned int *raw_response_lens,
+                                        u32 broker_count);
+
 static void mqtt_probe_cluster_differences(void) {
   const char *broker_spec = getenv("CHATAFL_MQTT_BROKERS");
   mqtt_broker_endpoint_t *endpoints = NULL;
@@ -856,15 +919,35 @@ static void mqtt_probe_cluster_differences(void) {
   u32 endpoint_count = 0;
   u32 i = 0;
 
-  reset_mqtt_cluster_diff_summary();
-
   if (!protocol_name || strcasecmp(protocol_name, "MQTT") != 0) {
+    reset_mqtt_cluster_diff_summary();
     return;
   }
 
   if (net_protocol != PRO_TCP) {
+    reset_mqtt_cluster_diff_summary();
     return;
   }
+
+  /* Skip cluster probing during dry run — partner container likely not ready. */
+  if (queue_cycle == 0) {
+    reset_mqtt_cluster_diff_summary();
+    return;
+  }
+
+  /* MQTT cluster-diff probing can be expensive (N brokers × full replay).
+   * Throttle probes by execution count when CHATAFL_MQTT_BROKERS is set.
+   * Cached signal is reused between probe intervals, with mild decay. */
+  if (broker_spec && *broker_spec && mqtt_diff_probe_period > 1) {
+    if (total_execs > 0 && mqtt_diff_last_probe_exec > 0 &&
+        (total_execs - mqtt_diff_last_probe_exec) < mqtt_diff_probe_period) {
+      mqtt_last_diff_signal *= 0.95;
+      return;
+    }
+    mqtt_diff_last_probe_exec = total_execs;
+  }
+
+  reset_mqtt_cluster_diff_summary();
 
   /* Even if no CHATAFL_MQTT_BROKERS is set, still run multi-party
    * probe against the target broker (once). */
@@ -878,6 +961,7 @@ static void mqtt_probe_cluster_differences(void) {
       }
       mp_standalone_done = 1;
     }
+    mqtt_last_diff_signal = 0.0;
     return;
   }
 
@@ -973,6 +1057,13 @@ static void mqtt_probe_cluster_differences(void) {
   }
   memset(signatures, 0, endpoint_count * sizeof(char *));
 
+  /* P5: Collect raw response buffers for field-level differential analysis.
+   * These are kept alive until after mqtt_diff_analyze_responses(). */
+  char **raw_resp_bufs = (char **)ck_alloc(endpoint_count * sizeof(char *));
+  unsigned int *raw_resp_lens = (unsigned int *)ck_alloc(endpoint_count * sizeof(unsigned int));
+  memset(raw_resp_bufs, 0, endpoint_count * sizeof(char *));
+  memset(raw_resp_lens, 0, endpoint_count * sizeof(unsigned int));
+
   for (i = 0; i < endpoint_count; i++) {
     int sockfd = mqtt_open_cluster_socket((char *)endpoints[i].ip, endpoints[i].port);
     struct timeval timeout;
@@ -1015,9 +1106,9 @@ static void mqtt_probe_cluster_differences(void) {
       signatures[i] = ck_strdup((u8 *)"no-response");
     }
 
-    if (cluster_response_buf) {
-      ck_free(cluster_response_buf);
-    }
+    /* P5: Keep raw response buffer for field-level diff (freed below) */
+    raw_resp_bufs[i] = cluster_response_buf;
+    raw_resp_lens[i] = cluster_response_len;
 
     close(sockfd);
 
@@ -1071,12 +1162,19 @@ static void mqtt_probe_cluster_differences(void) {
     {
       char *final_summary = alloc_printf("%s\",\"brokers\":%u,\"unique_signatures\":%u,\"diverged\":%u}",
                                          summary, endpoint_count, unique, unique > 1);
+      double diff_strength = 0.0;
+      if (endpoint_count > 1 && unique > 1) {
+        diff_strength = (double)(unique - 1) / (double)(endpoint_count - 1);
+        if (diff_strength < 0.0) diff_strength = 0.0;
+        if (diff_strength > 1.0) diff_strength = 1.0;
+      }
       ck_free(summary);
       reset_mqtt_cluster_diff_summary();
       mqtt_cluster_diff_summary = final_summary;
       mqtt_cluster_broker_count = endpoint_count;
       mqtt_cluster_unique_signatures = unique;
       mqtt_cluster_diverged = (unique > 1);
+      mqtt_last_diff_signal = diff_strength;
 
       if (!mqtt_cluster_probe_logged) {
         fprintf(stderr, "[mqtt-cluster] enabled: brokers=%u diverged=%u summary=%s\n",
@@ -1087,12 +1185,346 @@ static void mqtt_probe_cluster_differences(void) {
     }
   }
 
+  /* P5: Field-level differential analysis on raw response buffers.
+   * This enriches the hash-based diff_signal with structured
+   * G-field/H-field divergence detection (MBFuzzer-style). */
+  if (endpoint_count >= 2) {
+    mqtt_diff_analyze_responses(raw_resp_bufs, raw_resp_lens, endpoint_count);
+  }
+
+  /* Free raw response buffers */
+  for (i = 0; i < endpoint_count; i++) {
+    if (raw_resp_bufs[i]) ck_free(raw_resp_bufs[i]);
+  }
+  ck_free(raw_resp_bufs);
+  ck_free(raw_resp_lens);
+
   for (i = 0; i < endpoint_count; i++) {
     if (signatures[i]) ck_free(signatures[i]);
     if (endpoints[i].ip) free(endpoints[i].ip);
   }
   ck_free(signatures);
   ck_free(endpoints);
+}
+
+/* Parse CHATAFL_MQTT_BROKERS into endpoint array for per-exec multi-broker
+ * main execution. Returns 1 when >=2 valid TCP endpoints are found.
+ * Caller owns *out_endpoints and each endpoint.ip (free with free()). */
+static u8 mqtt_collect_exec_brokers(mqtt_broker_endpoint_t **out_endpoints,
+                                    u32 *out_count) {
+  const char *broker_spec = getenv("CHATAFL_MQTT_BROKERS");
+  mqtt_broker_endpoint_t *endpoints = NULL;
+  char *spec_copy = NULL;
+  char *token = NULL, *saveptr = NULL;
+  u32 endpoint_count = 0;
+
+  *out_endpoints = NULL;
+  *out_count = 0;
+
+  if (!broker_spec || !*broker_spec)
+    return 0;
+
+  spec_copy = ck_strdup((u8 *)broker_spec);
+  if (!spec_copy)
+    return 0;
+
+  token = strtok_r(spec_copy, ",", &saveptr);
+  while (token) {
+    u8 *ip = NULL;
+    u32 port = 0;
+    u8 proto = 0;
+
+    while (*token && isspace((unsigned char)*token)) token++;
+    if (*token) {
+      char *end = token + strlen(token) - 1;
+      while (end >= token && isspace((unsigned char)*end)) {
+        *end = '\0';
+        end--;
+      }
+    }
+
+    if (*token && !parse_net_config((u8 *)token, &proto, &ip, &port) &&
+        proto == PRO_TCP) {
+      mqtt_broker_endpoint_t *next = (mqtt_broker_endpoint_t *)ck_realloc(
+          endpoints, (endpoint_count + 1) * sizeof(mqtt_broker_endpoint_t));
+      if (!next) {
+        if (ip) free(ip);
+        break;
+      }
+      endpoints = next;
+      endpoints[endpoint_count].ip = ip;
+      endpoints[endpoint_count].port = port;
+      endpoint_count++;
+    } else if (ip) {
+      free(ip);
+    }
+
+    token = strtok_r(NULL, ",", &saveptr);
+  }
+
+  ck_free(spec_copy);
+
+  if (endpoint_count < 2) {
+    for (u32 i = 0; i < endpoint_count; i++)
+      if (endpoints[i].ip) free(endpoints[i].ip);
+    if (endpoints) ck_free(endpoints);
+    return 0;
+  }
+
+  *out_endpoints = endpoints;
+  *out_count = endpoint_count;
+  return 1;
+}
+
+/* Build a robust signature string from response bytes.
+ * NOTE: deliberately parser-free to avoid crashes on malformed broker output
+ * when multi-broker differential execution is enabled. */
+static char *mqtt_signature_from_response(char *resp, unsigned int resp_len) {
+  if (!resp || resp_len == 0)
+    return ck_strdup((u8 *)"no-response");
+
+  /* FNV-1a 64-bit over a bounded prefix for stability + speed. */
+  const unsigned int max_sample = 8192;
+  unsigned int n = (resp_len < max_sample) ? resp_len : max_sample;
+  u64 h = 1469598103934665603ULL;
+
+  for (unsigned int i = 0; i < n; i++) {
+    h ^= (u8)resp[i];
+    h *= 1099511628211ULL;
+  }
+
+  return alloc_printf("len=%u,sample=%u,fnv64=%016llx",
+                      resp_len, n, (unsigned long long)h);
+}
+
+/* Execute one testcase against ONE broker using the existing mp_driver path.
+ * If collect_primary=1, writes into global response_buf/response_bytes/messages_sent.
+ * Otherwise uses temporary buffers and only returns signature in out_sig. */
+static int mqtt_exec_one_broker_mp(const mp_driver_t *mp_drv,
+                                   const char *ip, u32 port,
+                                   u8 collect_primary,
+                                   char **out_sig,
+                                   u8 *out_likely_buggy) {
+  struct timeval timeout;
+  timeout.tv_sec = 0;
+  timeout.tv_usec = socket_timeout_usecs;
+
+  int *mp_fds_buf = NULL;
+  mp_context_t mp_ctx;
+  int rc = 0;
+
+  char *aux_resp_buf = NULL;
+  int aux_resp_size = 0;
+  u32 *aux_resp_bytes = NULL;
+  u32 aux_messages_sent = 0;
+
+  if (out_sig) *out_sig = NULL;
+  if (out_likely_buggy) *out_likely_buggy = 0;
+
+  memset(&mp_ctx, 0, sizeof(mp_ctx));
+  if (!mp_drv || mp_drv->fd_count <= 0 || mp_drv->fd_count > 64) {
+    rc = -1;
+    goto cleanup;
+  }
+
+  mp_fds_buf = (int *)ck_alloc((u32)mp_drv->fd_count * sizeof(int));
+  mp_ctx.fds = mp_fds_buf;
+  mp_ctx.fd_count = mp_drv->fd_count;
+  mp_ctx.timeout = timeout;
+  mp_ctx.poll_wait_msecs = poll_wait_msecs;
+  mp_ctx.server_ip = ip;
+  mp_ctx.server_port = port;
+  mp_ctx.priv = NULL;
+
+  for (int i = 0; i < mp_ctx.fd_count; i++)
+    mp_ctx.fds[i] = -1;
+
+  if (collect_primary) {
+    messages_sent = 0;
+    mp_ctx.response_buf = &response_buf;
+    mp_ctx.response_buf_size = &response_buf_size;
+  } else {
+    mp_ctx.response_buf = &aux_resp_buf;
+    mp_ctx.response_buf_size = &aux_resp_size;
+  }
+
+  if (mp_drv->open_connections(&mp_ctx) != 0) {
+    rc = -1;
+    goto cleanup;
+  }
+
+  if (mp_drv->handshake(&mp_ctx) != 0) {
+    rc = -1;
+    goto cleanup;
+  }
+
+  for (kliter_t(lms) *it = kl_begin(kl_messages); it != kl_end(kl_messages); it = kl_next(it)) {
+    message_t *m = kl_val(it);
+
+    if (!m || !m->mdata || m->msize == 0) {
+      if (collect_primary) {
+        messages_sent++;
+        response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
+        response_bytes[messages_sent - 1] = response_buf_size;
+      } else {
+        aux_messages_sent++;
+        aux_resp_bytes = (u32 *)ck_realloc(aux_resp_bytes, aux_messages_sent * sizeof(u32));
+        aux_resp_bytes[aux_messages_sent - 1] = aux_resp_size;
+      }
+      continue;
+    }
+
+    int role = mp_drv->role_for_message(&mp_ctx, (const unsigned char *)m->mdata, m->msize);
+    if (role < 0) {
+      if (collect_primary) {
+        messages_sent++;
+        response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
+        response_bytes[messages_sent - 1] = response_buf_size;
+      } else {
+        aux_messages_sent++;
+        aux_resp_bytes = (u32 *)ck_realloc(aux_resp_bytes, aux_messages_sent * sizeof(u32));
+        aux_resp_bytes[aux_messages_sent - 1] = aux_resp_size;
+      }
+      continue;
+    }
+
+    if (mqtt_fix_length_enabled)
+      mqtt_fix_message_length(m);
+
+    if (role >= mp_ctx.fd_count) {
+      if (collect_primary) {
+        messages_sent++;
+        response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
+        response_bytes[messages_sent - 1] = response_buf_size;
+      } else {
+        aux_messages_sent++;
+        aux_resp_bytes = (u32 *)ck_realloc(aux_resp_bytes, aux_messages_sent * sizeof(u32));
+        aux_resp_bytes[aux_messages_sent - 1] = aux_resp_size;
+      }
+      continue;
+    }
+
+    int target_fd = mp_ctx.fds[role];
+    if (target_fd < 0) {
+      if (collect_primary) {
+        messages_sent++;
+        response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
+        response_bytes[messages_sent - 1] = response_buf_size;
+      } else {
+        aux_messages_sent++;
+        aux_resp_bytes = (u32 *)ck_realloc(aux_resp_bytes, aux_messages_sent * sizeof(u32));
+        aux_resp_bytes[aux_messages_sent - 1] = aux_resp_size;
+      }
+      continue;
+    }
+    int n = net_send(target_fd, timeout, m->mdata, m->msize);
+
+    if (collect_primary) {
+      messages_sent++;
+      response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
+      if (n != (int)m->msize) {
+        response_bytes[messages_sent - 1] = response_buf_size;
+        rc = -1;
+        goto cleanup;
+      }
+      u32 prev = response_buf_size;
+      net_recv(target_fd, timeout, poll_wait_msecs, &response_buf, &response_buf_size);
+      if (mp_drv->after_send(&mp_ctx, role) != 0) {
+        rc = -1;
+        goto cleanup;
+      }
+      response_bytes[messages_sent - 1] = response_buf_size;
+      if (out_likely_buggy)
+        *out_likely_buggy = ((u32)prev == (u32)response_buf_size) ? 1 : 0;
+    } else {
+      aux_messages_sent++;
+      aux_resp_bytes = (u32 *)ck_realloc(aux_resp_bytes, aux_messages_sent * sizeof(u32));
+      if (n != (int)m->msize) {
+        aux_resp_bytes[aux_messages_sent - 1] = aux_resp_size;
+        rc = -1;
+        goto cleanup;
+      }
+      net_recv(target_fd, timeout, poll_wait_msecs, &aux_resp_buf, &aux_resp_size);
+      if (mp_drv->after_send(&mp_ctx, role) != 0) {
+        rc = -1;
+        goto cleanup;
+      }
+      aux_resp_bytes[aux_messages_sent - 1] = aux_resp_size;
+    }
+  }
+
+cleanup:
+  mp_drv->drain_all(&mp_ctx);
+
+  if (collect_primary) {
+    if (messages_sent > 0 && response_bytes)
+      response_bytes[messages_sent - 1] = response_buf_size;
+  } else {
+    if (aux_messages_sent > 0 && aux_resp_bytes)
+      aux_resp_bytes[aux_messages_sent - 1] = aux_resp_size;
+  }
+
+  mp_drv->cleanup(&mp_ctx);
+
+  if (out_sig) {
+    if (collect_primary)
+      *out_sig = mqtt_signature_from_response(response_buf, (unsigned int)response_buf_size);
+    else
+      *out_sig = mqtt_signature_from_response(aux_resp_buf, (unsigned int)aux_resp_size);
+  }
+
+  for (int i = 0; i < mp_ctx.fd_count; i++)
+    if (mp_ctx.fds[i] >= 0) close(mp_ctx.fds[i]);
+
+  if (mp_fds_buf)
+    ck_free(mp_fds_buf);
+
+  if (!collect_primary) {
+    if (aux_resp_bytes) ck_free(aux_resp_bytes);
+    if (aux_resp_buf) ck_free(aux_resp_buf);
+  }
+
+  return rc;
+}
+
+/* Build and store MQTT cluster diff summary from per-broker signatures. */
+static void mqtt_set_cluster_summary_from_signatures(mqtt_broker_endpoint_t *eps,
+                                                     char **sigs,
+                                                     u32 cnt) {
+  u32 unique = 0;
+  char *summary = ck_strdup((u8 *)"{\"enabled\":1,\"details\":\"");
+
+  for (u32 i = 0; i < cnt; i++) {
+    u8 seen = 0;
+    for (u32 j = 0; j < i; j++) {
+      if (sigs[i] && sigs[j] && strcmp(sigs[i], sigs[j]) == 0) {
+        seen = 1;
+        break;
+      }
+    }
+    if (!seen) unique++;
+
+    char *next = NULL;
+    if (i == 0)
+      next = alloc_printf("%s%s:%u=%s", summary, (char *)eps[i].ip, eps[i].port, sigs[i] ? sigs[i] : "(null)");
+    else
+      next = alloc_printf("%s;%s:%u=%s", summary, (char *)eps[i].ip, eps[i].port, sigs[i] ? sigs[i] : "(null)");
+    ck_free(summary);
+    summary = next;
+  }
+
+  char *final_summary = alloc_printf("%s\",\"brokers\":%u,\"unique_signatures\":%u,\"diverged\":%u}",
+                                     summary, cnt, unique, unique > 1);
+  ck_free(summary);
+
+  reset_mqtt_cluster_diff_summary();
+  mqtt_cluster_diff_summary = final_summary;
+  mqtt_cluster_broker_count = cnt;
+  mqtt_cluster_unique_signatures = unique;
+  mqtt_cluster_diverged = (unique > 1);
+  mqtt_last_diff_signal = (cnt > 1 && unique > 1)
+      ? ((double)(unique - 1) / (double)(cnt - 1))
+      : 0.0;
 }
 
 /* Implemented state machine */
@@ -1345,6 +1777,15 @@ void destroy_ipsm()
   kh_destroy(hms, khms_states);
 
   ck_free(state_ids);
+  if (mqtt_state_diff_reward_sum) {
+    ck_free(mqtt_state_diff_reward_sum);
+    mqtt_state_diff_reward_sum = NULL;
+  }
+  if (mqtt_state_diff_obs) {
+    ck_free(mqtt_state_diff_obs);
+    mqtt_state_diff_obs = NULL;
+  }
+  mqtt_state_diff_cap = 0;
 }
 
 /* Get state index in the state IDs list, given a state ID */
@@ -1357,6 +1798,190 @@ u32 get_state_index(u32 state_id)
       break;
   }
   return index;
+}
+
+/* Ensure per-state MQTT differential tables are large enough for current
+ * state_ids_count. MQTT-only, no effect on other protocols. */
+static void mqtt_ensure_state_diff_tables(void)
+{
+  if (state_ids_count <= mqtt_state_diff_cap)
+    return;
+
+  u32 old_cap = mqtt_state_diff_cap;
+  mqtt_state_diff_reward_sum = (double *)ck_realloc(
+      mqtt_state_diff_reward_sum, state_ids_count * sizeof(double));
+  mqtt_state_diff_obs = (u32 *)ck_realloc(
+      mqtt_state_diff_obs, state_ids_count * sizeof(u32));
+
+  for (u32 i = old_cap; i < state_ids_count; i++) {
+    mqtt_state_diff_reward_sum[i] = 0.0;
+    mqtt_state_diff_obs[i] = 0;
+  }
+  mqtt_state_diff_cap = state_ids_count;
+}
+
+/* Record differential signal for the current target state.
+ * Called after each execution from common_fuzz_stuff() (MQTT-only). */
+static void mqtt_record_diff_signal_for_target_state(double signal)
+{
+  if (!mqtt_diff_feedback_enabled || signal <= 0.0)
+    return;
+  if (!state_aware_mode || target_state_id == 0 || state_ids_count == 0)
+    return;
+
+  mqtt_ensure_state_diff_tables();
+  u32 idx = get_state_index(target_state_id);
+  if (idx >= state_ids_count)
+    return;
+
+  mqtt_state_diff_reward_sum[idx] += signal;
+  mqtt_state_diff_obs[idx]++;
+}
+
+/* Cumulative mean differential signal for runtime observability. */
+static double mqtt_diff_signal_avg(void)
+{
+  if (mqtt_diff_obs_count == 0)
+    return 0.0;
+  return mqtt_diff_signal_sum / (double)mqtt_diff_obs_count;
+}
+
+/* Compute multiplicative state bonus from differential productivity.
+ * Bonus range: [1.0, 1.75], intentionally capped to avoid overpowering
+ * frontier/coverage heuristics. */
+static double mqtt_state_diff_bonus(u32 state_id)
+{
+  if (!mqtt_diff_feedback_enabled || state_ids_count == 0)
+    return 1.0;
+
+  mqtt_ensure_state_diff_tables();
+  u32 idx = get_state_index(state_id);
+  if (idx >= state_ids_count || mqtt_state_diff_obs[idx] == 0)
+    return 1.0;
+
+  double mean = mqtt_state_diff_reward_sum[idx] / (double)mqtt_state_diff_obs[idx];
+  if (mean < 0.0) mean = 0.0;
+  if (mean > 1.0) mean = 1.0;
+  return 1.0 + 0.75 * mean;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+ * P5: Field-level differential analysis helpers (MQTT-only)
+ * ════════════════════════════════════════════════════════════════════ */
+
+/* Ensure state stall counter array is large enough. */
+static void mqtt_ensure_stall_table(void) {
+  if (state_ids_count > mqtt_state_stall_cap) {
+    u32 new_cap = state_ids_count + 16;
+    mqtt_state_stall_counter = (u32 *)ck_realloc(
+        mqtt_state_stall_counter, new_cap * sizeof(u32));
+    for (u32 i = mqtt_state_stall_cap; i < new_cap; i++)
+      mqtt_state_stall_counter[i] = 0;
+    mqtt_state_stall_cap = new_cap;
+  }
+}
+
+/* Record a stall (no new paths) for the current target state.
+ * Returns 1 if the state has reached stall threshold. */
+static u8 mqtt_record_state_stall(void) {
+  if (!mqtt_diff_feedback_enabled || !state_aware_mode) return 0;
+  if (!protocol_name || strcasecmp(protocol_name, "MQTT") != 0) return 0;
+  mqtt_ensure_stall_table();
+  u32 idx = selected_state_index;
+  if (idx >= mqtt_state_stall_cap) return 0;
+  mqtt_state_stall_counter[idx]++;
+  if (mqtt_state_stall_counter[idx] >= MQTT_STALL_THRESHOLD) {
+    mqtt_state_stall_resets++;
+    mqtt_state_stall_counter[idx] = 0;
+    return 1;
+  }
+  return 0;
+}
+
+/* Reset stall counter for current state (new path found). */
+static void mqtt_reset_state_stall(void) {
+  if (!mqtt_diff_feedback_enabled || !state_aware_mode) return;
+  if (!protocol_name || strcasecmp(protocol_name, "MQTT") != 0) return;
+  mqtt_ensure_stall_table();
+  u32 idx = selected_state_index;
+  if (idx < mqtt_state_stall_cap)
+    mqtt_state_stall_counter[idx] = 0;
+}
+
+/* Check if a divergence pattern is new (not yet in bitmap).
+ * If new, marks it in the bitmap and returns 1. */
+static u8 mqtt_is_new_divergence_pattern(u32 pattern_hash) {
+  u32 slot = pattern_hash % MQTT_DIV_BITMAP_SIZE;
+  u8 bit   = 1 << (pattern_hash / MQTT_DIV_BITMAP_SIZE % 8);
+  if (mqtt_div_pattern_bitmap[slot] & bit) return 0;
+  mqtt_div_pattern_bitmap[slot] |= bit;
+  return 1;
+}
+
+/* Analyze multi-broker responses using field-level comparison.
+ * Called from multi-broker execution path.  Updates telemetry and
+ * sets mqtt_last_field_diff for save_if_interesting() to consume.
+ *
+ * raw_responses[i] + raw_response_lens[i] are the per-broker response buffers.
+ * broker_count = number of brokers. */
+static void mqtt_diff_analyze_responses(char **raw_responses,
+                                        unsigned int *raw_response_lens,
+                                        u32 broker_count) {
+  mqtt_response_fields_t *fields;
+  mqtt_diff_result_t result;
+
+  mqtt_last_field_diff_valid = 0;
+  if (broker_count < 2) return;
+
+  /* Parse each broker's response into structured fields (stack-allocated). */
+  fields = (mqtt_response_fields_t *)ck_alloc(
+      broker_count * sizeof(mqtt_response_fields_t));
+
+  for (u32 i = 0; i < broker_count; i++) {
+    mqtt_diff_parse_response(
+        (const unsigned char *)raw_responses[i],
+        raw_response_lens[i], &fields[i]);
+  }
+
+  /* Pairwise comparison — find maximum divergence */
+  result = mqtt_diff_compare_n(fields, (int)broker_count);
+
+  /* Update telemetry */
+  switch (result.severity) {
+  case MQTT_DIV_TYPE:
+  case MQTT_DIV_MISSING:
+    mqtt_diff_type_divergences++;
+    break;
+  case MQTT_DIV_CODE:
+    mqtt_diff_code_divergences++;
+    break;
+  case MQTT_DIV_PAYLOAD:
+    mqtt_diff_payload_divergences++;
+    break;
+  default:
+    break;
+  }
+
+  /* Override mqtt_last_diff_signal with field-level strength.
+   * Field-level gives a HIGHER strength for type/code divergences. */
+  if (result.severity > MQTT_DIV_NONE) {
+    double field_signal = 0.0;
+    switch (result.severity) {
+    case MQTT_DIV_MISSING: field_signal = 1.0;   break;
+    case MQTT_DIV_TYPE:    field_signal = 0.9;    break;
+    case MQTT_DIV_CODE:    field_signal = 0.6;    break;
+    case MQTT_DIV_PAYLOAD: field_signal = 0.3;    break;
+    default:               field_signal = 0.0;    break;
+    }
+    /* Blend with raw-hash signal: take the higher one */
+    if (field_signal > mqtt_last_diff_signal)
+      mqtt_last_diff_signal = field_signal;
+  }
+
+  mqtt_last_field_diff = result;
+  mqtt_last_field_diff_valid = 1;
+
+  ck_free(fields);
 }
 
 /* Expand the size of the map when a new seed or a new state has been discovered */
@@ -1631,6 +2256,14 @@ u32 update_scores_and_select_next_state(u8 mode)
             frontier_bonus *= 0.7;
           }
           /* error_hint == 2: confirmed productive → no penalty */
+        }
+
+        /* MQTT-only differential bonus:
+         * States that repeatedly produce cross-broker divergence receive
+         * additional weight, improving deep-path conversion of state edges. */
+        if (mqtt_diff_feedback_enabled && protocol_name &&
+            strcasecmp(protocol_name, "MQTT") == 0) {
+          frontier_bonus *= mqtt_state_diff_bonus(state_id);
         }
 
         state->score = (u32)(base * frontier_bonus);
@@ -2200,20 +2833,18 @@ static void mqtt_fix_message_length(message_t *m) {
   u32 new_header_size = 1 + new_rl_bytes;
   u32 new_total = new_header_size + body_size;
 
-  if (new_rl_bytes == rl_bytes) {
-    /* Same encoding size → patch in place */
-    memcpy(m->mdata + 1, new_rl, new_rl_bytes);
-  } else {
-    /* Different encoding size → must reallocate */
-    char *new_buf = (char *)ck_alloc(new_total);
-    new_buf[0] = m->mdata[0];               /* keep fixed header byte */
-    memcpy(new_buf + 1, new_rl, new_rl_bytes);  /* new RL encoding */
-    memcpy(new_buf + new_header_size,
-           m->mdata + header_size, body_size);   /* body unchanged */
-    ck_free(m->mdata);
-    m->mdata = new_buf;
-    m->msize = new_total;
+  if (new_rl_bytes != rl_bytes) {
+    /* Avoid reallocating the message buffer here: the message ownership
+     * is shared across multiple execution paths and reallocation can
+     * interfere with later cleanup on malformed packets.  When the
+     * encoded length width changes, skip the fix safely. */
+    return;
   }
+
+  /* Same encoding size → patch in place only. */
+  (void)new_header_size;
+  (void)new_total;
+  memcpy(m->mdata + 1, new_rl, new_rl_bytes);
 }
 
 /* Send (mutated) messages in order to the server under test */
@@ -2271,10 +2902,104 @@ int send_over_network()
 
   if (mp_drv && net_protocol == PRO_TCP)
   {
+    /* MQTT multi-broker MAIN architecture:
+     * If CHATAFL_MQTT_BROKERS has >=2 endpoints, execute every test case on
+     * all brokers (not just post-run probe), collect per-broker signatures,
+     * and derive differential signal directly from the main execution path.
+     * Primary broker = brokers[0], whose responses feed normal AFLNet logic.
+     *
+     * SAFETY: Skip multi-broker execution during dry run (queue_cycle == 0).
+     * During dry run the partner container may still be compiling or
+     * enriching seeds — its mosquitto target is not yet running, so
+     * connecting to it would fail or hang, sometimes triggering SIGSEGV
+     * via SIGPIPE or corrupted network state.  The differential signal
+     * is meaningless during calibration anyway. */
+    if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0
+        && queue_cycle > 0) {
+      mqtt_broker_endpoint_t *eps = NULL;
+      u32 ecnt = 0;
+      if (mqtt_collect_exec_brokers(&eps, &ecnt)) {
+        char **sigs = (char **)ck_alloc(ecnt * sizeof(char *));
+        memset(sigs, 0, ecnt * sizeof(char *));
+
+        u8 primary_likely_buggy = 0;
+        int primary_rc = mqtt_exec_one_broker_mp(
+            mp_drv, (const char *)eps[0].ip, eps[0].port,
+            1, &sigs[0], &primary_likely_buggy);
+
+        if (primary_rc != 0) {
+          mp_multi_fallback++;
+          for (u32 i = 0; i < ecnt; i++) if (sigs[i]) ck_free(sigs[i]);
+          ck_free(sigs);
+          for (u32 i = 0; i < ecnt; i++) if (eps[i].ip) free(eps[i].ip);
+          ck_free(eps);
+          /* Reset response state corrupted by the failed primary execution.
+           * Without this, the single-fd fallback path appends to stale
+           * response_buf data and response_bytes indices become inconsistent,
+           * leading to out-of-bounds access in downstream analysis code. */
+          if (response_buf) { ck_free(response_buf); response_buf = NULL; }
+          response_buf_size = 0;
+          if (response_bytes) { ck_free(response_bytes); response_bytes = NULL; }
+          messages_sent = 0;
+          goto MP_SINGLE_FD_FALLBACK;
+        }
+
+        likely_buggy = primary_likely_buggy;
+
+        for (u32 i = 1; i < ecnt; i++) {
+          (void)mqtt_exec_one_broker_mp(mp_drv,
+                                        (const char *)eps[i].ip,
+                                        eps[i].port,
+                                        0,
+                                        &sigs[i],
+                                        NULL);
+          if (!sigs[i])
+            sigs[i] = ck_strdup((u8 *)"exec-failed");
+        }
+
+        mqtt_set_cluster_summary_from_signatures(eps, sigs, ecnt);
+
+        if (!mqtt_cluster_probe_logged) {
+          fprintf(stderr, "[mqtt-cluster-main] brokers=%u unique=%u diverged=%u\n",
+                  mqtt_cluster_broker_count,
+                  mqtt_cluster_unique_signatures,
+                  mqtt_cluster_diverged);
+          mqtt_cluster_probe_logged = 1;
+        }
+
+        /* Stabilization loop */
+        memset(session_virgin_bits, 255, MAP_SIZE);
+        {
+          int stab_iter = 0;
+          while (stab_iter++ < 5000) {
+            if (has_new_bits(session_virgin_bits) != 2)
+              break;
+          }
+        }
+
+        for (u32 i = 0; i < ecnt; i++) {
+          if (sigs[i]) ck_free(sigs[i]);
+          if (eps[i].ip) free(eps[i].ip);
+        }
+        ck_free(sigs);
+        ck_free(eps);
+
+        mp_multi_ok++;
+        sockfd = -1;
+        goto MP_MULTI_DONE;
+      }
+    }
+
     /* ── Generic multi-fd path via driver callbacks ── */
-    int mp_fds_buf[8];   /* stack-allocated; fd_count is always small */
+    int *mp_fds_buf = NULL;
     mp_context_t mp_ctx;
     memset(&mp_ctx, 0, sizeof(mp_ctx));
+    if (!mp_drv || mp_drv->fd_count <= 0 || mp_drv->fd_count > 64) {
+      mp_multi_fallback++;
+      goto MP_SINGLE_FD_FALLBACK;
+    }
+
+    mp_fds_buf = (int *)ck_alloc((u32)mp_drv->fd_count * sizeof(int));
     mp_ctx.fds              = mp_fds_buf;
     mp_ctx.fd_count         = mp_drv->fd_count;
     mp_ctx.timeout          = timeout;
@@ -2325,7 +3050,20 @@ int send_over_network()
         continue;
       }
 
+      if (role >= mp_ctx.fd_count) {
+        messages_sent++;
+        response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
+        response_bytes[messages_sent - 1] = response_buf_size;
+        continue;
+      }
+
       int target_fd = mp_ctx.fds[role];
+      if (target_fd < 0) {
+        messages_sent++;
+        response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
+        response_bytes[messages_sent - 1] = response_buf_size;
+        continue;
+      }
 
       /* MQTT: fix remaining_length before sending */
       if (mqtt_fix_length_enabled) mqtt_fix_message_length(m);
@@ -2386,12 +3124,23 @@ MP_MULTI_CLEANUP:
     for (int i = 0; i < mp_ctx.fd_count; i++)
       if (mp_ctx.fds[i] >= 0) close(mp_ctx.fds[i]);
 
+    if (mp_fds_buf)
+      ck_free(mp_fds_buf);
+
     mp_multi_ok++;
     sockfd = -1;
     goto MP_MULTI_DONE;
   }
 
 MP_SINGLE_FD_FALLBACK:
+
+  /* Defensive reset: any multi-fd path that jumped here may have partially
+   * written to the global response buffers.  Zero everything so the
+   * single-fd path starts from a clean slate. */
+  if (response_buf)  { ck_free(response_buf);  response_buf = NULL; }
+  response_buf_size = 0;
+  if (response_bytes) { ck_free(response_bytes); response_bytes = NULL; }
+  messages_sent = 0;
 
   /* ── Original single-fd path (ALL text protocols + MQTT fallback) ── */
   {
@@ -2455,17 +3204,25 @@ MP_SINGLE_FD_FALLBACK:
     // write the request messages
     for (it = kl_begin(kl_messages); it != kl_end(kl_messages); it = kl_next(it))
     {
-      /* MQTT: fix remaining_length before sending */
-      if (mqtt_fix_length_enabled) mqtt_fix_message_length(kl_val(it));
+      message_t *m = kl_val(it);
+      if (!m || !m->mdata || m->msize == 0) {
+        messages_sent++;
+        response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
+        response_bytes[messages_sent - 1] = response_buf_size;
+        continue;
+      }
 
-      n = net_send(sockfd, timeout, kl_val(it)->mdata, kl_val(it)->msize);
+      /* MQTT: fix remaining_length before sending */
+      if (mqtt_fix_length_enabled) mqtt_fix_message_length(m);
+
+      n = net_send(sockfd, timeout, m->mdata, m->msize);
       messages_sent++;
 
       // Allocate memory to store new accumulated response buffer size
       response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
 
       // Jump out if something wrong leading to incomplete message sent
-      if (n != kl_val(it)->msize)
+      if (n != m->msize)
       {
         goto HANDLE_RESPONSES;
       }
@@ -6426,6 +7183,8 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
     {
       if (crash_mode)
         total_crashes++;
+      /* P6: Record state stall (no new coverage from this execution) */
+      mqtt_record_state_stall();
       return 0;
     }
 
@@ -6460,6 +7219,28 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
     }
 
     queue_top->exec_cksum = hash32(trace_bits, MAP_SIZE, HASH_CONST);
+
+    /* ════════════════════════════════════════════════════════════════
+     * P5: Annotate queue entry with MQTT differential score.
+     *
+     * If multi-broker execution detected field-level divergence,
+     * transfer the score to the queue entry so calculate_score()
+     * can boost its energy on future fuzzing cycles.
+     *
+     * Also reset state-stall counter (new path discovered).
+     * ════════════════════════════════════════════════════════════════ */
+    if (mqtt_last_field_diff_valid && protocol_name &&
+        strcasecmp(protocol_name, "MQTT") == 0) {
+      int dscore = mqtt_diff_score_from_result(&mqtt_last_field_diff);
+      queue_top->mqtt_diff_score = (u8)(dscore > 100 ? 100 : dscore);
+
+      /* Track promotion for observability */
+      if (dscore > 0 &&
+          mqtt_is_new_divergence_pattern(mqtt_last_field_diff.pattern_hash)) {
+        mqtt_diff_queue_promotions++;
+      }
+    }
+    mqtt_reset_state_stall();
 
     /* Try to calibrate inline; this also calls update_bitmap_score() when
        successful. */
@@ -6856,6 +7637,35 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
              "mp_multi_hshake_fail : %u\n",
           mp_multi_ok, mp_multi_fallback, mp_multi_hshake_fail);
 
+  fprintf(f, "mqtt_diff_enabled  : %u\n"
+             "mqtt_diff_obs      : %llu\n"
+             "mqtt_diff_pos      : %llu\n"
+             "mqtt_diff_avg      : %0.06f\n"
+             "mqtt_diff_last     : %0.06f\n"
+             "mqtt_cluster_brokers : %u\n"
+             "mqtt_cluster_unique_sigs : %u\n"
+             "mqtt_cluster_diverged : %u\n"
+             "mqtt_diff_type_div : %llu\n"
+             "mqtt_diff_code_div : %llu\n"
+             "mqtt_diff_payload_div : %llu\n"
+             "mqtt_diff_queue_promo : %llu\n"
+             "mqtt_deep_state_promo : %llu\n"
+             "mqtt_state_stall_resets : %llu\n",
+          mqtt_diff_feedback_enabled,
+          (unsigned long long)mqtt_diff_obs_count,
+          (unsigned long long)mqtt_diff_pos_count,
+          mqtt_diff_signal_avg(),
+          mqtt_last_diff_signal,
+          mqtt_cluster_broker_count,
+          mqtt_cluster_unique_signatures,
+          mqtt_cluster_diverged,
+          (unsigned long long)mqtt_diff_type_divergences,
+          (unsigned long long)mqtt_diff_code_divergences,
+          (unsigned long long)mqtt_diff_payload_divergences,
+          (unsigned long long)mqtt_diff_queue_promotions,
+          (unsigned long long)mqtt_deep_state_promotions,
+          (unsigned long long)mqtt_state_stall_resets);
+
   fclose(f);
 }
 
@@ -6865,14 +7675,15 @@ static void maybe_update_plot_file(double bitmap_cvg, double eps)
 {
 
   static u32 prev_qp, prev_pf, prev_pnf, prev_ce, prev_md, prev_nodes, prev_edges, prev_chat_times;
-  static u64 prev_qc, prev_uc, prev_uh, prev_llm_calls;
+  static u64 prev_qc, prev_uc, prev_uh, prev_llm_calls, prev_mqtt_diff_pos;
 
   if (prev_qp == queued_paths && prev_pf == pending_favored &&
       prev_pnf == pending_not_fuzzed && prev_ce == current_entry &&
       prev_qc == queue_cycle && prev_uc == unique_crashes &&
       prev_uh == unique_hangs && prev_md == max_depth &&
       prev_nodes == agnnodes(ipsm) && prev_edges == agnedges(ipsm) &&
-      prev_chat_times == chat_times && prev_llm_calls == llm_total_calls)
+      prev_chat_times == chat_times && prev_llm_calls == llm_total_calls &&
+      prev_mqtt_diff_pos == mqtt_diff_pos_count)
     return;
 
   prev_qp = queued_paths;
@@ -6887,6 +7698,7 @@ static void maybe_update_plot_file(double bitmap_cvg, double eps)
   prev_edges = agnedges(ipsm);
   prev_chat_times = chat_times;
   prev_llm_calls = llm_total_calls;
+  prev_mqtt_diff_pos = mqtt_diff_pos_count;
 
   /* Compute hypothesis aggregate metrics for plot row */
   double hyp_fitness = 0.0;
@@ -6909,11 +7721,14 @@ static void maybe_update_plot_file(double bitmap_cvg, double eps)
      favored_not_fuzzed, unique_crashes, unique_hangs, max_depth,
      execs_per_sec, n_nodes, n_edges, chat_times,
      llm_calls, llm_prompt_tok, llm_compl_tok, llm_dedup,
-     hyp_fitness, hyp_success, hyp_failure */
+    hyp_fitness, hyp_success, hyp_failure,
+    mqtt_diff_avg, mqtt_diff_last, mqtt_diff_pos,
+    mqtt_type_div, mqtt_code_div, mqtt_payload_div, mqtt_diff_promo, mqtt_deep_promo, mqtt_stall_resets */
 
   fprintf(plot_file,
-          "%llu, %llu, %u, %u, %u, %u, %0.02f%%, %llu, %llu, %u, %0.02f, %d, %d, %d, "
-          "%llu, %llu, %llu, %llu, %0.03f, %u, %u\n",
+      "%llu, %llu, %u, %u, %u, %u, %0.02f%%, %llu, %llu, %u, %0.02f, %d, %d, %d, "
+      "%llu, %llu, %llu, %llu, %0.03f, %u, %u, %0.06f, %0.06f, %llu, "
+      "%llu, %llu, %llu, %llu, %llu, %llu\n",
           get_cur_time() / 1000, queue_cycle - 1, current_entry, queued_paths,
           pending_not_fuzzed, pending_favored, bitmap_cvg, unique_crashes,
           unique_hangs, max_depth, eps, agnnodes(ipsm), agnedges(ipsm), chat_times,
@@ -6921,7 +7736,15 @@ static void maybe_update_plot_file(double bitmap_cvg, double eps)
           (unsigned long long)llm_total_prompt_tokens,
           (unsigned long long)llm_total_completion_tokens,
           (unsigned long long)llm_dedup_hits,
-          hyp_fitness, hyp_success, hyp_failure); /* ignore errors */
+      hyp_fitness, hyp_success, hyp_failure,
+      mqtt_diff_signal_avg(), mqtt_last_diff_signal,
+      (unsigned long long)mqtt_diff_pos_count,
+      (unsigned long long)mqtt_diff_type_divergences,
+      (unsigned long long)mqtt_diff_code_divergences,
+      (unsigned long long)mqtt_diff_payload_divergences,
+      (unsigned long long)mqtt_diff_queue_promotions,
+      (unsigned long long)mqtt_deep_state_promotions,
+      (unsigned long long)mqtt_state_stall_resets); /* ignore errors */
 
   fflush(plot_file);
 }
@@ -7807,6 +8630,19 @@ static void show_stats(void)
 
   SAYF(bV bSTOP "        trim : " cRST "%-37s " bSTG bVR bH20 bH2 bH2 bRB "\n" bLB bH30 bH20 bH2 bH bRB bSTOP cRST RESET_G1, tmp);
 
+  /* MQTT differential effectiveness warning (status bar).
+   * Trigger when we have many diff observations but almost-zero avg signal,
+   * which usually indicates multi-broker configured but no useful divergence. */
+  u8 mqtt_diff_warn = 0;
+  if (mqtt_diff_feedback_enabled && protocol_name &&
+      strcasecmp(protocol_name, "MQTT") == 0 &&
+      getenv("CHATAFL_MQTT_BROKERS") && *getenv("CHATAFL_MQTT_BROKERS") &&
+      mqtt_cluster_broker_count > 1 &&
+      mqtt_diff_obs_count >= mqtt_diff_warn_obs_threshold &&
+      mqtt_diff_signal_avg() <= mqtt_diff_warn_avg_threshold) {
+    mqtt_diff_warn = 1;
+  }
+
   /* Provide some CPU utilization stats. */
 
   if (cpu_core_count)
@@ -7832,26 +8668,29 @@ static void show_stats(void)
     if (cpu_aff >= 0)
     {
 
-      SAYF(SP10 cGRA "[cpu%03u:%s%3u%%" cGRA "]\r" cRST,
+       SAYF(SP10 cGRA "[cpu%03u:%s%3u%%" cGRA "]%s\r" cRST,
            MIN(cpu_aff, 999), cpu_color,
-           MIN(cur_utilization, 999));
+         MIN(cur_utilization, 999),
+         mqtt_diff_warn ? "  [mqtt-diff:obs-high avg~0 -> check brokers]" : "");
     }
     else
     {
 
-      SAYF(SP10 cGRA "   [cpu:%s%3u%%" cGRA "]\r" cRST,
-           cpu_color, MIN(cur_utilization, 999));
+       SAYF(SP10 cGRA "   [cpu:%s%3u%%" cGRA "]%s\r" cRST,
+         cpu_color, MIN(cur_utilization, 999),
+         mqtt_diff_warn ? "  [mqtt-diff:obs-high avg~0 -> check brokers]" : "");
     }
 
 #else
 
-    SAYF(SP10 cGRA "   [cpu:%s%3u%%" cGRA "]\r" cRST,
-         cpu_color, MIN(cur_utilization, 999));
+        SAYF(SP10 cGRA "   [cpu:%s%3u%%" cGRA "]%s\r" cRST,
+          cpu_color, MIN(cur_utilization, 999),
+          mqtt_diff_warn ? "  [mqtt-diff:obs-high avg~0 -> check brokers]" : "");
 
 #endif /* ^HAVE_AFFINITY */
   }
   else
-    SAYF("\r");
+    SAYF("%s\r", mqtt_diff_warn ? "[mqtt-diff:obs-high avg~0 -> check brokers]" : "");
 
   /* Show debugging stats for AFLNet only when AFLNET_DEBUG environment variable is set */
   if (getenv("AFLNET_DEBUG") && (atoi(getenv("AFLNET_DEBUG")) == 1) && state_aware_mode)
@@ -7876,6 +8715,25 @@ static void show_stats(void)
           SAYF("\n");
       }
     }
+  }
+
+  /* P5/P6 field-level differential & deep-path metrics (always shown for MQTT) */
+  if (mqtt_diff_feedback_enabled && protocol_name &&
+      strcasecmp(protocol_name, "MQTT") == 0) {
+    SAYF(cRST "\n" cYEL "[P5-diff] " cRST
+         "type_div:" cLRD "%-4s " cRST
+         "code_div:" cLRD "%-4s " cRST
+         "pay_div:" cLRD "%-4s " cRST
+         "promo:" cLGN "%-4s " cRST
+         cYEL "[P6-deep] " cRST
+         "deep_promo:" cLGN "%-4s " cRST
+         "stall_rst:" cCYA "%-4s" cRST "\n",
+         DI(mqtt_diff_type_divergences),
+         DI(mqtt_diff_code_divergences),
+         DI(mqtt_diff_payload_divergences),
+         DI(mqtt_diff_queue_promotions),
+         DI(mqtt_deep_state_promotions),
+         DI(mqtt_state_stall_resets));
   }
 
   /* Hallelujah! */
@@ -8139,6 +8997,34 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
 
   fault = run_target(argv, exec_tmout);
 
+  /* MQTT-only differential signal ingestion.
+   * Treat cross-broker signature divergence as an auxiliary reward channel
+   * (independent of single-target coverage), then feed it to per-state stats. */
+  if (mqtt_diff_feedback_enabled && protocol_name &&
+      strcasecmp(protocol_name, "MQTT") == 0) {
+    double diff_signal = mqtt_last_diff_signal;
+
+    /* Defensive recompute from current cluster metadata if available */
+    if (mqtt_cluster_broker_count > 1 && mqtt_cluster_unique_signatures > 1) {
+      double recomputed = (double)(mqtt_cluster_unique_signatures - 1) /
+                          (double)(mqtt_cluster_broker_count - 1);
+      if (recomputed > diff_signal)
+        diff_signal = recomputed;
+    }
+
+    if (diff_signal < 0.0) diff_signal = 0.0;
+    if (diff_signal > 1.0) diff_signal = 1.0;
+    mqtt_last_diff_signal = diff_signal;
+
+    /* Runtime telemetry for validation in fuzzer_stats / plot_data. */
+    mqtt_diff_obs_count++;
+    mqtt_diff_signal_sum += diff_signal;
+    if (diff_signal > 0.0)
+      mqtt_diff_pos_count++;
+
+    mqtt_record_diff_signal_for_target_state(diff_signal);
+  }
+
   // Update fuzz count, no matter whether the generated test is interesting or not
   if (state_aware_mode)
     update_fuzzs();
@@ -8320,6 +9206,72 @@ static u32 calculate_score(struct queue_entry *q)
     break;
   default:
     perf_score *= 5;
+  }
+
+  /* ════════════════════════════════════════════════════════════════════
+   * P5: MQTT differential divergence bonus.
+   *
+   * Inputs that trigger cross-broker behavioral divergence receive an
+   * energy multiplier, directing more fuzzing effort toward divergence-
+   * triggering message sequences.  This is the AFL-native equivalent
+   * of MBFuzzer's queue-prioritization-by-differential-novelty.
+   *
+   * Rationale (ICSE 2025, MBFuzzer §4.3): specification ambiguity
+   * typically manifests as field-level response divergence; boosting
+   * energy for such inputs amplifies divergence-driven exploration.
+   *
+   * Severity    Multiplier   Justification
+   * ──────────  ──────────   ──────────────────────────────────────
+   * diff ≥ 70   ×4          Type/missing divergence → high-value bug
+   * diff ≥ 40   ×3          Return-code divergence → semantic bug
+   * diff ≥ 10   ×2          Payload divergence → behavioral diff
+   * diff == 0   ×1          No divergence → standard energy
+   *
+   * Gated: MQTT protocol only. Non-MQTT queue entries have diff_score=0.
+   * ════════════════════════════════════════════════════════════════════ */
+  if (mqtt_diff_feedback_enabled && q->mqtt_diff_score >= 70) {
+    perf_score *= 4;
+    mqtt_deep_state_promotions++;  /* reuse counter for observability */
+  } else if (mqtt_diff_feedback_enabled && q->mqtt_diff_score >= 40) {
+    perf_score *= 3;
+  } else if (mqtt_diff_feedback_enabled && q->mqtt_diff_score >= 10) {
+    perf_score *= 2;
+  }
+
+  /* ════════════════════════════════════════════════════════════════════
+   * P6: MQTT deep-path state promotion.
+   *
+   * When a queue entry reaches a deep state (unique_state_count ≥ 5)
+   * AND it has been generated at a state that is currently stalled
+   * (consecutive zero-discovery execs ≥ MQTT_STALL_THRESHOLD), give
+   * extra energy to push past the plateau.
+   *
+   * Rationale: AFLNet's state scoring assigns scores based on
+   * paths_discovered/selected_times, which asymptotes to zero for
+   * well-explored states.  But deep protocol states (e.g., retained
+   * message handling, session resume, will message delivery) need
+   * sustained energy even when short-term discovery is flat.
+   *
+   * Gated: MQTT protocol only.
+   * ════════════════════════════════════════════════════════════════════ */
+  if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0 &&
+      mqtt_diff_feedback_enabled && state_aware_mode) {
+    /* Deep-state bonus: unique_state_count reflects how many distinct
+     * protocol states this input traverses. Higher = deeper. */
+    if (q->unique_state_count >= 8)
+      perf_score *= 3;
+    else if (q->unique_state_count >= 5)
+      perf_score *= 2;
+
+    /* Stall-aware boost: if the generating state is stalled,
+     * boost this input so the fuzzer keeps trying to break through. */
+    if (state_ids_count > 0 && mqtt_state_stall_counter) {
+      u32 gen_idx = get_state_index(q->generating_state_id);
+      if (gen_idx < mqtt_state_stall_cap &&
+          mqtt_state_stall_counter[gen_idx] >= MQTT_STALL_THRESHOLD / 2) {
+        perf_score *= 2;
+      }
+    }
   }
 
   /* Make sure that we don't go over limit. */
@@ -11299,9 +12251,15 @@ havoc_stage:
     if (common_fuzz_stuff(argv, out_buf, temp_len))
       goto abandon_entry;
 
-    /* P3: Update schedulers with coverage-based reward */
+    /* P3/P4: Update schedulers with blended reward.
+     *   reward = coverage_gain + λ * differential_signal
+     * where λ=0.6 (MQTT-only). This augments single-target coverage with
+     * cross-implementation inconsistency feedback. */
     if (mqtt_scheduler_enabled) {
       double reward = (queued_paths != mqtt_qp_snap) ? 1.0 : 0.0;
+      if (mqtt_diff_feedback_enabled)
+        reward += 0.6 * mqtt_last_diff_signal;
+      if (reward > 1.6) reward = 1.6;
       mqtt_bandit_update(&mqtt_bandit, mqtt_last_arm, reward);
       if (mqtt_last_pkt_type > 0)
         mqtt_ql_update(&mqtt_ql, selected_state_index, mqtt_last_pkt_type, reward);
@@ -12179,7 +13137,8 @@ EXP_ST void setup_dirs_fds(void)
                      "pending_total, pending_favs, map_size, unique_crashes, "
                      "unique_hangs, max_depth, execs_per_sec, n_nodes, n_edges, "
                      "chat_times, llm_calls, llm_prompt_tok, llm_compl_tok, "
-                     "llm_dedup, hyp_fitness, hyp_success, hyp_failure\n");
+                     "llm_dedup, hyp_fitness, hyp_success, hyp_failure, "
+                     "mqtt_diff_avg, mqtt_diff_last, mqtt_diff_pos\n");
   /* ignore errors */
 }
 
@@ -13476,6 +14435,28 @@ int main(int argc, char **argv)
       mqtt_scheduler_enabled = 1;
       OKF("MQTT mode: Q-Learning + UCB1 scheduler ENABLED "
           "(set CHATAFL_MQTT_NO_SCHEDULER=1 to disable)");
+    }
+
+    /* P4: MQTT differential feedback loop.
+     * Uses CHATAFL_MQTT_BROKERS probe output as auxiliary reward signal
+     * for state scoring and packet/arm scheduler updates.
+     * Default: ON for MQTT.
+     *   CHATAFL_MQTT_NO_DIFF_FEEDBACK=1   -> disable
+     *   CHATAFL_MQTT_DIFF_PROBE_PERIOD=N  -> probe every N execs (default 32) */
+    if (!getenv("CHATAFL_MQTT_NO_DIFF_FEEDBACK")) {
+      mqtt_diff_feedback_enabled = 1;
+      mqtt_diff_probe_period = 32;
+      {
+        const char *pp = getenv("CHATAFL_MQTT_DIFF_PROBE_PERIOD");
+        if (pp && *pp) {
+          u32 v = (u32)atoi(pp);
+          if (v > 0 && v <= 10000)
+            mqtt_diff_probe_period = v;
+        }
+      }
+      OKF("MQTT mode: Differential feedback ENABLED "
+          "(period=%u, set CHATAFL_MQTT_NO_DIFF_FEEDBACK=1 to disable)",
+          mqtt_diff_probe_period);
     }
   }
 
