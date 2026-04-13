@@ -31,7 +31,7 @@ LOG_TAG="${FUZZER^^}(${DOCIMAGE})"
 
 is_mqtt_target() {
   case "$1" in
-    mosquitto|mosquitto-v2.0.18) return 0 ;;
+    mosquitto|mosquitto-v2.0.18|mosquitto-v2.1.2) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -63,6 +63,7 @@ get_subject_dir() {
         lighttpd1)     echo "${base}/HTTP/Lighttpd1" ;;
         mosquitto)     echo "${base}/MQTT/Mosquitto" ;;
       mosquitto-v2.0.18) echo "${base}/MQTT/Mosquitto-v2.0.18" ;;
+      mosquitto-v2.1.2) echo "${base}/MQTT/Mosquitto-v2.1.2" ;;
         *) echo "" ;;
     esac
 }

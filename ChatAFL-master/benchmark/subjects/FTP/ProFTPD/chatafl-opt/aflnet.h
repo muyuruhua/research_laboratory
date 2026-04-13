@@ -30,6 +30,9 @@ typedef struct {
   u32 selected_seed_index;    /* the recently selected seed index */
   void **seeds;               /* keeps all seeds reaching this state -- can be casted to struct queue_entry* */
   u32 seeds_count;            /* total number of seeds, it must be equal the size of the seeds array */
+  /* Fix-19: Acceptability enhancement fields */
+  u8  error_hint;             /* 0=unknown, 1=likely-error (structural), 2=confirmed-productive (behavioral override) */
+  double productivity;        /* paths_discovered / (selected_times + 1.0), cached */
 } state_info_t;
 
 enum {
@@ -64,6 +67,7 @@ unsigned int* extract_response_codes_tls(unsigned char* buf, unsigned int buf_si
 unsigned int* extract_response_codes_dicom(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
 unsigned int* extract_response_codes_dns(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
 unsigned int* extract_response_codes_ftp(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
+unsigned int* extract_response_codes_mqtt(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
 unsigned int* extract_response_codes_rtsp(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
 unsigned int* extract_response_codes_dtls12(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
 unsigned int* extract_response_codes_sip(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
@@ -77,6 +81,7 @@ region_t* extract_requests_tls(unsigned char* buf, unsigned int buf_size, unsign
 region_t* extract_requests_dicom(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
 region_t* extract_requests_dns(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
 region_t* extract_requests_ftp(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
+region_t* extract_requests_mqtt(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
 region_t* extract_requests_rtsp(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
 region_t* extract_requests_dtls12(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
 region_t* extract_requests_sip(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
@@ -129,6 +134,10 @@ int parse_net_config(u8* net_config, u8* protocol, u8** ip_address, u32* port);
 
 /* Convert state sequence to string */
 u8* state_sequence_to_string(unsigned int *stateSequence, unsigned int stateCount);
+
+/* Fix-19: Protocol-aware error classification for state acceptability.
+ * Returns 0=unknown, 1=likely-error (4xx/5xx for text protocols). */
+u8 classify_state_error_hint(unsigned int state_id, const char *protocol);
 
 /* Print the hexdump of a segment of a buffer preceded by a messsage */
 void hexdump(unsigned char *msg, unsigned char * buf, int start, int end);

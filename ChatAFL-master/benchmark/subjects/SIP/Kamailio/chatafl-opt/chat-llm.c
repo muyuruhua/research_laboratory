@@ -45,11 +45,27 @@ static size_t chat_with_llm_helper(void *contents, size_t size, size_t nmemb, vo
 /* forward declaration for validator used in llm_handle_plateau */
 static int is_garbage_response(const char *response, size_t len);
 
+/* --- curl global lifecycle (call once from main thread) --- */
+void chat_llm_global_init(void)  { curl_global_init(CURL_GLOBAL_DEFAULT); }
+void chat_llm_global_cleanup(void) { curl_global_cleanup(); }
+
+/* Per-call token usage — populated from the API "usage" object.
+ * __thread: each enrichment worker thread gets its own copy so that
+ * concurrent enrich_sequence() calls don't clobber each other.
+ * In the forked plateau-handler child, TLS is inherited and works
+ * normally (single-threaded child). */
+__thread unsigned long long llm_last_prompt_tokens     = 0;
+__thread unsigned long long llm_last_completion_tokens = 0;
+
 char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
 {
     CURL *curl;
     CURLcode res = CURLE_OK;
     char *answer = NULL;
+
+    /* Reset per-call token counters so a failed call yields 0. */
+    llm_last_prompt_tokens = 0;
+    llm_last_completion_tokens = 0;
     char *url = NULL;
     if (strcmp(model, "gpt-4o") == 0)
     {
@@ -60,8 +76,15 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
         url = "https://lingyunapi.com/v1/chat/completions";
     }
     const char *api_key = getenv("KEY");
-    if (!api_key) {
-        fprintf(stderr, "KEY environment variable not set\n");
+    if (!api_key || api_key[0] == '\0') {
+        static int key_warning_shown = 0;
+        if (!key_warning_shown) {
+            fprintf(stderr, "\n[LLM] ⚠ KEY environment variable is %s!\n"
+                            "[LLM]   All LLM features (grammar, enrichment, plateau) are DISABLED.\n"
+                            "[LLM]   Fix: export KEY=\"sk-...\" before launching.\n\n",
+                    !api_key ? "not set" : "empty");
+            key_warning_shown = 1;
+        }
         return NULL;
     }
     char auth_header[256];
@@ -86,8 +109,6 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
         fprintf(stderr, "First 500 chars of data:\n%.500s\n", data);
         fprintf(stderr, "========================\n\n");
     }
-    
-    curl_global_init(CURL_GLOBAL_DEFAULT);
     do
     {
         struct MemoryStruct chunk;
@@ -135,8 +156,27 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
                     else
                     {
                         json_object *jobj4 = json_object_object_get(first_choice, "message");
-                        json_object *jobj5 = json_object_object_get(jobj4, "content");
-                        data = json_object_get_string(jobj5);
+                        json_object *jobj5 = jobj4 ? json_object_object_get(jobj4, "content") : NULL;
+                        data = jobj5 ? json_object_get_string(jobj5) : NULL;
+                    }
+
+                    /* ---- Extract token usage FIRST (before any early-exit) ---- */
+                    /* Even if content extraction fails below, the API has
+                     * already billed for this request.  Record usage now. */
+                    json_object *jusage = NULL;
+                    if (json_object_object_get_ex(jobj, "usage", &jusage)) {
+                        json_object *jpt = NULL, *jct = NULL;
+                        if (json_object_object_get_ex(jusage, "prompt_tokens", &jpt))
+                            llm_last_prompt_tokens = (unsigned long long)json_object_get_int64(jpt);
+                        if (json_object_object_get_ex(jusage, "completion_tokens", &jct))
+                            llm_last_completion_tokens = (unsigned long long)json_object_get_int64(jct);
+                    }
+
+                    if (data == NULL) {
+                        printf("Error: could not extract LLM answer. Response: %s\n", chunk.memory);
+                        json_object_put(jobj);
+                        sleep(2);
+                        continue;
                     }
                     if (data[0] == '\n')
                         data++;
@@ -145,6 +185,19 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
                 else
                 {
                     printf("Error response is: %s\n", chunk.memory);
+                    /* Detect authentication errors and abort immediately
+                     * instead of burning all retries on a bad key. */
+                    if (chunk.memory &&
+                        (strstr(chunk.memory, "无效的令牌") ||
+                         strstr(chunk.memory, "invalid_api_key") ||
+                         strstr(chunk.memory, "Unauthorized") ||
+                         strstr(chunk.memory, "401"))) {
+                        fprintf(stderr, "[LLM] Auth error detected — aborting retries. "
+                                        "Check your KEY env variable.\n");
+                        free(chunk.memory);
+                        if (data) free(data);
+                        return NULL;
+                    }
                     sleep(2); // Sleep for a small amount of time to ensure that the service can recover
                 }
                 json_object_put(jobj);
@@ -166,7 +219,6 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
         free(data);
     }
 
-    curl_global_cleanup();
     return answer;
 }
 
@@ -227,15 +279,138 @@ char *construct_prompt_stall(char *protocol_name, char *examples, char *history)
 }
 
 /*
+ * construct_prompt_stall_original:
+ * Exact replica of ChatAFL baseline's construct_prompt_stall template.
+ * Used ONLY when CHATAFL_NO_STATE_PROMPT ablation is active so the
+ * ablation precisely measures the contribution of Opt's improved
+ * prompt engineering (richer template + state-context + actions[]).
+ *
+ * Differences from Opt's construct_prompt_stall:
+ *   - Template text: ChatAFL's original wording ("the communication
+ *     history between the client and the server is as follows...")
+ *   - System prompt: "You are a helpful assistant." (not "protocol
+ *     fuzzing assistant that returns only valid JSON")
+ *   - No structured task / strategy / response-format sections
+ *
+ * We still use json-c for JSON escaping (rather than ChatAFL's raw
+ * asprintf) because that is a correctness fix (G1), not an
+ * algorithmic contribution.
+ */
+char *construct_prompt_stall_original(char *protocol_name, char *examples,
+                                      char *history)
+{
+    char *template =
+        "In the %s protocol, the communication history between the "
+        "%s client and the %s server is as follows."
+        "The next proper client request that can affect the server's "
+        "state are:\n\n"
+        "Desired format of real client requests:\n"
+        "%s"
+        "Communication History:\n"
+        "\"\"\"\n%s\"\"\"";
+
+    char *prompt = NULL;
+    asprintf(&prompt, template,
+             protocol_name, protocol_name, protocol_name,
+             examples ? examples : "",
+             history  ? history  : "");
+
+    /* Build JSON messages array with json-c (safe escaping). */
+    struct json_object *messages_array = json_object_new_array();
+
+    struct json_object *system_msg = json_object_new_object();
+    json_object_object_add(system_msg, "role",
+                           json_object_new_string("system"));
+    json_object_object_add(system_msg, "content",
+                           json_object_new_string("You are a helpful assistant."));
+    json_object_array_add(messages_array, system_msg);
+
+    struct json_object *user_msg = json_object_new_object();
+    json_object_object_add(user_msg, "role",
+                           json_object_new_string("user"));
+    json_object_object_add(user_msg, "content",
+                           json_object_new_string(prompt));
+    json_object_array_add(messages_array, user_msg);
+
+    const char *json_str = json_object_to_json_string(messages_array);
+    char *final_prompt = strdup(json_str);
+
+    json_object_put(messages_array);
+    free(prompt);
+
+    return final_prompt;
+}
+
+/*
  * llm_handle_plateau: state-aware plateau handler.
  * - Builds a rich prompt embedding state coverage stats (state_ctx)
  * - Asks LLM to return either suggested_request OR actions[]
  * - Passes response back as raw JSON for parent-side validation
  * state_ctx: JSON string like {"nodes":N,"edges":M,"growth_rate":X,...}, may be NULL
  */
+
+/* Fix-23: Per-protocol format constraints injected into the plateau prompt.
+ * Without this, LLM generates <<VALUE>> placeholders or wrong wire format
+ * for SIP (kamailio) and DAAP (forked-daapd), producing protocol-rejected
+ * suggestions that waste the entire plateau LLM call.
+ *
+ * Each entry: { protocol_name, format_constraint_paragraph }
+ * The constraint is injected between the strategy description and the
+ * "Decision Guide" so it has high attention weight. */
+typedef struct { const char *name; const char *constraint; } ProtocolFormatConstraint;
+static const ProtocolFormatConstraint PLATEAU_FORMAT_CONSTRAINTS[] = {
+    {"SIP",
+     "**SIP FORMAT CONSTRAINT (MANDATORY):**\n"
+     "ALL suggested_request values MUST be complete SIP messages with REAL values.\n"
+     "Mandatory headers: Via, From, To, CSeq, Call-ID, Max-Forwards, Content-Length.\n"
+     "Use concrete values like: Via: SIP/2.0/UDP 127.0.0.1:5060;branch=z9hG4bKabc123\n"
+     "NEVER use <<VALUE>>, <<placeholder>>, or any placeholder syntax.\n"
+     "Example: \"REGISTER sip:127.0.0.1 SIP/2.0\\r\\nVia: SIP/2.0/UDP 127.0.0.1:5060;branch=z9hG4bK123\\r\\n"
+     "From: <sip:alice@127.0.0.1>;tag=abc\\r\\nTo: <sip:alice@127.0.0.1>\\r\\n"
+     "Call-ID: xyz@127.0.0.1\\r\\nCSeq: 1 REGISTER\\r\\nMax-Forwards: 70\\r\\nContent-Length: 0\\r\\n\\r\\n\"\n\n"},
+    {"DAAP",
+     "**DAAP FORMAT CONSTRAINT (MANDATORY):**\n"
+     "ALL suggested_request values MUST be complete HTTP/1.1 GET requests with REAL integer values.\n"
+     "session-id is a positive integer (use 1831879645 as default if unknown).\n"
+     "revision-number starts at 1 and increments. pairing-guid is 0x0000000000000001.\n"
+     "NEVER use <<session-id>>, <<VALUE>>, or any placeholder syntax.\n"
+     "Example: \"GET /databases?session-id=1831879645&revision-number=1 HTTP/1.1\\r\\n"
+     "Host: localhost:3689\\r\\nClient-DAAP-Version: 3.12\\r\\nAccept: */*\\r\\n\\r\\n\"\n\n"},
+    {"FTP",
+     "**FTP FORMAT CONSTRAINT:**\n"
+     "suggested_request must be a single FTP command with REAL values (no <<VALUE>> placeholders).\n"
+     "The command must end with \\r\\n. Use concrete paths like /pub, /tmp, filenames like test.txt.\n"
+     "Example: \"STOR test.txt\\r\\n\" or \"CWD /pub\\r\\n\" or \"SITE CHMOD 755 /pub\\r\\n\"\n\n"},
+    {"SMTP",
+     "**SMTP FORMAT CONSTRAINT:**\n"
+     "suggested_request must be a complete SMTP command sequence with REAL email addresses.\n"
+     "NEVER use <<USERNAME>>, <<ADDRESS>>, or <<VALUE>> placeholders.\n"
+     "Use concrete values: domains like test.com, addresses like user@test.com.\n"
+     "Example: \"EHLO fuzzer.test\\r\\nMAIL FROM:<fuzz@test.com>\\r\\nRCPT TO:<victim@localhost>\\r\\n\"\n\n"},
+    {NULL, NULL}
+};
+
 char *llm_handle_plateau(const char *protocol_name, const char *examples,
                          const char *history, const char *state_ctx) {
     if (!protocol_name) return NULL;
+
+    /* Look up per-protocol format constraint for plateau prompt (Fix-23) */
+    const char *proto_constraint = "";
+    for (int ci = 0; PLATEAU_FORMAT_CONSTRAINTS[ci].name != NULL; ci++) {
+        if (strcasecmp(protocol_name, PLATEAU_FORMAT_CONSTRAINTS[ci].name) == 0) {
+            proto_constraint = PLATEAU_FORMAT_CONSTRAINTS[ci].constraint;
+            break;
+        }
+    }
+
+    const char *mqtt_state_hint = "";
+    if (strcasecmp(protocol_name, "MQTT") == 0) {
+        mqtt_state_hint =
+            "**MQTT-SPECIFIC EXPLORATION HINTS:**\n"
+            "- Prioritize reconnect edges (CONNECT after DISCONNECT), duplicate CONNECT, and missing PacketId cases.\n"
+            "- Use QoS 1/2 handshake chains, wildcard topics, retain toggles, and will/auth boundaries to force response diversity.\n"
+            "- If the same request reaches a stable state, bias toward a nearby MQTT-only variant that changes QoS, topic scope, or session flags.\n\n";
+    }
 
     /* Build state-aware prompt text */
     char *state_section = NULL;
@@ -264,9 +439,12 @@ char *llm_handle_plateau(const char *protocol_name, const char *examples,
         "  - paths_discovered: NEW paths found when fuzzing this state (low = stuck)\n"
         "  - selected_times: how many times fuzzer targeted this state\n"
         "  - fuzzs: total fuzzing attempts on this state\n"
-        "  - seed_ids: exact seed indices reachable from this state (use in prioritize_seeds)\n\n"
+        "  - seed_ids: exact seed indices reachable from this state (use in prioritize_seeds)\n"
+        "  - is_error: true if state represents a server error response (4xx/5xx) — avoid targeting these\n"
+        "  - productivity: paths_discovered / selected_times ratio (low = stuck, high = productive)\n\n"
         "**Communication History (most recent interactions):**\n\"\"\"%s\"\"\"\n\n"
         "**Example Request Formats:**\n%s\n\n"
+        "%s"  /* Fix-23: per-protocol format constraint injected here */
         "**Your Task:** Choose ONE strategy and return ONLY valid JSON:\n\n"
         "Strategy A - Send a new specific request:\n"
         "  {\"analysis\":\"...\", \"suggested_request\":\"EXACT_CMD\\r\\n\"}\n\n"
@@ -282,14 +460,19 @@ char *llm_handle_plateau(const char *protocol_name, const char *examples,
         "**Decision Guide:**\n"
         "- growth_rate=0 AND states[0].paths_discovered=0: use set_target_state to switch to a DIFFERENT state\n"
         "- One state has high selected_times but low paths_discovered: use set_target_state + prioritize_seeds for that state\n"
+        "- States with is_error=true AND productivity<0.01: SKIP these — they are error dead-ends (4xx/5xx)\n"
         "- States with seeds_count=0: cannot be targeted, skip them\n"
+        "- Prefer states with is_error=false AND highest productivity — they are most likely to yield new coverage\n"
         "- Use the EXACT state id and seed_ids numbers from the states[] data — do NOT invent IDs\n"
         "- Strategy A (suggested_request) is best when history shows unrecognized commands\n\n"
+        "%s"
         "Respond with ONLY valid JSON. No markdown, no code blocks, no explanation outside JSON.",
         protocol_name,
         state_section ? state_section : "",
         history ? history : "",
-        examples ? examples : "");
+        examples ? examples : "",
+        proto_constraint,    /* Fix-23: inject protocol-specific format constraint */
+        mqtt_state_hint);
     free(state_section);
     if (!raw_prompt) return NULL;
 
@@ -349,10 +532,12 @@ char *llm_handle_plateau(const char *protocol_name, const char *examples,
 /* Lookup table of per-protocol few-shot examples for grammar prompts.
  * Each entry shows ONE representative message of that protocol using the
  * exact <<VALUE>> template format so the LLM knows the expected output style.
- * Format convention (same as rest of code):
- *   \\n       -> literal \n seen by LLM
- *   \\\"      -> literal " seen by LLM
- *   \\\\r\\\\n -> literal \r\n seen by LLM
+ *
+ * These strings are passed to json_object_new_string() which auto-escapes.
+ * Use NATURAL C string escaping:
+ *   \n       -> real newline  (json-c emits \n in JSON -> API sees newline)
+ *   "        -> quote char    (json-c emits \" in JSON -> API sees ")
+ *   \\r\\n   -> 4 chars \r\n (json-c emits \\r\\n  -> API sees \r\n text)
  */
 typedef struct {
     const char *name;
@@ -364,43 +549,48 @@ typedef struct {
 
 static const ProtocolExampleEntry PROTOCOL_EXAMPLE_TABLE[] = {
     {"FTP",  "USER",
-     "For the FTP protocol, the USER client request template is:\\n"
-     "USER: [\\\"USER <<VALUE>>\\\\r\\\\n\\\"]"},
+     "For the FTP protocol, the USER client request template is:\n"
+     "USER: [\"USER <<VALUE>>\\r\\n\"]"},
     {"SMTP", "EHLO",
-     "For the SMTP protocol, the EHLO client request template is:\\n"
-     "EHLO: [\\\"EHLO <<VALUE>>\\\\r\\\\n\\\"]"},
+     "For the SMTP protocol, the EHLO client request template is:\n"
+     "EHLO: [\"EHLO <<VALUE>>\\r\\n\"]"},
     {"RTSP", "DESCRIBE",
-     "For the RTSP protocol, the DESCRIBE client request template is:\\n"
-     "DESCRIBE: [\\\"DESCRIBE <<VALUE>>\\\\r\\\\n\\\","
-     "\\\"CSeq: <<VALUE>>\\\\r\\\\n\\\","
-     "\\\"User-Agent: <<VALUE>>\\\\r\\\\n\\\","
-     "\\\"Accept: <<VALUE>>\\\\r\\\\n\\\","
-     "\\\"\\\\r\\\\n\\\"]"},
+     "For the RTSP protocol, the DESCRIBE client request template is:\n"
+     "DESCRIBE: [\"DESCRIBE <<VALUE>>\\r\\n\","
+     "\"CSeq: <<VALUE>>\\r\\n\","
+     "\"User-Agent: <<VALUE>>\\r\\n\","
+     "\"Accept: <<VALUE>>\\r\\n\","
+     "\"\\r\\n\"]"},
     {"HTTP", "GET",
-     "For the HTTP protocol, the GET client request template is:\\n"
-     "GET: [\\\"GET <<VALUE>> HTTP/1.1\\\\r\\\\n\\\","
-     "\\\"Host: <<VALUE>>\\\\r\\\\n\\\","
-     "\\\"\\\\r\\\\n\\\"]"},
+     "For the HTTP protocol, the GET client request template is:\n"
+     "GET: [\"GET <<VALUE>> HTTP/1.1\\r\\n\","
+     "\"Host: <<VALUE>>\\r\\n\","
+     "\"\\r\\n\"]"},
     {"SIP",  "REGISTER",
-     "For the SIP protocol, the REGISTER client request template is:\\n"
-     "REGISTER: [\\\"REGISTER sip:<<VALUE>> SIP/2.0\\\\r\\\\n\\\","
-     "\\\"Via: SIP/2.0/UDP <<VALUE>>\\\\r\\\\n\\\","
-     "\\\"From: <sip:<<VALUE>>>\\\\r\\\\n\\\","
-     "\\\"To: <sip:<<VALUE>>>\\\\r\\\\n\\\","
-     "\\\"CSeq: <<VALUE>> REGISTER\\\\r\\\\n\\\","
-     "\\\"\\\\r\\\\n\\\"]"},
+     "For the SIP protocol, the REGISTER client request template is:\n"
+     "REGISTER: [\"REGISTER sip:<<VALUE>> SIP/2.0\\r\\n\","
+     "\"Via: SIP/2.0/UDP <<VALUE>>\\r\\n\","
+     "\"From: <sip:<<VALUE>>>\\r\\n\","
+     "\"To: <sip:<<VALUE>>>\\r\\n\","
+     "\"CSeq: <<VALUE>> REGISTER\\r\\n\","
+     "\"\\r\\n\"]"},
     {"DAAP", "login",
-     "For the DAAP protocol, the login client request template is:\\n"
-     "login: [\\\"GET /login?pairing-guid=<<VALUE>> HTTP/1.1\\\\r\\\\n\\\","
-     "\\\"Host: <<VALUE>>\\\\r\\\\n\\\","
-     "\\\"Client-DAAP-Version: <<VALUE>>\\\\r\\\\n\\\","
-     "\\\"\\\\r\\\\n\\\"]"},
+     "For the DAAP protocol, the login client request template is:\n"
+     "login: [\"GET /login?pairing-guid=<<VALUE>> HTTP/1.1\\r\\n\","
+     "\"Host: <<VALUE>>\\r\\n\","
+     "\"Client-DAAP-Version: <<VALUE>>\\r\\n\","
+     "\"\\r\\n\"]"},
     {"MQTT", "CONNECT",
-     "For the MQTT protocol, the CONNECT packet template is:\\n"
-     "CONNECT: [\\\"\\\\x10<<VALUE>>\\\\x00\\\\x04MQTT\\\\x04<<VALUE>>\\\\x00\\\\x3c\\\\x00<<VALUE>>\\\"]"},
+     "For the MQTT protocol, messages are described in text form (one per line).\n"
+     "CONNECT: [\"CONNECT <<VALUE>>\\r\\n\","
+     "\"ClientId: <<VALUE>>\\r\\n\","
+     "\"CleanSession: <<VALUE>>\\r\\n\","
+        "\"KeepAlive: <<VALUE>>\\r\\n\"]\n"
+        "Prefer MQTT state-edge sequences such as CONNECT -> SUBSCRIBE -> PUBLISH -> UNSUBSCRIBE -> DISCONNECT,"
+        " and include QoS 0/1/2, reconnect, will, auth, wildcard-topic, and duplicate-CONNECT variations."},
     {"DNS",  "QUERY",
-     "For the DNS protocol, the QUERY request template is:\\n"
-     "QUERY: [\\\"<<VALUE>>\\\\x01\\\\x00\\\\x00\\\\x01\\\\x00\\\\x00\\\\x00\\\\x00\\\\x00\\\\x00<<VALUE>>\\\"]"},
+     "For the DNS protocol, the QUERY request template is:\n"
+     "QUERY: [\"<<VALUE>>\\x01\\x00\\x00\\x01\\x00\\x00\\x00\\x00\\x00\\x00<<VALUE>>\"]"},
     {NULL, NULL, NULL}
 };
 
@@ -426,7 +616,7 @@ char *construct_prompt_for_templates(char *protocol_name, char **final_msg)
 
     char *msg = NULL;
     asprintf(&msg,
-             "%s\\n"
+             "%s\n"
              "Following the same format above, for the %s protocol, "
              "list ALL client request message templates (not just %s):",
              anchor_example, protocol_name, anchor_msg_type);
@@ -669,7 +859,7 @@ char *extract_protocol_commands_from_response(char *llm_response)
 
     size_t resp_len = strlen(llm_response);
     size_t capacity = resp_len + 1;
-    char *extracted = ck_alloc(capacity);
+    char *extracted = calloc(capacity, 1);
     size_t out_pos = 0;
     
     // Look for code blocks: ```...``` or just protocol commands
@@ -728,6 +918,10 @@ char *extract_protocol_commands_from_response(char *llm_response)
                         "SUBSCRIBE","NOTIFY","UPDATE","REFER","MESSAGE","PUBLISH",
                         /* HTTP */
                         "GET","POST","PUT","DELETE","HEAD","CONNECT","TRACE","PATCH",
+                        /* MQTT (Fix-13: packet type names for binary protocol) */
+                        "CONNECT","CONNACK","PUBLISH","PUBACK","PUBREC","PUBREL",
+                        "PUBCOMP","SUBSCRIBE","SUBACK","UNSUBSCRIBE","UNSUBACK",
+                        "PINGREQ","PINGRESP","DISCONNECT",
                         NULL
                     };
                     for (int i = 0; proto_commands[i] != NULL; i++) {
@@ -750,7 +944,7 @@ char *extract_protocol_commands_from_response(char *llm_response)
                         // Ensure we have space
                         if (out_pos + line_len + 2 >= capacity) {
                             capacity = (out_pos + line_len + 100) * 2;
-                            extracted = ck_realloc(extracted, capacity);
+                            extracted = realloc(extracted, capacity);
                         }
                         
                         // Copy the line byte-by-byte, filtering control chars and comments
@@ -843,7 +1037,7 @@ char *extract_protocol_commands_from_response(char *llm_response)
                         
                         if (out_pos + line_len + 2 >= capacity) {
                             capacity = (out_pos + line_len + 100) * 2;
-                            extracted = ck_realloc(extracted, capacity);
+                            extracted = realloc(extracted, capacity);
                         }
                         
                         // Copy byte-by-byte with control character filtering
@@ -888,7 +1082,7 @@ char *extract_protocol_commands_from_response(char *llm_response)
     
     // Finalize the result
     if (out_pos == 0) {
-        ck_free(extracted);
+        free(extracted);
         return NULL;
     }
     
@@ -902,7 +1096,7 @@ char *format_request_message(char *message)
     int message_len = strlen(message);
     int max_len = message_len;
     int res_len = 0;
-    char *res = ck_alloc(message_len * sizeof(char));
+    char *res = calloc(message_len, sizeof(char));
     for (int i = 0; i < message_len; i++)
     {
         // If an \n is not padded with an \r before, we add it
@@ -910,7 +1104,7 @@ char *format_request_message(char *message)
         {
             if (res_len == max_len)
             {
-                res = ck_realloc(res, max_len + 10);
+                res = realloc(res, max_len + 10);
                 max_len += 10;
             }
             res[res_len++] = '\r';
@@ -918,7 +1112,7 @@ char *format_request_message(char *message)
 
         if (res_len == max_len)
         {
-            res = ck_realloc(res, max_len + 10);
+            res = realloc(res, max_len + 10);
             max_len += 10;
         }
         res[res_len++] = message[i];
@@ -929,13 +1123,13 @@ char *format_request_message(char *message)
     {
         if (res_len == max_len)
         {
-            res = ck_realloc(res, max_len + 10);
+            res = realloc(res, max_len + 10);
             max_len += 10;
         }
         res[res_len++] = '\r';
         if (res_len == max_len)
         {
-            res = ck_realloc(res, max_len + 10);
+            res = realloc(res, max_len + 10);
             max_len += 10;
         }
         res[res_len++] = '\n';
@@ -943,7 +1137,7 @@ char *format_request_message(char *message)
 
     if (res_len == max_len)
     {
-        res = ck_realloc(res, max_len + 1);
+        res = realloc(res, max_len + 1);
         max_len++;
     }
     res[res_len++] = '\0';
@@ -1545,18 +1739,18 @@ khash_t(strSet) * duplicate_hash(khash_t(strSet) * set)
 //         return newCombinations;
 //     }
 // }
-void make_combination(khash_t(strSet)* sequence, char** data , message_set_list* res,khiter_t st, khiter_t end, int index, int size);
+void make_combination(khash_t(strSet)* sequence, const char** data , message_set_list* res,khiter_t st, khiter_t end, int index, int size);
 
 message_set_list message_combinations(khash_t(strSet)* sequence, int size)
 {
     message_set_list res;
     kv_init(res);
-    char* data[size];
+    const char* data[size];
     make_combination(sequence,data, &res, kh_begin(sequence), kh_end(sequence), 0, size);
     return res;
 }
 
-void make_combination(khash_t(strSet)* sequence, char** data , message_set_list* res,khiter_t st, khiter_t end,
+void make_combination(khash_t(strSet)* sequence, const char** data , message_set_list* res,khiter_t st, khiter_t end,
                      int index, int size)
 {
 
@@ -1585,31 +1779,365 @@ int min(int a, int b) {
     return a < b ? a : b;
 }
 
+/* ============================================
+ * Fix-10a: Lightweight LLM response cleaner.
+ *
+ * Problem discovered in R9: returning raw LLM output (Fix-9a) fixed RTSP
+ * by preserving multi-region structure, but BROKE SMTP because:
+ *   1. Markdown ``` fencing becomes a garbage SMTP region
+ *   2. LLM inserts blank lines between commands -> empty \r\n regions
+ *      (SMTP splits on \r\n, not \r\n\r\n like RTSP)
+ *   3. LLM uses placeholders like <<USERNAME>> instead of real values
+ *
+ * Solution: protocol-aware cleaning that preserves structure for
+ * header-based protocols (RTSP/SIP/HTTP) while cleaning up line-based
+ * protocols (FTP/SMTP). This is NOT the old extract_protocol_commands_
+ * from_response() which stripped URLs/headers/CSeq -- this only removes
+ * the wrapper garbage while keeping actual protocol content intact.
+ * ============================================ */
+char *clean_llm_response(const char *response, const char *protocol_name)
+{
+    if (!response || !*response)
+        return NULL;
+
+    size_t resp_len = strlen(response);
+    size_t cap = resp_len + 64;
+    char *out = calloc(cap, 1);
+    if (!out) return NULL;
+    size_t out_pos = 0;
+
+    /* Determine if this is a line-based protocol (region = \r\n)
+     * vs a header-based protocol (region = \r\n\r\n).            */
+    int line_based = 0;
+    if (protocol_name) {
+        if (strcasecmp(protocol_name, "FTP") == 0 ||
+            strcasecmp(protocol_name, "SMTP") == 0) {
+            line_based = 1;
+        }
+    }
+
+    const char *end = response + resp_len;
+
+    /* --- Phase 1: Skip LLM preamble text before the first code fence ---
+     * Many LLM responses start with:
+     *   "Certainly! Below is the modified sequence...\n```\n"
+     * or just natural language.  We skip to inside the ``` block. */
+    const char *content_start = NULL;
+
+    /* Check for opening ``` fence */
+    const char *fence = strstr(response, "```");
+    if (fence) {
+        /* Jump past ```[language]\n */
+        content_start = fence + 3;
+        while (content_start < end && *content_start != '\n' && *content_start != '\r')
+            content_start++;  /* skip optional language tag */
+        if (content_start < end && *content_start == '\r') content_start++;
+        if (content_start < end && *content_start == '\n') content_start++;
+    } else {
+        /* No fence -- use entire response */
+        content_start = response;
+    }
+
+    /* --- Phase 2: Find the end boundary (closing ``` or end of string) --- */
+    const char *content_end = end;
+    if (fence) {
+        const char *close_fence = strstr(content_start, "```");
+        if (close_fence)
+            content_end = close_fence;
+    }
+
+    /* --- Phase 3: Copy content with protocol-aware blank-line handling --- */
+    const char *src = content_start;
+
+    while (src < content_end) {
+        /* Find end of current line */
+        const char *line_end = src;
+        while (line_end < content_end && *line_end != '\n' && *line_end != '\r')
+            line_end++;
+
+        size_t line_len = line_end - src;
+
+        /* Check if line is blank (empty or only whitespace) */
+        int is_blank = 1;
+        for (size_t i = 0; i < line_len; i++) {
+            if (src[i] != ' ' && src[i] != '\t') {
+                is_blank = 0;
+                break;
+            }
+        }
+
+        if (is_blank) {
+            if (line_based) {
+                /* For SMTP/FTP: skip blank lines entirely.
+                 * This prevents empty \r\n regions from being created
+                 * by extract_requests_smtp(). */
+                /* (do nothing -- just advance past this line) */
+            } else {
+                /* For RTSP/SIP/HTTP: blank lines ARE the region delimiter
+                 * (\r\n\r\n), so we MUST preserve them. */
+                if (out_pos + 2 < cap) {
+                    out[out_pos++] = '\r';
+                    out[out_pos++] = '\n';
+                }
+            }
+        } else {
+            /* Non-blank line: copy it */
+
+            /* Fix-12 defense: For line-based protocols, strip trailing
+             * literal \r\n text (4 chars: backslash-r-backslash-n) that
+             * the LLM may output despite being told not to.  Without this,
+             * unescape_string() later converts the literal \r\n to real
+             * \r\n, producing double-CRLF between commands. */
+            size_t effective_len = line_len;
+            if (line_based) {
+                /* Strip one or more trailing literal \r\n sequences */
+                while (effective_len >= 4 &&
+                       src[effective_len - 4] == '\\' &&
+                       src[effective_len - 3] == 'r'  &&
+                       src[effective_len - 2] == '\\' &&
+                       src[effective_len - 1] == 'n') {
+                    effective_len -= 4;
+                }
+                /* Also strip trailing literal \r (2 chars) without \n */
+                if (effective_len >= 2 &&
+                    src[effective_len - 2] == '\\' &&
+                    src[effective_len - 1] == 'r') {
+                    effective_len -= 2;
+                }
+                /* If stripping leaves an empty line, skip it */
+                if (effective_len == 0) {
+                    src = line_end;
+                    if (src < content_end && *src == '\r') src++;
+                    if (src < content_end && *src == '\n') src++;
+                    continue;
+                }
+            }
+
+            /* Ensure capacity */
+            if (out_pos + effective_len + 4 >= cap) {
+                cap = (out_pos + effective_len + 64) * 2;
+                out = realloc(out, cap);
+                if (!out) return NULL;
+            }
+
+            memcpy(out + out_pos, src, effective_len);
+            out_pos += effective_len;
+
+            /* Add \r\n line terminator */
+            out[out_pos++] = '\r';
+            out[out_pos++] = '\n';
+        }
+
+        /* Advance past line ending */
+        src = line_end;
+        if (src < content_end && *src == '\r') src++;
+        if (src < content_end && *src == '\n') src++;
+    }
+
+    /* Trim trailing whitespace/newlines */
+    while (out_pos > 0 && (out[out_pos-1] == '\r' || out[out_pos-1] == '\n' ||
+                           out[out_pos-1] == ' '  || out[out_pos-1] == '\t'))
+        out_pos--;
+
+    /* For header-based protocols, ensure we end with \r\n\r\n
+     * so the last request is properly terminated */
+    if (!line_based && out_pos > 0) {
+        if (out_pos + 5 >= cap) {
+            cap = out_pos + 8;
+            out = realloc(out, cap);
+        }
+        out[out_pos++] = '\r';
+        out[out_pos++] = '\n';
+        out[out_pos++] = '\r';
+        out[out_pos++] = '\n';
+    }
+    /* For line-based protocols, ensure we end with \r\n */
+    if (line_based && out_pos > 0) {
+        if (out_pos + 3 >= cap) {
+            cap = out_pos + 4;
+            out = realloc(out, cap);
+        }
+        out[out_pos++] = '\r';
+        out[out_pos++] = '\n';
+    }
+
+    if (out_pos == 0) {
+        free(out);
+        return NULL;
+    }
+
+    out[out_pos] = '\0';
+    fprintf(stderr, "[clean_llm_response] %s: %zu -> %zu bytes (line_based=%d)\n",
+            protocol_name ? protocol_name : "?", resp_len, out_pos, line_based);
+    return out;
+}
+
 /* Per-protocol hints for the enrichment prompt */
 typedef struct {
     const char *name;
-    const char *sequences;  /* typical command/message sequences to explore */
-    const char *errors;     /* error/boundary cases specific to this protocol */
+    const char *sequences;    /* typical command/message sequences to explore */
+    const char *errors;       /* error/boundary cases specific to this protocol */
+    const char *format_hint;  /* protocol-specific format instructions for LLM */
 } EnrichHintEntry;
 
 static const EnrichHintEntry ENRICH_HINT_TABLE[] = {
-    {"FTP",  "ALLO+STOR, REST+RETR, REIN, PASV/PORT switches, MLSD/MLST",
-             "invalid paths (/../..), long filenames (256+ chars), permission denials, case variants (MKD vs mkd)"},
-    {"SMTP", "EHLO+MAIL+RCPT+DATA, AUTH LOGIN/PLAIN, VRFY/EXPN probing, RSET+MAIL chains",
-             "malformed addresses, oversized headers, repeated RSET, missing EHLO, bare CR/LF"},
-    {"RTSP", "DESCRIBE+SETUP+PLAY+PAUSE+TEARDOWN, interleaved channel requests, OPTIONS probing",
-             "invalid session IDs, malformed stream URIs, unsupported transport specs, bad CSeq"},
-    {"HTTP", "GET/POST/PUT/DELETE/OPTIONS/HEAD sequences, pipelining, chunked transfer, keep-alive",
-             "path traversal (/../), oversized headers, invalid methods, malformed URIs, HTTP/0.9"},
-    {"SIP",  "REGISTER+INVITE+ACK+BYE, CANCEL, OPTIONS, re-registration, forked dialogs",
-             "malformed SIP URIs, missing Via/From/To headers, invalid CSeq, loop detection"},
-    {"DAAP", "login+server-info+update+databases+items+containers sequences, session management",
-             "invalid session tokens, malformed content-codes, unexpected revision numbers"},
-    {"MQTT", "CONNECT+SUBSCRIBE+PUBLISH+UNSUBSCRIBE+DISCONNECT, PINGREQ/PINGRESP, QoS 0/1/2",
-             "oversized client IDs, invalid topic filters, will message variations, clean session"},
-    {"DNS",  "A/AAAA/MX/NS/PTR/TXT/SOA query sequences, recursive vs iterative",
-             "malformed labels, oversized names, EDNS options, DNSSEC flag variations"},
-    {NULL, NULL, NULL}
+    /* Fix-12: Removed literal \\r\\n from line-based format hints.
+     * Root cause of bftpd IPSM-edge regression (-37.3%):
+     *  - The old hint told the LLM to terminate each command with \\r\\n,
+     *    so the LLM output literal \\r\\n text at the end of each line.
+     *  - clean_llm_response() ALSO added real \\r\\n after each line.
+     *  - unescape_string() then converted the literal \\r\\n → real \\r\\n.
+     *  - Result: \\r\\n\\r\\n (double CRLF) between every FTP command.
+     *  - FTP is line-based: each command should be separated by a single \\r\\n.
+     *  - The extra blank line between commands confused the FTP server and
+     *    degraded IPSM state coverage (116 edges vs baseline's 185).
+     * Fix: Tell the LLM to put one command per line WITHOUT literal \\r\\n.
+     *      clean_llm_response() will add the correct \\r\\n terminator.
+     *
+     * Fix-22: Protocol-specific hint improvements for underperforming protocols.
+     * Root cause analysis (exim/proftpd/kamailio/forked-daapd):
+     *   - FTP (proftpd): Original hint only listed basic commands; advanced
+     *     ProFTPD-specific cmds (SITE CHMOD/CHOWN, MLSD, MLST, CLNT, HOST,
+     *     LANG, MOD_FACTS features) were never in the enrichment seeds.
+     *   - SMTP (exim): Missing DATA body content, BDAT chunking, AUTH variants
+     *     (GSSAPI/EXTERNAL), ESMTP SIZE/BODY/ENVID params, MIME multipart.
+     *   - SIP (kamailio): No concrete header values → LLM generated <<VALUE>>
+     *     placeholders → kamailio rejected 100% of enriched seeds (400 Bad Request).
+     *   - DAAP (forked-daapd): No concrete session-id/revision-number → every
+     *     enriched seed had placeholder values → forked-daapd rejected them all.
+     */
+    {"FTP",
+     /* Fix-22a: ProFTPD advanced commands and edge-case coverage */
+     "USER+PASS+CWD+LIST+RETR+STOR+DELE+MKD+RMD+RNFR+RNTO+QUIT, PASV+PORT transfers, "
+     "FEAT+OPTS negotiation, SITE CHMOD/CHOWN/SYMLINK extended commands, "
+     "MLSD+MLST machine-readable listing, CLNT client identification, "
+     "HOST virtual hosting, LANG language negotiation, "
+     "STAT+SYST+HELP+NOOP keepalive, TYPE A/I/E/L, MODE S/B/C, "
+     "APPE append, REST restart, SIZE+MDTM file info, STOU unique-store, "
+     "ALLO pre-allocate, REIN reinitialize session",
+     "oversized filenames (256+ chars), path traversal (/../../../etc/passwd), "
+     "invalid TYPE/MODE params, restart offsets beyond file size, MKD deeply nested paths, "
+     "RNFR without RNTO, SITE commands with boundary values, non-ASCII LANG tags",
+     "One command per line, NO blank lines between commands. "
+     "Do NOT write \\r\\n — just use normal line breaks. "
+     "Use CONCRETE values — never <<VALUE>> placeholders. "
+     "Example:\nUSER anonymous\nPASS guest@\nSYST\nFEAT\nTYPE I\nPASV\nMLSD /\nSITE CHMOD 755 /pub\nSTAT\nQUIT"},
+    {"SMTP",
+     /* Fix-22b: exim advanced SMTP coverage with DATA body and BDAT */
+     "EHLO+MAIL+RCPT+DATA body+QUIT, AUTH LOGIN/PLAIN/GSSAPI/EXTERNAL, "
+     "VRFY/EXPN probing, RSET+MAIL chains, BDAT chunked transfer, "
+     "MAIL FROM with SIZE/BODY/ENVID/RET ESMTP params, "
+     "RCPT TO with NOTIFY/ORCPT params, STARTTLS negotiation, "
+     "DATA with MIME multipart bodies, oversized DATA content, "
+     "multi-recipient sessions, NOOP+HELP+RSET keepalive",
+     "malformed addresses (missing @, bare LF, null bytes in headers), "
+     "oversized headers (8KB+), repeated RSET without EHLO, bare CR/LF in DATA, "
+     "MAIL without RCPT, nested MIME boundaries, AUTH with invalid base64, "
+     "BDAT with wrong chunk size, RCPT to non-existent local user",
+     "One command per line, NO blank lines between commands. "
+     "Do NOT write \\r\\n — just use normal line breaks. "
+     "Use CONCRETE values — never <<USERNAME>> or <<VALUE>> placeholders. "
+     "For DATA body: write body lines directly, end with a line containing only a dot (.). "
+     "Example:\nEHLO fuzzer.test\nMAIL FROM:<fuzz@test.com> SIZE=1024\n"
+     "RCPT TO:<victim@localhost>\nDATA\nFrom: fuzz@test.com\nSubject: test\n\nHello body\n."},
+    {"RTSP",
+     "DESCRIBE+SETUP+PLAY+PAUSE+TEARDOWN, interleaved channel requests, OPTIONS probing",
+     "invalid session IDs, malformed stream URIs, unsupported transport specs, bad CSeq",
+     "Each request includes: command URL RTSP/1.0, headers (CSeq, Transport, Session), "
+     "and is terminated by a blank line (\\r\\n\\r\\n). "
+     "Use CONCRETE values. Example CSeq: 1, Session: 12345678"},
+    /* Fix-23: HTTP entry extended to cover BOTH lighttpd (plain HTTP) AND
+     * forked-daapd (DAAP-over-HTTP), since both are launched with -P HTTP.
+     * The old HTTP entry only described plain HTTP GET/POST; the DAAP paths
+     * (/login, /databases, /server-info, /update, /ctrl-int) were never
+     * included in enrichment seeds, so forked-daapd stayed at shallow
+     * coverage despite Fix-22d adding a dead "DAAP" key that was never matched.
+     *
+     * Fix: HTTP sequences now include DAAP subpaths with concrete session-id
+     * and revision-number values so forked-daapd enriched seeds are accepted
+     * by the server (session-id must be a real integer returned by /login).
+     *
+     * The existing {"DAAP", ...} entry below is kept for documentation but
+     * will never be reached at runtime — protocol_name is always "HTTP".
+     */
+    {"HTTP",
+     /* General HTTP */
+     "GET/POST/PUT/DELETE/OPTIONS/HEAD sequences, pipelining, chunked transfer, keep-alive, "
+     /* DAAP-over-HTTP paths for forked-daapd */
+     "DAAP login (/login?pairing-guid=...), /server-info, /update?revision-number=N, "
+     "/databases?session-id=S, /databases/1/items?session-id=S, "
+     "/databases/1/containers?session-id=S, /databases/1/items/ID.mp3?session-id=S, "
+     "/ctrl-int/1/playstatus?session-id=S, /ctrl-int/1/pause?session-id=S, "
+     "/ctrl-int/1/nextitem?session-id=S, /logout?session-id=S, "
+     "/content-codes, /databases/1/browse/artists?session-id=S",
+     "path traversal (/../), oversized headers, invalid methods, malformed URIs, HTTP/0.9, "
+     "invalid DAAP session-id (0 or negative), mismatched revision-number, "
+     "missing Host header, malformed pairing-guid (wrong length), "
+     "requests with stale/too-large revision-number",
+     "Each request includes: METHOD path HTTP/1.1, headers (Host, Content-Type, etc.), "
+     "terminated by blank line (\\r\\n\\r\\n). Use CONCRETE values — NEVER placeholders. "
+     "For DAAP: session-id is a positive integer (e.g. 1831879645), revision-number starts at 1. "
+     "Example sequence (lighttpd):\n"
+     "GET /index.html HTTP/1.1\nHost: localhost:8080\n\n"
+     "POST /upload HTTP/1.1\nHost: localhost:8080\nContent-Length: 5\n\nhello\n"
+     "Example sequence (forked-daapd):\n"
+     "GET /login?pairing-guid=0x0000000000000001 HTTP/1.1\nHost: localhost:3689\nClient-DAAP-Version: 3.12\nContent-Length: 0\n\n"
+     "GET /server-info HTTP/1.1\nHost: localhost:3689\nClient-DAAP-Version: 3.12\n\n"
+     "GET /databases?session-id=1831879645&revision-number=1 HTTP/1.1\nHost: localhost:3689\nClient-DAAP-Version: 3.12\n\n"
+     "GET /databases/1/items?session-id=1831879645&meta=dmap.itemname,daap.songartist HTTP/1.1\nHost: localhost:3689\nClient-DAAP-Version: 3.12\n"},
+    {"SIP",
+     /* Fix-22c: kamailio — concrete SIP header values prevent <<VALUE>> placeholders */
+     "REGISTER+INVITE+ACK+BYE stateful dialog, CANCEL mid-dialog, OPTIONS capability, "
+     "re-REGISTER with Expires: 0 (de-register), REFER blind/attended transfer, "
+     "SUBSCRIBE+NOTIFY event packages (presence/dialog/message-summary), "
+     "MESSAGE instant messaging, PUBLISH event state, INFO mid-dialog, "
+     "PRACK provisional ACK, UPDATE session refresh",
+     "malformed SIP URIs (sip:@, sip::5060, empty user), missing mandatory headers "
+     "(Via/From/To/CSeq/Call-ID/Max-Forwards), duplicate Via, invalid CSeq order, "
+     "loop detection (Max-Forwards: 0), oversized headers, INVITE without SDP body",
+     "Each request includes: METHOD sip:URI SIP/2.0, mandatory headers (Via, From, To, "
+     "CSeq, Call-ID, Max-Forwards, Content-Length), terminated by blank line (\\r\\n\\r\\n). "
+     "Use CONCRETE values — NEVER placeholders. "
+     "Use a DIFFERENT Call-ID for each distinct dialog (e.g. call-1@127.0.0.1, call-2@127.0.0.1). "
+     "Example REGISTER:\nREGISTER sip:127.0.0.1 SIP/2.0\n"
+     "Via: SIP/2.0/UDP 127.0.0.1:5060;branch=z9hG4bK776\n"
+     "From: <sip:alice@127.0.0.1>;tag=1928301774\nTo: <sip:alice@127.0.0.1>\n"
+     "Call-ID: a84b4c76e66710@127.0.0.1\nCSeq: 1 REGISTER\nMax-Forwards: 70\n"
+     "Contact: <sip:alice@127.0.0.1:5060>\nExpires: 3600\nContent-Length: 0\n"},
+    /* NOTE (Fix-23): This {"DAAP",...} entry is NEVER reached at runtime.
+     * forked-daapd is launched with -P HTTP, so protocol_name == "HTTP" always.
+     * All DAAP-over-HTTP knowledge has been merged into the {"HTTP",...} entry above.
+     * Kept here only as documentation / for any future -P DAAP experiment. */
+    {"DAAP",
+     /* Fix-22d: forked-daapd — concrete session-id and revision-number values */
+     "login+server-info+update+databases+items+containers+playlists sequences, "
+     "session management (login with pairing-guid, logout with session-id), "
+     "content-codes enumeration (/content-codes), browse by artist/album/genre, "
+     "database update polling with revision-number, playlist item listing, "
+     "DACP remote control (ctrl-int, now-playing, playqueue-contents)",
+     "invalid session-id (random large int or zero), mismatched revision-number, "
+     "malformed pairing-guid (wrong length/format), unsupported meta tags, "
+     "requests without session-id, requests with stale/too-large revision-number",
+     "Each request is HTTP/1.1 GET with DAAP path and query params, "
+     "terminated by blank line (\\r\\n\\r\\n). Use CONCRETE integer values — never placeholders. "
+     "session-id is a positive integer (e.g. 1831879645), revision-number starts at 1. "
+     "Example sequence:\nGET /login?pairing-guid=0x0000000000000001 HTTP/1.1\n"
+     "Host: localhost:3689\nClient-DAAP-Version: 3.12\nAccept: */*\nContent-Length: 0\n\n"
+     "GET /server-info HTTP/1.1\nHost: localhost:3689\nClient-DAAP-Version: 3.12\n\n"
+     "GET /databases?session-id=1831879645&revision-number=1 HTTP/1.1\n"
+     "Host: localhost:3689\nClient-DAAP-Version: 3.12\n"},
+    {"MQTT",
+     "CONNECT+SUBSCRIBE+PUBLISH+UNSUBSCRIBE+DISCONNECT, PINGREQ/PINGRESP, QoS 0/1/2",
+     "oversized client IDs, invalid topic filters, will message variations, clean session",
+     "Output each MQTT packet as one line in text form: TYPE Key=Value Key=Value. "
+     "Example: CONNECT ClientId=test CleanSession=1 KeepAlive=60. "
+     "Valid types: CONNECT, PUBLISH, SUBSCRIBE, UNSUBSCRIBE, PUBACK, PUBREC, PUBREL, PUBCOMP, PINGREQ, DISCONNECT. "
+     "PUBLISH fields: Topic, QoS, Retain, Payload. SUBSCRIBE fields: PacketId, Topic, QoS"},
+    {"DNS",
+     "A/AAAA/MX/NS/PTR/TXT/SOA query sequences, recursive vs iterative",
+     "malformed labels, oversized names, EDNS options, DNSSEC flag variations",
+     "Output DNS queries in text-representable format with query type and domain"},
+    {NULL, NULL, NULL, NULL}
 };
 
 char *enrich_sequence(char *sequence, khash_t(strSet) *missing_message_types, const char *protocol_name)
@@ -1627,26 +2155,27 @@ char *enrich_sequence(char *sequence, khash_t(strSet) *missing_message_types, co
     const char *proto   = (protocol_name && *protocol_name) ? protocol_name : "network";
     const char *seqs    = hint ? hint->sequences : "command sequences and state transitions";
     const char *errors  = hint ? hint->errors    : "invalid parameters, oversized values, boundary inputs";
+    const char *fmt     = hint ? hint->format_hint : "Output each request in complete wire-ready format";
 
+    /* Fix-9c: Rewritten prompt to produce COMPLETE protocol requests.
+     * Uses protocol-specific format_hint from ENRICH_HINT_TABLE so that
+     * header-based protocols (RTSP/SIP/HTTP) get \r\n\r\n instructions
+     * while line-based protocols (FTP/SMTP) get \r\n instructions.
+     * This avoids the baseline's problem of no format guidance AND
+     * avoids the old prompt's problem of RTSP-centric hardcoding. */
     const char *prompt_template =
-        "You are a fuzzing expert testing a %s server. Current request sequence:\n"
+        "The following is one sequence of %s client requests:\n"
         "%.*s\n\n"
-        "Task: Add %.*s messages to MAXIMIZE code coverage by:\n"
-        "1. EXPLORE new paths: Use uncommon %s combinations (%s)\n"
-        "2. TRIGGER errors: %s\n"
-        "3. TEST boundaries: Long values (256+ chars), special chars (@#$%%%%^), empty args\n"
-        "4. CREATE complexity: Nested sequences, rename chains, concurrent operations\n"
-        "5. PROBE edge cases: Case variants, repeated messages, unusual state transitions\n\n"
-        "Requirements:\n"
-        "- Generate messages that cover DIFFERENT code branches\n"
-        "- Include both valid and INVALID scenarios\n"
-        "- Use diverse parameters\n"
-        "- Insert messages at strategic positions to maximize state transitions\n\n"
-        "Output ONLY the modified message sequence (no explanations):";
+        "Please add %.*s client requests in the proper locations "
+        "to maximize protocol state coverage.\n\n"
+        "IMPORTANT: Output the COMPLETE modified request sequence in "
+        "wire-ready format. Format: %s\n\n"
+        "Tips for coverage: try %s and trigger %s.\n\n"
+        "Output ONLY the complete modified request sequence:";
 
     int missing_fields_len = 0;
     int missing_fields_capacity = 100;
-    char *missing_fields_seq = ck_alloc(missing_fields_capacity);
+    char *missing_fields_seq = calloc(missing_fields_capacity, 1);
 
     khiter_t k;
     int i = 0;
@@ -1663,7 +2192,7 @@ char *enrich_sequence(char *sequence, khash_t(strSet) *missing_message_types, co
         if (missing_fields_len + needed_len > missing_fields_capacity)
         {
             missing_fields_capacity += 2 * needed_len;
-            missing_fields_seq = ck_realloc(missing_fields_seq, missing_fields_capacity);
+            missing_fields_seq = realloc(missing_fields_seq, missing_fields_capacity);
         }
 
         memcpy(missing_fields_seq + missing_fields_len, message_type, strlen(message_type));
@@ -1680,11 +2209,13 @@ char *enrich_sequence(char *sequence, khash_t(strSet) *missing_message_types, co
     // json-c will correctly escape control characters as \uXXXX in the final JSON
 
     // Build the content string from protocol-aware template
+    // Format specs: %s(proto), %.*s(sequence), %.*s(missing), %s(fmt), %s(seqs), %s(errors)
     asprintf(&content, prompt_template,
              proto,
              (int)strlen(sequence), sequence,
              missing_fields_len, missing_fields_seq,
-             proto, seqs,
+             fmt,
+             seqs,
              errors);
     
     // Create JSON array using json-c (this handles ALL escaping correctly)
@@ -1709,24 +2240,38 @@ char *enrich_sequence(char *sequence, khash_t(strSet) *missing_message_types, co
     // Cleanup
     json_object_put(messages_array);  // This frees system_msg and user_msg too
     free(content);
-    ck_free(missing_fields_seq);
+    free(missing_fields_seq);
 
     char *response = chat_with_llm(prompt, "gpt-4o-mini", ENRICHMENT_RETRIES, 0.5);
 
     free(prompt);
 
-    // Extract protocol commands from LLM's natural language response
-    if (response) {
-        char *extracted_commands = extract_protocol_commands_from_response(response);
-        if (extracted_commands) {
-            free(response);
-            return extracted_commands;
-        }
-        // If extraction fails, log warning but return original response as fallback
-        fprintf(stderr, "[WARNING] Failed to extract protocol commands from LLM response, using raw response\\n");
+    /* Fix-10a: Protocol-aware response cleaning.
+     *
+     * History of this code path:
+     *  - Original: used extract_protocol_commands_from_response() which stripped
+     *    URLs, headers, CSeq -> only bare command names -> 1 region per seed
+     *    -> IPSM edges: 72 (vs baseline 128)
+     *  - Fix-9a: returned raw LLM output -> fixed RTSP (edges: 132) but broke
+     *    SMTP because raw output contains markdown ```, blank lines between
+     *    commands, and <<PLACEHOLDER>> tokens -> 59 SMTP regions (vs 7 original)
+     *    -> coverage dropped from 7439 to 5845
+     *  - Fix-10a: clean_llm_response() removes markdown fencing and LLM preamble,
+     *    and for line-based protocols (SMTP/FTP) collapses blank lines while
+     *    preserving blank lines for header-based protocols (RTSP/SIP/HTTP) where
+     *    \r\n\r\n is the region delimiter.
+     */
+    if (!response) return NULL;
+
+    char *cleaned = clean_llm_response(response, protocol_name);
+    free(response);
+
+    if (!cleaned) {
+        fprintf(stderr, "[enrich] clean_llm_response returned NULL, skipping\n");
+        return NULL;
     }
 
-    return response;
+    return cleaned;
 }
 
 // // For debugging

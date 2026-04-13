@@ -965,10 +965,16 @@ static void mqtt_probe_cluster_differences(void) {
     return;
   }
 
-  if (gethostname(self_hostname, sizeof(self_hostname) - 1) == 0) {
-    self_hostname[sizeof(self_hostname) - 1] = '\0';
-    have_self_hostname = 1;
-  }
+  /* NOTE: Do NOT filter out self-hostname here.  The main execution path
+   * (mqtt_collect_exec_brokers) includes all listed brokers without
+   * self-filtering, and the probe path must be consistent to avoid
+   * the counter being reset to 0 when the probe fires after a main-path
+   * execution that correctly set mqtt_cluster_broker_count=N.  Each
+   * container runs its own instrumented broker on 127.0.0.1 while the
+   * hostname-aliased broker is the *same* process listening on 0.0.0.0,
+   * so including self still produces valid differential data. */
+  (void)self_hostname;
+  (void)have_self_hostname;
 
   spec_copy = ck_strdup((u8 *)broker_spec);
   if (!spec_copy) {
@@ -991,11 +997,6 @@ static void mqtt_probe_cluster_differences(void) {
     }
 
     if (*token && !parse_net_config((u8 *)token, &proto, &ip, &port) && proto == PRO_TCP) {
-      if (have_self_hostname && ip && strcmp((char *)ip, self_hostname) == 0) {
-        if (ip) free(ip);
-        token = strtok_r(NULL, ",", &saveptr);
-        continue;
-      }
       mqtt_broker_endpoint_t *next = (mqtt_broker_endpoint_t *)ck_realloc(endpoints, (endpoint_count + 1) * sizeof(mqtt_broker_endpoint_t));
       if (!next) {
         if (ip) free(ip);

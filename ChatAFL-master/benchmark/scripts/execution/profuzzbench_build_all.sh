@@ -46,3 +46,7 @@ docker build . -t mosquitto --build-arg MAKE_OPT $NO_CACHE
 cd $PFBENCH
 cd subjects/MQTT/Mosquitto-v2.0.18
 docker build . -t mosquitto-v2.0.18 --build-arg MAKE_OPT $NO_CACHE
+
+cd $PFBENCH
+cd subjects/MQTT/Mosquitto-v2.1.2
+docker build . -t mosquitto-v2.1.2 --build-arg MAKE_OPT $NO_CACHE

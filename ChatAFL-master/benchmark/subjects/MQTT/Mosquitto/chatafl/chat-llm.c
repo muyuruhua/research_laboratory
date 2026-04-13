@@ -42,11 +42,19 @@ static size_t chat_with_llm_helper(void *contents, size_t size, size_t nmemb, vo
     return realsize;
 }
 
+/* Per-call token usage — populated from the API "usage" object. */
+unsigned long long llm_last_prompt_tokens     = 0;
+unsigned long long llm_last_completion_tokens = 0;
+
 char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
 {
     CURL *curl;
     CURLcode res = CURLE_OK;
     char *answer = NULL;
+
+    /* Reset per-call token counters so a failed call yields 0. */
+    llm_last_prompt_tokens = 0;
+    llm_last_completion_tokens = 0;
     char *url = NULL;
     if (strcmp(model, "gpt-4o") == 0)
     {
@@ -128,6 +136,18 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
                         json_object *jobj5 = jobj4 ? json_object_object_get(jobj4, "content") : NULL;
                         data = jobj5 ? json_object_get_string(jobj5) : NULL;
                     }
+                    /* ---- Extract token usage FIRST (before any early-exit) ---- */
+                    /* Even if content extraction fails below, the API has
+                     * already billed for this request.  Record usage now. */
+                    json_object *jusage = NULL;
+                    if (json_object_object_get_ex(jobj, "usage", &jusage)) {
+                        json_object *jpt = NULL, *jct = NULL;
+                        if (json_object_object_get_ex(jusage, "prompt_tokens", &jpt))
+                            llm_last_prompt_tokens = (unsigned long long)json_object_get_int64(jpt);
+                        if (json_object_object_get_ex(jusage, "completion_tokens", &jct))
+                            llm_last_completion_tokens = (unsigned long long)json_object_get_int64(jct);
+                    }
+
                     if (data == NULL) {
                         printf("Error: could not extract LLM answer. Response: %s\n", chunk.memory);
                         json_object_put(jobj);

@@ -402,6 +402,17 @@ u32 uninteresting_times = 0;
 /* Track how much times we ask for breaking coverage plateau */
 u32 chat_times = 0;
 
+/* ============================================
+ * LLM Cost Tracking
+ *
+ * Accumulates prompt_tokens / completion_tokens from the OpenAI-compatible
+ * API "usage" object across ALL call sites (grammar, enrichment, stall).
+ * Written to fuzzer_stats so the cost of each configuration can be compared.
+ * ============================================ */
+static u64 llm_total_prompt_tokens     = 0;
+static u64 llm_total_completion_tokens = 0;
+static u64 llm_total_calls             = 0;
+
 /* Implemented state machine */
 Agraph_t *ipsm;
 static FILE *ipsm_dot_file;
@@ -445,6 +456,9 @@ void setup_llm_grammars()
     klist_t(gram) *grammar_list = kl_init(gram);
 
     char *templates_answer = chat_with_llm(templates_prompt, "gpt-4o-mini", GRAMMAR_RETRIES, 0.5);
+    llm_total_prompt_tokens += llm_last_prompt_tokens;
+    llm_total_completion_tokens += llm_last_completion_tokens;
+    if (templates_answer != NULL) llm_total_calls++;
     if (templates_answer == NULL)
       goto free_templates_answer;
 
@@ -452,6 +466,9 @@ void setup_llm_grammars()
     char *remaining_prompt = construct_prompt_for_remaining_templates(protocol_name, first_question, templates_answer);
     // printf("remaining prompt is:\n %s\n", remaining_prompt);
     char *remaining_templates = chat_with_llm(remaining_prompt, "gpt-4o-mini", GRAMMAR_RETRIES, 0.5);
+    llm_total_prompt_tokens += llm_last_prompt_tokens;
+    llm_total_completion_tokens += llm_last_completion_tokens;
+    if (remaining_templates != NULL) llm_total_calls++;
     if (remaining_templates == NULL)
       goto free_remaining;
 
@@ -475,11 +492,16 @@ void setup_llm_grammars()
     {
       json_object *jobj = kl_val(iter);
 
+      if (!jobj || !json_object_is_type(jobj, json_type_array) ||
+          json_object_array_length(jobj) == 0)
+        continue;
+
       json_object *header = json_object_array_get_idx(jobj, 0);
 
       int absent;
 
       const char *header_str = json_object_get_string(header);
+      if (!header_str) continue;
 
       khiter_t k = kh_put(consistency_table, const_table, header_str, &absent);
       if (absent)
@@ -2722,6 +2744,9 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
 
       // Try enriching the sequence
         char *client_request_answer = enrich_sequence(nl_file_content, subset);
+        llm_total_prompt_tokens += llm_last_prompt_tokens;
+        llm_total_completion_tokens += llm_last_completion_tokens;
+        if (client_request_answer != NULL) llm_total_calls++;
 
         if (client_request_answer == NULL)
           continue;
@@ -5026,6 +5051,13 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
 #endif /* ^__APPLE__ */
   }
 
+  fprintf(f, "llm_total_calls    : %llu\n"
+             "llm_prompt_tokens  : %llu\n"
+             "llm_completion_tok : %llu\n",
+          (unsigned long long)llm_total_calls,
+          (unsigned long long)llm_total_prompt_tokens,
+          (unsigned long long)llm_total_completion_tokens);
+
   fclose(f);
 }
 
@@ -6947,6 +6979,9 @@ AFLNET_REGIONS_SELECTION:;
         char *stall_prompt = construct_prompt_stall(protocol_name, examples, history);
         // printf("Got prompt:\n\n%s\n",stall_prompt);
         char *stall_response = chat_with_llm(stall_prompt, "gpt-4o-mini", STALL_RETRIES, 1.5);
+        llm_total_prompt_tokens += llm_last_prompt_tokens;
+        llm_total_completion_tokens += llm_last_completion_tokens;
+        if (stall_response != NULL) llm_total_calls++;
         // printf("Got response:\n\n%s\n",stall_response);
 
         {
@@ -10476,6 +10511,11 @@ int main(int argc, char **argv)
       {
         extract_requests = &extract_requests_ftp;
         extract_response_codes = &extract_response_codes_ftp;
+      }
+      else if (!strcmp(optarg, "MQTT"))
+      {
+        extract_requests = &extract_requests_mqtt;
+        extract_response_codes = &extract_response_codes_mqtt;
       }
       else if (!strcmp(optarg, "DTLS12"))
       {

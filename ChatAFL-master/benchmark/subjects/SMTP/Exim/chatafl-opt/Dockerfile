@@ -22,6 +22,7 @@ COPY . /opt/aflnet
 WORKDIR /opt/aflnet
 
 RUN make clean all && \
+    make llm-validator.o || true && \
     cd llvm_mode && \
     make
 

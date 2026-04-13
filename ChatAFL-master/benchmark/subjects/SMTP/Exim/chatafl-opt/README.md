@@ -89,6 +89,63 @@ AFLNet adds the following options to AFL. Run ```afl-fuzz --help``` to see all o
 
 - ***-s algo***: (optional) seed selection algorithm (e.g., 1. RANDOM_SELECTION, 2. ROUND_ROBIN, 3. FAVOR)
 
+### MQTT multi-broker differential mode
+
+When fuzzing MQTT, ChatAFL-Opt starts the local broker service from the MQTT subject `run.sh` before fuzzing begins, and can optionally replay the same message sequence against multiple brokers to use response differences as extra feedback. This mode is only enabled for MQTT and does not affect the other protocols listed above.
+
+Set the broker list with the `CHATAFL_MQTT_BROKERS` environment variable before starting `afl-fuzz`:
+
+```bash
+export CHATAFL_MQTT_BROKERS="tcp://127.0.0.1/1883,tcp://127.0.0.1/1884,tcp://127.0.0.1/1885"
+```
+
+Requirements:
+
+- Provide at least two brokers in the list.
+- Use the same `tcp://IP/PORT` format as `-N`.
+- Keep `-N` pointing to the primary MQTT target that AFLNet should fuzz normally.
+
+Example:
+
+```bash
+export CHATAFL_MQTT_BROKERS="tcp://127.0.0.1/1883,tcp://127.0.0.1/1884"
+afl-fuzz -d -i in -o out -N tcp://127.0.0.1/1883 -P MQTT -D 10000 -q 3 -s 3 -E -K -R ./mqtt_server
+```
+
+If `CHATAFL_MQTT_BROKERS` is unset or contains fewer than two valid brokers, ChatAFL-Opt falls back to the original single-broker MQTT behavior. When you launch through `run_dev.sh` in development mode, the launcher automatically creates a dedicated MQTT Docker network and injects a deterministic broker list for the MQTT containers, so you normally do not need to fill this variable by hand.
+
+中文说明：
+
+当你 fuzz MQTT 时，ChatAFL-Opt 会先在 MQTT subject 的 `run.sh` 中自动启动本地 broker 服务，然后还可以把同一组消息序列同时回放到多个 broker，并把这些 broker 的响应差异作为额外反馈信号。这个模式只在 MQTT 下启用，不会影响上面列出的其他协议。
+
+使用方法：在启动 `afl-fuzz` 之前设置环境变量 `CHATAFL_MQTT_BROKERS`：
+
+```bash
+export CHATAFL_MQTT_BROKERS="tcp://127.0.0.1/1883,tcp://127.0.0.1/1884,tcp://127.0.0.1/1885"
+```
+
+说明：
+
+- 至少提供两个 broker。
+- 格式和 `-N` 一致，都是 `tcp://IP/PORT`。
+- `-N` 仍然指向主 fuzz 目标；多 broker 只是额外做差分探测。
+
+示例：
+
+```bash
+export CHATAFL_MQTT_BROKERS="tcp://127.0.0.1/1883,tcp://127.0.0.1/1884"
+afl-fuzz -d -i in -o out -N tcp://127.0.0.1/1883 -P MQTT -D 10000 -q 3 -s 3 -E -K -R ./mqtt_server
+```
+
+如果没有设置 `CHATAFL_MQTT_BROKERS`，或者其中有效 broker 少于两个，ChatAFL-Opt 会自动回退到原来的单 broker MQTT 行为。通过 `run_dev.sh` 在开发模式启动时，启动器会自动创建专用的 MQTT Docker 网络，并为 MQTT 容器注入确定性的 broker 列表，因此通常不需要手工填写这个变量。
+
+摘要式说明：本扩展为 ChatAFL-Opt 增加了仅面向 MQTT 的多 broker 差分反馈层。系统在检测到 `CHATAFL_MQTT_BROKERS` 后，会将同一组消息序列回放到多个 broker，并比较各 broker 的响应差异，以生成额外的状态反馈。该反馈被压缩为结构化摘要并注入 `state_ctx`，从而为后续的状态选择与 plateau 提示提供更丰富的上下文。与此同时，MQTT 的响应抽取会结合 reason code 进行细粒度状态区分，以提升对接受、拒绝和确认差异的识别能力。LLM 的 plateau 提示也会加入 MQTT 专属探索建议，优先覆盖重连、QoS 握手、订阅/退订和会话边界等高价值路径。该机制在协议层面严格隔离，仅在 MQTT 下启用；当环境变量未设置或 broker 数量不足时，系统自动退回原始单 broker 行为，因此不会影响 FTP、SMTP、RTSP、SIP、DAAP、HTTP 以及 DNS、DTLS12、TLS、SSH、DICOM 等其他协议的模糊测试逻辑。
+
+FAQ：为什么这个功能只放在 MQTT 下？
+
+- 因为这里做的是 broker 间差分，依赖 MQTT 的连接、订阅、发布、ACK、reason code 等语义来比较响应。
+- 其他协议的状态反馈方式不同，不能直接复用同一套差分标准。
+- 只在 MQTT 下启用，可以确保这个扩展不会碰到 FTP、SIP、HTTP 等其他文本协议的原有路径。
 
 Example command: 
 ```bash

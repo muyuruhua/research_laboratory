@@ -647,6 +647,83 @@ region_t *extract_requests_ftp(unsigned char *buf, unsigned int buf_size, unsign
   return regions;
 }
 
+static int mqtt_decode_remaining_length_aflnet(unsigned char *buf,
+                                               unsigned int buf_size,
+                                               unsigned int *pos,
+                                               unsigned int *out_len)
+{
+  unsigned int multiplier = 1;
+  unsigned int value = 0;
+  unsigned int i;
+
+  if (!buf || !pos || !out_len) return 0;
+
+  for (i = 0; i < 4; i++) {
+    unsigned char encoded;
+    if (*pos >= buf_size) return 0;
+    encoded = buf[(*pos)++];
+    value += (encoded & 0x7F) * multiplier;
+    if ((encoded & 0x80) == 0) {
+      *out_len = value;
+      return 1;
+    }
+    multiplier *= 128;
+  }
+
+  return 0;
+}
+
+region_t *extract_requests_mqtt(unsigned char *buf, unsigned int buf_size, unsigned int *region_count_ref)
+{
+  unsigned int pos = 0;
+  unsigned int region_count = 0;
+  region_t *regions = NULL;
+
+  while (pos < buf_size)
+  {
+    unsigned int pkt_start = pos;
+    unsigned int rem_len = 0;
+    unsigned int body_start;
+    unsigned int pkt_end;
+
+    if (pos + 2 > buf_size) {
+      break;
+    }
+
+    pos++; /* fixed header byte 1 */
+    if (!mqtt_decode_remaining_length_aflnet(buf, buf_size, &pos, &rem_len)) {
+      break;
+    }
+    body_start = pos;
+    pkt_end = body_start + rem_len;
+    if (pkt_end == 0 || pkt_end > buf_size) {
+      break;
+    }
+
+    region_count++;
+    regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+    regions[region_count - 1].start_byte = pkt_start;
+    regions[region_count - 1].end_byte = pkt_end - 1;
+    regions[region_count - 1].state_sequence = NULL;
+    regions[region_count - 1].state_count = 0;
+
+    pos = pkt_end;
+  }
+
+  /* fallback for malformed stream */
+  if ((region_count == 0) && (buf_size > 0))
+  {
+    regions = (region_t *)ck_realloc(regions, sizeof(region_t));
+    regions[0].start_byte = 0;
+    regions[0].end_byte = buf_size - 1;
+    regions[0].state_sequence = NULL;
+    regions[0].state_count = 0;
+    region_count = 1;
+  }
+  *region_count_ref = region_count;
+  return regions;
+}
+
 region_t *extract_requests_sip(unsigned char *buf, unsigned int buf_size, unsigned int *region_count_ref)
 {
   char *mem;
@@ -1518,6 +1595,90 @@ unsigned int *extract_response_codes_ftp(unsigned char *buf, unsigned int buf_si
   return state_sequence;
 }
 
+unsigned int *extract_response_codes_mqtt(unsigned char *buf, unsigned int buf_size, unsigned int *state_count_ref)
+{
+  unsigned int byte_count = 0;
+  unsigned int *state_sequence = NULL;
+  unsigned int state_count = 0;
+
+  // Initial state of the response state machine
+  state_count++;
+  state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+  state_sequence[state_count - 1] = 0;
+
+  while (byte_count < buf_size)
+  {
+    unsigned int hdr_pos = byte_count;
+    unsigned int rem_len = 0;
+    unsigned int payload_pos;
+    unsigned int pkt_end;
+    unsigned char fixed_hdr;
+    unsigned char type_nibble;
+    unsigned int message_code = 0;
+    unsigned int reason_code = 0;
+
+    if (byte_count + 2 > buf_size) break;
+
+    fixed_hdr = buf[byte_count++];
+    if (!mqtt_decode_remaining_length_aflnet(buf, buf_size, &byte_count, &rem_len)) {
+      break;
+    }
+    payload_pos = byte_count;
+    pkt_end = payload_pos + rem_len;
+    if (pkt_end > buf_size) break;
+
+    type_nibble = (unsigned char)(fixed_hdr >> 4);
+
+    /* MQTT broker-visible response packets */
+    if (type_nibble == 2 ||  /* CONNACK */
+        type_nibble == 4 ||  /* PUBACK  */
+        type_nibble == 5 ||  /* PUBREC  */
+        type_nibble == 6 ||  /* PUBREL  */
+        type_nibble == 7 ||  /* PUBCOMP */
+        type_nibble == 9 ||  /* SUBACK  */
+        type_nibble == 11 || /* UNSUBACK */
+        type_nibble == 13 || /* PINGRESP */
+        type_nibble == 14 || /* DISCONNECT */
+        type_nibble == 15)   /* AUTH */
+    {
+      message_code = (unsigned int)(type_nibble << 4);
+
+      /* Enrich state id with reason/return code when present. */
+      if (type_nibble == 2 && rem_len >= 2 && payload_pos + 1 < pkt_end) {
+        /* CONNACK: byte0 ack flags, byte1 return/reason code */
+        reason_code = (unsigned int)buf[payload_pos + 1];
+      } else if ((type_nibble == 4 || type_nibble == 5 ||
+                  type_nibble == 6 || type_nibble == 7) && rem_len >= 3) {
+        /* PUBACK/PUBREC/PUBREL/PUBCOMP v5: [packet-id(2)][reason(1)] */
+        reason_code = (unsigned int)buf[payload_pos + 2];
+      } else if (type_nibble == 9 && rem_len >= 3) {
+        /* SUBACK: [packet-id(2)][return/reason(1)] */
+        reason_code = (unsigned int)buf[payload_pos + 2];
+      } else if (type_nibble == 11 && rem_len >= 3) {
+        /* UNSUBACK v5: [packet-id(2)][reason(1)] */
+        reason_code = (unsigned int)buf[payload_pos + 2];
+      } else if (type_nibble == 15 && rem_len >= 1) {
+        /* AUTH reason code at first payload byte (v5) */
+        reason_code = (unsigned int)buf[payload_pos];
+      }
+
+      if (reason_code != 0) {
+        message_code = (message_code << 8) | reason_code;
+      }
+
+      state_count++;
+      state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+      state_sequence[state_count - 1] = message_code;
+    }
+
+    (void)hdr_pos;
+    byte_count = pkt_end;
+  }
+
+  *state_count_ref = state_count;
+  return state_sequence;
+}
+
 unsigned int *extract_response_codes_sip(unsigned char *buf, unsigned int buf_size, unsigned int *state_count_ref)
 {
   char *mem;
@@ -2075,7 +2236,8 @@ int parse_net_config(u8 *net_config, u8 *protocol, u8 **ip_address, u32 *port)
   if (strlen(net_config) > 80)
     return 1;
 
-  strncpy(buf, net_config, strlen(net_config));
+  strncpy(buf, net_config, sizeof(buf) - 1);
+  buf[sizeof(buf) - 1] = '\0';
   str_rtrim(buf);
 
   if (!str_split(buf, "/", tokens, tokenCount))
@@ -2145,6 +2307,86 @@ u8 *state_sequence_to_string(unsigned int *stateSequence, unsigned int stateCoun
     }
   }
   return out;
+}
+
+/* ============================================
+ * Fix-19: Protocol-aware error state classification.
+ *
+ * Supported protocols and their state_id semantics:
+ *
+ * ┌────────────┬──────────────────────────────────────┬──────────────┐
+ * │ Protocol   │ state_id encoding                    │ Error detect │
+ * ├────────────┼──────────────────────────────────────┼──────────────┤
+ * │ FTP        │ 3-digit code (220/331/530/…)         │ 4xx/5xx      │
+ * │ SMTP       │ 3-digit code (250/354/550/…)         │ 4xx/5xx      │
+ * │ RTSP       │ 3-digit code (200/404/…)             │ 4xx/5xx      │
+ * │ HTTP       │ 3-digit code (200/404/…)             │ 4xx/5xx      │
+ * │ SIP        │ 3-digit code (200/401/…)             │ 4xx/5xx      │
+ * │ IPP        │ HTTP code OR 200+10*b3+b4 compound   │ 4xx/5xx†     │
+ * │ SSH        │ msg_type byte (1-255) or 256=ident   │ behavioral   │
+ * │ MQTT       │ packet-type byte (optionally + reason)│ behavioral   │
+ * │ TLS        │ (content_type<<8)|msg_type (0x1600…) │ behavioral‡  │
+ * │ DTLS12     │ (content_type<<8)|msg_type            │ behavioral‡  │
+ * │ DNS        │ 16-bit flags word (QR|Opcode|RCODE…) │ behavioral§  │
+ * │ DICOM      │ PDU type byte (0x01-0x07…)           │ behavioral   │
+ * └────────────┴──────────────────────────────────────┴──────────────┘
+ *
+ * † IPP: HTTP 200 is MODIFIED to 200+10*byte3+byte4.
+ *   So state_id 400-599 (raw HTTP error) → error; state_id 200-299
+ *   (compound IPP success) → not error.
+ *
+ * ‡ TLS/DTLS: content_type 0x15 (ALERT) could indicate error, but the
+ *   state_id = (0x15<<8)|alert_type = 0x15xx = 5376+, which falls in
+ *   the thousands range and does NOT collide with the 4xx/5xx check.
+ *   We leave TLS/DTLS to behavioral confirmation.
+ *
+ * § DNS: The RCODE (bits 0-3 of lower byte) encodes error, but the full
+ *   16-bit flags word is not a simple error code.  Behavioral fallback.
+ *
+ * O(1), no allocation, safe to call from hot path.
+ * ============================================ */
+u8 classify_state_error_hint(unsigned int state_id, const char *protocol) {
+    if (!protocol) return 0;
+
+    /* Text protocols where state_id = 3-digit HTTP-style response code.
+     * IPP included: its extract_response_codes_ipp() uses raw HTTP codes
+     * for non-200 responses (4xx/5xx pass through unchanged), and only
+     * modifies HTTP 200 to 200+10*b3+b4 (resulting in 200-299 range). */
+    if (strcasecmp(protocol, "FTP") == 0 ||
+        strcasecmp(protocol, "SMTP") == 0 ||
+        strcasecmp(protocol, "RTSP") == 0 ||
+        strcasecmp(protocol, "HTTP") == 0 ||
+        strcasecmp(protocol, "SIP") == 0 ||
+        strcasecmp(protocol, "IPP") == 0) {
+        unsigned int cls = state_id / 100;
+        if (cls == 4 || cls == 5) return 1;  /* 4xx/5xx → likely error */
+        return 0;
+    }
+
+    /* SSH: state_id = msg_type byte (1-255) or 256 (identification).
+     * SSH_MSG_DISCONNECT = 1 is a disconnection indicator but not
+     * an "error dead-end" in the fuzzing sense — behavioral check
+     * is more appropriate. */
+
+    /* MQTT: state_id = raw packet-type byte (0x20=CONNACK, 0x90=SUBACK…).
+     * CONNACK return code in payload byte could indicate rejection, but
+     * the state_id itself only encodes packet type. Behavioral fallback. */
+
+    /* TLS/DTLS12: state_id = (content_type << 8) | message_type.
+     * E.g. 0x1602 = Handshake/ServerHello, 0x1500 = Alert/close_notify.
+     * These are multi-thousand values, not 3-digit codes.
+     * Behavioral fallback. */
+
+    /* DNS: state_id = 16-bit DNS header flags (QR|Opcode|AA|TC|RD|RA|RCODE).
+     * RCODE>0 means error but is embedded in a bitfield, not a simple
+     * class-based code. Behavioral fallback. */
+
+    /* DICOM: state_id = PDU type byte (0x01=A-ASSOCIATE-RQ, 0x03=A-ASSOCIATE-RJ…).
+     * 0x03 (reject) and 0x06 (abort) could be error indicators, but the
+     * PDU type space is too small (0x01-0x07) for reliable classification.
+     * Behavioral fallback. */
+
+    return 0;
 }
 
 void hexdump(unsigned char *msg, unsigned char *buf, int start, int end)

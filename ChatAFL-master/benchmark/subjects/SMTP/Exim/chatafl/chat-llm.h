@@ -64,6 +64,12 @@ KHASH_MAP_INIT_STR(strMap, int)
 KHASH_MAP_INIT_STR(field_table, int);
 KHASH_INIT(consistency_table, const char *, khash_t(field_table) *, 1, kh_str_hash_func, kh_str_hash_equal);
 
+/* Per-call token usage filled by chat_with_llm().
+ * After each call, llm_last_prompt_tokens / llm_last_completion_tokens
+ * reflect the API-reported usage of that single invocation. */
+extern unsigned long long llm_last_prompt_tokens;
+extern unsigned long long llm_last_completion_tokens;
+
 char *chat_with_llm(char *prompt, char *model, int tries, float temperature);
 char *construct_prompt_for_templates(char *protocol_name, char **final_msg);
 char *construct_prompt_for_remaining_templates(char *protocol_name, char *templates_prompt, char *templates_answer);

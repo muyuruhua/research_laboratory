@@ -106,8 +106,15 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
                 if (json_object_object_get_ex(jobj, "choices", NULL))
                 {
                     json_object *choices = json_object_object_get(jobj, "choices");
+                    if (!choices || !json_object_is_type(choices, json_type_array) ||
+                        json_object_array_length(choices) == 0) {
+                        printf("Error: 'choices' is not a valid array. Response: %s\n", chunk.memory);
+                        json_object_put(jobj);
+                        sleep(2);
+                        continue;
+                    }
                     json_object *first_choice = json_object_array_get_idx(choices, 0);
-                    const char *data;
+                    const char *data = NULL;
 
                     // The answer begins with a newline character, so we remove it
                     if (strcmp(model, "gpt-4o") == 0)
@@ -118,8 +125,14 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
                     else
                     {
                         json_object *jobj4 = json_object_object_get(first_choice, "message");
-                        json_object *jobj5 = json_object_object_get(jobj4, "content");
-                        data = json_object_get_string(jobj5);
+                        json_object *jobj5 = jobj4 ? json_object_object_get(jobj4, "content") : NULL;
+                        data = jobj5 ? json_object_get_string(jobj5) : NULL;
+                    }
+                    if (data == NULL) {
+                        printf("Error: could not extract LLM answer. Response: %s\n", chunk.memory);
+                        json_object_put(jobj);
+                        sleep(2);
+                        continue;
                     }
                     if (data[0] == '\n')
                         data++;

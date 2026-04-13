@@ -1,7 +1,5 @@
 /* llm-validator.c
  * Simple JSON schema validator for LLM outputs.
-/* llm-validator.c
- * Simple JSON schema validator for LLM outputs.
  * Exports: validate_and_parse_llm_json()
  */
 

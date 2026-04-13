@@ -44,11 +44,18 @@
 #include "hash.h"
 #include "chat-llm.h"
 #include "grammar-hypothesis.h"
+#include "hypothesis-adapter.h"
+#include "mqtt-builder.h"
+#include "mqtt-generate.h"
+#include "mqtt-scheduler.h"
+#include "mp-driver.h"
+#include "mqtt-differential.h"
 
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>    /* strcasecmp */
 #include <time.h>
 #include <errno.h>
 #include <signal.h>
@@ -69,6 +76,8 @@
 #include <sys/ioctl.h>
 #include <sys/file.h>
 #include <sys/capability.h>
+#include <netdb.h>
+#include <pthread.h>
 
 #include "aflnet.h"
 #include <graphviz/gvc.h>
@@ -206,6 +215,12 @@ EXP_ST u64 total_crashes, /* Total number of crashes          */
 
 static u32 subseq_tmouts; /* Number of timeouts in a row      */
 
+static u32 forced_kills;  /* Fix-14c: send_over_network() SIGKILL escalations */
+
+static u32 mp_multi_ok,          /* multi-fd path completed successfully     */
+           mp_multi_fallback,    /* open_connections failed → single-fd      */
+           mp_multi_hshake_fail; /* handshake failed → cleanup & MP_MULTI_DONE */
+
 static u8 *stage_name = "init", /* Name of the current fuzz stage   */
     *stage_short,               /* Short stage name                 */
     *syncing_party;             /* Currently syncing with...        */
@@ -248,8 +263,26 @@ static FILE *plot_file; /* Gnuplot output file              */
  * ============================================ */
 static hypothesis_context_t *hypothesis_ctx = NULL;  /* Global hypothesis context */
 static u8 hypothesis_mode = 0;                        /* Enable hypothesis-driven mode */
-static u32 hypothesis_refinement_interval = 100;     /* Refinement check interval */
 static u32 hypothesis_validation_count = 0;          /* Validation counter */
+
+/* Fix-15: Two-tier hypothesis validation.
+ *
+ * Tier-1 (sampled validation): runs inside common_fuzz_stuff() every
+ * HYPOTHESIS_VALIDATION_SAMPLE_RATE-th execution.  It RE-USES the
+ * regions already parsed by extract_requests() — NO double-parse.
+ * Cost: ~1 µs per sampled execution (constraint checks only).
+ *
+ * Tier-2 (periodic refinement): runs inside the plateau handler
+ * every HYPOTHESIS_REFINEMENT_CHECK_INTERVAL validations.  If any
+ * hypothesis has fitness < FITNESS_THRESHOLD and ≥3 counterexamples,
+ * it issues ONE LLM refinement call.
+ *
+ * Performance budget at exec_speed ≈ 25 K/s:
+ *   Tier-1: 25000/500 = 50 validations/s × 1 µs = 50 µs/s (<0.01%)
+ *   Tier-2: 1 LLM call per ~10 s ≈ same as existing plateau handler
+ */
+#define HYPOTHESIS_VALIDATION_SAMPLE_RATE  500   /* Validate every N-th exec  */
+#define HYPOTHESIS_REFINEMENT_CHECK_INTERVAL 5000 /* Check refinement every N  */
 /* ============================================ */
 
 struct queue_entry
@@ -286,6 +319,11 @@ struct queue_entry
   u32 generating_state_id; /* ID of the start at which the new seed was generated */
   u8 is_initial_seed;      /* Is this an initial seed */
   u32 unique_state_count;  /* Unique number of states traversed by this queue entry */
+
+  /* P5: MQTT differential feedback — queue-level divergence score.
+   * 0=no divergence, 1-100 = severity (higher → more interesting).
+   * Set by mqtt_diff_analyze_and_annotate() after multi-broker exec. */
+  u8 mqtt_diff_score;
 };
 
 static struct queue_entry *queue, /* Fuzzing queue (linked list)      */
@@ -410,6 +448,8 @@ char **use_argv; /* argument to run the target program. In vanilla AFL, this is 
 static u8 run_target(char **argv, u32 timeout);
 static inline u32 UR(u32 limit);
 static inline u8 has_new_bits(u8 *virgin_map);
+static void mqtt_fix_message_length(message_t *m);
+static u8 mqtt_fix_length_enabled;
 
 /* AFLNet-specific variables & functions */
 
@@ -431,6 +471,60 @@ u32 state_ids_count = 0;
 u32 selected_state_index = 0;
 u32 state_cycles = 0;
 u32 messages_sent = 0;
+char *mqtt_cluster_diff_summary = NULL;
+u32 mqtt_cluster_broker_count = 0;
+u32 mqtt_cluster_unique_signatures = 0;
+u8 mqtt_cluster_diverged = 0;
+static u8 mqtt_cluster_probe_logged = 0;
+static u8 mqtt_diff_feedback_enabled = 0;   /* MQTT-only: enable diff reward loop */
+static u32 mqtt_diff_probe_period = 32;     /* Probe CHATAFL_MQTT_BROKERS every N execs */
+static u64 mqtt_diff_last_probe_exec = 0;   /* Last exec index when cluster probe ran */
+static double mqtt_last_diff_signal = 0.0;  /* Last normalized divergence signal [0,1] */
+/* Runtime-observable differential telemetry (cumulative over run). */
+static u64 mqtt_diff_obs_count = 0;         /* #executions with diff signal sampled */
+static u64 mqtt_diff_pos_count = 0;         /* #samples where diff_signal > 0 */
+static double mqtt_diff_signal_sum = 0.0;   /* Sum of sampled diff signals */
+static u32 mqtt_diff_warn_obs_threshold = 500;   /* warn if obs >= this */
+static double mqtt_diff_warn_avg_threshold = 0.01; /* and avg <= this */
+
+/* Per-state differential productivity (MQTT-only, state-aware mode).
+ * Indexed by state_ids[] index; tracks how often a target state produces
+ * cross-broker divergence, then feeds back into state desirability score. */
+static double *mqtt_state_diff_reward_sum = NULL;
+static u32 *mqtt_state_diff_obs = NULL;
+static u32 mqtt_state_diff_cap = 0;
+
+/* ════════════════════════════════════════════════════════════════════
+ * P5: Enhanced MQTT Differential Feedback — runtime-observable metrics
+ *
+ * Tracks field-level (G-field/H-field) divergence following MBFuzzer's
+ * three-tier decomposition: type sequence, return codes, payload content.
+ * ════════════════════════════════════════════════════════════════════ */
+static u64 mqtt_diff_type_divergences    = 0;  /* Type-sequence divergences   */
+static u64 mqtt_diff_code_divergences    = 0;  /* Return-code divergences     */
+static u64 mqtt_diff_payload_divergences = 0;  /* Payload-content divergences */
+static u64 mqtt_diff_queue_promotions    = 0;  /* Inputs promoted by diff     */
+
+/* P6: Deep-path state promotion metrics */
+static u64 mqtt_deep_state_promotions    = 0;  /* Deep-state energy boosts    */
+static u64 mqtt_state_stall_resets       = 0;  /* Stall-triggered resets      */
+
+/* Per-state consecutive zero-discovery counter for stall detection.
+ * Indexed by selected_state_index; reset on new path discovery. */
+static u32 *mqtt_state_stall_counter = NULL;
+static u32  mqtt_state_stall_cap     = 0;
+#define MQTT_STALL_THRESHOLD 200  /* consecutive execs w/o discovery before penalty */
+
+/* Divergence pattern dedup bitmap (4096-entry hash table).
+ * Tracks which divergence pattern_hash values have been seen,
+ * so we only promote queue entries for NEW divergence patterns. */
+#define MQTT_DIV_BITMAP_SIZE 4096
+static u8 mqtt_div_pattern_bitmap[MQTT_DIV_BITMAP_SIZE];
+
+/* Last field-level differential result from multi-broker execution.
+ * Used by save_if_interesting() to annotate the queue entry. */
+static mqtt_diff_result_t mqtt_last_field_diff;
+static u8 mqtt_last_field_diff_valid = 0;  /* 1 if mqtt_last_field_diff is fresh */
 EXP_ST u8 session_virgin_bits[MAP_SIZE]; /* Regions yet untouched while the SUT is still running */
 EXP_ST u8 *cleanup_script;               /* script to clean up the environment of the SUT -- make fuzzing more deterministic */
 EXP_ST u8 *netns_name;                   /* network namespace name to run server in */
@@ -447,6 +541,7 @@ u8 server_wait = 0;
 u8 socket_timeout = 0;
 u8 protocol_selected = 0;
 u8 terminate_child = 0;
+u8 child_force_killed = 0;  /* Fix-14a: set by send_over_network() SIGKILL escalation */
 u8 corpus_read_or_sync = 0;
 u8 state_aware_mode = 0;
 u8 region_level_mutation = 0;
@@ -459,12 +554,978 @@ u32 uninteresting_times = 0;
 u32 chat_times = 0;
 
 /* ============================================
+ * MQTT-specific Enhancement Flags  (P1/P2)
+ * ============================================ */
+u8 mqtt_field_mutate_enabled  = 0;  /* P2a: field-aware MQTT mutation in havoc (extern in mp-driver-mqtt.c) */
+u8 mqtt_cross_session_enabled = 0;         /* P2b: cross-session state fuzzing (extern in mp-driver-mqtt.c) */
+
+/* ============================================
+ * P3: Q-Learning + UCB1 Bandit Schedulers (MQTT only)
+ * ============================================ */
+static mqtt_ql_t     mqtt_ql;              /* Q-Learning message type scheduler */
+static mqtt_bandit_t mqtt_bandit;          /* UCB1 arm selector (replace/insert/field/skip) */
+static u8 mqtt_scheduler_enabled = 0;      /* Set to 1 after init for MQTT */
+
+/* ============================================
  * Adaptive Plateau Triggering Variables
  * ============================================ */
 static u32 last_edges_count = 0;           /* Edges count at last check */
 static u64 last_edges_check_time = 0;      /* Time of last edges check (ms) */
 static double edges_growth_rate = 0.0;     /* Edges/minute growth rate */
-static u32 adaptive_plateau_threshold = 100; /* Dynamic plateau threshold (starts at UNINTERESTING_THRESHOLD) */
+static u32 adaptive_plateau_threshold = 200; /* Dynamic plateau threshold (starts at UNINTERESTING_THRESHOLD) */
+
+/* ============================================
+ * Ablation Control Flags (env-var toggled)
+ *
+ * Each flag DISABLES one optimization so that ablation experiments
+ * can isolate the contribution of individual mechanisms.
+ *   CHATAFL_NO_REFINEMENT=1  → disable Tier-2 hypothesis refinement
+ *   CHATAFL_NO_FRONTIER=1    → disable frontier bonus + error penalty
+ *   CHATAFL_NO_ADAPTIVE=1    → disable adaptive plateau threshold
+ *   CHATAFL_NO_STATE_PROMPT=1 → disable state-aware rich prompt + actions[]
+ *                               (falls back to ChatAFL's simple prompt)
+ * When unset (default), all optimizations are active.
+ * ============================================ */
+static u8 ablation_no_refinement   = 0;
+static u8 ablation_no_frontier     = 0;
+static u8 ablation_no_adaptive     = 0;
+static u8 ablation_no_state_prompt = 0;
+
+/* ============================================
+ * LLM Cost Tracking
+ *
+ * Accumulates prompt_tokens / completion_tokens from the OpenAI-compatible
+ * API "usage" object.  Written to fuzzer_stats and plot_data so the cost
+ * of each experimental configuration can be compared quantitatively.
+ * ============================================ */
+static u64 llm_total_prompt_tokens     = 0;
+static u64 llm_total_completion_tokens = 0;
+static u64 llm_total_calls             = 0;
+static u64 llm_dedup_hits              = 0;  /* prompt-hash cache hits */
+
+/* Simple prompt-hash dedup table for plateau handler.
+ * We store the last 64 prompt hashes (djb2) and skip LLM calls that
+ * produce an identical hash within the window. */
+#define LLM_DEDUP_SLOTS 64
+static u32 llm_prompt_hash_ring[LLM_DEDUP_SLOTS];
+static u32 llm_prompt_hash_count = 0;
+
+extern char *protocol_name;
+extern klist_t(lms) *kl_messages;
+
+typedef struct {
+  u8 *ip;
+  u32 port;
+} mqtt_broker_endpoint_t;
+
+static void reset_mqtt_cluster_diff_summary(void) {
+  if (mqtt_cluster_diff_summary) {
+    ck_free(mqtt_cluster_diff_summary);
+    mqtt_cluster_diff_summary = NULL;
+  }
+  mqtt_cluster_broker_count = 0;
+  mqtt_cluster_unique_signatures = 0;
+  mqtt_cluster_diverged = 0;
+  mqtt_last_diff_signal = 0.0;
+}
+
+static int mqtt_open_cluster_socket(const char *ip, u32 port) {
+  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+  struct sockaddr_in serv_addr;
+  struct sockaddr_in local_serv_addr;
+  struct hostent *host_entry = NULL;
+  int n;
+
+  if (sockfd < 0) {
+    return -1;
+  }
+
+  memset(&serv_addr, 0, sizeof(serv_addr));
+  serv_addr.sin_family = AF_INET;
+  serv_addr.sin_port = htons(port);
+  if (inet_pton(AF_INET, ip, &serv_addr.sin_addr) != 1) {
+    host_entry = gethostbyname(ip);
+    if (!host_entry || !host_entry->h_addr_list || !host_entry->h_addr_list[0]) {
+      close(sockfd);
+      return -1;
+    }
+    memcpy(&serv_addr.sin_addr, host_entry->h_addr_list[0], (size_t)host_entry->h_length);
+  }
+
+  if (local_port > 0) {
+    local_serv_addr.sin_family = AF_INET;
+    local_serv_addr.sin_addr.s_addr = INADDR_ANY;
+    local_serv_addr.sin_port = htons(local_port);
+    local_serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    if (bind(sockfd, (struct sockaddr *)&local_serv_addr, sizeof(struct sockaddr_in))) {
+      close(sockfd);
+      return -1;
+    }
+  }
+
+  if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+    for (n = 0; n < 1000; n++) {
+      if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == 0)
+        break;
+      usleep(1000);
+    }
+    if (n == 1000) {
+      close(sockfd);
+      return -1;
+    }
+  }
+
+  return sockfd;
+}
+
+static u32 mqtt_pack_connect(u8 *out, u32 out_cap, const char *client_id) {
+  u32 cid_len = (u32)strlen(client_id);
+  u32 rem_len = 10 + 2 + cid_len;
+  if (!out || out_cap < (2 + rem_len) || cid_len > 23) {
+    return 0;
+  }
+
+  out[0] = 0x10;
+  out[1] = (u8)rem_len;
+  out[2] = 0x00; out[3] = 0x04;
+  out[4] = 'M';  out[5] = 'Q'; out[6] = 'T'; out[7] = 'T';
+  out[8] = 0x04;
+  out[9] = 0x02;
+  out[10] = 0x00; out[11] = 0x3C;
+  out[12] = (u8)((cid_len >> 8) & 0xFF);
+  out[13] = (u8)(cid_len & 0xFF);
+  memcpy(out + 14, client_id, cid_len);
+  return 14 + cid_len;
+}
+
+static u32 mqtt_pack_subscribe(u8 *out, u32 out_cap, u16 pkt_id, const char *topic, u8 qos) {
+  u32 tlen = (u32)strlen(topic);
+  u32 rem_len = 2 + 2 + tlen + 1;
+  if (!out || out_cap < (2 + rem_len) || tlen > 65535) {
+    return 0;
+  }
+
+  out[0] = 0x82;
+  out[1] = (u8)rem_len;
+  out[2] = (u8)((pkt_id >> 8) & 0xFF);
+  out[3] = (u8)(pkt_id & 0xFF);
+  out[4] = (u8)((tlen >> 8) & 0xFF);
+  out[5] = (u8)(tlen & 0xFF);
+  memcpy(out + 6, topic, tlen);
+  out[6 + tlen] = (u8)(qos & 0x03);
+  return 7 + tlen;
+}
+
+static u32 mqtt_pack_publish(u8 *out, u32 out_cap, const char *topic, const char *payload) {
+  u32 tlen = (u32)strlen(topic);
+  u32 plen = (u32)strlen(payload);
+  u32 rem_len = 2 + tlen + plen;
+  if (!out || out_cap < (2 + rem_len) || tlen > 65535) {
+    return 0;
+  }
+
+  out[0] = 0x30;
+  out[1] = (u8)rem_len;
+  out[2] = (u8)((tlen >> 8) & 0xFF);
+  out[3] = (u8)(tlen & 0xFF);
+  memcpy(out + 4, topic, tlen);
+  memcpy(out + 4 + tlen, payload, plen);
+  return 4 + tlen + plen;
+}
+
+static void mqtt_pack_disconnect(u8 *out, u32 out_cap, u32 *out_len) {
+  if (!out || out_cap < 2 || !out_len) {
+    return;
+  }
+  out[0] = 0xE0;
+  out[1] = 0x00;
+  *out_len = 2;
+}
+
+static u8 mqtt_packet_type_from_msg(const char *msg, u32 len) {
+  if (!msg || len == 0) {
+    return 0;
+  }
+  return (u8)(((u8)msg[0]) >> 4);
+}
+
+static char *mqtt_probe_multi_party_interaction(const char *ip, u32 port) {
+  struct timeval timeout;
+  int subfd = -1;
+  int pubfd = -1;
+  int ctrlfd = -1;
+  char *sub_resp = NULL;
+  unsigned int sub_resp_len = 0;
+  unsigned int *state_sequence = NULL;
+  unsigned int state_count = 0;
+  char *result = NULL;
+  u8 pkt[256];
+  u32 pkt_len = 0;
+  u32 i = 0;
+  u8 prev_ptype = 0;
+  u8 have_prev_ptype = 0;
+  u32 saved_local_port = local_port;
+  kliter_t(lms) *it;
+
+  mqtt_init_spec_state_model();
+
+  timeout.tv_sec = 0;
+  timeout.tv_usec = socket_timeout_usecs > 50000 ? socket_timeout_usecs : 50000;
+
+  local_port = 0;
+  subfd = mqtt_open_cluster_socket(ip, port);
+  pubfd = mqtt_open_cluster_socket(ip, port);
+  ctrlfd = mqtt_open_cluster_socket(ip, port);
+  local_port = saved_local_port;
+
+  if (subfd < 0 || pubfd < 0 || ctrlfd < 0) {
+    result = ck_strdup((u8 *)"mp-connect-failed");
+    goto cleanup;
+  }
+
+  setsockopt(subfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
+  setsockopt(subfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout));
+  setsockopt(pubfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
+  setsockopt(pubfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout));
+  setsockopt(ctrlfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
+  setsockopt(ctrlfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout));
+
+  pkt_len = mqtt_pack_connect(pkt, sizeof(pkt), "chatafl_sub");
+  if (!pkt_len || net_send(subfd, timeout, (char *)pkt, pkt_len) != (int)pkt_len) {
+    result = ck_strdup((u8 *)"mp-sub-connect-send-failed");
+    goto cleanup;
+  }
+  net_recv(subfd, timeout, poll_wait_msecs, &sub_resp, &sub_resp_len);
+
+  pkt_len = mqtt_pack_connect(pkt, sizeof(pkt), "chatafl_pub");
+  if (!pkt_len || net_send(pubfd, timeout, (char *)pkt, pkt_len) != (int)pkt_len) {
+    result = ck_strdup((u8 *)"mp-pub-connect-send-failed");
+    goto cleanup;
+  }
+  net_recv(pubfd, timeout, poll_wait_msecs, &sub_resp, &sub_resp_len);
+
+  pkt_len = mqtt_pack_connect(pkt, sizeof(pkt), "chatafl_ctrl");
+  if (!pkt_len || net_send(ctrlfd, timeout, (char *)pkt, pkt_len) != (int)pkt_len) {
+    result = ck_strdup((u8 *)"mp-ctrl-connect-send-failed");
+    goto cleanup;
+  }
+  net_recv(ctrlfd, timeout, poll_wait_msecs, &sub_resp, &sub_resp_len);
+
+  pkt_len = mqtt_pack_subscribe(pkt, sizeof(pkt), 1, "#", 0);
+  if (!pkt_len || net_send(subfd, timeout, (char *)pkt, pkt_len) != (int)pkt_len) {
+    result = ck_strdup((u8 *)"mp-subscribe-send-failed");
+    goto cleanup;
+  }
+  net_recv(subfd, timeout, poll_wait_msecs, &sub_resp, &sub_resp_len);
+
+  for (it = kl_begin(kl_messages); it != kl_end(kl_messages); it = kl_next(it)) {
+    int target_fd = ctrlfd;
+    message_t *m = kl_val(it);
+    u8 ptype = mqtt_packet_type_from_msg(m->mdata, m->msize);
+    int role;
+
+    if (!m || !m->mdata || m->msize == 0) {
+      continue;
+    }
+
+    if (have_prev_ptype && !mqtt_spec_transition_allowed(prev_ptype, ptype)) {
+      continue;
+    }
+
+    role = mqtt_role_for_packet_type(ptype);
+    if (role == 2) target_fd = pubfd;
+    else if (role == 1) target_fd = subfd;
+    else target_fd = ctrlfd;
+
+    if (!mqtt_spec_transition_allowed(0, ptype) && !have_prev_ptype) {
+      if (ptype != 1) {
+        continue;
+      }
+    }
+
+    if (net_send(target_fd, timeout, m->mdata, m->msize) != (int)m->msize) {
+      continue;
+    }
+
+    prev_ptype = ptype;
+    have_prev_ptype = 1;
+
+    net_recv(target_fd, timeout, poll_wait_msecs, &sub_resp, &sub_resp_len);
+    if (target_fd != subfd) {
+      net_recv(subfd, timeout, poll_wait_msecs, &sub_resp, &sub_resp_len);
+    }
+  }
+
+  pkt_len = mqtt_pack_publish(pkt, sizeof(pkt), "chatafl/probe", "ping");
+  if (pkt_len) {
+    net_send(pubfd, timeout, (char *)pkt, pkt_len);
+    net_recv(pubfd, timeout, poll_wait_msecs, &sub_resp, &sub_resp_len);
+    for (i = 0; i < 4; i++) {
+      if (net_recv(subfd, timeout, poll_wait_msecs, &sub_resp, &sub_resp_len) != 0) {
+        break;
+      }
+    }
+  }
+
+  if (sub_resp && sub_resp_len > 0) {
+    state_sequence = extract_response_codes_mqtt((unsigned char *)sub_resp, sub_resp_len, &state_count);
+    if (state_sequence) {
+      result = (char *)state_sequence_to_string(state_sequence, state_count);
+      ck_free(state_sequence);
+      state_sequence = NULL;
+    }
+  }
+
+  if (!result) {
+    result = ck_strdup((u8 *)"mp-no-response");
+  }
+
+cleanup:
+  pkt_len = 0;
+  mqtt_pack_disconnect(pkt, sizeof(pkt), &pkt_len);
+  if (pkt_len && subfd >= 0) {
+    net_send(subfd, timeout, (char *)pkt, pkt_len);
+  }
+  if (pkt_len && pubfd >= 0) {
+    net_send(pubfd, timeout, (char *)pkt, pkt_len);
+  }
+  if (pkt_len && ctrlfd >= 0) {
+    net_send(ctrlfd, timeout, (char *)pkt, pkt_len);
+  }
+
+  if (sub_resp) ck_free(sub_resp);
+  if (state_sequence) ck_free(state_sequence);
+  if (subfd >= 0) close(subfd);
+  if (pubfd >= 0) close(pubfd);
+  if (ctrlfd >= 0) close(ctrlfd);
+
+  return result;
+}
+
+/* Forward declaration — defined after helper functions. */
+static void mqtt_diff_analyze_responses(char **raw_responses,
+                                        unsigned int *raw_response_lens,
+                                        u32 broker_count);
+
+static void mqtt_probe_cluster_differences(void) {
+  const char *broker_spec = getenv("CHATAFL_MQTT_BROKERS");
+  mqtt_broker_endpoint_t *endpoints = NULL;
+  char **signatures = NULL;
+  char *spec_copy = NULL;
+  char *token = NULL;
+  char *saveptr = NULL;
+  char self_hostname[256];
+  int have_self_hostname = 0;
+  u32 endpoint_count = 0;
+  u32 i = 0;
+
+  if (!protocol_name || strcasecmp(protocol_name, "MQTT") != 0) {
+    reset_mqtt_cluster_diff_summary();
+    return;
+  }
+
+  if (net_protocol != PRO_TCP) {
+    reset_mqtt_cluster_diff_summary();
+    return;
+  }
+
+  /* Skip cluster probing during dry run — partner container likely not ready. */
+  if (queue_cycle == 0) {
+    reset_mqtt_cluster_diff_summary();
+    return;
+  }
+
+  /* MQTT cluster-diff probing can be expensive (N brokers × full replay).
+   * Throttle probes by execution count when CHATAFL_MQTT_BROKERS is set.
+   * Cached signal is reused between probe intervals, with mild decay. */
+  if (broker_spec && *broker_spec && mqtt_diff_probe_period > 1) {
+    if (total_execs > 0 && mqtt_diff_last_probe_exec > 0 &&
+        (total_execs - mqtt_diff_last_probe_exec) < mqtt_diff_probe_period) {
+      mqtt_last_diff_signal *= 0.95;
+      return;
+    }
+    mqtt_diff_last_probe_exec = total_execs;
+  }
+
+  reset_mqtt_cluster_diff_summary();
+
+  /* Even if no CHATAFL_MQTT_BROKERS is set, still run multi-party
+   * probe against the target broker (once). */
+  if (!broker_spec || !*broker_spec) {
+    static u8 mp_standalone_done = 0;
+    if (!mp_standalone_done && net_ip && net_port) {
+      char *mp_sig = mqtt_probe_multi_party_interaction((char *)net_ip, net_port);
+      if (mp_sig) {
+        fprintf(stderr, "[mqtt-mpi] standalone multi-party probe: %s\n", mp_sig);
+        ck_free(mp_sig);
+      }
+      mp_standalone_done = 1;
+    }
+    mqtt_last_diff_signal = 0.0;
+    return;
+  }
+
+  if (gethostname(self_hostname, sizeof(self_hostname) - 1) == 0) {
+    self_hostname[sizeof(self_hostname) - 1] = '\0';
+    have_self_hostname = 1;
+  }
+
+  spec_copy = ck_strdup((u8 *)broker_spec);
+  if (!spec_copy) {
+    return;
+  }
+
+  token = strtok_r(spec_copy, ",", &saveptr);
+  while (token) {
+    u8 *ip = NULL;
+    u32 port = 0;
+    u8 proto = 0;
+
+    while (*token && isspace((unsigned char)*token)) token++;
+    if (*token) {
+      char *end = token + strlen(token) - 1;
+      while (end >= token && isspace((unsigned char)*end)) {
+        *end = '\0';
+        end--;
+      }
+    }
+
+    if (*token && !parse_net_config((u8 *)token, &proto, &ip, &port) && proto == PRO_TCP) {
+      if (have_self_hostname && ip && strcmp((char *)ip, self_hostname) == 0) {
+        if (ip) free(ip);
+        token = strtok_r(NULL, ",", &saveptr);
+        continue;
+      }
+      mqtt_broker_endpoint_t *next = (mqtt_broker_endpoint_t *)ck_realloc(endpoints, (endpoint_count + 1) * sizeof(mqtt_broker_endpoint_t));
+      if (!next) {
+        if (ip) free(ip);
+        break;
+      }
+      endpoints = next;
+      endpoints[endpoint_count].ip = ip;
+      endpoints[endpoint_count].port = port;
+      endpoint_count++;
+    } else if (ip) {
+      free(ip);
+    }
+
+    token = strtok_r(NULL, ",", &saveptr);
+  }
+
+  ck_free(spec_copy);
+
+  if (endpoint_count < 2) {
+    if (broker_spec && !mqtt_cluster_probe_logged) {
+      fprintf(stderr, "[mqtt-cluster] disabled: brokers=%u diverged=%u summary=%s\n",
+              endpoint_count, mqtt_cluster_diverged,
+              mqtt_cluster_diff_summary ? mqtt_cluster_diff_summary : "(none)");
+      mqtt_cluster_probe_logged = 1;
+    }
+    if (endpoints) {
+      for (i = 0; i < endpoint_count; i++) {
+        if (endpoints[i].ip) free(endpoints[i].ip);
+      }
+      ck_free(endpoints);
+    }
+
+    /* Even without cluster diff, still run multi-party interaction probe
+     * against the TARGET broker.  This exercises sub/pub/ctrl role
+     * splitting on the same broker — useful even in single-container mode.
+     * We run it on the first call only to avoid per-exec overhead. */
+    {
+      static u8 mp_local_done = 0;
+      if (!mp_local_done && net_ip && net_port) {
+        char *mp_sig = mqtt_probe_multi_party_interaction((char *)net_ip, net_port);
+        if (mp_sig) {
+          fprintf(stderr, "[mqtt-mpi] local multi-party probe: %s\n", mp_sig);
+          ck_free(mp_sig);
+        }
+        mp_local_done = 1;
+      }
+    }
+
+    return;
+  }
+
+  signatures = (char **)ck_alloc(endpoint_count * sizeof(char *));
+  if (!signatures) {
+    for (i = 0; i < endpoint_count; i++) {
+      if (endpoints[i].ip) free(endpoints[i].ip);
+    }
+    ck_free(endpoints);
+    return;
+  }
+  memset(signatures, 0, endpoint_count * sizeof(char *));
+
+  /* P5: Collect raw response buffers for field-level differential analysis.
+   * These are kept alive until after mqtt_diff_analyze_responses(). */
+  char **raw_resp_bufs = (char **)ck_alloc(endpoint_count * sizeof(char *));
+  unsigned int *raw_resp_lens = (unsigned int *)ck_alloc(endpoint_count * sizeof(unsigned int));
+  memset(raw_resp_bufs, 0, endpoint_count * sizeof(char *));
+  memset(raw_resp_lens, 0, endpoint_count * sizeof(unsigned int));
+
+  for (i = 0; i < endpoint_count; i++) {
+    int sockfd = mqtt_open_cluster_socket((char *)endpoints[i].ip, endpoints[i].port);
+    struct timeval timeout;
+    char *cluster_response_buf = NULL;
+    unsigned int cluster_response_len = 0;
+    unsigned int *cluster_state_sequence = NULL;
+    unsigned int cluster_state_count = 0;
+    kliter_t(lms) *it;
+
+    if (sockfd < 0) {
+      signatures[i] = ck_strdup((u8 *)"connect-failed");
+      continue;
+    }
+
+    timeout.tv_sec = 0;
+    timeout.tv_usec = socket_timeout_usecs;
+    setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
+    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout));
+
+    for (it = kl_begin(kl_messages); it != kl_end(kl_messages); it = kl_next(it)) {
+      if (net_send(sockfd, timeout, kl_val(it)->mdata, kl_val(it)->msize) != kl_val(it)->msize) {
+        break;
+      }
+      if (net_recv(sockfd, timeout, poll_wait_msecs, &cluster_response_buf, &cluster_response_len)) {
+        break;
+      }
+    }
+
+    net_recv(sockfd, timeout, poll_wait_msecs, &cluster_response_buf, &cluster_response_len);
+
+    if (cluster_response_buf && cluster_response_len > 0) {
+      cluster_state_sequence = extract_response_codes_mqtt((unsigned char *)cluster_response_buf, cluster_response_len, &cluster_state_count);
+      if (cluster_state_sequence) {
+        signatures[i] = (char *)state_sequence_to_string(cluster_state_sequence, cluster_state_count);
+        ck_free(cluster_state_sequence);
+      }
+    }
+
+    if (!signatures[i]) {
+      signatures[i] = ck_strdup((u8 *)"no-response");
+    }
+
+    /* P5: Keep raw response buffer for field-level diff (freed below) */
+    raw_resp_bufs[i] = cluster_response_buf;
+    raw_resp_lens[i] = cluster_response_len;
+
+    close(sockfd);
+
+    {
+      char *mp_sig = mqtt_probe_multi_party_interaction((char *)endpoints[i].ip, endpoints[i].port);
+      if (mp_sig) {
+        u8 owns_base_sig = 0;
+        char *base_sig = signatures[i];
+        if (!base_sig) {
+          base_sig = (char *)ck_strdup((u8 *)"no-response");
+          owns_base_sig = 1;
+        }
+        char *merged = alloc_printf("%s|mp:%s", base_sig, mp_sig);
+        if (signatures[i]) ck_free(signatures[i]);
+        signatures[i] = merged;
+        if (owns_base_sig) ck_free(base_sig);
+        ck_free(mp_sig);
+      }
+    }
+  }
+
+  {
+    u32 unique = 0;
+    char *summary = ck_strdup((u8 *)"{\"enabled\":1,\"details\":\"");
+
+    for (i = 0; i < endpoint_count; i++) {
+      u32 j;
+      u8 seen = 0;
+
+      for (j = 0; j < i; j++) {
+        if (signatures[j] && signatures[i] && strcmp(signatures[j], signatures[i]) == 0) {
+          seen = 1;
+          break;
+        }
+      }
+      if (!seen) {
+        unique++;
+      }
+
+      if (i == 0) {
+        char *next = alloc_printf("%s%s:%u=%s", summary, (char *)endpoints[i].ip, endpoints[i].port, signatures[i]);
+        ck_free(summary);
+        summary = next;
+      } else {
+        char *next = alloc_printf("%s;%s:%u=%s", summary, (char *)endpoints[i].ip, endpoints[i].port, signatures[i]);
+        ck_free(summary);
+        summary = next;
+      }
+    }
+
+    {
+      char *final_summary = alloc_printf("%s\",\"brokers\":%u,\"unique_signatures\":%u,\"diverged\":%u}",
+                                         summary, endpoint_count, unique, unique > 1);
+      double diff_strength = 0.0;
+      if (endpoint_count > 1 && unique > 1) {
+        diff_strength = (double)(unique - 1) / (double)(endpoint_count - 1);
+        if (diff_strength < 0.0) diff_strength = 0.0;
+        if (diff_strength > 1.0) diff_strength = 1.0;
+      }
+      ck_free(summary);
+      reset_mqtt_cluster_diff_summary();
+      mqtt_cluster_diff_summary = final_summary;
+      mqtt_cluster_broker_count = endpoint_count;
+      mqtt_cluster_unique_signatures = unique;
+      mqtt_cluster_diverged = (unique > 1);
+      mqtt_last_diff_signal = diff_strength;
+
+      if (!mqtt_cluster_probe_logged) {
+        fprintf(stderr, "[mqtt-cluster] enabled: brokers=%u diverged=%u summary=%s\n",
+                mqtt_cluster_broker_count, mqtt_cluster_diverged,
+                mqtt_cluster_diff_summary ? mqtt_cluster_diff_summary : "(none)");
+        mqtt_cluster_probe_logged = 1;
+      }
+    }
+  }
+
+  /* P5: Field-level differential analysis on raw response buffers.
+   * This enriches the hash-based diff_signal with structured
+   * G-field/H-field divergence detection (MBFuzzer-style). */
+  if (endpoint_count >= 2) {
+    mqtt_diff_analyze_responses(raw_resp_bufs, raw_resp_lens, endpoint_count);
+  }
+
+  /* Free raw response buffers */
+  for (i = 0; i < endpoint_count; i++) {
+    if (raw_resp_bufs[i]) ck_free(raw_resp_bufs[i]);
+  }
+  ck_free(raw_resp_bufs);
+  ck_free(raw_resp_lens);
+
+  for (i = 0; i < endpoint_count; i++) {
+    if (signatures[i]) ck_free(signatures[i]);
+    if (endpoints[i].ip) free(endpoints[i].ip);
+  }
+  ck_free(signatures);
+  ck_free(endpoints);
+}
+
+/* Parse CHATAFL_MQTT_BROKERS into endpoint array for per-exec multi-broker
+ * main execution. Returns 1 when >=2 valid TCP endpoints are found.
+ * Caller owns *out_endpoints and each endpoint.ip (free with free()). */
+static u8 mqtt_collect_exec_brokers(mqtt_broker_endpoint_t **out_endpoints,
+                                    u32 *out_count) {
+  const char *broker_spec = getenv("CHATAFL_MQTT_BROKERS");
+  mqtt_broker_endpoint_t *endpoints = NULL;
+  char *spec_copy = NULL;
+  char *token = NULL, *saveptr = NULL;
+  u32 endpoint_count = 0;
+
+  *out_endpoints = NULL;
+  *out_count = 0;
+
+  if (!broker_spec || !*broker_spec)
+    return 0;
+
+  spec_copy = ck_strdup((u8 *)broker_spec);
+  if (!spec_copy)
+    return 0;
+
+  token = strtok_r(spec_copy, ",", &saveptr);
+  while (token) {
+    u8 *ip = NULL;
+    u32 port = 0;
+    u8 proto = 0;
+
+    while (*token && isspace((unsigned char)*token)) token++;
+    if (*token) {
+      char *end = token + strlen(token) - 1;
+      while (end >= token && isspace((unsigned char)*end)) {
+        *end = '\0';
+        end--;
+      }
+    }
+
+    if (*token && !parse_net_config((u8 *)token, &proto, &ip, &port) &&
+        proto == PRO_TCP) {
+      mqtt_broker_endpoint_t *next = (mqtt_broker_endpoint_t *)ck_realloc(
+          endpoints, (endpoint_count + 1) * sizeof(mqtt_broker_endpoint_t));
+      if (!next) {
+        if (ip) free(ip);
+        break;
+      }
+      endpoints = next;
+      endpoints[endpoint_count].ip = ip;
+      endpoints[endpoint_count].port = port;
+      endpoint_count++;
+    } else if (ip) {
+      free(ip);
+    }
+
+    token = strtok_r(NULL, ",", &saveptr);
+  }
+
+  ck_free(spec_copy);
+
+  if (endpoint_count < 2) {
+    for (u32 i = 0; i < endpoint_count; i++)
+      if (endpoints[i].ip) free(endpoints[i].ip);
+    if (endpoints) ck_free(endpoints);
+    return 0;
+  }
+
+  *out_endpoints = endpoints;
+  *out_count = endpoint_count;
+  return 1;
+}
+
+/* Build a robust signature string from response bytes.
+ * NOTE: deliberately parser-free to avoid crashes on malformed broker output
+ * when multi-broker differential execution is enabled. */
+static char *mqtt_signature_from_response(char *resp, unsigned int resp_len) {
+  if (!resp || resp_len == 0)
+    return ck_strdup((u8 *)"no-response");
+
+  /* FNV-1a 64-bit over a bounded prefix for stability + speed. */
+  const unsigned int max_sample = 8192;
+  unsigned int n = (resp_len < max_sample) ? resp_len : max_sample;
+  u64 h = 1469598103934665603ULL;
+
+  for (unsigned int i = 0; i < n; i++) {
+    h ^= (u8)resp[i];
+    h *= 1099511628211ULL;
+  }
+
+  return alloc_printf("len=%u,sample=%u,fnv64=%016llx",
+                      resp_len, n, (unsigned long long)h);
+}
+
+/* Execute one testcase against ONE broker using the existing mp_driver path.
+ * If collect_primary=1, writes into global response_buf/response_bytes/messages_sent.
+ * Otherwise uses temporary buffers and only returns signature in out_sig. */
+static int mqtt_exec_one_broker_mp(const mp_driver_t *mp_drv,
+                                   const char *ip, u32 port,
+                                   u8 collect_primary,
+                                   char **out_sig,
+                                   u8 *out_likely_buggy) {
+  struct timeval timeout;
+  timeout.tv_sec = 0;
+  timeout.tv_usec = socket_timeout_usecs;
+
+  int *mp_fds_buf = NULL;
+  mp_context_t mp_ctx;
+  int rc = 0;
+
+  char *aux_resp_buf = NULL;
+  int aux_resp_size = 0;
+  u32 *aux_resp_bytes = NULL;
+  u32 aux_messages_sent = 0;
+
+  if (out_sig) *out_sig = NULL;
+  if (out_likely_buggy) *out_likely_buggy = 0;
+
+  memset(&mp_ctx, 0, sizeof(mp_ctx));
+  if (!mp_drv || mp_drv->fd_count <= 0 || mp_drv->fd_count > 64) {
+    rc = -1;
+    goto cleanup;
+  }
+
+  mp_fds_buf = (int *)ck_alloc((u32)mp_drv->fd_count * sizeof(int));
+  mp_ctx.fds = mp_fds_buf;
+  mp_ctx.fd_count = mp_drv->fd_count;
+  mp_ctx.timeout = timeout;
+  mp_ctx.poll_wait_msecs = poll_wait_msecs;
+  mp_ctx.server_ip = ip;
+  mp_ctx.server_port = port;
+  mp_ctx.priv = NULL;
+
+  for (int i = 0; i < mp_ctx.fd_count; i++)
+    mp_ctx.fds[i] = -1;
+
+  if (collect_primary) {
+    messages_sent = 0;
+    mp_ctx.response_buf = &response_buf;
+    mp_ctx.response_buf_size = &response_buf_size;
+  } else {
+    mp_ctx.response_buf = &aux_resp_buf;
+    mp_ctx.response_buf_size = &aux_resp_size;
+  }
+
+  if (mp_drv->open_connections(&mp_ctx) != 0) {
+    rc = -1;
+    goto cleanup;
+  }
+
+  if (mp_drv->handshake(&mp_ctx) != 0) {
+    rc = -1;
+    goto cleanup;
+  }
+
+  for (kliter_t(lms) *it = kl_begin(kl_messages); it != kl_end(kl_messages); it = kl_next(it)) {
+    message_t *m = kl_val(it);
+
+    if (!m || !m->mdata || m->msize == 0) {
+      if (collect_primary) {
+        messages_sent++;
+        response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
+        response_bytes[messages_sent - 1] = response_buf_size;
+      } else {
+        aux_messages_sent++;
+        aux_resp_bytes = (u32 *)ck_realloc(aux_resp_bytes, aux_messages_sent * sizeof(u32));
+        aux_resp_bytes[aux_messages_sent - 1] = aux_resp_size;
+      }
+      continue;
+    }
+
+    int role = mp_drv->role_for_message(&mp_ctx, (const unsigned char *)m->mdata, m->msize);
+    if (role < 0) {
+      if (collect_primary) {
+        messages_sent++;
+        response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
+        response_bytes[messages_sent - 1] = response_buf_size;
+      } else {
+        aux_messages_sent++;
+        aux_resp_bytes = (u32 *)ck_realloc(aux_resp_bytes, aux_messages_sent * sizeof(u32));
+        aux_resp_bytes[aux_messages_sent - 1] = aux_resp_size;
+      }
+      continue;
+    }
+
+    if (mqtt_fix_length_enabled)
+      mqtt_fix_message_length(m);
+
+    if (role >= mp_ctx.fd_count) {
+      if (collect_primary) {
+        messages_sent++;
+        response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
+        response_bytes[messages_sent - 1] = response_buf_size;
+      } else {
+        aux_messages_sent++;
+        aux_resp_bytes = (u32 *)ck_realloc(aux_resp_bytes, aux_messages_sent * sizeof(u32));
+        aux_resp_bytes[aux_messages_sent - 1] = aux_resp_size;
+      }
+      continue;
+    }
+
+    int target_fd = mp_ctx.fds[role];
+    if (target_fd < 0) {
+      if (collect_primary) {
+        messages_sent++;
+        response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
+        response_bytes[messages_sent - 1] = response_buf_size;
+      } else {
+        aux_messages_sent++;
+        aux_resp_bytes = (u32 *)ck_realloc(aux_resp_bytes, aux_messages_sent * sizeof(u32));
+        aux_resp_bytes[aux_messages_sent - 1] = aux_resp_size;
+      }
+      continue;
+    }
+    int n = net_send(target_fd, timeout, m->mdata, m->msize);
+
+    if (collect_primary) {
+      messages_sent++;
+      response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
+      if (n != (int)m->msize) {
+        response_bytes[messages_sent - 1] = response_buf_size;
+        rc = -1;
+        goto cleanup;
+      }
+      u32 prev = response_buf_size;
+      net_recv(target_fd, timeout, poll_wait_msecs, &response_buf, &response_buf_size);
+      if (mp_drv->after_send(&mp_ctx, role) != 0) {
+        rc = -1;
+        goto cleanup;
+      }
+      response_bytes[messages_sent - 1] = response_buf_size;
+      if (out_likely_buggy)
+        *out_likely_buggy = ((u32)prev == (u32)response_buf_size) ? 1 : 0;
+    } else {
+      aux_messages_sent++;
+      aux_resp_bytes = (u32 *)ck_realloc(aux_resp_bytes, aux_messages_sent * sizeof(u32));
+      if (n != (int)m->msize) {
+        aux_resp_bytes[aux_messages_sent - 1] = aux_resp_size;
+        rc = -1;
+        goto cleanup;
+      }
+      net_recv(target_fd, timeout, poll_wait_msecs, &aux_resp_buf, &aux_resp_size);
+      if (mp_drv->after_send(&mp_ctx, role) != 0) {
+        rc = -1;
+        goto cleanup;
+      }
+      aux_resp_bytes[aux_messages_sent - 1] = aux_resp_size;
+    }
+  }
+
+cleanup:
+  mp_drv->drain_all(&mp_ctx);
+
+  if (collect_primary) {
+    if (messages_sent > 0 && response_bytes)
+      response_bytes[messages_sent - 1] = response_buf_size;
+  } else {
+    if (aux_messages_sent > 0 && aux_resp_bytes)
+      aux_resp_bytes[aux_messages_sent - 1] = aux_resp_size;
+  }
+
+  mp_drv->cleanup(&mp_ctx);
+
+  if (out_sig) {
+    if (collect_primary)
+      *out_sig = mqtt_signature_from_response(response_buf, (unsigned int)response_buf_size);
+    else
+      *out_sig = mqtt_signature_from_response(aux_resp_buf, (unsigned int)aux_resp_size);
+  }
+
+  for (int i = 0; i < mp_ctx.fd_count; i++)
+    if (mp_ctx.fds[i] >= 0) close(mp_ctx.fds[i]);
+
+  if (mp_fds_buf)
+    ck_free(mp_fds_buf);
+
+  if (!collect_primary) {
+    if (aux_resp_bytes) ck_free(aux_resp_bytes);
+    if (aux_resp_buf) ck_free(aux_resp_buf);
+  }
+
+  return rc;
+}
+
+/* Build and store MQTT cluster diff summary from per-broker signatures. */
+static void mqtt_set_cluster_summary_from_signatures(mqtt_broker_endpoint_t *eps,
+                                                     char **sigs,
+                                                     u32 cnt) {
+  u32 unique = 0;
+  char *summary = ck_strdup((u8 *)"{\"enabled\":1,\"details\":\"");
+
+  for (u32 i = 0; i < cnt; i++) {
+    u8 seen = 0;
+    for (u32 j = 0; j < i; j++) {
+      if (sigs[i] && sigs[j] && strcmp(sigs[i], sigs[j]) == 0) {
+        seen = 1;
+        break;
+      }
+    }
+    if (!seen) unique++;
+
+    char *next = NULL;
+    if (i == 0)
+      next = alloc_printf("%s%s:%u=%s", summary, (char *)eps[i].ip, eps[i].port, sigs[i] ? sigs[i] : "(null)");
+    else
+      next = alloc_printf("%s;%s:%u=%s", summary, (char *)eps[i].ip, eps[i].port, sigs[i] ? sigs[i] : "(null)");
+    ck_free(summary);
+    summary = next;
+  }
+
+  char *final_summary = alloc_printf("%s\",\"brokers\":%u,\"unique_signatures\":%u,\"diverged\":%u}",
+                                     summary, cnt, unique, unique > 1);
+  ck_free(summary);
+
+  reset_mqtt_cluster_diff_summary();
+  mqtt_cluster_diff_summary = final_summary;
+  mqtt_cluster_broker_count = cnt;
+  mqtt_cluster_unique_signatures = unique;
+  mqtt_cluster_diverged = (unique > 1);
+  mqtt_last_diff_signal = (cnt > 1 && unique > 1)
+      ? ((double)(unique - 1) / (double)(cnt - 1))
+      : 0.0;
+}
 
 /* Implemented state machine */
 Agraph_t *ipsm;
@@ -509,6 +1570,9 @@ void setup_llm_grammars()
     klist_t(gram) *grammar_list = kl_init(gram);
 
     char *templates_answer = chat_with_llm(templates_prompt, "gpt-4o-mini", GRAMMAR_RETRIES, 0.5);
+    llm_total_prompt_tokens += llm_last_prompt_tokens;
+    llm_total_completion_tokens += llm_last_completion_tokens;
+    if (templates_answer != NULL) llm_total_calls++;
     if (templates_answer == NULL)
       goto free_templates_answer;
 
@@ -516,6 +1580,9 @@ void setup_llm_grammars()
     char *remaining_prompt = construct_prompt_for_remaining_templates(protocol_name, first_question, templates_answer);
     // printf("remaining prompt is:\n %s\n", remaining_prompt);
     char *remaining_templates = chat_with_llm(remaining_prompt, "gpt-4o-mini", GRAMMAR_RETRIES, 0.5);
+    llm_total_prompt_tokens += llm_last_prompt_tokens;
+    llm_total_completion_tokens += llm_last_completion_tokens;
+    if (remaining_templates != NULL) llm_total_calls++;
     if (remaining_templates == NULL)
       goto free_remaining;
 
@@ -621,6 +1688,18 @@ void setup_llm_grammars()
     }
   }
 
+  /* Fix-13: MQTT binary protocol supplementation.
+   * The LLM pipeline above runs normally (API calls happen), but for MQTT
+   * it produces 0 useful grammars because the LLM cannot generate binary
+   * packet templates.  Supplement message_types_set with hardcoded MQTT
+   * message types so the enrichment pipeline has types to work with. */
+  if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0) {
+    ACTF("MQTT: LLM produced %d patterns — supplementing with hardcoded binary types",
+         (int)protocol_patterns->size);
+    int n = mqtt_setup_hardcoded_grammars(protocol_patterns, message_types_set, out_dir);
+    OKF("Injected %d MQTT message types (supplementing LLM results)", n);
+  }
+
   free(first_question);
   free(templates_prompt);
 }
@@ -698,6 +1777,15 @@ void destroy_ipsm()
   kh_destroy(hms, khms_states);
 
   ck_free(state_ids);
+  if (mqtt_state_diff_reward_sum) {
+    ck_free(mqtt_state_diff_reward_sum);
+    mqtt_state_diff_reward_sum = NULL;
+  }
+  if (mqtt_state_diff_obs) {
+    ck_free(mqtt_state_diff_obs);
+    mqtt_state_diff_obs = NULL;
+  }
+  mqtt_state_diff_cap = 0;
 }
 
 /* Get state index in the state IDs list, given a state ID */
@@ -710,6 +1798,190 @@ u32 get_state_index(u32 state_id)
       break;
   }
   return index;
+}
+
+/* Ensure per-state MQTT differential tables are large enough for current
+ * state_ids_count. MQTT-only, no effect on other protocols. */
+static void mqtt_ensure_state_diff_tables(void)
+{
+  if (state_ids_count <= mqtt_state_diff_cap)
+    return;
+
+  u32 old_cap = mqtt_state_diff_cap;
+  mqtt_state_diff_reward_sum = (double *)ck_realloc(
+      mqtt_state_diff_reward_sum, state_ids_count * sizeof(double));
+  mqtt_state_diff_obs = (u32 *)ck_realloc(
+      mqtt_state_diff_obs, state_ids_count * sizeof(u32));
+
+  for (u32 i = old_cap; i < state_ids_count; i++) {
+    mqtt_state_diff_reward_sum[i] = 0.0;
+    mqtt_state_diff_obs[i] = 0;
+  }
+  mqtt_state_diff_cap = state_ids_count;
+}
+
+/* Record differential signal for the current target state.
+ * Called after each execution from common_fuzz_stuff() (MQTT-only). */
+static void mqtt_record_diff_signal_for_target_state(double signal)
+{
+  if (!mqtt_diff_feedback_enabled || signal <= 0.0)
+    return;
+  if (!state_aware_mode || target_state_id == 0 || state_ids_count == 0)
+    return;
+
+  mqtt_ensure_state_diff_tables();
+  u32 idx = get_state_index(target_state_id);
+  if (idx >= state_ids_count)
+    return;
+
+  mqtt_state_diff_reward_sum[idx] += signal;
+  mqtt_state_diff_obs[idx]++;
+}
+
+/* Cumulative mean differential signal for runtime observability. */
+static double mqtt_diff_signal_avg(void)
+{
+  if (mqtt_diff_obs_count == 0)
+    return 0.0;
+  return mqtt_diff_signal_sum / (double)mqtt_diff_obs_count;
+}
+
+/* Compute multiplicative state bonus from differential productivity.
+ * Bonus range: [1.0, 1.75], intentionally capped to avoid overpowering
+ * frontier/coverage heuristics. */
+static double mqtt_state_diff_bonus(u32 state_id)
+{
+  if (!mqtt_diff_feedback_enabled || state_ids_count == 0)
+    return 1.0;
+
+  mqtt_ensure_state_diff_tables();
+  u32 idx = get_state_index(state_id);
+  if (idx >= state_ids_count || mqtt_state_diff_obs[idx] == 0)
+    return 1.0;
+
+  double mean = mqtt_state_diff_reward_sum[idx] / (double)mqtt_state_diff_obs[idx];
+  if (mean < 0.0) mean = 0.0;
+  if (mean > 1.0) mean = 1.0;
+  return 1.0 + 0.75 * mean;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+ * P5: Field-level differential analysis helpers (MQTT-only)
+ * ════════════════════════════════════════════════════════════════════ */
+
+/* Ensure state stall counter array is large enough. */
+static void mqtt_ensure_stall_table(void) {
+  if (state_ids_count > mqtt_state_stall_cap) {
+    u32 new_cap = state_ids_count + 16;
+    mqtt_state_stall_counter = (u32 *)ck_realloc(
+        mqtt_state_stall_counter, new_cap * sizeof(u32));
+    for (u32 i = mqtt_state_stall_cap; i < new_cap; i++)
+      mqtt_state_stall_counter[i] = 0;
+    mqtt_state_stall_cap = new_cap;
+  }
+}
+
+/* Record a stall (no new paths) for the current target state.
+ * Returns 1 if the state has reached stall threshold. */
+static u8 mqtt_record_state_stall(void) {
+  if (!mqtt_diff_feedback_enabled || !state_aware_mode) return 0;
+  if (!protocol_name || strcasecmp(protocol_name, "MQTT") != 0) return 0;
+  mqtt_ensure_stall_table();
+  u32 idx = selected_state_index;
+  if (idx >= mqtt_state_stall_cap) return 0;
+  mqtt_state_stall_counter[idx]++;
+  if (mqtt_state_stall_counter[idx] >= MQTT_STALL_THRESHOLD) {
+    mqtt_state_stall_resets++;
+    mqtt_state_stall_counter[idx] = 0;
+    return 1;
+  }
+  return 0;
+}
+
+/* Reset stall counter for current state (new path found). */
+static void mqtt_reset_state_stall(void) {
+  if (!mqtt_diff_feedback_enabled || !state_aware_mode) return;
+  if (!protocol_name || strcasecmp(protocol_name, "MQTT") != 0) return;
+  mqtt_ensure_stall_table();
+  u32 idx = selected_state_index;
+  if (idx < mqtt_state_stall_cap)
+    mqtt_state_stall_counter[idx] = 0;
+}
+
+/* Check if a divergence pattern is new (not yet in bitmap).
+ * If new, marks it in the bitmap and returns 1. */
+static u8 mqtt_is_new_divergence_pattern(u32 pattern_hash) {
+  u32 slot = pattern_hash % MQTT_DIV_BITMAP_SIZE;
+  u8 bit   = 1 << (pattern_hash / MQTT_DIV_BITMAP_SIZE % 8);
+  if (mqtt_div_pattern_bitmap[slot] & bit) return 0;
+  mqtt_div_pattern_bitmap[slot] |= bit;
+  return 1;
+}
+
+/* Analyze multi-broker responses using field-level comparison.
+ * Called from multi-broker execution path.  Updates telemetry and
+ * sets mqtt_last_field_diff for save_if_interesting() to consume.
+ *
+ * raw_responses[i] + raw_response_lens[i] are the per-broker response buffers.
+ * broker_count = number of brokers. */
+static void mqtt_diff_analyze_responses(char **raw_responses,
+                                        unsigned int *raw_response_lens,
+                                        u32 broker_count) {
+  mqtt_response_fields_t *fields;
+  mqtt_diff_result_t result;
+
+  mqtt_last_field_diff_valid = 0;
+  if (broker_count < 2) return;
+
+  /* Parse each broker's response into structured fields (stack-allocated). */
+  fields = (mqtt_response_fields_t *)ck_alloc(
+      broker_count * sizeof(mqtt_response_fields_t));
+
+  for (u32 i = 0; i < broker_count; i++) {
+    mqtt_diff_parse_response(
+        (const unsigned char *)raw_responses[i],
+        raw_response_lens[i], &fields[i]);
+  }
+
+  /* Pairwise comparison — find maximum divergence */
+  result = mqtt_diff_compare_n(fields, (int)broker_count);
+
+  /* Update telemetry */
+  switch (result.severity) {
+  case MQTT_DIV_TYPE:
+  case MQTT_DIV_MISSING:
+    mqtt_diff_type_divergences++;
+    break;
+  case MQTT_DIV_CODE:
+    mqtt_diff_code_divergences++;
+    break;
+  case MQTT_DIV_PAYLOAD:
+    mqtt_diff_payload_divergences++;
+    break;
+  default:
+    break;
+  }
+
+  /* Override mqtt_last_diff_signal with field-level strength.
+   * Field-level gives a HIGHER strength for type/code divergences. */
+  if (result.severity > MQTT_DIV_NONE) {
+    double field_signal = 0.0;
+    switch (result.severity) {
+    case MQTT_DIV_MISSING: field_signal = 1.0;   break;
+    case MQTT_DIV_TYPE:    field_signal = 0.9;    break;
+    case MQTT_DIV_CODE:    field_signal = 0.6;    break;
+    case MQTT_DIV_PAYLOAD: field_signal = 0.3;    break;
+    default:               field_signal = 0.0;    break;
+    }
+    /* Blend with raw-hash signal: take the higher one */
+    if (field_signal > mqtt_last_diff_signal)
+      mqtt_last_diff_signal = field_signal;
+  }
+
+  mqtt_last_field_diff = result;
+  mqtt_last_field_diff_valid = 1;
+
+  ck_free(fields);
 }
 
 /* Expand the size of the map when a new seed or a new state has been discovered */
@@ -924,8 +2196,79 @@ u32 update_scores_and_select_next_state(u8 mode)
       switch (mode)
       {
       case FAVOR:
-        state->score = ceil(1000 * pow(2, -log10(log10(state->fuzzs + 1) * state->selected_times + 1)) * pow(2, log(state->paths_discovered + 1)));
+      {
+        double base = ceil(1000 * pow(2, -log10(log10(state->fuzzs + 1) * state->selected_times + 1)) * pow(2, log(state->paths_discovered + 1)));
+
+        /* Fix 5: Frontier bonus for node discovery.
+         *
+         * Problem: hypothesis-guided mutations produce more valid protocol
+         * sequences, which excels at discovering new state transitions (edges)
+         * between known states but may under-explore "frontier" states —
+         * states with few outgoing edges where new nodes are most likely
+         * to be found.
+         *
+         * Solution: count outgoing edges for this state in the IPSM graph.
+         * States with fewer outgoing edges get a multiplicative bonus,
+         * biasing the weighted random selection toward frontier exploration.
+         *
+         *   out_degree 0-1  → ×4.0  (uncharted frontier, highest priority)
+         *   out_degree 2-3  → ×2.0  (partially explored)
+         *   out_degree 4+   → ×1.0  (well-explored, no bonus)
+         */
+        double frontier_bonus = 1.0;
+        if (!ablation_no_frontier) {
+          char sid_str[STATE_STR_LEN];
+          snprintf(sid_str, STATE_STR_LEN, "%d", state_id);
+          Agnode_t *nd = agnode(ipsm, sid_str, FALSE);
+          if (nd) {
+            int out_degree = 0;
+            Agedge_t *e;
+            for (e = agfstout(ipsm, nd); e; e = agnxtout(ipsm, e))
+              out_degree++;
+            if (out_degree <= 1)       frontier_bonus = 4.0;
+            else if (out_degree <= 3)  frontier_bonus = 2.0;
+            /* else: 1.0 (no bonus) */
+          } else {
+            /* State not yet in IPSM graph → maximum frontier bonus */
+            frontier_bonus = 4.0;
+          }
+
+          /* Fix-19 revised: Acceptability penalty — softer to preserve
+           * crash-finding in error states.  Three-tier logic:
+           *
+           * error_hint=1 (structural: 4xx/5xx, not yet proven productive)
+           *   → frontier_bonus × 0.5   (was 0.25 — too aggressive, error
+           *     states in SIP/FTP/SMTP are where parser crashes live)
+           *
+           * error_hint=0 (unknown, e.g. binary protocols) AND
+           * behaviorally unproductive (selected≥30, productivity<0.005)
+           *   → frontier_bonus × 0.7   (was 0.5 at selected≥20/prod<0.01
+           *     — tightened criteria to avoid premature penalty)
+           *
+           * error_hint=2 (confirmed productive despite error code)
+           *   → no penalty (full bonus preserved)
+           */
+          if (state->error_hint == 1) {
+            frontier_bonus *= 0.5;
+          } else if (state->error_hint == 0 &&
+                     state->selected_times >= 30 &&
+                     state->productivity < 0.005) {
+            frontier_bonus *= 0.7;
+          }
+          /* error_hint == 2: confirmed productive → no penalty */
+        }
+
+        /* MQTT-only differential bonus:
+         * States that repeatedly produce cross-broker divergence receive
+         * additional weight, improving deep-path conversion of state edges. */
+        if (mqtt_diff_feedback_enabled && protocol_name &&
+            strcasecmp(protocol_name, "MQTT") == 0) {
+          frontier_bonus *= mqtt_state_diff_bonus(state_id);
+        }
+
+        state->score = (u32)(base * frontier_bonus);
         break;
+      }
         // other cases are reserved
       }
 
@@ -1160,6 +2503,9 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
           newState_From->selected_seed_index = 0;
           newState_From->seeds = NULL;
           newState_From->seeds_count = 0;
+          /* Fix-19: Initialize acceptability fields */
+          newState_From->error_hint = classify_state_error_hint(prevStateID, protocol_name);
+          newState_From->productivity = 0.0;
 
           k = kh_put(hms, khms_states, prevStateID, &discard);
           kh_value(khms_states, k) = newState_From;
@@ -1194,6 +2540,9 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
           newState_To->selected_seed_index = 0;
           newState_To->seeds = NULL;
           newState_To->seeds_count = 0;
+          /* Fix-19: Initialize acceptability fields */
+          newState_To->error_hint = classify_state_error_hint(curStateID, protocol_name);
+          newState_To->productivity = 0.0;
 
           k = kh_put(hms, khms_states, curStateID, &discard);
           kh_value(khms_states, k) = newState_To;
@@ -1302,6 +2651,9 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
         newState->seeds = (void **)ck_realloc(newState->seeds, sizeof(void *));
         newState->seeds[0] = (void *)q;
         newState->seeds_count = 1;
+        /* Fix-19: Initialize acceptability fields */
+        newState->error_hint = classify_state_error_hint(reachable_state_id, protocol_name);
+        newState->productivity = 0.0;
 
         k = kh_put(hms, khms_states, reachable_state_id, &discard);
         kh_value(khms_states, k) = newState;
@@ -1354,9 +2706,145 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
     }
   }
 
+  /* Fix-19: Update productivity and behavioral confirmation for all states.
+   *
+   * productivity = paths_discovered / (selected_times + 1.0)
+   *   — cached here so FAVOR scoring can read it in O(1)
+   *
+   * Behavioral override logic (requires sufficient sample, selected_times >= 10):
+   *   error_hint=1 AND productivity >= 0.1  →  promote to 2 (productive)
+   *     e.g. FTP 550 that leads to interesting retry paths
+   *   error_hint=0 AND productivity < 0.005 AND selected_times >= 30
+   *     →  demote to 1 (behaviorally confirmed dead-end)
+   *     e.g. MQTT PINGRESP (0xD0) that never produces new coverage
+   */
+  for (u32 si = 0; si < state_ids_count; si++)
+  {
+    k = kh_get(hms, khms_states, state_ids[si]);
+    if (k != kh_end(khms_states))
+    {
+      state_info_t *st = kh_val(khms_states, k);
+      st->productivity = (double)st->paths_discovered / (st->selected_times + 1.0);
+
+      if (st->selected_times >= 10)
+      {
+        /* Promotion: structural error hint but actually productive */
+        if (st->error_hint == 1 && st->productivity >= 0.1)
+        {
+          st->error_hint = 2;  /* confirmed productive, remove penalty */
+          fprintf(stderr,
+                  "[fix-19] State %u promoted: error_hint 1->2 (productivity=%.3f)\n",
+                  st->id, st->productivity);
+        }
+      }
+      if (st->selected_times >= 30)
+      {
+        /* Demotion: unknown protocol state but behaviorally dead */
+        if (st->error_hint == 0 && st->productivity < 0.005)
+        {
+          st->error_hint = 1;  /* behaviorally confirmed unproductive */
+          fprintf(stderr,
+                  "[fix-19] State %u demoted: error_hint 0->1 (productivity=%.4f, sel=%u)\n",
+                  st->id, st->productivity, st->selected_times);
+        }
+      }
+    }
+  }
+
   // Free state sequence
   if (state_sequence)
     ck_free(state_sequence);
+}
+
+/* ── MQTT remaining_length fixer ──────────────────────────────────────
+ *
+ * After AFL's byte-level mutations, the MQTT remaining_length field
+ * inside each packet may be inconsistent with the actual body length.
+ * This causes the broker to reject or misparsee the packet, wasting
+ * the execution.
+ *
+ * mqtt_fix_message_length() is called on each individual message_t
+ * (already split by extract_requests_mqtt) BEFORE net_send().
+ * It re-encodes remaining_length so it matches the actual body size.
+ *
+ * Activation: only when protocol is MQTT.
+ *   - Default: ON for MQTT.
+ *   - Override: CHATAFL_MQTT_FIX_LENGTH=0 to disable.
+ *
+ * Protocol isolation: this function is never called for non-MQTT
+ * protocols; the call site is guarded by mqtt_fix_length_enabled.
+ * ──────────────────────────────────────────────────────────────────── */
+static u8 mqtt_fix_length_enabled = 0;  /* set once at startup */
+
+/* Encode MQTT variable-length integer into out[].  Returns number of
+ * bytes written (1–4), or 0 on overflow (value > 268435455). */
+static u32 mqtt_encode_remaining_length(u32 value, u8 *out) {
+  u32 i = 0;
+  do {
+    u8 byte = (u8)(value % 128);
+    value /= 128;
+    if (value > 0) byte |= 0x80;
+    out[i++] = byte;
+  } while (value > 0 && i < 4);
+  return (value == 0) ? i : 0;
+}
+
+/* Decode MQTT variable-length integer starting at buf[1..].
+ * Returns bytes consumed (1–4) or 0 on error.
+ * *out_len receives the decoded value. */
+static u32 mqtt_decode_remaining_length(const u8 *buf, u32 buf_size,
+                                        u32 *out_len) {
+  u32 multiplier = 1, value = 0, pos = 1; /* skip fixed header byte 0 */
+  for (u32 i = 0; i < 4; i++) {
+    if (pos >= buf_size) return 0;
+    u8 encoded = buf[pos++];
+    value += (encoded & 0x7F) * multiplier;
+    if ((encoded & 0x80) == 0) { *out_len = value; return pos - 1; }
+    multiplier *= 128;
+  }
+  return 0;
+}
+
+/* Fix remaining_length in message m (in-place, may reallocate m->mdata).
+ * Only operates on messages ≥ 2 bytes with a valid type nibble (1–15). */
+static void mqtt_fix_message_length(message_t *m) {
+  if (!m || !m->mdata || m->msize < 2) return;
+
+  u8 type_nibble = ((u8)m->mdata[0] >> 4) & 0x0F;
+  if (type_nibble < 1 || type_nibble > 15) return;
+
+  /* Decode current remaining_length */
+  u32 cur_rem_len = 0;
+  u32 rl_bytes = mqtt_decode_remaining_length((u8 *)m->mdata, m->msize,
+                                              &cur_rem_len);
+  if (rl_bytes == 0) return;  /* can't parse → leave untouched */
+
+  u32 header_size = 1 + rl_bytes;  /* fixed header byte + RL encoding */
+  u32 body_size = m->msize - header_size;
+
+  /* If remaining_length already matches, nothing to do */
+  if (cur_rem_len == body_size) return;
+
+  /* Re-encode with correct body_size */
+  u8 new_rl[4];
+  u32 new_rl_bytes = mqtt_encode_remaining_length(body_size, new_rl);
+  if (new_rl_bytes == 0) return;  /* overflow → leave untouched */
+
+  u32 new_header_size = 1 + new_rl_bytes;
+  u32 new_total = new_header_size + body_size;
+
+  if (new_rl_bytes != rl_bytes) {
+    /* Avoid reallocating the message buffer here: the message ownership
+     * is shared across multiple execution paths and reallocation can
+     * interfere with later cleanup on malformed packets.  When the
+     * encoded length width changes, skip the fix safely. */
+    return;
+  }
+
+  /* Same encoding size → patch in place only. */
+  (void)new_header_size;
+  (void)new_total;
+  memcpy(m->mdata + 1, new_rl, new_rl_bytes);
 }
 
 /* Send (mutated) messages in order to the server under test */
@@ -1388,135 +2876,447 @@ int send_over_network()
     response_bytes = NULL;
   }
 
-  // Create a TCP/UDP socket
+  /* ── Multi-Party Driver Skeleton ─────────────────────────────────────
+   *
+   * Generic multi-connection mode driven by mp_driver_t (mp-driver.h).
+   * The skeleton is protocol-agnostic; all protocol-specific logic lives
+   * in the driver callbacks (e.g., mp-driver-mqtt.c).
+   *
+   * Flow: look up driver → open N fds → handshake → route messages →
+   *       drain → cleanup → close.  If no driver exists or any setup
+   *       step fails, fall through to the original single-fd path.
+   *
+   * Open-Closed: the single-fd text protocol path below is completely
+   * untouched.  New protocols add a driver .c file and register it in
+   * mp_driver_for_protocol() — send_over_network() never changes.
+   * ─────────────────────────────────────────────────────────────────── */
+
   int sockfd = -1;
-  if (net_protocol == PRO_TCP)
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-  else if (net_protocol == PRO_UDP)
-    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-
-  if (sockfd < 0)
-  {
-    PFATAL("Cannot create a socket");
-  }
-
-  // Set timeout for socket data sending/receiving -- otherwise it causes a big delay
-  // if the server is still alive after processing all the requests
   struct timeval timeout;
   timeout.tv_sec = 0;
   timeout.tv_usec = socket_timeout_usecs;
-  setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
-
-  memset(&serv_addr, '0', sizeof(serv_addr));
-
-  serv_addr.sin_family = AF_INET;
-  serv_addr.sin_port = htons(net_port);
-  serv_addr.sin_addr.s_addr = inet_addr(net_ip);
-
-  // This piece of code is only used for targets that send responses to a specific port number
-  // The Kamailio SIP server is an example. After running this code, the intialized sockfd
-  // will be bound to the given local port
-  if (local_port > 0)
-  {
-    local_serv_addr.sin_family = AF_INET;
-    local_serv_addr.sin_addr.s_addr = INADDR_ANY;
-    local_serv_addr.sin_port = htons(local_port);
-
-    local_serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-    if (bind(sockfd, (struct sockaddr *)&local_serv_addr, sizeof(struct sockaddr_in)))
-    {
-      FATAL("Unable to bind socket on local source port");
-    }
-  }
-
-  if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
-  {
-    // If it cannot connect to the server under test
-    // try it again as the server initial startup time is varied
-    for (n = 0; n < 1000; n++)
-    {
-      if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == 0)
-        break;
-      usleep(1000);
-    }
-    if (n == 1000)
-    {
-      close(sockfd);
-      return 1;
-    }
-  }
-
-  // retrieve early server response if needed
-  if (net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size))
-    goto HANDLE_RESPONSES;
-
-  // write the request messages
-  kliter_t(lms) * it;
+  kliter_t(lms) *it;
   messages_sent = 0;
 
-  for (it = kl_begin(kl_messages); it != kl_end(kl_messages); it = kl_next(it))
+  const mp_driver_t *mp_drv = mp_driver_for_protocol(protocol_name);
+
+  if (mp_drv && net_protocol == PRO_TCP)
   {
-    n = net_send(sockfd, timeout, kl_val(it)->mdata, kl_val(it)->msize);
-    messages_sent++;
+    /* MQTT multi-broker MAIN architecture:
+     * If CHATAFL_MQTT_BROKERS has >=2 endpoints, execute every test case on
+     * all brokers (not just post-run probe), collect per-broker signatures,
+     * and derive differential signal directly from the main execution path.
+     * Primary broker = brokers[0], whose responses feed normal AFLNet logic.
+     *
+     * SAFETY: Skip multi-broker execution during dry run (queue_cycle == 0).
+     * During dry run the partner container may still be compiling or
+     * enriching seeds — its mosquitto target is not yet running, so
+     * connecting to it would fail or hang, sometimes triggering SIGSEGV
+     * via SIGPIPE or corrupted network state.  The differential signal
+     * is meaningless during calibration anyway. */
+    if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0
+        && queue_cycle > 0) {
+      mqtt_broker_endpoint_t *eps = NULL;
+      u32 ecnt = 0;
+      if (mqtt_collect_exec_brokers(&eps, &ecnt)) {
+        char **sigs = (char **)ck_alloc(ecnt * sizeof(char *));
+        memset(sigs, 0, ecnt * sizeof(char *));
 
-    // Allocate memory to store new accumulated response buffer size
-    response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
+        u8 primary_likely_buggy = 0;
+        int primary_rc = mqtt_exec_one_broker_mp(
+            mp_drv, (const char *)eps[0].ip, eps[0].port,
+            1, &sigs[0], &primary_likely_buggy);
 
-    // Jump out if something wrong leading to incomplete message sent
-    if (n != kl_val(it)->msize)
-    {
-      goto HANDLE_RESPONSES;
+        if (primary_rc != 0) {
+          mp_multi_fallback++;
+          for (u32 i = 0; i < ecnt; i++) if (sigs[i]) ck_free(sigs[i]);
+          ck_free(sigs);
+          for (u32 i = 0; i < ecnt; i++) if (eps[i].ip) free(eps[i].ip);
+          ck_free(eps);
+          /* Reset response state corrupted by the failed primary execution.
+           * Without this, the single-fd fallback path appends to stale
+           * response_buf data and response_bytes indices become inconsistent,
+           * leading to out-of-bounds access in downstream analysis code. */
+          if (response_buf) { ck_free(response_buf); response_buf = NULL; }
+          response_buf_size = 0;
+          if (response_bytes) { ck_free(response_bytes); response_bytes = NULL; }
+          messages_sent = 0;
+          goto MP_SINGLE_FD_FALLBACK;
+        }
+
+        likely_buggy = primary_likely_buggy;
+
+        for (u32 i = 1; i < ecnt; i++) {
+          (void)mqtt_exec_one_broker_mp(mp_drv,
+                                        (const char *)eps[i].ip,
+                                        eps[i].port,
+                                        0,
+                                        &sigs[i],
+                                        NULL);
+          if (!sigs[i])
+            sigs[i] = ck_strdup((u8 *)"exec-failed");
+        }
+
+        mqtt_set_cluster_summary_from_signatures(eps, sigs, ecnt);
+
+        if (!mqtt_cluster_probe_logged) {
+          fprintf(stderr, "[mqtt-cluster-main] brokers=%u unique=%u diverged=%u\n",
+                  mqtt_cluster_broker_count,
+                  mqtt_cluster_unique_signatures,
+                  mqtt_cluster_diverged);
+          mqtt_cluster_probe_logged = 1;
+        }
+
+        /* Stabilization loop */
+        memset(session_virgin_bits, 255, MAP_SIZE);
+        {
+          int stab_iter = 0;
+          while (stab_iter++ < 5000) {
+            if (has_new_bits(session_virgin_bits) != 2)
+              break;
+          }
+        }
+
+        for (u32 i = 0; i < ecnt; i++) {
+          if (sigs[i]) ck_free(sigs[i]);
+          if (eps[i].ip) free(eps[i].ip);
+        }
+        ck_free(sigs);
+        ck_free(eps);
+
+        mp_multi_ok++;
+        sockfd = -1;
+        goto MP_MULTI_DONE;
+      }
     }
 
-    // retrieve server response
-    u32 prev_buf_size = response_buf_size;
-    if (net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size))
-    {
-      goto HANDLE_RESPONSES;
+    /* ── Generic multi-fd path via driver callbacks ── */
+    int *mp_fds_buf = NULL;
+    mp_context_t mp_ctx;
+    memset(&mp_ctx, 0, sizeof(mp_ctx));
+    if (!mp_drv || mp_drv->fd_count <= 0 || mp_drv->fd_count > 64) {
+      mp_multi_fallback++;
+      goto MP_SINGLE_FD_FALLBACK;
     }
 
-    // Update accumulated response buffer size
-    response_bytes[messages_sent - 1] = response_buf_size;
+    mp_fds_buf = (int *)ck_alloc((u32)mp_drv->fd_count * sizeof(int));
+    mp_ctx.fds              = mp_fds_buf;
+    mp_ctx.fd_count         = mp_drv->fd_count;
+    mp_ctx.timeout          = timeout;
+    mp_ctx.poll_wait_msecs  = poll_wait_msecs;
+    mp_ctx.server_ip        = (const char *)net_ip;
+    mp_ctx.server_port      = net_port;
+    mp_ctx.response_buf     = &response_buf;
+    mp_ctx.response_buf_size = &response_buf_size;
+    mp_ctx.priv             = NULL;
 
-    // set likely_buggy flag if AFLNet does not receive any feedback from the server
-    // it could be a signal of a potentiall server crash, like the case of CVE-2019-7314
-    if (prev_buf_size == response_buf_size)
-      likely_buggy = 1;
+    for (int i = 0; i < mp_ctx.fd_count; i++)
+      mp_ctx.fds[i] = -1;
+
+    /* Step 1: Open connections */
+    if (mp_drv->open_connections(&mp_ctx) != 0) {
+      mp_multi_fallback++;
+      for (int i = 0; i < mp_ctx.fd_count; i++)
+        if (mp_ctx.fds[i] >= 0) close(mp_ctx.fds[i]);
+      goto MP_SINGLE_FD_FALLBACK;
+    }
+
+    /* Step 2: Protocol-level handshake */
+    if (mp_drv->handshake(&mp_ctx) != 0) {
+      mp_multi_hshake_fail++;
+      goto MP_MULTI_CLEANUP;
+    }
+
+    /* Step 3: Route each message from the mutated queue */
+    for (it = kl_begin(kl_messages); it != kl_end(kl_messages); it = kl_next(it))
+    {
+      message_t *m = kl_val(it);
+
+      if (!m || !m->mdata || m->msize == 0) {
+        messages_sent++;
+        response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
+        response_bytes[messages_sent - 1] = response_buf_size;
+        continue;
+      }
+
+      int role = mp_drv->role_for_message(&mp_ctx,
+                                          (const unsigned char *)m->mdata,
+                                          m->msize);
+      if (role < 0) {
+        /* Driver says skip this message (e.g. CONNECT/DISCONNECT) */
+        messages_sent++;
+        response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
+        response_bytes[messages_sent - 1] = response_buf_size;
+        continue;
+      }
+
+      if (role >= mp_ctx.fd_count) {
+        messages_sent++;
+        response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
+        response_bytes[messages_sent - 1] = response_buf_size;
+        continue;
+      }
+
+      int target_fd = mp_ctx.fds[role];
+      if (target_fd < 0) {
+        messages_sent++;
+        response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
+        response_bytes[messages_sent - 1] = response_buf_size;
+        continue;
+      }
+
+      /* MQTT: fix remaining_length before sending */
+      if (mqtt_fix_length_enabled) mqtt_fix_message_length(m);
+
+      n = net_send(target_fd, timeout, m->mdata, m->msize);
+      messages_sent++;
+      response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
+
+      if (n != (int)m->msize) {
+        response_bytes[messages_sent - 1] = response_buf_size;
+        goto MP_MULTI_CLEANUP;
+      }
+
+      /* Collect response from the target fd */
+      u32 prev_buf_size = response_buf_size;
+      net_recv(target_fd, timeout, poll_wait_msecs, &response_buf, &response_buf_size);
+
+      /* Let the driver drain other fds if needed (e.g. forwarded msgs) */
+      if (mp_drv->after_send(&mp_ctx, role) != 0)
+        goto MP_MULTI_CLEANUP;
+
+      response_bytes[messages_sent - 1] = response_buf_size;
+
+      if ((u32)prev_buf_size == (u32)response_buf_size)
+        likely_buggy = 1;
+      else
+        likely_buggy = 0;
+    }
+
+MP_MULTI_CLEANUP:
+    /* Final drain of all fds */
+    mp_drv->drain_all(&mp_ctx);
+
+    if (messages_sent > 0 && response_bytes != NULL)
+      response_bytes[messages_sent - 1] = response_buf_size;
+
+    /* Protocol-specific cleanup (disconnect, free priv, post-processing) */
+    mp_drv->cleanup(&mp_ctx);
+
+    /* Post-cleanup: protocol-specific probes that live in afl-fuzz.c
+     * (static functions, cannot be called from the driver .c file) */
+    if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0)
+      mqtt_probe_cluster_differences();
     else
-      likely_buggy = 0;
+      reset_mqtt_cluster_diff_summary();
+
+    /* Stabilization loop */
+    memset(session_virgin_bits, 255, MAP_SIZE);
+    {
+      int stab_iter = 0;
+      while (stab_iter++ < 5000) {
+        if (has_new_bits(session_virgin_bits) != 2)
+          break;
+      }
+    }
+
+    /* Close all fds */
+    for (int i = 0; i < mp_ctx.fd_count; i++)
+      if (mp_ctx.fds[i] >= 0) close(mp_ctx.fds[i]);
+
+    if (mp_fds_buf)
+      ck_free(mp_fds_buf);
+
+    mp_multi_ok++;
+    sockfd = -1;
+    goto MP_MULTI_DONE;
   }
+
+MP_SINGLE_FD_FALLBACK:
+
+  /* Defensive reset: any multi-fd path that jumped here may have partially
+   * written to the global response buffers.  Zero everything so the
+   * single-fd path starts from a clean slate. */
+  if (response_buf)  { ck_free(response_buf);  response_buf = NULL; }
+  response_buf_size = 0;
+  if (response_bytes) { ck_free(response_bytes); response_bytes = NULL; }
+  messages_sent = 0;
+
+  /* ── Original single-fd path (ALL text protocols + MQTT fallback) ── */
+  {
+    if (net_protocol == PRO_TCP)
+      sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    else if (net_protocol == PRO_UDP)
+      sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+
+    if (sockfd < 0)
+    {
+      PFATAL("Cannot create a socket");
+    }
+
+    // Set timeout for socket data sending/receiving -- otherwise it causes a big delay
+    // if the server is still alive after processing all the requests
+    setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
+
+    memset(&serv_addr, '0', sizeof(serv_addr));
+
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(net_port);
+    serv_addr.sin_addr.s_addr = inet_addr(net_ip);
+
+    // This piece of code is only used for targets that send responses to a specific port number
+    // The Kamailio SIP server is an example. After running this code, the intialized sockfd
+    // will be bound to the given local port
+    if (local_port > 0)
+    {
+      local_serv_addr.sin_family = AF_INET;
+      local_serv_addr.sin_addr.s_addr = INADDR_ANY;
+      local_serv_addr.sin_port = htons(local_port);
+
+      local_serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+      if (bind(sockfd, (struct sockaddr *)&local_serv_addr, sizeof(struct sockaddr_in)))
+      {
+        FATAL("Unable to bind socket on local source port");
+      }
+    }
+
+    if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+    {
+      // If it cannot connect to the server under test
+      // try it again as the server initial startup time is varied
+      for (n = 0; n < 1000; n++)
+      {
+        if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == 0)
+          break;
+        usleep(1000);
+      }
+      if (n == 1000)
+      {
+        close(sockfd);
+        return 1;
+      }
+    }
+
+    // retrieve early server response if needed
+    if (net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size))
+      goto HANDLE_RESPONSES;
+
+    // write the request messages
+    for (it = kl_begin(kl_messages); it != kl_end(kl_messages); it = kl_next(it))
+    {
+      message_t *m = kl_val(it);
+      if (!m || !m->mdata || m->msize == 0) {
+        messages_sent++;
+        response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
+        response_bytes[messages_sent - 1] = response_buf_size;
+        continue;
+      }
+
+      /* MQTT: fix remaining_length before sending */
+      if (mqtt_fix_length_enabled) mqtt_fix_message_length(m);
+
+      n = net_send(sockfd, timeout, m->mdata, m->msize);
+      messages_sent++;
+
+      // Allocate memory to store new accumulated response buffer size
+      response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
+
+      // Jump out if something wrong leading to incomplete message sent
+      if (n != m->msize)
+      {
+        goto HANDLE_RESPONSES;
+      }
+
+      // retrieve server response
+      u32 prev_buf_size = response_buf_size;
+      if (net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size))
+      {
+        goto HANDLE_RESPONSES;
+      }
+
+      // Update accumulated response buffer size
+      response_bytes[messages_sent - 1] = response_buf_size;
+
+      // set likely_buggy flag if AFLNet does not receive any feedback from the server
+      // it could be a signal of a potentiall server crash, like the case of CVE-2019-7314
+      if (prev_buf_size == response_buf_size)
+        likely_buggy = 1;
+      else
+        likely_buggy = 0;
+    }
 
 HANDLE_RESPONSES:
 
-  net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size);
+    net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size);
 
-  if (messages_sent > 0 && response_bytes != NULL)
-  {
-    response_bytes[messages_sent - 1] = response_buf_size;
-  }
+    if (messages_sent > 0 && response_bytes != NULL)
+    {
+      response_bytes[messages_sent - 1] = response_buf_size;
+    }
 
-  // wait a bit letting the server to complete its remaining task(s)
-  memset(session_virgin_bits, 255, MAP_SIZE);
-  while (1)
-  {
-    if (has_new_bits(session_virgin_bits) != 2)
-      break;
-  }
+    if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0)
+    {
+      mqtt_probe_cluster_differences();
+    }
+    else
+    {
+      reset_mqtt_cluster_diff_summary();
+    }
 
-  close(sockfd);
+    /* Fix-14: Bounded coverage-stabilization loop. */
+    memset(session_virgin_bits, 255, MAP_SIZE);
+    {
+      int stab_iter = 0;
+      while (stab_iter++ < 5000)
+      {
+        if (has_new_bits(session_virgin_bits) != 2)
+          break;
+      }
+    }
+
+    close(sockfd);
+    sockfd = -1;
+  } /* end single-fd block */
+
+MP_MULTI_DONE:
+  (void)0;  /* label requires a statement */
 
   if (likely_buggy && false_negative_reduction)
     return 0;
 
+  child_force_killed = 0;  /* Fix-14a: reset before each termination attempt */
+
   if (terminate_child && (child_pid > 0))
     kill(child_pid, SIGTERM);
 
-  // give the server a bit more time to gracefully terminate
-  while (1)
+  /* Fix-14: Bounded process-termination wait with SIGKILL escalation.
+   *
+   * Original: unbounded while(1) busy-polling kill(pid, 0) at 100% CPU.
+   *
+   * Problem: after SIGTERM, forking servers need to signal and reap their
+   * child processes, then run ASAN destructors — this can take 0.5–1+
+   * second while the fuzzer wastes CPU in a tight spin loop.
+   *
+   * Fix: poll every 200 µs instead of busy-spinning, and escalate to
+   * SIGKILL after 50 ms.  The 50 ms grace period is generous for
+   * graceful shutdown; any server still alive at that point is stuck in
+   * teardown, not in a crash-reportable state.  For non-forking servers
+   * the process is already gone by the first check, so this is a no-op. */
   {
-    int status = kill(child_pid, 0);
-    if ((status != 0) && (errno == ESRCH))
-      break;
+    int kill_wait = 0;
+    while (1)
+    {
+      int kstat = kill(child_pid, 0);
+      if ((kstat != 0) && (errno == ESRCH))
+        break;
+      if (++kill_wait >= 1000) {          /* 1000 × 200 µs = 200 ms */
+        kill(child_pid, SIGKILL);
+        child_force_killed = 1;          /* Fix-14a: tell run_target() this is not a crash */
+        usleep(1000);                    /* 1 ms for kernel cleanup */
+        break;
+      }
+      usleep(200);
+    }
   }
 
   return 0;
@@ -2700,6 +4500,57 @@ static void setup_post(void)
   OKF("Postprocessor installed successfully.");
 }
 
+/* ================================================================
+ * Fix-8: Parallel enrichment infrastructure.
+ * Each task captures one (seed_content, combo_subset) pair.
+ * Workers only call enrich_sequence() — pure LLM I/O, thread-safe.
+ * All file I/O and khash manipulation stays in the main thread.
+ * ================================================================ */
+
+typedef struct {
+    char *seed_content;           /* shared read-only ptr (owned by seed_data) */
+    khash_t(strSet) *subset;      /* read-only ptr (owned by message_subsets) */
+    const char *protocol;         /* global read-only */
+    char *result;                 /* worker writes enriched string, or NULL */
+    char *seed_file_name;         /* strdup'd, for output naming */
+    int  combo_idx;               /* for output file naming */
+    unsigned long long prompt_tokens;     /* per-task token usage */
+    unsigned long long completion_tokens; /* per-task token usage */
+} enrich_task_t;
+
+typedef struct {
+    enrich_task_t *tasks;
+    int            n_tasks;
+    int            next_task;     /* next index to claim */
+    pthread_mutex_t lock;
+} enrich_pool_t;
+
+static void *enrich_worker(void *arg) {
+    enrich_pool_t *pool = (enrich_pool_t *)arg;
+    while (1) {
+        pthread_mutex_lock(&pool->lock);
+        int idx = pool->next_task++;
+        pthread_mutex_unlock(&pool->lock);
+        if (idx >= pool->n_tasks) break;
+
+        enrich_task_t *t = &pool->tasks[idx];
+        t->result = enrich_sequence(t->seed_content, t->subset, t->protocol);
+        /* Capture TLS token usage into the task struct (thread-safe: each
+         * thread writes to its own task, llm_last_* are __thread). */
+        t->prompt_tokens     = llm_last_prompt_tokens;
+        t->completion_tokens = llm_last_completion_tokens;
+    }
+    return NULL;
+}
+
+/* Track per-seed heap data so we can free it after all workers finish. */
+typedef struct {
+    char              *content;     /* malloc'd file content */
+    char              *mqtt_text;   /* MQTT text representation (NULL for text protocols) */
+    message_set_list   subsets;     /* C(n,2) subsets (owns khash_t ptrs) */
+    khash_t(strSet)   *messages;    /* missing-types set */
+} seed_data_t;
+
 void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message_types_set)
 {
   struct dirent **nl_files;
@@ -2711,8 +4562,18 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
   }
 
   OKF("Found %d protocol message types for enrichment", kh_size(message_types_set));
+
+  /* Fix-8: call curl_global_init ONCE before any worker threads */
+  chat_llm_global_init();
+
   int seeds_processed = 0;
   int total_enriched = 0;
+
+  /* --- Phase 1: collect enrichment tasks from all seeds --- */
+  enrich_task_t *tasks = NULL;
+  int n_tasks = 0, tasks_cap = 0;
+  seed_data_t   *seed_arr = NULL;
+  int n_seed_data = 0, seed_cap = 0;
 
   // traverse the directory to read the files
   for (int i = 0; i < nl_cnt; i++)
@@ -2723,7 +4584,7 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
     {
       continue;
     }
-    
+
     seeds_processed++;
     ACTF("Processing seed %d: %s", seeds_processed, nl_file_name);
     char *nl_file_path = malloc(strlen(in_dir) + strlen(nl_file_name) + 2);
@@ -2758,19 +4619,34 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
     for (int j = 0; j < region_count; j++)
     { 
       // remove all messages that are observed
-      int header_len = 0;
-      while (regions[j].start_byte + header_len < regions[j].end_byte 
-      && nl_file_content[regions[j].start_byte + header_len] != ' ' 
-      && nl_file_content[regions[j].start_byte + header_len] != '\r' 
-      && nl_file_content[regions[j].start_byte + header_len] != '\n'
-      && nl_file_content[regions[j].start_byte + header_len] != '\\')
-      {
-        header_len++;
-      }
+      char *header;
+      int is_mqtt = (protocol_name && strcasecmp(protocol_name, "MQTT") == 0);
 
-      char *header = ck_alloc(header_len + 1);
-      memcpy(header, nl_file_content + regions[j].start_byte, header_len);
-      header[header_len] = '\0';
+      if (is_mqtt) {
+        /* Fix-13b: MQTT binary header extraction.
+         * For binary MQTT, the first byte's upper nibble identifies the packet type.
+         * Text-based scanning would produce garbage. */
+        header = mqtt_extract_type_from_region(
+            (const unsigned char *)nl_file_content, regions[j].start_byte);
+        if (!header) {
+          header = ck_alloc(8);
+          snprintf(header, 8, "0x%02X",
+                   (unsigned char)nl_file_content[regions[j].start_byte]);
+        }
+      } else {
+        int header_len = 0;
+        while (regions[j].start_byte + header_len < regions[j].end_byte 
+        && nl_file_content[regions[j].start_byte + header_len] != ' ' 
+        && nl_file_content[regions[j].start_byte + header_len] != '\r' 
+        && nl_file_content[regions[j].start_byte + header_len] != '\n'
+        && nl_file_content[regions[j].start_byte + header_len] != '\\')
+        {
+          header_len++;
+        }
+        header = ck_alloc(header_len + 1);
+        memcpy(header, nl_file_content + regions[j].start_byte, header_len);
+        header[header_len] = '\0';
+      }
 
       khiter_t k = kh_get(strSet, messages, header);
       if (kh_exist(messages, k))
@@ -2803,59 +4679,176 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
 
     message_set_list message_subsets = message_combinations(messages,MAX_ENRICHMENT_MESSAGE_TYPES);
 
-    for(int i = 0;i < kv_size(message_subsets);i++) {
+    int n_combos = kv_size(message_subsets);
+    OKF("Seed '%s': %d combos (no cap — full enrichment)", nl_file_name, n_combos);
 
-      khash_t(strSet)* subset = kv_A(message_subsets,i); 
-
-      // Try enriching the sequence
-        char *client_request_answer = enrich_sequence(nl_file_content, subset, protocol_name);
-
-        if (client_request_answer == NULL)
-          continue;
-
-        // Check whether the client_request_answer is the same as the nl_file_content or if the client_request_answer is empty
-        char *formatted_nl_file_content = format_string(nl_file_content);
-        char *unescaped_client_requests = unescape_string(client_request_answer);
-        char *formatted_unescaped_client_requests = format_string(unescaped_client_requests);
-        // printf("## Formatted answer from LLM:\n %s\n", formatted_unescaped_client_requests);
-        // printf("## Formatted file content:\n %s\n", formatted_nl_file_content);
-        if (formatted_unescaped_client_requests == NULL || strcmp(formatted_unescaped_client_requests, formatted_nl_file_content) == 0)
-        {
-          printf("## Skip the same seed\n");
-          continue;
-        }
-
-        unescaped_client_requests = format_request_message(unescaped_client_requests);
-
-        // Create the file in the same directory with the name enriched_state_<file_name>
-        char *enriched_file_name = malloc(strlen(nl_file_name) + 10 + 20);
-        strcpy(enriched_file_name, "enriched_");
-        sprintf(enriched_file_name+9,"%d_",i);
-        strcat(enriched_file_name, nl_file_name);
-        char *enriched_file_path = malloc(strlen(in_dir) + strlen(enriched_file_name) + 2);
-        strcpy(enriched_file_path, in_dir);
-        strcat(enriched_file_path, "/");
-        strcat(enriched_file_path, enriched_file_name);
-        
-        // printf("## Enriched file path: %s\n", enriched_file_path);
-
-        write_new_seeds(enriched_file_path, unescaped_client_requests);
-        
-        total_enriched++;
-        OKF("Created enriched seed: %s", enriched_file_name);
-
-        free(enriched_file_name);
-        free(enriched_file_path);
+    /* For MQTT: convert binary seed to text representation for LLM.
+     * The LLM cannot process raw binary — it needs human-readable text.
+     * mqtt_binary_to_text() decodes each MQTT packet into text lines like:
+     *   CONNECT ClientId=fuzz_client CleanSession=1 KeepAlive=60
+     *   SUBSCRIBE PacketId=1 Topic=test/# QoS=0
+     * This text is what enrich_sequence() will embed in the LLM prompt. */
+    char *seed_for_llm = nl_file_content;
+    int is_mqtt_seed = (protocol_name && strcasecmp(protocol_name, "MQTT") == 0);
+    if (is_mqtt_seed) {
+      seed_for_llm = mqtt_binary_to_text((const unsigned char *)nl_file_content, fsize);
+      if (!seed_for_llm || !*seed_for_llm) {
+        fprintf(stderr, "[!] MQTT binary_to_text failed for seed '%s', using fallback\n", nl_file_name);
+        free(seed_for_llm);
+        seed_for_llm = strdup("CONNECT ClientId=fuzz_client CleanSession=1 KeepAlive=60\n"
+                              "PINGREQ\nDISCONNECT\n");
+      }
+      ACTF("MQTT seed '%s' converted to text (%zu bytes -> %zu chars)",
+           nl_file_name, fsize, strlen(seed_for_llm));
     }
 
-    for(int i = 0;i < kv_size(message_subsets);i++) {
-      khash_t(strSet)* subset = kv_A(message_subsets,i);
-      kh_destroy(strSet,subset);
-    } 
+    /* Store seed data for later cleanup (content + subsets stay alive
+     * until all workers are done). */
+    if (n_seed_data >= seed_cap) {
+      seed_cap = seed_cap ? seed_cap * 2 : 16;
+      seed_arr = realloc(seed_arr, seed_cap * sizeof(seed_data_t));
+    }
+    seed_arr[n_seed_data].content  = nl_file_content;
+    seed_arr[n_seed_data].mqtt_text = is_mqtt_seed ? seed_for_llm : NULL;
+    seed_arr[n_seed_data].subsets  = message_subsets;
+    seed_arr[n_seed_data].messages = messages;
+    n_seed_data++;
 
-    kh_destroy(strSet, messages);
+    /* Collect one task per combo. */
+    for (int c = 0; c < n_combos; c++) {
+      if (n_tasks >= tasks_cap) {
+        tasks_cap = tasks_cap ? tasks_cap * 2 : 64;
+        tasks = realloc(tasks, tasks_cap * sizeof(enrich_task_t));
+      }
+      enrich_task_t *t = &tasks[n_tasks];
+      t->seed_content   = is_mqtt_seed ? seed_for_llm : nl_file_content;
+      t->subset         = kv_A(message_subsets, c);
+      t->protocol       = protocol_name;
+      t->result         = NULL;
+      t->seed_file_name = strdup(nl_file_name);
+      t->combo_idx      = c;
+      n_tasks++;
+    }
+
+    /* NOTE: do NOT free nl_file_content, subsets or messages here —
+     * workers will read them.  Freed after all threads join. */
   }
-  
+
+  /* ==== Phase 2: parallel LLM enrichment ==== */
+  OKF("Collected %d enrichment tasks from %d seeds — launching %d threads",
+      n_tasks, seeds_processed,
+      n_tasks < ENRICHMENT_THREADS ? n_tasks : ENRICHMENT_THREADS);
+
+  if (n_tasks > 0) {
+    enrich_pool_t pool = {
+        .tasks     = tasks,
+        .n_tasks   = n_tasks,
+        .next_task = 0,
+        .lock      = PTHREAD_MUTEX_INITIALIZER
+    };
+
+    int n_threads = ENRICHMENT_THREADS;
+    if (n_threads > n_tasks) n_threads = n_tasks;
+
+    pthread_t *tids = malloc(n_threads * sizeof(pthread_t));
+    for (int t = 0; t < n_threads; t++)
+      pthread_create(&tids[t], NULL, enrich_worker, &pool);
+    for (int t = 0; t < n_threads; t++)
+      pthread_join(tids[t], NULL);
+    free(tids);
+    pthread_mutex_destroy(&pool.lock);
+
+    /* Accumulate per-task token usage into global counters (main thread).
+     * Tokens are always accumulated (even failed calls may have been billed
+     * by the API), but llm_total_calls only counts successful calls. */
+    for (int i = 0; i < n_tasks; i++) {
+      llm_total_prompt_tokens     += tasks[i].prompt_tokens;
+      llm_total_completion_tokens += tasks[i].completion_tokens;
+      if (tasks[i].result != NULL) llm_total_calls++;
+    }
+  }
+
+  /* ==== Phase 3: process results (main thread only) ==== */
+  int is_mqtt_result = (protocol_name && strcasecmp(protocol_name, "MQTT") == 0);
+
+  for (int i = 0; i < n_tasks; i++) {
+    enrich_task_t *t = &tasks[i];
+    if (t->result == NULL) {
+      free(t->seed_file_name);
+      continue;
+    }
+
+    /* Build output path: enriched_<combo_idx>_<seed_file_name> */
+    char *enriched_file_name = malloc(strlen(t->seed_file_name) + 10 + 20);
+    strcpy(enriched_file_name, "enriched_");
+    sprintf(enriched_file_name + 9, "%d_", t->combo_idx);
+    strcat(enriched_file_name, t->seed_file_name);
+
+    char *enriched_file_path = malloc(strlen(in_dir) + strlen(enriched_file_name) + 2);
+    strcpy(enriched_file_path, in_dir);
+    strcat(enriched_file_path, "/");
+    strcat(enriched_file_path, enriched_file_name);
+
+    if (is_mqtt_result) {
+      /* Fix-13b: MQTT text→binary conversion.
+       * The LLM returned text descriptions of MQTT packets.
+       * Convert them to valid binary packets using mqtt_text_to_binary(). */
+      size_t bin_len = 0;
+      unsigned char *binary_seed = mqtt_text_to_binary(t->result, &bin_len);
+      if (binary_seed && bin_len > 0) {
+        int fd = open(enriched_file_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+        if (fd >= 0) {
+          ssize_t written = write(fd, binary_seed, bin_len);
+          close(fd);
+          if (written == (ssize_t)bin_len) {
+            total_enriched++;
+            OKF("Created MQTT binary enriched seed: %s (%zu bytes)", enriched_file_name, bin_len);
+          }
+        }
+        free(binary_seed);
+      } else {
+        fprintf(stderr, "[!] MQTT text_to_binary failed for enriched result, skipping\n");
+      }
+    } else {
+      /* Original text protocol path */
+      /* Validate: skip if enriched text == original seed */
+      char *formatted_orig = format_string(t->seed_content);
+      char *unescaped      = unescape_string(t->result);
+      char *formatted_new  = format_string(unescaped);
+
+      if (formatted_new == NULL ||
+          strcmp(formatted_new, formatted_orig) == 0) {
+        printf("## Skip the same seed\n");
+        free(t->seed_file_name);
+        free(t->result);
+        free(enriched_file_name);
+        free(enriched_file_path);
+        continue;
+      }
+
+      unescaped = format_request_message(unescaped);
+      write_new_seeds(enriched_file_path, unescaped);
+      total_enriched++;
+      OKF("Created enriched seed: %s", enriched_file_name);
+    }
+
+    free(enriched_file_name);
+    free(enriched_file_path);
+    free(t->seed_file_name);
+    free(t->result);
+  }
+
+  /* ==== Cleanup ==== */
+  free(tasks);
+  for (int s = 0; s < n_seed_data; s++) {
+    for (int c = 0; c < kv_size(seed_arr[s].subsets); c++)
+      kh_destroy(strSet, kv_A(seed_arr[s].subsets, c));
+    kh_destroy(strSet, seed_arr[s].messages);
+    free(seed_arr[s].content);
+    if (seed_arr[s].mqtt_text) free(seed_arr[s].mqtt_text);
+  }
+  free(seed_arr);
+
   OKF("Enrichment complete: generated %d enriched seeds from %d processed seeds", 
       total_enriched, seeds_processed);
 }
@@ -2865,15 +4858,26 @@ static void enrich_testcases(void)
 {
   ACTF("Enriching test cases from LLM...");
 
-  // char *message_prompt = construct_prompt_for_protocol_message_types(protocol_name);
-
-  // // Get protocol states
-  // get_protocol_message_types(message_prompt, message_type_set);
-
-  // free(message_prompt);
-
-  // Get seeds to states and save them to the in_dir
+  // Get seeds to states and save them to the in_dir (all protocols, including MQTT)
   get_seeds_with_messsage_types(in_dir, message_types_set);
+
+  /* Fix-13: MQTT binary protocol supplementation.
+   * The LLM enrichment pipeline above runs normally (API calls happen),
+   * but its text-based enriched seeds are invalid for MQTT's binary format.
+   * Supplement with programmatic binary seed generation. */
+  if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0) {
+    ACTF("MQTT: supplementing LLM enrichment with programmatic binary seeds");
+    int n = mqtt_enrich_seeds(in_dir, message_types_set);
+    OKF("MQTT supplementation: generated %d binary seeds", n);
+
+    /* P0+P2: Generate MQTT v5 seeds for v5 code path coverage.
+     * These exercise mosquitto's v5-specific code: property__read_all(),
+     * handle__auth(), v5 DISCONNECT with reason code, subscription
+     * options (No Local, Retain Handling), Topic Alias mapping, etc. */
+    ACTF("MQTT: generating v5 structured seeds");
+    u32 nv5 = mqtt_generate_v5_seeds(in_dir);
+    OKF("MQTT v5 seeds: generated %u files", nv5);
+  }
 }
 
 /* Read all testcases from the input directory, then queue them for testing.
@@ -4037,6 +6041,43 @@ static u8 run_target(char **argv, u32 timeout)
     if (kill_signal == SIGTERM)
       return FAULT_NONE;
 
+    /* Fix-14c: SIGKILL from send_over_network() bounded-kill-wait
+     * escalation is a deliberate termination, NOT a timeout.
+     *
+     * Safety argument:
+     *  1. Real timeouts (SIGALRM → SIGKILL) are already caught ABOVE
+     *     via child_timed_out — that check runs first and correctly
+     *     returns FAULT_TMOUT.  We only reach here when child_timed_out
+     *     is FALSE, meaning the exec_tmout timer did NOT fire.
+     *  2. child_force_killed is set in send_over_network() AFTER the
+     *     socket is closed and network I/O is complete.  The process
+     *     is in shutdown (dbus/avahi cleanup, fd teardown), not in a
+     *     crash-reportable state.
+     *  3. Any real crash (SIGSEGV/SIGABRT) completes in <200 ms
+     *     (ASAN handlers included); the 200 ms grace period in
+     *     send_over_network() is sufficient.
+     *
+     * Returning FAULT_TMOUT here (the old Fix-14a behavior) caused:
+     *  - Coverage checked against virgin_tmout instead of virgin_bits,
+     *    silently discarding new queue entries (paths_found halved).
+     *  - Inflated unique_hangs from non-hanging inputs (140 false
+     *    hangs on forked-daapd vs 17 on baseline).
+     *  - subseq_tmouts accumulation reducing mutation depth.
+     *  - Hang-verification re-run was ALREADY non-functional for
+     *    servers with exec_tmout > hang_tmout (e.g. forked-daapd
+     *    -t 5000+ vs EXEC_TIMEOUT=1000).
+     *
+     * Scope: only affects servers that take >200 ms to die after
+     * SIGTERM (e.g. forked-daapd with dbus/avahi).  Fast-exit
+     * servers never trigger child_force_killed, so they are
+     * completely unaffected by this change. */
+    if (kill_signal == SIGKILL && child_force_killed)
+    {
+      child_force_killed = 0;
+      forced_kills++;
+      return FAULT_NONE;
+    }
+
     return FAULT_CRASH;
   }
 
@@ -4339,6 +6380,109 @@ static void init_grammar_hypothesis_system(void)
 
   fprintf(stderr, "[DEBUG] Hypothesis context initialized successfully\n");
 
+  /* ── Gap-1 fix: Collect server responses from responses-ipsm/ ──
+   * By the time lazy init fires (first plateau), the fuzzer has already
+   * saved server response files during calibration / early fuzzing.
+   * We scan the directory and feed up to 10 sanitized response snippets
+   * into hypothesis_ctx so construct_hypothesis_generation_prompt() can
+   * inject them into the LLM prompt, giving the model concrete examples
+   * of what the server actually returns. */
+  {
+    char *resp_dir_path = alloc_printf("%s/responses-ipsm", out_dir);
+    DIR *resp_dir = opendir(resp_dir_path);
+    if (resp_dir) {
+      char **srv_responses = NULL;
+      size_t srv_count = 0;
+      struct dirent *ent;
+
+      while ((ent = readdir(resp_dir)) != NULL && srv_count < 10) {
+        if (ent->d_name[0] == '.') continue;          /* skip . / .. */
+
+        char *fpath = alloc_printf("%s/%s", resp_dir_path, ent->d_name);
+        u32 *resp_bytes = NULL;
+        u32 resp_cnt = 0, buf_len = 0;
+        char **raw = get_responses_from_file((u8 *)fpath, &resp_bytes,
+                                             &resp_cnt, &buf_len);
+        if (raw && resp_cnt > 0) {
+          /* Concatenate individual response segments into one string
+           * (capped at 2 KB to keep the prompt reasonable). */
+          size_t total = 0;
+          for (u32 r = 0; r < resp_cnt; r++) {
+            u32 seg_len = (r == 0) ? resp_bytes[0]
+                                   : resp_bytes[r] - resp_bytes[r - 1];
+            total += seg_len;
+          }
+          if (total > 2048) total = 2048;
+
+          char *concat = (char *)ck_alloc(total + 1);
+          size_t off = 0;
+          u32 prev = 0;
+          for (u32 r = 0; r < resp_cnt && off < total; r++) {
+            u32 seg_len = resp_bytes[r] - prev;
+            size_t copy = (off + seg_len > total) ? total - off : seg_len;
+            memcpy(concat + off, raw[r], copy);
+            off += copy;
+            prev = resp_bytes[r];
+          }
+          concat[off] = '\0';
+
+          /* For binary protocols (MQTT etc.), raw bytes sanitized to spaces
+           * are useless to the LLM.  Hex-encode them instead so the model
+           * can see actual packet content, e.g.:
+           *   "HEX[20020000] (4 bytes, MQTT CONNACK)"
+           * The LLM knows MQTT wire format and can decode these bytes into
+           * meaningful constraints (packet type nibble, return code, etc.).
+           *
+           * For text protocols the existing printable-sanitize is ideal
+           * because the LLM sees readable status lines like
+           *   "220 Welcome to ProFTPD\r\n" */
+          if (is_binary_protocol(protocol_name)) {
+            /* Hex-encode: each byte → 2 hex chars, plus prefix/suffix */
+            size_t hex_sz = 4 + off * 2 + 32;  /* "HEX[" + hex + "] (N bytes)\0" */
+            char *hex = (char *)ck_alloc(hex_sz);
+            int hoff = snprintf(hex, hex_sz, "HEX[");
+            for (size_t k = 0; k < off && (size_t)hoff < hex_sz - 20; k++)
+              hoff += snprintf(hex + hoff, hex_sz - hoff, "%02x",
+                               (unsigned char)concat[k]);
+            hoff += snprintf(hex + hoff, hex_sz - hoff, "] (%zu bytes)", off);
+            ck_free(concat);
+            concat = hex;
+          } else {
+            /* Text protocol: sanitize non-printable, keep CR/LF/TAB */
+            for (size_t k = 0; k < off; k++) {
+              unsigned char ch = (unsigned char)concat[k];
+              if (ch == '\r' || ch == '\n' || ch == '\t') continue;
+              if (!isprint(ch)) concat[k] = ' ';
+            }
+          }
+
+          srv_responses = (char **)ck_realloc(
+              srv_responses, (srv_count + 1) * sizeof(char *));
+          srv_responses[srv_count++] = concat;
+
+          /* Free per-file data returned by get_responses_from_file */
+          for (u32 r = 0; r < resp_cnt; r++) ck_free(raw[r]);
+          ck_free(raw);
+          ck_free(resp_bytes);
+        }
+        ck_free(fpath);
+      }
+      closedir(resp_dir);
+
+      if (srv_count > 0) {
+        hypothesis_ctx->server_responses = srv_responses;
+        hypothesis_ctx->response_count   = srv_count;
+        fprintf(stderr, "[hypothesis] Gap-1: injected %zu server response "
+                        "snippets into hypothesis context\n", srv_count);
+      }
+    } else {
+      fprintf(stderr, "[hypothesis] responses-ipsm/ not found yet — "
+                      "hypothesis generation will proceed without server "
+                      "response examples\n");
+    }
+    ck_free(resp_dir_path);
+  }
+
   // Generate initial hypotheses
   fprintf(stderr, "[DEBUG] Calling generate_grammar_hypotheses (max=5)\n");
   int hyp_count = generate_grammar_hypotheses(hypothesis_ctx, 5);
@@ -4388,6 +6532,20 @@ static void init_grammar_hypothesis_system(void)
     }
 
     ck_free(hyp_dir);
+
+    // ============================================
+    // Fix 1: Integrate hypotheses into protocol_patterns
+    // so parse_buffer() can use them during havoc exploit
+    // ============================================
+    if (protocol_patterns && message_types_set) {
+      int integrated = integrate_hypotheses_into_protocol_patterns(
+          hypothesis_ctx, protocol_patterns, message_types_set,
+          out_dir, protocol_name);
+      OKF("Integrated %d hypotheses into protocol_patterns", integrated);
+    } else {
+      WARNF("protocol_patterns or message_types_set not initialized, "
+            "skipping hypothesis integration");
+    }
   }
 
   // Cleanup PCAP samples
@@ -4402,58 +6560,138 @@ static void init_grammar_hypothesis_system(void)
 }
 
 /* ============================================
- * ChatAFL-Opt: Validate and Refine Hypotheses
- * Called periodically during fuzzing loop
+ * ChatAFL-Opt: Two-Tier Hypothesis Validation (Fix-15)
+ *
+ * Tier-1: validate_hypothesis_sampled()
+ *   Called from common_fuzz_stuff() every HYPOTHESIS_VALIDATION_SAMPLE_RATE-th
+ *   execution.  Accepts the ALREADY-PARSED regions — zero extra parsing cost.
+ *   Updates fitness / collects counterexamples in O(regions × constraints).
+ *
+ * Tier-2: periodic_hypothesis_refinement()
+ *   Called from the plateau handler path every
+ *   HYPOTHESIS_REFINEMENT_CHECK_INTERVAL validations.  Issues at most one
+ *   LLM refinement call per invocation.
+ *
+ * Together they close the "Hypothesis → Validate → Counterexample → Refine"
+ * loop that Fix-9b had severed, while keeping hot-path overhead < 0.01%.
  * ============================================ */
-static void validate_and_refine_hypotheses(u8 *buf, u32 len)
+
+/* Tier-1: lightweight sampled validation — reuses pre-parsed regions.
+ * Called from common_fuzz_stuff() with regions it already parsed. */
+static void validate_hypothesis_sampled(
+    u8 *buf, u32 len,
+    region_t *regions, u32 region_count)
 {
-  if (!hypothesis_mode || !hypothesis_ctx)
+  if (!hypothesis_mode || !hypothesis_ctx || !regions || region_count == 0)
     return;
 
   hypothesis_validation_count++;
 
-  // Validate against all hypotheses
-  for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++)
-  {
+  int binary = is_binary_protocol(protocol_name);
+
+  /* Cap regions scanned per sample to limit worst-case latency.
+   * 8 regions × 5 hypotheses × 3 constraints ≈ 120 check_constraint() calls. */
+  u32 max_regions = region_count < 8 ? region_count : 8;
+
+  for (u32 r = 0; r < max_regions; r++) {
+    u32 rstart = regions[r].start_byte;
+    u32 rend   = regions[r].end_byte;
+    if (rend >= len) rend = len - 1;
+    u32 rlen   = rend - rstart + 1;
+    if (rlen < 2) continue;
+
+    /* Determine message type for this region */
+    const char *msg_type = NULL;
+    char *alloc_type = NULL;
+
+    if (binary && strcasecmp(protocol_name, "MQTT") == 0) {
+      unsigned char type_nibble = (buf[rstart] >> 4) & 0x0F;
+      msg_type = mqtt_type_nibble_to_name(type_nibble);
+    } else if (!binary) {
+      alloc_type = extract_text_message_type(buf + rstart, rlen);
+      msg_type = alloc_type;
+    }
+
+    /* Validate against matching hypothesis(es) */
+    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++) {
+      grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
+      if (!hyp->message_type) continue;
+
+      if (msg_type && strcasecmp(hyp->message_type, msg_type) != 0)
+        continue;
+
+      int valid = validate_message_against_hypothesis(hyp,
+                                                      buf + rstart, rlen);
+      /* Fix-20b: Collect counterexample with specific constraint violation
+       * details instead of generic "Sampled validation failed".
+       * Every 10th failure to avoid flooding. */
+      if (!valid && hyp->parse_failure % 10 == 0) {
+        char *detail = collect_violation_details(hyp, buf + rstart, rlen);
+        add_counterexample(hyp, buf + rstart, rlen,
+                           detail ? detail : "Validation failed (no constraint detail)");
+        if (detail) ck_free(detail);
+      }
+
+      if (msg_type) break;  /* Matched type → next region */
+    }
+
+    if (alloc_type) ck_free(alloc_type);
+  }
+}
+
+/* Tier-2: periodic refinement — issues LLM call if any hypothesis
+ * has low fitness AND enough counterexamples.  Safe to call from
+ * any non-hot-path location (plateau handler, main-loop tail). */
+static void periodic_hypothesis_refinement(void)
+{
+  if (!hypothesis_mode || !hypothesis_ctx)
+    return;
+
+  /* Only check every HYPOTHESIS_REFINEMENT_CHECK_INTERVAL validations */
+  if (hypothesis_validation_count == 0 ||
+      hypothesis_validation_count % HYPOTHESIS_REFINEMENT_CHECK_INTERVAL != 0)
+    return;
+
+  fprintf(stderr,
+          "[hypothesis-refine] Checking refinement (validations=%u)\n",
+          hypothesis_validation_count);
+
+  for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++) {
     grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
 
-    int valid = validate_message_against_hypothesis(hyp, buf, len);
+    /* Log current fitness for observability */
+    fprintf(stderr,
+            "[hypothesis-refine]   %s: fitness=%.3f success=%u fail=%u ce=%zu\n",
+            hyp->message_type, hyp->fitness,
+            hyp->parse_success, hyp->parse_failure,
+            hyp->counterexample_count);
 
-    if (!valid && hyp->parse_failure % 10 == 0)
-    {
-      // Add as counterexample every 10th failure
-      add_counterexample(hyp, buf, len, "Validation failed");
-    }
-  }
+    /* Refine if fitness < threshold AND ≥3 counterexamples accumulated */
+    if (hyp->fitness < FITNESS_THRESHOLD && hyp->counterexample_count >= 3) {
+      ACTF("Refining hypothesis for %s (fitness: %.3f, counterexamples: %zu)",
+           hyp->message_type, hyp->fitness, hyp->counterexample_count);
 
-  // Periodic refinement check
-  if (hypothesis_validation_count % hypothesis_refinement_interval == 0)
-  {
-    ACTF("Checking for hypothesis refinement (validation count: %u)...",
-         hypothesis_validation_count);
+      if (refine_hypothesis_with_counterexamples(hypothesis_ctx, hyp)) {
+        /* Persist refined hypothesis for reproducibility */
+        char *hyp_file = alloc_printf(
+            "%s/grammar-hypothesis/hypothesis-%llu-%s-refined-%lu.json",
+            out_dir, hyp->hypothesis_id, hyp->message_type, time(NULL));
+        save_hypothesis_to_file(hyp, hyp_file);
+        ck_free(hyp_file);
 
-    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++)
-    {
-      grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
-
-      // Refine if fitness is low and we have counterexamples
-      if (hyp->fitness < FITNESS_THRESHOLD && hyp->counterexample_count >= 3)
-      {
-        ACTF("Refining hypothesis for %s (fitness: %.3f, counterexamples: %zu)",
-             hyp->message_type, hyp->fitness, hyp->counterexample_count);
-
-        if (refine_hypothesis_with_counterexamples(hypothesis_ctx, hyp))
-        {
-          // Save refined hypothesis
-          char *hyp_file = alloc_printf("%s/grammar-hypothesis/hypothesis-%llu-%s-refined-%lu.json",
-                                        out_dir, hyp->hypothesis_id, hyp->message_type, time(NULL));
-          save_hypothesis_to_file(hyp, hyp_file);
-          ck_free(hyp_file);
-
-          OKF("Hypothesis refined: %s (new fitness: %.3f)",
-              hyp->message_type, hyp->fitness);
+        /* Re-integrate refined patterns into IPSM matching */
+        if (protocol_patterns && message_types_set) {
+          integrate_hypotheses_into_protocol_patterns(
+              hypothesis_ctx, protocol_patterns, message_types_set,
+              out_dir, protocol_name);
         }
+
+        OKF("Hypothesis refined: %s (new fitness: %.3f)",
+            hyp->message_type, hyp->fitness);
       }
+
+      /* Refine at most ONE hypothesis per invocation to bound latency */
+      break;
     }
   }
 }
@@ -4945,6 +7183,8 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
     {
       if (crash_mode)
         total_crashes++;
+      /* P6: Record state stall (no new coverage from this execution) */
+      mqtt_record_state_stall();
       return 0;
     }
 
@@ -4979,6 +7219,28 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
     }
 
     queue_top->exec_cksum = hash32(trace_bits, MAP_SIZE, HASH_CONST);
+
+    /* ════════════════════════════════════════════════════════════════
+     * P5: Annotate queue entry with MQTT differential score.
+     *
+     * If multi-broker execution detected field-level divergence,
+     * transfer the score to the queue entry so calculate_score()
+     * can boost its energy on future fuzzing cycles.
+     *
+     * Also reset state-stall counter (new path discovered).
+     * ════════════════════════════════════════════════════════════════ */
+    if (mqtt_last_field_diff_valid && protocol_name &&
+        strcasecmp(protocol_name, "MQTT") == 0) {
+      int dscore = mqtt_diff_score_from_result(&mqtt_last_field_diff);
+      queue_top->mqtt_diff_score = (u8)(dscore > 100 ? 100 : dscore);
+
+      /* Track promotion for observability */
+      if (dscore > 0 &&
+          mqtt_is_new_divergence_pattern(mqtt_last_field_diff.pattern_hash)) {
+        mqtt_diff_queue_promotions++;
+      }
+    }
+    mqtt_reset_state_stall();
 
     /* Try to calibrate inline; this also calls update_bitmap_score() when
        successful. */
@@ -5287,7 +7549,8 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
              "afl_version       : " VERSION "\n"
              "target_mode       : %s%s%s%s%s%s%s\n"
              "command_line      : %s\n"
-             "slowest_exec_ms   : %llu\n",
+             "slowest_exec_ms   : %llu\n"
+             "forced_kills      : %u\n",
           start_time / 1000, get_cur_time() / 1000, getpid(),
           queue_cycle ? (queue_cycle - 1) : 0, total_execs, eps,
           queued_paths, queued_favored, queued_discovered, queued_imported,
@@ -5303,7 +7566,7 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
            persistent_mode || deferred_mode)
               ? ""
               : "default",
-          orig_cmdline, slowest_exec_ms);
+          orig_cmdline, slowest_exec_ms, forced_kills);
   /* ignore errors */
 
   /* Get rss value from the children
@@ -5356,10 +7619,52 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
   
   fprintf(f, "plateau_calls      : %u\n"
              "plateau_threshold  : %u\n"
-             "edges_growth_rate  : %0.02f\n",
+             "edges_growth_rate  : %0.02f\n"
+             "llm_total_calls    : %llu\n"
+             "llm_prompt_tokens  : %llu\n"
+             "llm_completion_tok : %llu\n"
+             "llm_dedup_hits     : %llu\n",
           chat_times,
           adaptive_plateau_threshold,
-          edges_growth_rate);
+          edges_growth_rate,
+          (unsigned long long)llm_total_calls,
+          (unsigned long long)llm_total_prompt_tokens,
+          (unsigned long long)llm_total_completion_tokens,
+          (unsigned long long)llm_dedup_hits);
+
+  fprintf(f, "mp_multi_ok        : %u\n"
+             "mp_multi_fallback  : %u\n"
+             "mp_multi_hshake_fail : %u\n",
+          mp_multi_ok, mp_multi_fallback, mp_multi_hshake_fail);
+
+  fprintf(f, "mqtt_diff_enabled  : %u\n"
+             "mqtt_diff_obs      : %llu\n"
+             "mqtt_diff_pos      : %llu\n"
+             "mqtt_diff_avg      : %0.06f\n"
+             "mqtt_diff_last     : %0.06f\n"
+             "mqtt_cluster_brokers : %u\n"
+             "mqtt_cluster_unique_sigs : %u\n"
+             "mqtt_cluster_diverged : %u\n"
+             "mqtt_diff_type_div : %llu\n"
+             "mqtt_diff_code_div : %llu\n"
+             "mqtt_diff_payload_div : %llu\n"
+             "mqtt_diff_queue_promo : %llu\n"
+             "mqtt_deep_state_promo : %llu\n"
+             "mqtt_state_stall_resets : %llu\n",
+          mqtt_diff_feedback_enabled,
+          (unsigned long long)mqtt_diff_obs_count,
+          (unsigned long long)mqtt_diff_pos_count,
+          mqtt_diff_signal_avg(),
+          mqtt_last_diff_signal,
+          mqtt_cluster_broker_count,
+          mqtt_cluster_unique_signatures,
+          mqtt_cluster_diverged,
+          (unsigned long long)mqtt_diff_type_divergences,
+          (unsigned long long)mqtt_diff_code_divergences,
+          (unsigned long long)mqtt_diff_payload_divergences,
+          (unsigned long long)mqtt_diff_queue_promotions,
+          (unsigned long long)mqtt_deep_state_promotions,
+          (unsigned long long)mqtt_state_stall_resets);
 
   fclose(f);
 }
@@ -5370,14 +7675,15 @@ static void maybe_update_plot_file(double bitmap_cvg, double eps)
 {
 
   static u32 prev_qp, prev_pf, prev_pnf, prev_ce, prev_md, prev_nodes, prev_edges, prev_chat_times;
-  static u64 prev_qc, prev_uc, prev_uh;
+  static u64 prev_qc, prev_uc, prev_uh, prev_llm_calls, prev_mqtt_diff_pos;
 
   if (prev_qp == queued_paths && prev_pf == pending_favored &&
       prev_pnf == pending_not_fuzzed && prev_ce == current_entry &&
       prev_qc == queue_cycle && prev_uc == unique_crashes &&
       prev_uh == unique_hangs && prev_md == max_depth &&
       prev_nodes == agnnodes(ipsm) && prev_edges == agnedges(ipsm) &&
-      prev_chat_times == chat_times)
+      prev_chat_times == chat_times && prev_llm_calls == llm_total_calls &&
+      prev_mqtt_diff_pos == mqtt_diff_pos_count)
     return;
 
   prev_qp = queued_paths;
@@ -5391,18 +7697,54 @@ static void maybe_update_plot_file(double bitmap_cvg, double eps)
   prev_nodes = agnnodes(ipsm);
   prev_edges = agnedges(ipsm);
   prev_chat_times = chat_times;
+  prev_llm_calls = llm_total_calls;
+  prev_mqtt_diff_pos = mqtt_diff_pos_count;
+
+  /* Compute hypothesis aggregate metrics for plot row */
+  double hyp_fitness = 0.0;
+  u32 hyp_success = 0, hyp_failure = 0;
+  if (hypothesis_ctx && hypothesis_ctx->hypothesis_count > 0) {
+    for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++) {
+      grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
+      if (hyp) {
+        hyp_success += hyp->parse_success;
+        hyp_failure += hyp->parse_failure;
+        hyp_fitness += hyp->fitness;
+      }
+    }
+    hyp_fitness /= hypothesis_ctx->hypothesis_count;
+  }
 
   /* Fields in the file:
 
      unix_time, cycles_done, cur_path, paths_total, paths_not_fuzzed,
      favored_not_fuzzed, unique_crashes, unique_hangs, max_depth,
-     execs_per_sec, n_nodes, n_edges, chat_times */
+     execs_per_sec, n_nodes, n_edges, chat_times,
+     llm_calls, llm_prompt_tok, llm_compl_tok, llm_dedup,
+    hyp_fitness, hyp_success, hyp_failure,
+    mqtt_diff_avg, mqtt_diff_last, mqtt_diff_pos,
+    mqtt_type_div, mqtt_code_div, mqtt_payload_div, mqtt_diff_promo, mqtt_deep_promo, mqtt_stall_resets */
 
   fprintf(plot_file,
-          "%llu, %llu, %u, %u, %u, %u, %0.02f%%, %llu, %llu, %u, %0.02f, %d, %d, %d\n",
+      "%llu, %llu, %u, %u, %u, %u, %0.02f%%, %llu, %llu, %u, %0.02f, %d, %d, %d, "
+      "%llu, %llu, %llu, %llu, %0.03f, %u, %u, %0.06f, %0.06f, %llu, "
+      "%llu, %llu, %llu, %llu, %llu, %llu\n",
           get_cur_time() / 1000, queue_cycle - 1, current_entry, queued_paths,
           pending_not_fuzzed, pending_favored, bitmap_cvg, unique_crashes,
-          unique_hangs, max_depth, eps, agnnodes(ipsm), agnedges(ipsm), chat_times); /* ignore errors */
+          unique_hangs, max_depth, eps, agnnodes(ipsm), agnedges(ipsm), chat_times,
+          (unsigned long long)llm_total_calls,
+          (unsigned long long)llm_total_prompt_tokens,
+          (unsigned long long)llm_total_completion_tokens,
+          (unsigned long long)llm_dedup_hits,
+      hyp_fitness, hyp_success, hyp_failure,
+      mqtt_diff_signal_avg(), mqtt_last_diff_signal,
+      (unsigned long long)mqtt_diff_pos_count,
+      (unsigned long long)mqtt_diff_type_divergences,
+      (unsigned long long)mqtt_diff_code_divergences,
+      (unsigned long long)mqtt_diff_payload_divergences,
+      (unsigned long long)mqtt_diff_queue_promotions,
+      (unsigned long long)mqtt_deep_state_promotions,
+      (unsigned long long)mqtt_state_stall_resets); /* ignore errors */
 
   fflush(plot_file);
 }
@@ -6288,6 +8630,19 @@ static void show_stats(void)
 
   SAYF(bV bSTOP "        trim : " cRST "%-37s " bSTG bVR bH20 bH2 bH2 bRB "\n" bLB bH30 bH20 bH2 bH bRB bSTOP cRST RESET_G1, tmp);
 
+  /* MQTT differential effectiveness warning (status bar).
+   * Trigger when we have many diff observations but almost-zero avg signal,
+   * which usually indicates multi-broker configured but no useful divergence. */
+  u8 mqtt_diff_warn = 0;
+  if (mqtt_diff_feedback_enabled && protocol_name &&
+      strcasecmp(protocol_name, "MQTT") == 0 &&
+      getenv("CHATAFL_MQTT_BROKERS") && *getenv("CHATAFL_MQTT_BROKERS") &&
+      mqtt_cluster_broker_count > 1 &&
+      mqtt_diff_obs_count >= mqtt_diff_warn_obs_threshold &&
+      mqtt_diff_signal_avg() <= mqtt_diff_warn_avg_threshold) {
+    mqtt_diff_warn = 1;
+  }
+
   /* Provide some CPU utilization stats. */
 
   if (cpu_core_count)
@@ -6313,26 +8668,29 @@ static void show_stats(void)
     if (cpu_aff >= 0)
     {
 
-      SAYF(SP10 cGRA "[cpu%03u:%s%3u%%" cGRA "]\r" cRST,
+       SAYF(SP10 cGRA "[cpu%03u:%s%3u%%" cGRA "]%s\r" cRST,
            MIN(cpu_aff, 999), cpu_color,
-           MIN(cur_utilization, 999));
+         MIN(cur_utilization, 999),
+         mqtt_diff_warn ? "  [mqtt-diff:obs-high avg~0 -> check brokers]" : "");
     }
     else
     {
 
-      SAYF(SP10 cGRA "   [cpu:%s%3u%%" cGRA "]\r" cRST,
-           cpu_color, MIN(cur_utilization, 999));
+       SAYF(SP10 cGRA "   [cpu:%s%3u%%" cGRA "]%s\r" cRST,
+         cpu_color, MIN(cur_utilization, 999),
+         mqtt_diff_warn ? "  [mqtt-diff:obs-high avg~0 -> check brokers]" : "");
     }
 
 #else
 
-    SAYF(SP10 cGRA "   [cpu:%s%3u%%" cGRA "]\r" cRST,
-         cpu_color, MIN(cur_utilization, 999));
+        SAYF(SP10 cGRA "   [cpu:%s%3u%%" cGRA "]%s\r" cRST,
+          cpu_color, MIN(cur_utilization, 999),
+          mqtt_diff_warn ? "  [mqtt-diff:obs-high avg~0 -> check brokers]" : "");
 
 #endif /* ^HAVE_AFFINITY */
   }
   else
-    SAYF("\r");
+    SAYF("%s\r", mqtt_diff_warn ? "[mqtt-diff:obs-high avg~0 -> check brokers]" : "");
 
   /* Show debugging stats for AFLNet only when AFLNET_DEBUG environment variable is set */
   if (getenv("AFLNET_DEBUG") && (atoi(getenv("AFLNET_DEBUG")) == 1) && state_aware_mode)
@@ -6357,6 +8715,25 @@ static void show_stats(void)
           SAYF("\n");
       }
     }
+  }
+
+  /* P5/P6 field-level differential & deep-path metrics (always shown for MQTT) */
+  if (mqtt_diff_feedback_enabled && protocol_name &&
+      strcasecmp(protocol_name, "MQTT") == 0) {
+    SAYF(cRST "\n" cYEL "[P5-diff] " cRST
+         "type_div:" cLRD "%-4s " cRST
+         "code_div:" cLRD "%-4s " cRST
+         "pay_div:" cLRD "%-4s " cRST
+         "promo:" cLGN "%-4s " cRST
+         cYEL "[P6-deep] " cRST
+         "deep_promo:" cLGN "%-4s " cRST
+         "stall_rst:" cCYA "%-4s" cRST "\n",
+         DI(mqtt_diff_type_divergences),
+         DI(mqtt_diff_code_divergences),
+         DI(mqtt_diff_payload_divergences),
+         DI(mqtt_diff_queue_promotions),
+         DI(mqtt_deep_state_promotions),
+         DI(mqtt_state_stall_resets));
   }
 
   /* Hallelujah! */
@@ -6503,11 +8880,20 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
   write_to_testcase(out_buf, len);
 
   /* ============================================
-   * ChatAFL-Opt: Hypothesis Validation & Refinement
-   * Uses the full validate_and_refine_hypotheses() which also
-   * collects counterexamples and periodically triggers refinement.
+   * Fix-9b: Removed validate_and_refine_hypotheses() from hot path.
+   *
+   * Previously called on EVERY execution, this caused:
+   * 1. Double extract_requests(): parsing buffer here AND again below
+   *    → ~2x parsing overhead on every test case
+   * 2. Per-region × per-hypothesis validation loops → 67K+ calls
+   *    with zero refinements triggered for text protocols (RTSP/FTP)
+   *    because hypothesis fitness stayed at 1.000
+   * 3. Measurable impact on exec_speed (22K execs vs baseline 30K)
+   *
+   * The grammar-hypothesis system remains initialized and available
+   * for the plateau handler's LLM-driven enrichment, but is no
+   * longer invoked on the critical per-execution path.
    * ============================================ */
-  validate_and_refine_hypotheses(out_buf, len);
 
   /* AFLNet update kl_messages linked list */
 
@@ -6558,6 +8944,17 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
     if (i == max_seed_region_count)
       break;
   }
+  /* ============================================
+   * Fix-15 Tier-1: Sampled hypothesis validation.
+   * Reuses the regions already parsed above — NO double extract_requests().
+   * Runs every HYPOTHESIS_VALIDATION_SAMPLE_RATE-th execution.
+   * At exec_speed ≈ 25 K/s this is ~50 calls/s × ~1 µs = <0.01% overhead.
+   * ============================================ */
+  if (hypothesis_mode && hypothesis_ctx &&
+      (total_execs % HYPOTHESIS_VALIDATION_SAMPLE_RATE == 0)) {
+    validate_hypothesis_sampled(out_buf, len, regions, region_count);
+  }
+
   ck_free(regions);
 
   cur_last_message = get_last_message(kl_messages);
@@ -6599,6 +8996,34 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
   /* End of AFLNet code */
 
   fault = run_target(argv, exec_tmout);
+
+  /* MQTT-only differential signal ingestion.
+   * Treat cross-broker signature divergence as an auxiliary reward channel
+   * (independent of single-target coverage), then feed it to per-state stats. */
+  if (mqtt_diff_feedback_enabled && protocol_name &&
+      strcasecmp(protocol_name, "MQTT") == 0) {
+    double diff_signal = mqtt_last_diff_signal;
+
+    /* Defensive recompute from current cluster metadata if available */
+    if (mqtt_cluster_broker_count > 1 && mqtt_cluster_unique_signatures > 1) {
+      double recomputed = (double)(mqtt_cluster_unique_signatures - 1) /
+                          (double)(mqtt_cluster_broker_count - 1);
+      if (recomputed > diff_signal)
+        diff_signal = recomputed;
+    }
+
+    if (diff_signal < 0.0) diff_signal = 0.0;
+    if (diff_signal > 1.0) diff_signal = 1.0;
+    mqtt_last_diff_signal = diff_signal;
+
+    /* Runtime telemetry for validation in fuzzer_stats / plot_data. */
+    mqtt_diff_obs_count++;
+    mqtt_diff_signal_sum += diff_signal;
+    if (diff_signal > 0.0)
+      mqtt_diff_pos_count++;
+
+    mqtt_record_diff_signal_for_target_state(diff_signal);
+  }
 
   // Update fuzz count, no matter whether the generated test is interesting or not
   if (state_aware_mode)
@@ -6781,6 +9206,72 @@ static u32 calculate_score(struct queue_entry *q)
     break;
   default:
     perf_score *= 5;
+  }
+
+  /* ════════════════════════════════════════════════════════════════════
+   * P5: MQTT differential divergence bonus.
+   *
+   * Inputs that trigger cross-broker behavioral divergence receive an
+   * energy multiplier, directing more fuzzing effort toward divergence-
+   * triggering message sequences.  This is the AFL-native equivalent
+   * of MBFuzzer's queue-prioritization-by-differential-novelty.
+   *
+   * Rationale (ICSE 2025, MBFuzzer §4.3): specification ambiguity
+   * typically manifests as field-level response divergence; boosting
+   * energy for such inputs amplifies divergence-driven exploration.
+   *
+   * Severity    Multiplier   Justification
+   * ──────────  ──────────   ──────────────────────────────────────
+   * diff ≥ 70   ×4          Type/missing divergence → high-value bug
+   * diff ≥ 40   ×3          Return-code divergence → semantic bug
+   * diff ≥ 10   ×2          Payload divergence → behavioral diff
+   * diff == 0   ×1          No divergence → standard energy
+   *
+   * Gated: MQTT protocol only. Non-MQTT queue entries have diff_score=0.
+   * ════════════════════════════════════════════════════════════════════ */
+  if (mqtt_diff_feedback_enabled && q->mqtt_diff_score >= 70) {
+    perf_score *= 4;
+    mqtt_deep_state_promotions++;  /* reuse counter for observability */
+  } else if (mqtt_diff_feedback_enabled && q->mqtt_diff_score >= 40) {
+    perf_score *= 3;
+  } else if (mqtt_diff_feedback_enabled && q->mqtt_diff_score >= 10) {
+    perf_score *= 2;
+  }
+
+  /* ════════════════════════════════════════════════════════════════════
+   * P6: MQTT deep-path state promotion.
+   *
+   * When a queue entry reaches a deep state (unique_state_count ≥ 5)
+   * AND it has been generated at a state that is currently stalled
+   * (consecutive zero-discovery execs ≥ MQTT_STALL_THRESHOLD), give
+   * extra energy to push past the plateau.
+   *
+   * Rationale: AFLNet's state scoring assigns scores based on
+   * paths_discovered/selected_times, which asymptotes to zero for
+   * well-explored states.  But deep protocol states (e.g., retained
+   * message handling, session resume, will message delivery) need
+   * sustained energy even when short-term discovery is flat.
+   *
+   * Gated: MQTT protocol only.
+   * ════════════════════════════════════════════════════════════════════ */
+  if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0 &&
+      mqtt_diff_feedback_enabled && state_aware_mode) {
+    /* Deep-state bonus: unique_state_count reflects how many distinct
+     * protocol states this input traverses. Higher = deeper. */
+    if (q->unique_state_count >= 8)
+      perf_score *= 3;
+    else if (q->unique_state_count >= 5)
+      perf_score *= 2;
+
+    /* Stall-aware boost: if the generating state is stalled,
+     * boost this input so the fuzzer keeps trying to break through. */
+    if (state_ids_count > 0 && mqtt_state_stall_counter) {
+      u32 gen_idx = get_state_index(q->generating_state_id);
+      if (gen_idx < mqtt_state_stall_cap &&
+          mqtt_state_stall_counter[gen_idx] >= MQTT_STALL_THRESHOLD / 2) {
+        perf_score *= 2;
+      }
+    }
   }
 
   /* Make sure that we don't go over limit. */
@@ -7005,6 +9496,164 @@ static u8 could_be_interest(u32 old_val, u32 new_val, u8 blen, u8 check_le)
   return 0;
 }
 
+/* ============================================
+ * P2a: MQTT Field-Aware Mutation
+ *
+ * Applied as a post-havoc pass with 25% probability when protocol is
+ * MQTT.  Understands MQTT v3.1.1 packet structure and performs
+ * targeted mutations that generic byte-level havoc rarely produces:
+ *
+ *   - Packet type nibble swap (e.g., SUBSCRIBE→UNSUBSCRIBE)
+ *   - QoS / DUP / Retain flag mutation for PUBLISH
+ *   - Packet ID corruption (triggers broker duplicate handling)
+ *   - Topic content mutation (exercises ACL / wildcard matching)
+ *   - Wildcard injection in SUBSCRIBE topics
+ *   - Remaining-length corruption (boundary conditions)
+ *   - Invalid QoS 3 in SUBSCRIBE (spec violation)
+ *
+ * Returns: number of mutations applied.
+ * ============================================ */
+static u32 mqtt_field_aware_mutate(u8 *buf, u32 len) {
+  if (len < 2) return 0;
+  u32 mutations_applied = 0;
+  u32 pos = 0;
+
+  while (pos < len - 1) {
+    u8 type_nibble = (buf[pos] >> 4) & 0x0F;
+    u8 flags       = buf[pos] & 0x0F;
+
+    /* Decode MQTT remaining length (variable-length encoding) */
+    u32 rem_len = 0, multiplier = 1;
+    u32 rl_pos = pos + 1;
+    while (rl_pos < len) {
+      u8 byte = buf[rl_pos];
+      rem_len += (byte & 0x7F) * multiplier;
+      multiplier *= 128;
+      rl_pos++;
+      if (!(byte & 0x80)) break;
+      if (multiplier > 128u * 128 * 128 * 128) break; /* max 4 bytes */
+    }
+
+    u32 pkt_end  = rl_pos + rem_len;
+    if (pkt_end > len) pkt_end = len;
+    u32 payload_start = rl_pos;  /* first byte after header */
+
+    /* Pick one targeted mutation per packet */
+    switch (UR(8)) {
+
+    case 0: /* Swap packet type to a related type */
+    {
+      /* Prefer valid MQTT types 1-14; 0 and 15 are reserved → good
+       * for testing error paths */
+      static const u8 type_pool[] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+      buf[pos] = (u8)((type_pool[UR(sizeof(type_pool))] << 4) | flags);
+      mutations_applied++;
+      break;
+    }
+
+    case 1: /* Mutate PUBLISH flags: DUP/QoS/Retain */
+      if (type_nibble == 3) {
+        u8 new_qos    = UR(4);  /* 0,1,2 valid; 3 = spec violation → error path */
+        u8 new_dup    = UR(2);
+        u8 new_retain = UR(2);
+        buf[pos] = (u8)((3 << 4) | (new_dup << 3) | (new_qos << 1) | new_retain);
+        mutations_applied++;
+      }
+      break;
+
+    case 2: /* Corrupt packet ID (for QoS>0 PUBLISH, SUB, UNSUB, etc.) */
+      if (type_nibble >= 3 && type_nibble <= 11 && payload_start + 1 < pkt_end) {
+        u32 pid_offset = payload_start;
+        if (type_nibble == 3) {
+          /* PUBLISH: skip topic-length (2B) + topic before packet ID */
+          if (payload_start + 2 <= pkt_end) {
+            u32 topic_len = ((u32)buf[payload_start] << 8) | buf[payload_start + 1];
+            pid_offset = payload_start + 2 + topic_len;
+          }
+        }
+        if (pid_offset + 1 < pkt_end) {
+          buf[pid_offset]     = (u8)UR(256);
+          buf[pid_offset + 1] = (u8)UR(256);
+          mutations_applied++;
+        }
+      }
+      break;
+
+    case 3: /* Mutate topic content in PUBLISH / SUBSCRIBE */
+      if ((type_nibble == 3 || type_nibble == 8) && payload_start + 2 < pkt_end) {
+        u32 topic_off = payload_start;
+        if (type_nibble == 8) topic_off += 2;  /* skip packet ID */
+        if (topic_off + 2 < pkt_end) {
+          u32 topic_len = ((u32)buf[topic_off] << 8) | buf[topic_off + 1];
+          if (topic_off + 2 + topic_len <= pkt_end && topic_len > 0) {
+            u32 idx = topic_off + 2 + UR(topic_len);
+            buf[idx] = (u8)UR(256);
+            mutations_applied++;
+          }
+        }
+      }
+      break;
+
+    case 4: /* Inject MQTT wildcard in SUBSCRIBE topic */
+      if (type_nibble == 8 && payload_start + 4 < pkt_end) {
+        u32 topic_off = payload_start + 2; /* after packet ID */
+        if (topic_off + 2 < pkt_end) {
+          u32 topic_len = ((u32)buf[topic_off] << 8) | buf[topic_off + 1];
+          if (topic_off + 2 + topic_len <= pkt_end && topic_len > 0) {
+            u32 idx = topic_off + 2 + UR(topic_len);
+            buf[idx] = UR(2) ? '#' : '+';
+            mutations_applied++;
+          }
+        }
+      }
+      break;
+
+    case 5: /* Corrupt remaining length → boundary conditions */
+      if (pos + 1 < len) {
+        switch (UR(4)) {
+          case 0: buf[pos + 1] = 0;    break; /* zero-length payload */
+          case 1: buf[pos + 1] = 0x01; break; /* minimal */
+          case 2: buf[pos + 1] = 0x7F; break; /* max single-byte (127) */
+          case 3: buf[pos + 1] = 0xFF; break; /* requires continuation byte */
+        }
+        mutations_applied++;
+      }
+      break;
+
+    case 6: /* Inject zero-length CONNECT or malformed DISCONNECT */
+    {
+      /* Overwrite current packet header to test error handling */
+      static const u8 trap_headers[][2] = {
+        {0x10, 0x00},  /* CONNECT with 0 remaining length */
+        {0xE0, 0x00},  /* DISCONNECT */
+        {0xC0, 0x00},  /* PINGREQ */
+        {0x00, 0x00},  /* Reserved type 0 → error path */
+        {0xF0, 0x00},  /* Reserved type 15 → error path */
+      };
+      u32 choice = UR(sizeof(trap_headers) / sizeof(trap_headers[0]));
+      buf[pos]     = trap_headers[choice][0];
+      buf[pos + 1] = trap_headers[choice][1];
+      mutations_applied++;
+      break;
+    }
+
+    case 7: /* Set invalid QoS 3 in SUBSCRIBE topic filter */
+      if (type_nibble == 8 && pkt_end > payload_start + 4) {
+        /* Last byte in each topic filter entry is the QoS byte */
+        buf[pkt_end - 1] = 3; /* Invalid QoS → SUBACK error code */
+        mutations_applied++;
+      }
+      break;
+    }
+
+    /* Advance to next packet */
+    pos = pkt_end;
+    if (pos <= rl_pos && pos > 0) break; /* safety: avoid infinite loop */
+  }
+
+  return mutations_applied;
+}
+
 /* Take the current entry from the queue, fuzz it for a while. This
    function is a tad too long... returns 0 if fuzzed successfully, 1 if
    skipped or bailed out. */
@@ -7198,20 +9847,31 @@ AFLNET_REGIONS_SELECTION:;
       double edges_gained = (double)(current_edges - last_edges_count);
       edges_growth_rate = edges_gained / time_elapsed_min;  // edges per minute
       
-      // Adaptive threshold adjustment:
-      // High growth (>5 edges/min): increase threshold to 150 (reduce LLM calls)
-      // Medium growth (1-5 edges/min): keep threshold at 100
-      // Low growth (<1 edge/min): decrease threshold to 50 (increase LLM calls)
-      if (edges_growth_rate > 5.0) {
-        adaptive_plateau_threshold = 150;
-      } else if (edges_growth_rate > 1.0) {
-        adaptive_plateau_threshold = 100;
-      } else {
-        adaptive_plateau_threshold = 50;
+      if (!ablation_no_adaptive) {
+        // Adaptive threshold adjustment (revised: raised floor to 150):
+        // High growth (>5 edges/min): threshold=300 (let fuzzer work undisturbed)
+        // Medium growth (1-5 edges/min): threshold=200 (moderate LLM frequency)
+        // Low growth (<1 edge/min): threshold=150 (more LLM calls, but bounded)
+        //
+        // P1-MQTT: For MQTT binary protocol, use higher thresholds to
+        // reduce wasteful LLM calls (hypothesis has <10% parse success).
+        u32 floor_low  = 150, floor_mid = 200, floor_high = 300;
+        if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0) {
+          floor_low = 500; floor_mid = 600; floor_high = 800;
+        }
+        if (edges_growth_rate > 5.0) {
+          adaptive_plateau_threshold = floor_high;
+        } else if (edges_growth_rate > 1.0) {
+          adaptive_plateau_threshold = floor_mid;
+        } else {
+          adaptive_plateau_threshold = floor_low;
+        }
       }
+      /* else: ablation_no_adaptive keeps threshold at UNINTERESTING_THRESHOLD */
       
-      fprintf(stderr, "[adaptive-plateau] edges_growth_rate=%.2f/min, threshold=%u\n",
-              edges_growth_rate, adaptive_plateau_threshold);
+      fprintf(stderr, "[adaptive-plateau] edges_growth_rate=%.2f/min, threshold=%u%s\n",
+              edges_growth_rate, adaptive_plateau_threshold,
+              ablation_no_adaptive ? " (ABLATION: fixed)" : "");
     }
     last_edges_count = current_edges;
     last_edges_check_time = cur_ms;
@@ -7220,6 +9880,27 @@ AFLNET_REGIONS_SELECTION:;
   if (uninteresting_times >= adaptive_plateau_threshold && chat_times < CHATTING_THRESHOLD)
   {
     uninteresting_times = 0;
+
+    /* Fix-10b: Lazy hypothesis system init — only on first plateau trigger.
+     * R9 showed eager init at startup cost 380s + 30MB RSS for exim with
+     * zero benefit (hypothesis_parse_success=0). Deferring to first plateau
+     * avoids the cost entirely for short runs and delays it until the fuzzer
+     * actually needs LLM assistance. */
+    if (hypothesis_mode && !hypothesis_ctx) {
+      fprintf(stderr, "[hypothesis] Lazy init: first plateau reached, "
+                      "initializing grammar hypothesis system now.\n");
+      init_grammar_hypothesis_system();
+    }
+
+    /* Fix-15 Tier-2: Check if any hypothesis needs refinement.
+     * This is a natural place: we are already in the plateau handler
+     * which tolerates LLM-level latency.  periodic_hypothesis_refinement()
+     * internally checks the validation count modulo gate.
+     * Gated by ablation_no_refinement for ablation experiments. */
+    if (!ablation_no_refinement) {
+      periodic_hypothesis_refinement();
+    }
+
     fprintf(stderr, "[plateau-trigger] Triggering LLM (growth_rate=%.2f, threshold=%u, chat_times=%u)\n",
             edges_growth_rate, adaptive_plateau_threshold, chat_times);
 
@@ -7273,9 +9954,24 @@ AFLNET_REGIONS_SELECTION:;
           response[i] = ' ';
       }
 
+      /* Fix-21: examples used to put the same request in both Request-1 and
+       * Request-2 (i==0 branch above), wasting the 400-token budget and
+       * giving LLM a misleading "two identical examples".
+       * Now Request-1 gets the first request, Request-2 gets the second.
+       * We build examples lazily across the first two loop iterations. */
       if (i == 0)
       {
-        examples_len = asprintf(&examples, "Request-1:\n%.*s\nRequest-2:\n%.*s\n", request_len, request, request_len, request);
+        /* First request → Request-1.  Request-2 filled below on i==1. */
+        examples_len = asprintf(&examples, "Request-1:\n%.*s\n", request_len, request);
+      }
+      else if (i == 1 && examples != NULL)
+      {
+        /* Second request → append as Request-2 */
+        char *old_examples = examples;
+        int new_len = asprintf(&examples, "%sRequest-2:\n%.*s\n",
+                               old_examples, request_len, request);
+        free(old_examples);
+        examples_len = new_len;
       }
 
       history = ck_realloc(history, history_len + request_len);
@@ -7326,8 +10022,11 @@ AFLNET_REGIONS_SELECTION:;
        * potential memory issues in network/parsing code. The child writes the
        * result to a temp file which the parent validates and consumes. */
       {
-        /* Build rich state-context JSON including per-state coverage details */
+        /* Build rich state-context JSON including per-state coverage details.
+         * ABLATION: When CHATAFL_NO_STATE_PROMPT is set, skip state_ctx entirely
+         * so the child falls back to the simple ChatAFL-style prompt. */
         char *state_ctx = NULL;
+        if (!ablation_no_state_prompt)
         {
           struct json_object *jctx = json_object_new_object();
           json_object_object_add(jctx, "nodes",           json_object_new_int(agnnodes(ipsm)));
@@ -7337,6 +10036,13 @@ AFLNET_REGIONS_SELECTION:;
           json_object_object_add(jctx, "queued_paths",    json_object_new_int(queued_paths));
           json_object_object_add(jctx, "chat_times",      json_object_new_int(chat_times));
           json_object_object_add(jctx, "target_state_id", json_object_new_int(target_state_id));
+          if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0 && mqtt_cluster_diff_summary)
+          {
+            json_object_object_add(jctx, "mqtt_cluster_diff", json_object_new_string(mqtt_cluster_diff_summary));
+            json_object_object_add(jctx, "mqtt_cluster_brokers", json_object_new_int(mqtt_cluster_broker_count));
+            json_object_object_add(jctx, "mqtt_cluster_unique_signatures", json_object_new_int(mqtt_cluster_unique_signatures));
+            json_object_object_add(jctx, "mqtt_cluster_diverged", json_object_new_boolean(mqtt_cluster_diverged));
+          }
 
           /* Per-state coverage: sort all states by effectiveness ascending (stuck states first) */
           struct json_object *jstates = json_object_new_array();
@@ -7369,6 +10075,11 @@ AFLNET_REGIONS_SELECTION:;
                 json_object_object_add(js, "selected_times",   json_object_new_int(st2->selected_times));
                 json_object_object_add(js, "fuzzs",            json_object_new_int(st2->fuzzs));
                 json_object_object_add(js, "seeds_count",      json_object_new_int(st2->seeds_count));
+                /* Fix-19: Expose acceptability metadata to LLM */
+                json_object_object_add(js, "is_error",
+                    json_object_new_boolean(st2->error_hint == 1));
+                json_object_object_add(js, "productivity",
+                    json_object_new_double(st2->productivity));
                 /* List up to 5 seed indices reachable from this state */
                 struct json_object *jsids2 = json_object_new_array();
                 u32 max_s = st2->seeds_count < 5 ? st2->seeds_count : 5;
@@ -7388,11 +10099,68 @@ AFLNET_REGIONS_SELECTION:;
         }
 
         char *out_path = alloc_printf("%s/stall-interactions/llm-suggest-%d", out_dir, chat_times);
+
+        /* ---- Prompt-hash dedup: skip redundant LLM calls ---- */
+        {
+          /* djb2 hash over the concatenation of examples+history+state_ctx */
+          u32 h = 5381;
+          if (examples) for (const char *p = examples; *p; p++) h = ((h << 5) + h) ^ (u8)*p;
+          if (history)  for (const char *p = history;  *p; p++) h = ((h << 5) + h) ^ (u8)*p;
+          if (state_ctx) for (const char *p = state_ctx; *p; p++) h = ((h << 5) + h) ^ (u8)*p;
+          if (h == 0) h = 1; /* avoid sentinel */
+          /* Check ring buffer */
+          u8 dup_found = 0;
+          for (u32 di = 0; di < LLM_DEDUP_SLOTS; di++) {
+            if (llm_prompt_hash_ring[di] == h) { dup_found = 1; break; }
+          }
+          if (dup_found) {
+            llm_dedup_hits++;
+            fprintf(stderr, "[plateau] Prompt-hash dedup hit (hash=%08x, total_dedup=%llu) — skipping LLM call\n",
+                    h, (unsigned long long)llm_dedup_hits);
+            if (state_ctx) { free(state_ctx); state_ctx = NULL; }
+            ck_free(out_path);
+            goto plateau_done;
+          }
+          /* Insert into ring */
+          llm_prompt_hash_ring[llm_prompt_hash_count % LLM_DEDUP_SLOTS] = h;
+          llm_prompt_hash_count++;
+        }
+
         pid_t pid = fork();
         if (pid == 0)
         {
-          /* Child */
-          char *res = llm_handle_plateau(protocol_name, examples, history, state_ctx);
+          /* Child — choose prompt strategy based on ablation flag.
+           * ablation_no_state_prompt → use ChatAFL's simple construct_prompt_stall
+           *                            (no state data, no actions[], suggested_request only)
+           * default                  → use rich llm_handle_plateau with state_ctx + actions[] */
+          char *res = NULL;
+          if (ablation_no_state_prompt) {
+            /* Ablation path: use ChatAFL's ORIGINAL prompt template
+             * (simple wording, "You are a helpful assistant" system msg)
+             * so the delta measures ALL prompt-engineering improvements. */
+            char *stall_prompt = construct_prompt_stall_original(
+                (char *)protocol_name, (char *)examples, (char *)history);
+            char *stall_resp = chat_with_llm(stall_prompt, "gpt-4o-mini", STALL_RETRIES, 1.2);
+            free(stall_prompt);
+            if (stall_resp) {
+              char *stall_msg = extract_stalled_message(stall_resp, strlen(stall_resp));
+              free(stall_resp);
+              if (stall_msg) {
+                char *formatted = format_request_message(stall_msg);
+                if (formatted) {
+                  /* Wrap into JSON so parent-side validator still works */
+                  struct json_object *jwrap = json_object_new_object();
+                  json_object_object_add(jwrap, "suggested_request",
+                                         json_object_new_string(formatted));
+                  res = strdup(json_object_to_json_string(jwrap));
+                  json_object_put(jwrap);
+                  ck_free(formatted);
+                }
+              }
+            }
+          } else {
+            res = llm_handle_plateau(protocol_name, examples, history, state_ctx);
+          }
           if (res) {
             int fd = open(out_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
             if (fd >= 0) {
@@ -7401,13 +10169,27 @@ AFLNET_REGIONS_SELECTION:;
             }
             free(res);
           }
+          /* Write sidecar .tokens file with per-call token usage so the
+           * parent process can accumulate cost metrics. */
+          {
+            char tokens_path[4096];
+            snprintf(tokens_path, sizeof(tokens_path), "%s.tokens", out_path);
+            int tfd = open(tokens_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+            if (tfd >= 0) {
+              char tbuf[128];
+              int tlen = snprintf(tbuf, sizeof(tbuf), "%llu %llu\n",
+                                  llm_last_prompt_tokens, llm_last_completion_tokens);
+              write(tfd, tbuf, tlen);
+              close(tfd);
+            }
+          }
           _exit(res ? 0 : 1);
         }
 
         /* Parent: wait for child with timeout */
         int status = 0;
         int elapsed = 0;
-        const int max_wait = 150; /* seconds */
+        const int max_wait = 60; /* seconds (was 150 — too much blocking) */
         while (elapsed < max_wait)
         {
           pid_t w = waitpid(pid, &status, WNOHANG);
@@ -7440,6 +10222,29 @@ AFLNET_REGIONS_SELECTION:;
           }
           close(fd);
         }
+
+        /* ---- Read sidecar .tokens file and accumulate LLM cost ---- */
+        {
+          char tokens_path[4096];
+          snprintf(tokens_path, sizeof(tokens_path), "%s.tokens", out_path);
+          int tfd = open(tokens_path, O_RDONLY);
+          if (tfd >= 0) {
+            char tbuf[128];
+            ssize_t tr = read(tfd, tbuf, sizeof(tbuf) - 1);
+            close(tfd);
+            unlink(tokens_path); /* clean up */
+            if (tr > 0) {
+              tbuf[tr] = '\0';
+              unsigned long long pt = 0, ct = 0;
+              if (sscanf(tbuf, "%llu %llu", &pt, &ct) == 2) {
+                llm_total_prompt_tokens     += pt;
+                llm_total_completion_tokens += ct;
+              }
+            }
+          }
+          llm_total_calls++;
+        }
+
         ck_free(out_path);
 
         /* Use centralized validator to parse/validate JSON schema and support actions[] */
@@ -7457,8 +10262,12 @@ AFLNET_REGIONS_SELECTION:;
           if (json_object_object_get_ex(jroot, "suggested_request", &jsr)) {
             const char *req = json_object_get_string(jsr);
             if (req) stall_message = strdup(req);
-          } else if (json_object_object_get_ex(jroot, "actions", &jsr)) {
-            /* Handle actions[] safely here by iterating and creating concrete candidates */
+          } else if (!ablation_no_state_prompt &&
+                     json_object_object_get_ex(jroot, "actions", &jsr)) {
+            /* Handle actions[] safely here — only when rich prompt is active.
+             * ABLATION: ablation_no_state_prompt disables this branch because the
+             * simple prompt never produces actions[], and even if it accidentally
+             * did, the state IDs would be meaningless without state_ctx. */
             size_t nal = json_object_array_length(jsr);
             for (size_t ai = 0; ai < nal; ai++) {
               struct json_object *act = json_object_array_get_idx(jsr, ai);
@@ -9374,8 +12183,87 @@ havoc_stage:
       }
     }
 
+    /* P3: MQTT scheduler-guided generation + field-aware mutation.
+     * When mqtt_scheduler_enabled:
+     *   - UCB1 bandit selects which arm (replace/insert/field/skip)
+     *   - Q-Learning selects which packet type to generate
+     *   - Reward signal from queued_paths change updates both schedulers
+     * Falls back to static dice probabilities during warmup. */
+    u32 mqtt_last_arm = 3;          /* default: skip */
+    u8  mqtt_last_pkt_type = 0;
+    u32 mqtt_qp_snap = queued_paths;
+
+    if (mqtt_field_mutate_enabled) {
+      u32 arm;
+      if (mqtt_scheduler_enabled) {
+        arm = mqtt_bandit_select(&mqtt_bandit);
+      } else {
+        /* Static fallback: 30%/15%/15%/40% */
+        u32 mqtt_dice = UR(20);
+        if      (mqtt_dice < 6)  arm = 0;
+        else if (mqtt_dice < 9)  arm = 1;
+        else if (mqtt_dice < 12) arm = 2;
+        else                     arm = 3;
+      }
+      mqtt_last_arm = arm;
+
+      switch (arm) {
+      case 0: /* Replace region with generated MQTT packet */ {
+        u8 gen_buf[MQTG_MAX_PKT];
+        u8 pt = mqtt_scheduler_enabled
+                    ? mqtt_ql_select(&mqtt_ql, selected_state_index)
+                    : 0;
+        mqtt_last_pkt_type = pt;
+        u32 gen_len = mqtt_gen_packet(gen_buf, sizeof(gen_buf), 0, pt);
+        if (gen_len > 0 && gen_len <= (u32)temp_len) {
+          u32 rpos = UR(temp_len - gen_len + 1);
+          memcpy(out_buf + rpos, gen_buf, gen_len);
+        }
+        break;
+      }
+      case 1: /* Insert generated MQTT packet */ {
+        u8 gen_buf[MQTG_MAX_PKT];
+        u8 pt = mqtt_scheduler_enabled
+                    ? mqtt_ql_select(&mqtt_ql, selected_state_index)
+                    : 0;
+        mqtt_last_pkt_type = pt;
+        u32 gen_len = mqtt_gen_packet(gen_buf, sizeof(gen_buf), MQTG_PROTO_V5, pt);
+        if (gen_len > 0 && temp_len + (s32)gen_len < MAX_FILE) {
+          u32 ipos = UR(temp_len + 1);
+          u8 *new_buf = ck_alloc_nozero(temp_len + gen_len);
+          memcpy(new_buf, out_buf, ipos);
+          memcpy(new_buf + ipos, gen_buf, gen_len);
+          memcpy(new_buf + ipos + gen_len, out_buf + ipos, temp_len - ipos);
+          ck_free(out_buf);
+          out_buf = new_buf;
+          temp_len += gen_len;
+        }
+        break;
+      }
+      case 2: /* Field-aware byte-level mutation */
+        mqtt_field_aware_mutate(out_buf, temp_len);
+        break;
+      case 3: /* Skip — rely on generic havoc alone */
+        break;
+      }
+    }
+
     if (common_fuzz_stuff(argv, out_buf, temp_len))
       goto abandon_entry;
+
+    /* P3/P4: Update schedulers with blended reward.
+     *   reward = coverage_gain + λ * differential_signal
+     * where λ=0.6 (MQTT-only). This augments single-target coverage with
+     * cross-implementation inconsistency feedback. */
+    if (mqtt_scheduler_enabled) {
+      double reward = (queued_paths != mqtt_qp_snap) ? 1.0 : 0.0;
+      if (mqtt_diff_feedback_enabled)
+        reward += 0.6 * mqtt_last_diff_signal;
+      if (reward > 1.6) reward = 1.6;
+      mqtt_bandit_update(&mqtt_bandit, mqtt_last_arm, reward);
+      if (mqtt_last_pkt_type > 0)
+        mqtt_ql_update(&mqtt_ql, selected_state_index, mqtt_last_pkt_type, reward);
+    }
 
     /* out_buf might have been mangled a bit, so let's restore it to its
        original size and shape. */
@@ -10247,7 +13135,10 @@ EXP_ST void setup_dirs_fds(void)
 
   fprintf(plot_file, "# unix_time, cycles_done, cur_path, paths_total, "
                      "pending_total, pending_favs, map_size, unique_crashes, "
-                     "unique_hangs, max_depth, execs_per_sec, n_nodes, n_edges, chat_times\n");
+                     "unique_hangs, max_depth, execs_per_sec, n_nodes, n_edges, "
+                     "chat_times, llm_calls, llm_prompt_tok, llm_compl_tok, "
+                     "llm_dedup, hyp_fitness, hyp_success, hyp_failure, "
+                     "mqtt_diff_avg, mqtt_diff_last, mqtt_diff_pos\n");
   /* ignore errors */
 }
 
@@ -11340,40 +14231,287 @@ int main(int argc, char **argv)
 
   fprintf(stderr, "[DEBUG] ========== BEFORE perform_dry_run ==========\n");
   fflush(stderr);
-  
+
+  /* Fix-14b: corpus_read_or_sync=1 during dry_run.
+   *
+   * Originally needed so Fix-14a's run_target() returned FAULT_NONE
+   * for child_force_killed during dry_run.  Fix-14c now returns
+   * FAULT_NONE unconditionally for child_force_killed, so the
+   * run_target motivation is obsolete.
+   *
+   * However, corpus_read_or_sync is still read by add_to_queue()
+   * (L2268/2287) for max_seed_region_count limiting during initial
+   * corpus loading — keep the wrapper for that purpose. */
+  corpus_read_or_sync = 1;
+
   perform_dry_run(use_argv);
+
+  corpus_read_or_sync = 0;
 
   fprintf(stderr, "[DEBUG] ========== AFTER perform_dry_run ==========\n");
   fflush(stderr);
 
-  /* ChatAFL-Opt: Initialize grammar hypothesis system */
+  /* ChatAFL-Opt: Grammar hypothesis system — DEFERRED initialization.
+   *
+   * Fix-10b: Do NOT initialize hypothesis system eagerly at startup.
+   * R9 data showed that eager init costs:
+   *   - 380s startup delay (RFC fetch + LLM hypothesis generation)
+   *   - +30MB RSS overhead from hypothesis_ctx allocation
+   *   - hypothesis_avg_fitness stuck at 0.500 (never validated)
+   *
+   * Instead, just record that hypothesis mode is requested.  The actual
+   * init_grammar_hypothesis_system() call is deferred to the first time
+   * the plateau handler fires, when the system actually needs it. */
   fprintf(stderr, "[DEBUG] Checking CHATAFL_HYPOTHESIS env var...\n");
   fflush(stderr);
   char *hyp_env = getenv("CHATAFL_HYPOTHESIS");
   if (hyp_env)
   {
-    fprintf(stderr, "[DEBUG] CHATAFL_HYPOTHESIS=%s, enabling hypothesis mode\n", hyp_env);
+    fprintf(stderr, "[DEBUG] CHATAFL_HYPOTHESIS=%s, hypothesis mode DEFERRED (lazy init on first plateau)\n", hyp_env);
     fflush(stderr);
     hypothesis_mode = 1;
-    OKF("Grammar Hypothesis Mode enabled (CHATAFL_HYPOTHESIS env var set)");
-    init_grammar_hypothesis_system();
+    OKF("Grammar Hypothesis Mode enabled (deferred init until first plateau)");
+    /* init_grammar_hypothesis_system() will be called on first plateau trigger */
   }
   else
   {
     fprintf(stderr, "[DEBUG] CHATAFL_HYPOTHESIS not set, hypothesis mode disabled\n");
     fflush(stderr);
   }
-  
+
+  /* ============================================
+   * Ablation Control: Read env vars
+   * ============================================ */
+  if (getenv("CHATAFL_NO_REFINEMENT")) {
+    ablation_no_refinement = 1;
+    OKF("ABLATION: Tier-2 hypothesis refinement DISABLED");
+    /* Fix-Ablation-2: Warn if CHATAFL_HYPOTHESIS is not set.
+     * Without hypothesis_mode=1, periodic_hypothesis_refinement() returns
+     * immediately at its entry guard — NO_REFINEMENT has zero effect and
+     * Full vs w/o-Refinement runs are behaviorally identical, making the
+     * ablation data meaningless. */
+    if (!getenv("CHATAFL_HYPOTHESIS")) {
+      WARNF("ABLATION: CHATAFL_NO_REFINEMENT set but CHATAFL_HYPOTHESIS not set "
+            "— ablation has NO EFFECT (hypothesis_mode=0). "
+            "Set CHATAFL_HYPOTHESIS=1 to make this ablation valid.");
+      fprintf(stderr,
+              "[ABLATION WARNING] NO_REFINEMENT is a no-op without CHATAFL_HYPOTHESIS=1.\n");
+      fflush(stderr);
+    }
+  }
+  if (getenv("CHATAFL_NO_FRONTIER")) {
+    ablation_no_frontier = 1;
+    OKF("ABLATION: Frontier bonus + error penalty DISABLED");
+  }
+  if (getenv("CHATAFL_NO_ADAPTIVE")) {
+    ablation_no_adaptive = 1;
+    /* Fix-Ablation-1: Support CHATAFL_ABLATION_THRESHOLD to set a custom
+     * fixed threshold.  Without this, NO_ADAPTIVE always fixes at 100
+     * (Opt's UNINTERESTING_THRESHOLD), which is 5× more frequent than
+     * ChatAFL baseline's 512.  To align with baseline trigger frequency,
+     * use: export CHATAFL_NO_ADAPTIVE=1 CHATAFL_ABLATION_THRESHOLD=512 */
+    char *fixed_thresh_env = getenv("CHATAFL_ABLATION_THRESHOLD");
+    if (fixed_thresh_env) {
+      u32 custom_thresh = (u32)atoi(fixed_thresh_env);
+      if (custom_thresh > 0) {
+        /* Will be applied after adaptive_plateau_threshold is initialized below */
+        setenv("_CHATAFL_RESOLVED_THRESHOLD", fixed_thresh_env, 1);
+        OKF("ABLATION: Adaptive plateau threshold DISABLED (fixed=%u from CHATAFL_ABLATION_THRESHOLD)",
+            custom_thresh);
+      } else {
+        OKF("ABLATION: Adaptive plateau threshold DISABLED (fixed=%u, default)",
+            UNINTERESTING_THRESHOLD);
+      }
+    } else {
+      OKF("ABLATION: Adaptive plateau threshold DISABLED (fixed=%u, default — "
+          "note: ChatAFL baseline uses 512; set CHATAFL_ABLATION_THRESHOLD=512 to align)",
+          UNINTERESTING_THRESHOLD);
+    }
+  }
+  if (getenv("CHATAFL_NO_STATE_PROMPT")) {
+    ablation_no_state_prompt = 1;
+    OKF("ABLATION: State-aware rich prompt + actions[] DISABLED (simple prompt mode)");
+  }
+
+  /* ============================================
+   * Ablation Configuration Summary Banner
+   * Plain fprintf so it survives ANSI/UI clutter
+   * and is always visible in `docker logs`.
+   * ============================================ */
+  {
+    int any_ablation = ablation_no_refinement || ablation_no_frontier
+                     || ablation_no_adaptive  || ablation_no_state_prompt;
+    fprintf(stderr,
+      "\n"
+      "========== ABLATION CONFIG ==========\n"
+      "  NO_REFINEMENT   : %s\n"
+      "  NO_FRONTIER     : %s\n"
+      "  NO_ADAPTIVE     : %s\n"
+      "  NO_STATE_PROMPT : %s\n"
+      "  MODE            : %s\n"
+      "  HYPOTHESIS      : %s\n"
+      "  CHATAFL_OPT     : %s\n"
+      "=====================================\n\n",
+      ablation_no_refinement   ? "ON (disabled)" : "off",
+      ablation_no_frontier     ? "ON (disabled)" : "off",
+      ablation_no_adaptive     ? "ON (disabled)" : "off",
+      ablation_no_state_prompt ? "ON (disabled)" : "off",
+      any_ablation ? "ABLATION RUN" : "FULL (no ablation)",
+      getenv("CHATAFL_HYPOTHESIS") ? "enabled" : "disabled",
+      getenv("AFL_ENABLE_CHATAFL_OPT") ? "enabled" : "disabled");
+    /* Warn in banner if NO_REFINEMENT is active but HYPOTHESIS is not set */
+    if (ablation_no_refinement && !getenv("CHATAFL_HYPOTHESIS")) {
+      fprintf(stderr,
+        "  *** ABLATION WARNING: NO_REFINEMENT is a NO-OP (hypothesis_mode=0) ***\n"
+        "  *** Set CHATAFL_HYPOTHESIS=1 for this ablation to be valid.         ***\n");
+    }
+    if (ablation_no_adaptive) {
+      fprintf(stderr,
+        "  NO_ADAPTIVE fixed threshold : %u%s\n",
+        adaptive_plateau_threshold,
+        adaptive_plateau_threshold == 512 ? " (matches ChatAFL baseline)" :
+        adaptive_plateau_threshold == 200 ? " (Opt default, 2.5x more frequent than baseline-512)" : "");
+    }
+    fflush(stderr);
+  }
+
+  memset(llm_prompt_hash_ring, 0, sizeof(llm_prompt_hash_ring));
+
+  /* ============================================
+   * MQTT remaining_length fixer (protocol-specific)
+   * Default: ON for MQTT, OFF for everything else.
+   * Override: CHATAFL_MQTT_FIX_LENGTH=0 to disable.
+   * ============================================ */
+  if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0) {
+    const char *fix_env = getenv("CHATAFL_MQTT_FIX_LENGTH");
+    if (fix_env && fix_env[0] == '0') {
+      mqtt_fix_length_enabled = 0;
+      OKF("MQTT remaining_length fixer DISABLED (CHATAFL_MQTT_FIX_LENGTH=0)");
+    } else {
+      mqtt_fix_length_enabled = 1;
+      OKF("MQTT remaining_length fixer ENABLED (set CHATAFL_MQTT_FIX_LENGTH=0 to disable)");
+    }
+
+    /* ============================================
+     * P1: MQTT-specific — suppress Hypothesis (S4).
+     *
+     * Binary protocols like MQTT have <10% hypothesis parse success.
+     * The LLM-generated textual grammars cannot describe variable-
+     * length binary fields, so hypothesis validation is wasted work.
+     *
+     * Default: OFF for MQTT.
+     * Override: CHATAFL_MQTT_FORCE_HYPOTHESIS=1 to re-enable.
+     * ============================================ */
+    if (!getenv("CHATAFL_MQTT_FORCE_HYPOTHESIS")) {
+      hypothesis_mode = 0;
+      OKF("MQTT mode: Hypothesis (S4) auto-DISABLED "
+          "(set CHATAFL_MQTT_FORCE_HYPOTHESIS=1 to override)");
+    }
+
+    /* P2a: Enable field-aware MQTT mutation in havoc.
+     * Default: ON for MQTT.
+     * Override: CHATAFL_MQTT_NO_FIELD_MUTATE=1 to disable. */
+    if (!getenv("CHATAFL_MQTT_NO_FIELD_MUTATE")) {
+      mqtt_field_mutate_enabled = 1;
+      OKF("MQTT mode: Field-aware mutation ENABLED "
+          "(set CHATAFL_MQTT_NO_FIELD_MUTATE=1 to disable)");
+    }
+
+    /* P2b: Enable cross-session state fuzzing.
+     * Default: ON for MQTT.
+     * Override: CHATAFL_MQTT_NO_CROSS_SESSION=1 to disable. */
+    if (!getenv("CHATAFL_MQTT_NO_CROSS_SESSION")) {
+      mqtt_cross_session_enabled = 1;
+      OKF("MQTT mode: Cross-session state fuzzing ENABLED "
+          "(set CHATAFL_MQTT_NO_CROSS_SESSION=1 to disable)");
+    }
+
+    /* P3: Initialize Q-Learning + UCB1 bandit schedulers.
+     * Default: ON for MQTT when field mutation is also enabled.
+     * Override: CHATAFL_MQTT_NO_SCHEDULER=1 to disable. */
+    if (mqtt_field_mutate_enabled && !getenv("CHATAFL_MQTT_NO_SCHEDULER")) {
+      mqtt_ql_init(&mqtt_ql);
+      mqtt_bandit_init(&mqtt_bandit);
+      mqtt_scheduler_enabled = 1;
+      OKF("MQTT mode: Q-Learning + UCB1 scheduler ENABLED "
+          "(set CHATAFL_MQTT_NO_SCHEDULER=1 to disable)");
+    }
+
+    /* P4: MQTT differential feedback loop.
+     * Uses CHATAFL_MQTT_BROKERS probe output as auxiliary reward signal
+     * for state scoring and packet/arm scheduler updates.
+     * Default: ON for MQTT.
+     *   CHATAFL_MQTT_NO_DIFF_FEEDBACK=1   -> disable
+     *   CHATAFL_MQTT_DIFF_PROBE_PERIOD=N  -> probe every N execs (default 32) */
+    if (!getenv("CHATAFL_MQTT_NO_DIFF_FEEDBACK")) {
+      mqtt_diff_feedback_enabled = 1;
+      mqtt_diff_probe_period = 32;
+      {
+        const char *pp = getenv("CHATAFL_MQTT_DIFF_PROBE_PERIOD");
+        if (pp && *pp) {
+          u32 v = (u32)atoi(pp);
+          if (v > 0 && v <= 10000)
+            mqtt_diff_probe_period = v;
+        }
+      }
+      OKF("MQTT mode: Differential feedback ENABLED "
+          "(period=%u, set CHATAFL_MQTT_NO_DIFF_FEEDBACK=1 to disable)",
+          mqtt_diff_probe_period);
+    }
+  }
+
   /* ============================================
    * Initialize Adaptive Plateau Variables
    * ============================================ */
   last_edges_count = agnedges(ipsm);  // Use IPSM edges (FIXED: was count_bits)
   last_edges_check_time = get_cur_time();
   edges_growth_rate = 0.0;
-  adaptive_plateau_threshold = UNINTERESTING_THRESHOLD;  // Start with default 100
-  
-  fprintf(stderr, "[adaptive-plateau] Initialized: initial_edges=%u (IPSM), threshold=%u\n",
-          last_edges_count, adaptive_plateau_threshold);
+  adaptive_plateau_threshold = UNINTERESTING_THRESHOLD;  // Start with default 200
+
+  /* Fix-Ablation-1: Apply custom fixed threshold from CHATAFL_ABLATION_THRESHOLD
+   * (only meaningful when CHATAFL_NO_ADAPTIVE=1).  Applied here so it overrides
+   * the UNINTERESTING_THRESHOLD default set two lines above. */
+  if (ablation_no_adaptive) {
+    char *resolved = getenv("_CHATAFL_RESOLVED_THRESHOLD");
+    if (resolved) {
+      u32 custom_thresh = (u32)atoi(resolved);
+      if (custom_thresh > 0) {
+        adaptive_plateau_threshold = custom_thresh;
+      }
+      unsetenv("_CHATAFL_RESOLVED_THRESHOLD");
+    }
+  }
+
+  fprintf(stderr, "[adaptive-plateau] Initialized: initial_edges=%u (IPSM), threshold=%u%s\n",
+          last_edges_count, adaptive_plateau_threshold,
+          ablation_no_adaptive ? " (ABLATION: fixed)" : "");
+
+  /* ============================================
+   * P1: MQTT-specific — raise adaptive plateau floor.
+   *
+   * For MQTT, the default floor (150-300) triggers LLM calls every
+   * ~20-40 sec.  Since MQTT hypotheses have <10% parse success, most
+   * LLM calls are wasted.  Raise floor to 500 so LLM triggers only
+   * every ~60-80s, giving the fuzzer more uninterrupted mutation time.
+   *
+   * This runs AFTER the ablation override so it doesn't clobber
+   * ablation experiments (ablation_no_adaptive keeps a fixed threshold).
+   *
+   * Override: CHATAFL_MQTT_LLM_THRESHOLD=N
+   * ============================================ */
+  if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0 && !ablation_no_adaptive) {
+    char *mqtt_thr = getenv("CHATAFL_MQTT_LLM_THRESHOLD");
+    if (mqtt_thr) {
+      u32 custom = (u32)atoi(mqtt_thr);
+      if (custom > 0) adaptive_plateau_threshold = custom;
+      OKF("MQTT mode: Plateau threshold=%u (from CHATAFL_MQTT_LLM_THRESHOLD)",
+          adaptive_plateau_threshold);
+    } else {
+      adaptive_plateau_threshold = 500;
+      OKF("MQTT mode: Plateau threshold raised to 500 "
+          "(set CHATAFL_MQTT_LLM_THRESHOLD=N to override)");
+    }
+  }
 
   cull_queue();
 
@@ -11405,6 +14543,12 @@ int main(int argc, char **argv)
       PFATAL("No server states have been detected. Server responses are likely empty!");
     }
 
+    /* Fix 5b: Node stagnation detection.
+     * If no new IPSM nodes have been discovered recently, periodically
+     * force random state selection to break out of exploitation ruts. */
+    u32 prev_node_count_loop = agnnodes(ipsm);
+    u32 node_stagnation_rounds = 0;
+
     while (1)
     {
       u8 skipped_fuzz;
@@ -11412,7 +14556,24 @@ int main(int argc, char **argv)
       struct queue_entry *selected_seed = NULL;
       while (!selected_seed || selected_seed->region_count == 0)
       {
-        target_state_id = choose_target_state(state_selection_algo);
+        /* Track node stagnation */
+        u32 cur_nodes = agnnodes(ipsm);
+        if (cur_nodes > prev_node_count_loop) {
+          prev_node_count_loop = cur_nodes;
+          node_stagnation_rounds = 0;
+        } else {
+          node_stagnation_rounds++;
+        }
+
+        /* If nodes haven't grown for 80+ rounds, occasionally use
+         * RANDOM_SELECTION to explore underrepresented states.
+         * 30% chance ensures we don't abandon FAVOR entirely. */
+        u8 effective_algo = state_selection_algo;
+        if (node_stagnation_rounds > 80 && UR(100) < 30) {
+          effective_algo = RANDOM_SELECTION;
+        }
+
+        target_state_id = choose_target_state(effective_algo);
 
         /* Update favorites based on the selected state */
         cull_queue();
