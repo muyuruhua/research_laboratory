@@ -246,11 +246,36 @@ static u32 gen_empty_properties(u8 *buf, u32 cap) {
  * Section 4: Individual Packet Generators
  * ════════════════════════════════════════════════════════════════════ */
 
+/* ── O4: Context-aware generation helpers ──
+ * When a non-NULL mqtt_gen_ctx_t is threaded through, these helpers
+ * ensure:
+ *   - gen_connect uses a consistent client_id within the session
+ *   - gen_subscribe records subscribed topics in the context
+ *   - gen_publish prefers a topic that was previously subscribed
+ *   - gen_publish assigns / reuses v5 topic aliases
+ *   - gen_ack / gen_unsubscribe reference topics / pkt_ids from context
+ */
+
 /* --- CONNECT (v3.1.1 and v5) --- */
-static u32 gen_connect(u8 *buf, u32 cap, u8 ver) {
+static u32 gen_connect_ctx(u8 *buf, u32 cap, u8 ver, mqtt_gen_ctx_t *ctx) {
   u8 body[1024];
   u32 pos = 0;
-  const char *cid = mg_cids[mg_rand(MG_NCIDS)];
+  const char *cid;
+
+  /* O4: Use context-pinned client_id if available, otherwise pick random
+   * and store it so subsequent CONNECTs in the same sequence are consistent. */
+  if (ctx && ctx->client_id_valid) {
+    cid = ctx->client_id;
+  } else {
+    cid = mg_cids[mg_rand(MG_NCIDS)];
+    if (ctx) {
+      u32 sl = (u32)strlen(cid);
+      if (sl < sizeof(ctx->client_id)) {
+        memcpy(ctx->client_id, cid, sl + 1);
+        ctx->client_id_valid = 1;
+      }
+    }
+  }
   u32 cid_len = (u32)strlen(cid);
 
   /* Protocol Name */
@@ -317,14 +342,45 @@ static u32 gen_connect(u8 *buf, u32 cap, u8 ver) {
 }
 
 /* --- PUBLISH (v3.1.1 and v5) --- */
-static u32 gen_publish(u8 *buf, u32 cap, u8 ver) {
+static u32 gen_publish_ctx(u8 *buf, u32 cap, u8 ver, mqtt_gen_ctx_t *ctx) {
   u8 body[1024];
   u32 pos = 0;
-  const char *topic = mg_topics[mg_rand(MG_NTOPICS)];
+  const char *topic;
   u8 qos = (u8)mg_rand(3);
   u8 dup = (u8)mg_rand(2);
   u8 retain = (u8)mg_rand(2);
-  u16 pkt_id = (u16)(mg_rand(65534) + 1);
+  u16 pkt_id;
+
+  /* O4: Topic selection priority:
+   *   70% — reuse a previously subscribed topic (semantic consistency)
+   *   20% — reuse last published topic (intra-session consistency)
+   *   10% — random topic (exploration)
+   * This ensures PUBLISH messages reach the subscriber path in the
+   * broker, exercising subs__send() → matching → delivery code. */
+  if (ctx && ctx->n_sub_topics > 0 && mg_rand(10) < 7) {
+    topic = ctx->sub_topics[mg_rand(ctx->n_sub_topics)];
+  } else if (ctx && ctx->pub_topic_valid && mg_rand(10) < 9) {
+    topic = ctx->pub_topic;
+  } else {
+    topic = mg_topics[mg_rand(MG_NTOPICS)];
+  }
+
+  /* O4: Record this topic for future dependency */
+  if (ctx) {
+    u32 tl = (u32)strlen(topic);
+    if (tl < sizeof(ctx->pub_topic)) {
+      memcpy(ctx->pub_topic, topic, tl + 1);
+      ctx->pub_topic_valid = 1;
+    }
+  }
+
+  /* O4: Monotonic packet ID from context to avoid ID reuse bugs */
+  if (ctx) {
+    pkt_id = ctx->next_pkt_id++;
+    if (ctx->next_pkt_id == 0) ctx->next_pkt_id = 1;
+  } else {
+    pkt_id = (u16)(mg_rand(65534) + 1);
+  }
 
   /* Topic Name */
   pos += encode_utf8(body + pos, sizeof(body) - pos, topic, (u32)strlen(topic));
@@ -353,11 +409,19 @@ static u32 gen_publish(u8 *buf, u32 cap, u8 ver) {
 }
 
 /* --- SUBSCRIBE (v3.1.1 and v5) --- */
-static u32 gen_subscribe(u8 *buf, u32 cap, u8 ver) {
+static u32 gen_subscribe_ctx(u8 *buf, u32 cap, u8 ver, mqtt_gen_ctx_t *ctx) {
   u8 body[512];
   u32 pos = 0;
-  u16 pkt_id = (u16)(mg_rand(65534) + 1);
+  u16 pkt_id;
   u32 n_filters = mg_rand(3) + 1; /* 1-3 topic filters */
+
+  /* O4: Monotonic packet ID from context */
+  if (ctx) {
+    pkt_id = ctx->next_pkt_id++;
+    if (ctx->next_pkt_id == 0) ctx->next_pkt_id = 1;
+  } else {
+    pkt_id = (u16)(mg_rand(65534) + 1);
+  }
 
   /* Packet Identifier */
   body[pos++] = (u8)(pkt_id >> 8);
@@ -375,6 +439,15 @@ static u32 gen_subscribe(u8 *buf, u32 cap, u8 ver) {
   for (u32 f = 0; f < n_filters && pos + 10 < sizeof(body); f++) {
     const char *tf = mg_topics[mg_rand(MG_NTOPICS)];
     pos += encode_utf8(body + pos, sizeof(body) - pos, tf, (u32)strlen(tf));
+
+    /* O4: Record subscribed topics in context for PUBLISH dependency */
+    if (ctx && ctx->n_sub_topics < 4) {
+      u32 tl = (u32)strlen(tf);
+      if (tl > 0 && tl < 128 && tf[0] != '#' && tf[0] != '+') {
+        memcpy(ctx->sub_topics[ctx->n_sub_topics], tf, tl + 1);
+        ctx->n_sub_topics++;
+      }
+    }
 
     if (ver == MQTG_PROTO_V5) {
       /* v5 Subscription Options byte:
@@ -396,10 +469,18 @@ static u32 gen_subscribe(u8 *buf, u32 cap, u8 ver) {
 }
 
 /* --- UNSUBSCRIBE (v3.1.1 and v5) --- */
-static u32 gen_unsubscribe(u8 *buf, u32 cap, u8 ver) {
+static u32 gen_unsubscribe_ctx(u8 *buf, u32 cap, u8 ver, mqtt_gen_ctx_t *ctx) {
   u8 body[512];
   u32 pos = 0;
-  u16 pkt_id = (u16)(mg_rand(65534) + 1);
+  u16 pkt_id;
+
+  /* O4: Monotonic packet ID from context */
+  if (ctx) {
+    pkt_id = ctx->next_pkt_id++;
+    if (ctx->next_pkt_id == 0) ctx->next_pkt_id = 1;
+  } else {
+    pkt_id = (u16)(mg_rand(65534) + 1);
+  }
 
   body[pos++] = (u8)(pkt_id >> 8);
   body[pos++] = (u8)(pkt_id & 0xFF);
@@ -408,10 +489,14 @@ static u32 gen_unsubscribe(u8 *buf, u32 cap, u8 ver) {
     pos += gen_empty_properties(body + pos, sizeof(body) - pos);
   }
 
-  /* 1-2 topic filters */
+  /* O4: Prefer unsubscribing from previously subscribed topics */
   u32 nf = mg_rand(2) + 1;
   for (u32 f = 0; f < nf && pos + 10 < sizeof(body); f++) {
-    const char *tf = mg_topics[mg_rand(MG_NTOPICS)];
+    const char *tf;
+    if (ctx && ctx->n_sub_topics > 0 && mg_rand(3) < 2)
+      tf = ctx->sub_topics[mg_rand(ctx->n_sub_topics)];
+    else
+      tf = mg_topics[mg_rand(MG_NTOPICS)];
     pos += encode_utf8(body + pos, sizeof(body) - pos, tf, (u32)strlen(tf));
   }
 
@@ -525,6 +610,12 @@ static u32 gen_pingreq(u8 *buf, u32 cap) {
  * Section 5: Top-Level API
  * ════════════════════════════════════════════════════════════════════ */
 
+/* O4: Backward-compatible wrappers (no context — for seed generation) */
+static u32 gen_connect(u8 *buf, u32 cap, u8 ver)     { return gen_connect_ctx(buf, cap, ver, NULL); }
+static u32 gen_publish(u8 *buf, u32 cap, u8 ver)      { return gen_publish_ctx(buf, cap, ver, NULL); }
+static u32 gen_subscribe(u8 *buf, u32 cap, u8 ver)    { return gen_subscribe_ctx(buf, cap, ver, NULL); }
+static u32 gen_unsubscribe(u8 *buf, u32 cap, u8 ver)  { return gen_unsubscribe_ctx(buf, cap, ver, NULL); }
+
 /* Client-sendable packet types for random selection */
 static const u8 client_types[] = {
   MQTG_CONNECT, MQTG_PUBLISH, MQTG_SUBSCRIBE, MQTG_UNSUBSCRIBE,
@@ -541,6 +632,46 @@ static const u8 mid_session_types[] = {
 };
 #define N_MID_SESSION ARRAY_CNT(mid_session_types)
 
+/* O4: Context initialisation */
+void mqtt_gen_ctx_init(mqtt_gen_ctx_t *ctx, u8 proto_ver) {
+  if (!ctx) return;
+  memset(ctx, 0, sizeof(*ctx));
+  ctx->next_pkt_id = 1;
+  ctx->next_alias  = 1;
+  ctx->alias_max   = 10; /* default; overridable */
+  ctx->ver = proto_ver;
+  if (ctx->ver == 0)
+    ctx->ver = (mg_rand(5) < 3) ? MQTG_PROTO_V5 : MQTG_PROTO_V311;
+}
+
+/* O4: Context-aware single packet generation */
+u32 mqtt_gen_packet_ctx(u8 *buf, u32 cap, mqtt_gen_ctx_t *ctx, u8 pkt_type) {
+  if (!buf || cap < 2) return 0;
+
+  u8 ver = ctx ? ctx->ver : 0;
+  if (ver == 0) ver = (mg_rand(5) < 3) ? MQTG_PROTO_V5 : MQTG_PROTO_V311;
+
+  u8 pt = pkt_type;
+  if (pt == 0) pt = client_types[mg_rand(N_CLIENT_TYPES)];
+  if (pt == MQTG_AUTH) ver = MQTG_PROTO_V5;
+
+  switch (pt) {
+  case MQTG_CONNECT:     return gen_connect_ctx(buf, cap, ver, ctx);
+  case MQTG_PUBLISH:     return gen_publish_ctx(buf, cap, ver, ctx);
+  case MQTG_SUBSCRIBE:   return gen_subscribe_ctx(buf, cap, ver, ctx);
+  case MQTG_UNSUBSCRIBE: return gen_unsubscribe_ctx(buf, cap, ver, ctx);
+  case MQTG_PUBACK:      return gen_ack(buf, cap, 0x40, ver);
+  case MQTG_PUBREC:      return gen_ack(buf, cap, 0x50, ver);
+  case MQTG_PUBREL:      return gen_ack(buf, cap, 0x62, ver);
+  case MQTG_PUBCOMP:     return gen_ack(buf, cap, 0x70, ver);
+  case MQTG_PINGREQ:     return gen_pingreq(buf, cap);
+  case MQTG_DISCONNECT:  return gen_disconnect(buf, cap, ver);
+  case MQTG_AUTH:         return gen_auth(buf, cap);
+  default:                return gen_pingreq(buf, cap);
+  }
+}
+
+/* Original context-free API (preserved for backward compatibility) */
 u32 mqtt_gen_packet(u8 *buf, u32 cap, u8 proto_ver, u8 pkt_type) {
   if (!buf || cap < 2) return 0;
 
@@ -571,31 +702,33 @@ u32 mqtt_gen_packet(u8 *buf, u32 cap, u8 proto_ver, u8 pkt_type) {
   }
 }
 
+/* O4: Context-aware sequence generation — threads semantic dependencies
+ * through the entire CONNECT → messages → DISCONNECT flow. */
 u32 mqtt_gen_sequence(u8 *buf, u32 cap, u8 proto_ver, u32 msg_count) {
   if (!buf || cap < 64) return 0;
 
-  u8 ver = proto_ver;
-  if (ver == 0) ver = (mg_rand(5) < 3) ? MQTG_PROTO_V5 : MQTG_PROTO_V311;
+  mqtt_gen_ctx_t ctx;
+  mqtt_gen_ctx_init(&ctx, proto_ver);
 
   u32 total = 0;
 
-  /* CONNECT */
-  u32 n = gen_connect(buf + total, cap - total, ver);
+  /* CONNECT — context records client_id */
+  u32 n = gen_connect_ctx(buf + total, cap - total, ctx.ver, &ctx);
   if (n == 0) return 0;
   total += n;
 
-  /* N mid-session messages */
+  /* N mid-session messages — context threads topic / alias / pkt_id */
   for (u32 i = 0; i < msg_count && total + 64 < cap; i++) {
     u8 pt = mid_session_types[mg_rand(N_MID_SESSION)];
     /* AUTH only for v5 */
-    if (pt == MQTG_AUTH && ver != MQTG_PROTO_V5)
+    if (pt == MQTG_AUTH && ctx.ver != MQTG_PROTO_V5)
       pt = MQTG_PUBLISH;
-    n = mqtt_gen_packet(buf + total, cap - total, ver, pt);
+    n = mqtt_gen_packet_ctx(buf + total, cap - total, &ctx, pt);
     if (n > 0) total += n;
   }
 
   /* DISCONNECT */
-  n = gen_disconnect(buf + total, cap - total, ver);
+  n = gen_disconnect(buf + total, cap - total, ctx.ver);
   if (n > 0) total += n;
 
   return total;

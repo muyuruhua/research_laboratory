@@ -212,6 +212,20 @@ void mqtt_diff_parse_response(const unsigned char *buf, unsigned int buf_len,
     out->return_codes[idx] = mqtt_diff_extract_return_code(
         type_nibble, pkt_body, var_header_len, payload_ptr, payload_len);
 
+    /* O3: Capture fixed-header flags (lower nibble of byte 0).
+     * For CONNACK, overlay Session Present from var_header[0]. */
+    out->pkt_flags[idx] = byte0 & 0x0F;
+    if (type_nibble == 2 && var_header_len >= 1) {
+      /* CONNACK: flags byte = Session Present (bit 0 of var_header[0]) */
+      out->pkt_flags[idx] = pkt_body[0] & 0x01;
+    }
+
+    /* O3: Hash the entire variable header for deeper comparison. */
+    if (var_header_len > 0)
+      out->var_header_hashes[idx] = fnv1a_32(pkt_body, var_header_len);
+    else
+      out->var_header_hashes[idx] = 0;
+
     /* Hash the payload content (H-field) */
     if (payload_ptr && payload_len > 0)
       out->payload_hashes[idx] = fnv1a_32(payload_ptr, payload_len);
@@ -226,12 +240,18 @@ void mqtt_diff_parse_response(const unsigned char *buf, unsigned int buf_len,
   if (out->pkt_count > 0) {
     out->type_seq_hash = fnv1a_32(out->pkt_types, (unsigned int)out->pkt_count);
     out->code_seq_hash = fnv1a_32(out->return_codes, (unsigned int)out->pkt_count);
+    /* O3: flags_hash for fixed-header flags comparison */
+    out->flags_hash = fnv1a_32(out->pkt_flags, (unsigned int)out->pkt_count);
 
-    /* full_hash = hash of all three field arrays concatenated */
+    /* full_hash = hash of all five field arrays concatenated
+     * O3: now includes pkt_flags and var_header_hashes */
     uint32_t h = 2166136261u;
     for (int i = 0; i < out->pkt_count; i++) {
       h ^= out->pkt_types[i];     h *= 16777619u;
       h ^= out->return_codes[i];  h *= 16777619u;
+      h ^= out->pkt_flags[i];     h *= 16777619u;  /* O3 */
+      h ^= (out->var_header_hashes[i] & 0xFF);         h *= 16777619u;  /* O3 */
+      h ^= ((out->var_header_hashes[i] >> 8) & 0xFF);  h *= 16777619u;  /* O3 */
       h ^= (out->payload_hashes[i] & 0xFF);         h *= 16777619u;
       h ^= ((out->payload_hashes[i] >> 8) & 0xFF);  h *= 16777619u;
       h ^= ((out->payload_hashes[i] >> 16) & 0xFF); h *= 16777619u;
@@ -268,6 +288,8 @@ mqtt_diff_result_t mqtt_diff_compare(const mqtt_response_fields_t *a,
     for (int i = 0; i < a->pkt_count && really_equal; i++) {
       if (a->pkt_types[i] != b->pkt_types[i] ||
           a->return_codes[i] != b->return_codes[i] ||
+          a->pkt_flags[i] != b->pkt_flags[i] ||               /* O3 */
+          a->var_header_hashes[i] != b->var_header_hashes[i] || /* O3 */
           a->payload_hashes[i] != b->payload_hashes[i])
         really_equal = 0;
     }
@@ -309,6 +331,40 @@ mqtt_diff_result_t mqtt_diff_compare(const mqtt_response_fields_t *a,
     if (r.strength > 1.0) r.strength = 1.0;
     r.pattern_hash = a->code_seq_hash ^ b->code_seq_hash ^
                      ((uint32_t)r.code_diffs << 24);
+    return r;
+  }
+
+  /* O3 Level 2.5: Compare fixed-header flags (PUBLISH QoS/DUP/Retain,
+   * CONNACK Session Present).  Same type+return_code but different flags
+   * indicates implementation-specific behavior (e.g., Session Present
+   * disagreement, different retained-message delivery). */
+  for (int i = 0; i < min_count; i++) {
+    if (a->pkt_flags[i] != b->pkt_flags[i])
+      r.flags_diffs++;
+  }
+
+  if (r.flags_diffs > 0) {
+    r.severity = MQTT_DIV_CODE;  /* Same severity tier as return code */
+    r.strength = (double)r.flags_diffs / (double)max_count * 0.8;
+    if (r.strength > 1.0) r.strength = 1.0;
+    r.pattern_hash = a->flags_hash ^ b->flags_hash ^
+                     ((uint32_t)r.flags_diffs << 20);
+    return r;
+  }
+
+  /* O3 Level 2.7: Compare variable header hashes (deeper G-field).
+   * Catches property differences, topic length encoding variations,
+   * different packet ID assignment strategies. */
+  for (int i = 0; i < min_count; i++) {
+    if (a->var_header_hashes[i] != b->var_header_hashes[i])
+      r.var_hdr_diffs++;
+  }
+
+  if (r.var_hdr_diffs > 0) {
+    r.severity = MQTT_DIV_PAYLOAD;  /* Slightly below code-level */
+    r.strength = (double)r.var_hdr_diffs / (double)max_count * 0.7;
+    if (r.strength > 1.0) r.strength = 1.0;
+    r.pattern_hash = a->full_hash ^ b->full_hash ^ 0xABCD0000;
     return r;
   }
 

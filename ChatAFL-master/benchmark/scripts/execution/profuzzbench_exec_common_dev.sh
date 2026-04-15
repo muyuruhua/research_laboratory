@@ -84,6 +84,8 @@ fi
 
 MQTT_AUTO_NETWORK=""
 MQTT_AUTO_BROKER_LIST=""
+MQTT_STABLE_CONTAINER=""
+MQTT_STABLE_ALIAS=""
 declare -a MQTT_AUTO_CONTAINER_NAMES=()
 declare -a MQTT_AUTO_BROKER_ALIASES=()
 
@@ -104,16 +106,43 @@ if [[ -z "${CHATAFL_MQTT_BROKERS:-}" ]] && is_mqtt_target "$DOCIMAGE"; then
     auto_broker_alias="mqttb${idx}"
     MQTT_AUTO_CONTAINER_NAMES+=("$auto_container_name")
     MQTT_AUTO_BROKER_ALIASES+=("$auto_broker_alias")
-    if [[ -z "$MQTT_AUTO_BROKER_LIST" ]]; then
-      MQTT_AUTO_BROKER_LIST="tcp://${auto_broker_alias}/1883"
-    else
-      MQTT_AUTO_BROKER_LIST+=",tcp://${auto_broker_alias}/1883"
-    fi
   done
 
-  export CHATAFL_MQTT_BROKERS="$MQTT_AUTO_BROKER_LIST"
-  printf "\n${LOG_TAG}: [DEV] MQTT auto broker list: %s\n" "$CHATAFL_MQTT_BROKERS"
+  # ── Launch a stable (non-fuzzed) reference broker for differential testing ──
+  # Each fuzzer container's mosquitto is killed/restarted ~6/sec by afl-fuzz,
+  # making cross-container differential probes fail >99% of the time.
+  # A dedicated stable broker solves this: fuzzer compares its own fuzzed
+  # mosquitto against the stable reference to detect behavioural divergence.
+  MQTT_STABLE_CONTAINER="${MQTT_AUTO_NETWORK}-stable"
+  MQTT_STABLE_ALIAS="mqtt-stable"
+  printf "\n${LOG_TAG}: [DEV] Launching stable reference broker (%s)...\n" "$MQTT_STABLE_ALIAS"
+  docker run --cpus=0.5 --memory=256m \
+    --network "$MQTT_AUTO_NETWORK" \
+    --name "$MQTT_STABLE_CONTAINER" \
+    --hostname "$MQTT_STABLE_ALIAS" \
+    --network-alias "$MQTT_STABLE_ALIAS" \
+    --restart=unless-stopped \
+    ${SUBJECT_MOUNT} \
+    -d "$DOCIMAGE" /bin/bash -c \
+    "if [ -f /tmp/subject-src/mosquitto.conf ]; then cp -f /tmp/subject-src/mosquitto.conf /home/ubuntu/experiments/mosquitto.conf; fi && \
+     exec /home/ubuntu/experiments/mosquitto-gcov/src/mosquitto -c /home/ubuntu/experiments/mosquitto.conf"
+
+  # Wait for stable broker to be ready (up to 15 sec)
+  _stable_ok=0
+  for _w in $(seq 1 30); do
+    if docker exec "$MQTT_STABLE_CONTAINER" bash -c "nc -z 127.0.0.1 1883" 2>/dev/null; then
+      _stable_ok=1; break
+    fi
+    sleep 0.5
+  done
+  if [[ $_stable_ok -eq 1 ]]; then
+    printf "${LOG_TAG}: [DEV] ✓ Stable broker ready on %s:1883\n" "$MQTT_STABLE_ALIAS"
+  else
+    printf "${LOG_TAG}: [WARN] Stable broker may not be ready yet\n"
+  fi
+
   printf "${LOG_TAG}: [DEV] MQTT auto network: %s\n" "$MQTT_AUTO_NETWORK"
+  printf "${LOG_TAG}: [DEV] Architecture: each fuzzer → tcp://<self>/1883 + tcp://%s/1883\n" "$MQTT_STABLE_ALIAS"
 fi
 
 #keep all container ids
@@ -137,8 +166,15 @@ for i in $(seq 1 $RUNS); do
   [[ -n "${CHATAFL_NO_STATE_PROMPT}" ]]    && ABLATION_FLAGS+=" -e CHATAFL_NO_STATE_PROMPT=1"
   [[ -n "${CHATAFL_ABLATION_THRESHOLD}" ]] && ABLATION_FLAGS+=" -e CHATAFL_ABLATION_THRESHOLD=${CHATAFL_ABLATION_THRESHOLD}"
 
+  # Per-container MQTT broker list: local broker + stable reference
   MQTT_FLAGS=""
-  [[ -n "${CHATAFL_MQTT_BROKERS}" ]] && MQTT_FLAGS+=" -e CHATAFL_MQTT_BROKERS=${CHATAFL_MQTT_BROKERS}"
+  if [[ -n "${MQTT_STABLE_ALIAS:-}" ]] && [[ -n "$MQTT_AUTO_NETWORK" ]]; then
+    _local_alias="${MQTT_AUTO_BROKER_ALIASES[$run_index]}"
+    _brokers="tcp://${_local_alias}/1883,tcp://${MQTT_STABLE_ALIAS}/1883"
+    MQTT_FLAGS=" -e CHATAFL_MQTT_BROKERS=${_brokers}"
+  elif [[ -n "${CHATAFL_MQTT_BROKERS:-}" ]]; then
+    MQTT_FLAGS=" -e CHATAFL_MQTT_BROKERS=${CHATAFL_MQTT_BROKERS}"
+  fi
 
   # Enable Grammar Hypothesis system only for chatafl-opt
   if [[ "$FUZZER" == "chatafl-opt" ]]; then
@@ -239,6 +275,10 @@ done
 fix_result_permissions "${SAVETO}"
 
 if [[ -n "$MQTT_AUTO_NETWORK" ]]; then
+  if [[ -n "${MQTT_STABLE_CONTAINER:-}" ]]; then
+    printf "\n${LOG_TAG}: Stopping stable reference broker...\n"
+    docker rm -f "$MQTT_STABLE_CONTAINER" >/dev/null 2>&1 || true
+  fi
   docker network rm "$MQTT_AUTO_NETWORK" >/dev/null 2>&1 || true
 fi
 

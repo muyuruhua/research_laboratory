@@ -11,6 +11,11 @@
 #include "alloc-inl.h"
 #include "aflnet.h"
 
+/* MQTT fast I/O flag — set by afl-fuzz.c for MQTT, skips per-fragment
+ * usleep(10) in net_send/net_recv for low-latency localhost fuzzing.
+ * Defined here (shared object) so afl-replay etc. also link cleanly. */
+u8 mqtt_fast_io = 0;
+
 // Protocol-specific functions for extracting requests and responses
 
 region_t *extract_requests_smtp(unsigned char *buf, unsigned int buf_size, unsigned int *region_count_ref)
@@ -1629,8 +1634,18 @@ unsigned int *extract_response_codes_mqtt(unsigned char *buf, unsigned int buf_s
 
     type_nibble = (unsigned char)(fixed_hdr >> 4);
 
-    /* MQTT broker-visible response packets */
+    /* MQTT broker-visible response packets.
+     *
+     * B1-fix: Include PUBLISH (type 3) as a state-producing packet.
+     * When the broker forwards a PUBLISH to a subscribing client, that
+     * forwarded message appears in response_buf.  Previously it was
+     * invisible to the IPSM — the #1 difference vs MBFuzzer which uses
+     * "forwarding-as-coverage" as its primary signal.
+     *
+     * PUBLISH state identity encodes QoS level only (3 new states max)
+     * to make forwarding visible without diluting exploration. */
     if (type_nibble == 2 ||  /* CONNACK */
+        type_nibble == 3 ||  /* PUBLISH (forwarded) — B1 */
         type_nibble == 4 ||  /* PUBACK  */
         type_nibble == 5 ||  /* PUBREC  */
         type_nibble == 6 ||  /* PUBREL  */
@@ -1644,7 +1659,14 @@ unsigned int *extract_response_codes_mqtt(unsigned char *buf, unsigned int buf_s
       message_code = (unsigned int)(type_nibble << 4);
 
       /* Enrich state id with reason/return code when present. */
-      if (type_nibble == 2 && rem_len >= 2 && payload_pos + 1 < pkt_end) {
+      if (type_nibble == 3) {
+        /* B1: PUBLISH (forwarded) — encode QoS level only.
+         * Using only QoS (0/1/2) produces exactly 3 PUBLISH states,
+         * making broker forwarding visible without state explosion.
+         * reason_code = qos + 1 (1/2/3), always non-zero. */
+        unsigned char qos = (unsigned char)((fixed_hdr >> 1) & 0x03);
+        reason_code = (unsigned int)(qos + 1);
+      } else if (type_nibble == 2 && rem_len >= 2 && payload_pos + 1 < pkt_end) {
         /* CONNACK: byte0 ack flags, byte1 return/reason code */
         reason_code = (unsigned int)buf[payload_pos + 1];
       } else if ((type_nibble == 4 || type_nibble == 5 ||
@@ -2085,7 +2107,7 @@ int net_send(int sockfd, struct timeval timeout, char *mem, unsigned int len)
     {
       while (byte_count < len)
       {
-        usleep(10);
+        if (!mqtt_fast_io) usleep(10);
         n = send(sockfd, &mem[byte_count], len - byte_count, MSG_NOSIGNAL);
         if (n == 0)
           return byte_count;
@@ -2120,7 +2142,7 @@ int net_recv(int sockfd, struct timeval timeout, int poll_w, char **response_buf
       }
       while (n > 0)
       {
-        usleep(10);
+        if (!mqtt_fast_io) usleep(10);
         *response_buf = (unsigned char *)ck_realloc(*response_buf, *len + n + 1);
         memcpy(&(*response_buf)[*len], temp_buf, n);
         (*response_buf)[(*len) + n] = '\0';

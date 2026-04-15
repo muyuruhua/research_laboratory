@@ -22,6 +22,7 @@
 #include <unistd.h>         /* close */
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>      /* A3: TCP_NODELAY */
 #include <arpa/inet.h>
 #include <netdb.h>
 
@@ -40,9 +41,27 @@ extern int  net_recv(int sockfd, struct timeval timeout,
 /* ════════════════════════════════════════════════════════════════════
  * Per-execution private state
  * ════════════════════════════════════════════════════════════════════ */
+
+/* O2: Forward differential result for one PUBLISH → subscribe path */
+typedef struct {
+  u8   received;        /* 1 if sub_fd got a forwarded PUBLISH */
+  u8   fwd_pkt_type;    /* high nibble of received byte 0 (should be 3 = PUBLISH) */
+  u8   fwd_qos;         /* QoS of forwarded message */
+  u8   fwd_retain;      /* Retain flag of forwarded message */
+  u32  fwd_payload_len; /* Payload length of forwarded message */
+  u32  fwd_topic_hash;  /* FNV-1a hash of forwarded topic name */
+} mqtt_fwd_diff_entry_t;
+
+#define MQTT_FWD_DIFF_MAX 16  /* Max forward-diff entries per execution */
+
 typedef struct {
   char        *handshake_resp;       /* secondary handshake buffer */
   unsigned int handshake_resp_len;
+
+  /* O2: Forward differential tracking */
+  mqtt_fwd_diff_entry_t fwd_entries[MQTT_FWD_DIFF_MAX];
+  u32                   fwd_count;
+  u32                   fwd_hash;    /* combined hash of all fwd results */
 } mqtt_mp_priv_t;
 
 /* ════════════════════════════════════════════════════════════════════
@@ -82,13 +101,18 @@ static int mqtt_mp_open_one(const char *ip, u32 port, u32 bind_port) {
   }
 
   if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
-    for (n = 0; n < 1000; n++) {
+    /* A9: Tighter retry — 200 × 500 µs = 100 ms ceiling */
+    for (n = 0; n < 200; n++) {
       if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == 0)
         break;
-      usleep(1000);
+      usleep(500);
     }
-    if (n == 1000) { close(sockfd); return -1; }
+    if (n == 200) { close(sockfd); return -1; }
   }
+
+  /* A3: Disable Nagle — send small MQTT packets immediately */
+  { int one = 1; setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one)); }
+
   return sockfd;
 }
 
@@ -316,8 +340,92 @@ static int mqtt_after_send(mp_context_t *ctx, int role) {
   /* After PUBLISH on pub_fd, drain sub_fd for forwarded messages —
    * this triggers subs__send() / sub__messages_queue() in the broker */
   if (role == PUB_IDX) {
+    /* O2: Capture forwarded PUBLISH for differential analysis.
+     * Instead of discarding the sub_fd response, we parse it to extract
+     * forwarding metadata: QoS, retain, topic hash, payload length.
+     * This allows the diff engine to detect forwarding inconsistencies
+     * between broker versions / configurations — matching MBFuzzer's
+     * core "bridge mode" differential strategy.
+     *
+     * We use a temporary buffer (not ctx->response_buf) to avoid
+     * interfering with the main response collection path. */
+    char         *fwd_buf  = NULL;
+    unsigned int  fwd_len  = 0;
     net_recv(ctx->fds[SUB_IDX], ctx->timeout, ctx->poll_wait_msecs,
-             ctx->response_buf, (unsigned int *)ctx->response_buf_size);
+             &fwd_buf, &fwd_len);
+
+    mqtt_mp_priv_t *priv = (mqtt_mp_priv_t *)ctx->priv;
+    if (fwd_buf && fwd_len >= 2 && priv && priv->fwd_count < MQTT_FWD_DIFF_MAX) {
+      /* Parse each MQTT packet in the forwarded buffer */
+      u32 off = 0;
+      while (off + 2 <= fwd_len && priv->fwd_count < MQTT_FWD_DIFF_MAX) {
+        u8 byte0 = (u8)fwd_buf[off];
+        u8 ptype = (byte0 >> 4) & 0x0F;
+
+        /* Decode remaining length (variable-length integer) */
+        u32 rem_len = 0, multiplier = 1, hdr_bytes = 1;
+        u32 roff = off + 1;
+        while (roff < fwd_len && hdr_bytes <= 4) {
+          u8 enc = (u8)fwd_buf[roff];
+          rem_len += (enc & 0x7F) * multiplier;
+          multiplier *= 128;
+          hdr_bytes++;
+          roff++;
+          if (!(enc & 0x80)) break;
+        }
+
+        u32 pkt_total = hdr_bytes + rem_len;
+        if (off + pkt_total > fwd_len) break; /* truncated packet */
+
+        if (ptype == 3) { /* PUBLISH */
+          mqtt_fwd_diff_entry_t *e = &priv->fwd_entries[priv->fwd_count];
+          e->received    = 1;
+          e->fwd_pkt_type = ptype;
+          e->fwd_qos     = (byte0 >> 1) & 0x03;
+          e->fwd_retain  = byte0 & 0x01;
+
+          /* Extract topic: 2-byte length prefix + topic name */
+          u32 body_off = off + hdr_bytes;
+          if (body_off + 2 <= fwd_len) {
+            u32 tlen = ((u8)fwd_buf[body_off] << 8) | (u8)fwd_buf[body_off + 1];
+            /* FNV-1a hash of topic name */
+            u32 h = 0x811C9DC5;
+            for (u32 ti = 0; ti < tlen && body_off + 2 + ti < fwd_len; ti++) {
+              h ^= (u8)fwd_buf[body_off + 2 + ti];
+              h *= 0x01000193;
+            }
+            e->fwd_topic_hash = h;
+
+            /* Payload length = remaining_len - topic_header - pkt_id (if QoS>0) */
+            u32 consumed = 2 + tlen;
+            if (e->fwd_qos > 0) consumed += 2;
+            e->fwd_payload_len = (rem_len > consumed) ? (rem_len - consumed) : 0;
+          }
+
+          priv->fwd_count++;
+        }
+
+        off += pkt_total;
+      }
+
+      /* O2: Compute combined forward-diff fingerprint.
+       * This is a single hash over all fwd_entries that the diff engine
+       * can compare across brokers to detect forwarding divergences. */
+      {
+        u32 h = 0x811C9DC5;
+        for (u32 i = 0; i < priv->fwd_count; i++) {
+          mqtt_fwd_diff_entry_t *e = &priv->fwd_entries[i];
+          h ^= e->fwd_qos;        h *= 0x01000193;
+          h ^= e->fwd_retain;     h *= 0x01000193;
+          h ^= e->fwd_topic_hash; h *= 0x01000193;
+          h ^= e->fwd_payload_len; h *= 0x01000193;
+        }
+        h ^= priv->fwd_count;     h *= 0x01000193;
+        priv->fwd_hash = h;
+      }
+    }
+
+    if (fwd_buf) ck_free(fwd_buf);
   }
   return 0;
 }
@@ -434,6 +542,27 @@ static void mqtt_cleanup(mp_context_t *ctx) {
     ck_free(priv);
     ctx->priv = NULL;
   }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+ * O2: Forward-differential query API
+ *
+ * Returns the combined forward-diff fingerprint for this execution.
+ * If two broker instances produce different fwd_hash values for the
+ * same input, a forwarding divergence has been detected.
+ *
+ * Called from mqtt_diff_analyze_responses() in afl-fuzz.c.
+ * ════════════════════════════════════════════════════════════════════ */
+u32 mqtt_mp_get_fwd_hash(mp_context_t *ctx) {
+  if (!ctx || !ctx->priv) return 0;
+  mqtt_mp_priv_t *priv = (mqtt_mp_priv_t *)ctx->priv;
+  return priv->fwd_hash;
+}
+
+u32 mqtt_mp_get_fwd_count(mp_context_t *ctx) {
+  if (!ctx || !ctx->priv) return 0;
+  mqtt_mp_priv_t *priv = (mqtt_mp_priv_t *)ctx->priv;
+  return priv->fwd_count;
 }
 
 /* ════════════════════════════════════════════════════════════════════

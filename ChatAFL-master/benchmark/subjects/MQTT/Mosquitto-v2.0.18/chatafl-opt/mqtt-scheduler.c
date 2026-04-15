@@ -143,6 +143,15 @@ void mqtt_ql_update(mqtt_ql_t *ql, u32 state_idx, u8 pkt_type, double reward) {
 
 void mqtt_bandit_init(mqtt_bandit_t *b) {
   memset(b, 0, sizeof(*b));
+  /* O5: Bias the skip arm (arm 3) with a low-reward prior so UCB1
+   * doesn't waste early exploration on generic havoc, which is
+   * largely ineffective for binary MQTT packets.  The other arms
+   * start with optimistic priors that encourage exploration. */
+  b->attempts[0] = 1; b->rewards[0] = 0.5;  /* replace: optimistic */
+  b->attempts[1] = 1; b->rewards[1] = 0.5;  /* insert:  optimistic */
+  b->attempts[2] = 1; b->rewards[2] = 0.5;  /* field:   optimistic */
+  b->attempts[3] = 1; b->rewards[3] = 0.05; /* skip:    pessimistic */
+  b->total = 4;
 }
 
 u32 mqtt_bandit_select(mqtt_bandit_t *b) {

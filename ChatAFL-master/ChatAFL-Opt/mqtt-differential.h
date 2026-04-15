@@ -43,19 +43,28 @@
  * Parsed MQTT response field summary
  *
  * Corresponds to MBFuzzer's G-field/H-field decomposition:
- *   G-fields → pkt_types[] + return_codes[] (protocol-semantic)
- *   H-fields → payload_hashes[] (implementation-behavioral)
+ *   G-fields → pkt_types[] + return_codes[] + pkt_flags[] (protocol-semantic)
+ *   H-fields → payload_hashes[] + var_header_hashes[] (implementation-behavioral)
+ *
+ * O3: Extended with pkt_flags[] (PUBLISH QoS/DUP/Retain, CONNACK Session
+ * Present, v5 SUBACK full return code array hash) and var_header_hashes[]
+ * (FNV-1a of variable header bytes) for deeper field-level comparison.
  *
  * Combined hashes allow O(1) equality checks before field-by-field diff.
  * ════════════════════════════════════════════════════════════════════ */
 typedef struct {
-  uint8_t  pkt_types[MQTT_DIFF_MAX_PACKETS];     /* Packet type nibbles (upper 4 bits of byte 0) */
-  uint8_t  return_codes[MQTT_DIFF_MAX_PACKETS];   /* Return/reason codes from variable header     */
-  uint32_t payload_hashes[MQTT_DIFF_MAX_PACKETS];  /* FNV-1a hash of packet payload bytes          */
-  int      pkt_count;                              /* Number of packets successfully parsed        */
+  uint8_t  pkt_types[MQTT_DIFF_MAX_PACKETS];       /* Packet type nibbles (upper 4 bits of byte 0) */
+  uint8_t  return_codes[MQTT_DIFF_MAX_PACKETS];     /* Return/reason codes from variable header     */
+  uint8_t  pkt_flags[MQTT_DIFF_MAX_PACKETS];        /* O3: Fixed header flags (lower 4 bits of byte 0)
+                                                     *     PUBLISH: DUP(3) QoS(2:1) Retain(0)
+                                                     *     CONNACK: var_header[0] = Session Present   */
+  uint32_t var_header_hashes[MQTT_DIFF_MAX_PACKETS]; /* O3: FNV-1a of entire variable header bytes   */
+  uint32_t payload_hashes[MQTT_DIFF_MAX_PACKETS];    /* FNV-1a hash of packet payload bytes          */
+  int      pkt_count;                                /* Number of packets successfully parsed        */
   uint32_t type_seq_hash;   /* Combined FNV-1a of all pkt_types — G-field fingerprint */
   uint32_t code_seq_hash;   /* Combined FNV-1a of all return_codes                    */
-  uint32_t full_hash;       /* Combined FNV-1a of types+codes+payloads                */
+  uint32_t flags_hash;      /* O3: Combined FNV-1a of all pkt_flags                   */
+  uint32_t full_hash;       /* Combined FNV-1a of types+codes+flags+payloads          */
 } mqtt_response_fields_t;
 
 /* ════════════════════════════════════════════════════════════════════
@@ -66,6 +75,8 @@ typedef struct {
   double   strength;        /* Normalized divergence strength [0.0, 1.0]            */
   int      type_diffs;      /* Count of packet slots with different types           */
   int      code_diffs;      /* Count of packet slots with different return codes    */
+  int      flags_diffs;     /* O3: Count of slots with different pkt_flags          */
+  int      var_hdr_diffs;   /* O3: Count of slots with different var_header_hashes  */
   int      payload_diffs;   /* Count of packet slots with different payload hashes  */
   uint32_t pattern_hash;    /* Hash of the divergence pattern (for dedup tracking)  */
 } mqtt_diff_result_t;

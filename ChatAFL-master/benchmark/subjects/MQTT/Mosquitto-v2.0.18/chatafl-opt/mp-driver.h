@@ -122,4 +122,10 @@ const mp_driver_t *mp_driver_for_protocol(const char *protocol_name);
 const mp_driver_t *mp_driver_mqtt(void);
 /* const mp_driver_t *mp_driver_sip(void);   — future */
 
+/* O2: Forward-differential query API (MQTT-specific).
+ * Returns the FNV-1a fingerprint of all forwarded PUBLISH packets
+ * captured by the subscriber fd during this execution. */
+u32 mqtt_mp_get_fwd_hash(mp_context_t *ctx);
+u32 mqtt_mp_get_fwd_count(mp_context_t *ctx);
+
 #endif /* __MP_DRIVER_H */
