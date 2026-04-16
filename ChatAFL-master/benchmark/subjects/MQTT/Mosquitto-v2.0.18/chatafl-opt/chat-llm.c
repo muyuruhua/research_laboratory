@@ -387,6 +387,18 @@ static const ProtocolFormatConstraint PLATEAU_FORMAT_CONSTRAINTS[] = {
      "NEVER use <<USERNAME>>, <<ADDRESS>>, or <<VALUE>> placeholders.\n"
      "Use concrete values: domains like test.com, addresses like user@test.com.\n"
      "Example: \"EHLO fuzzer.test\\r\\nMAIL FROM:<fuzz@test.com>\\r\\nRCPT TO:<victim@localhost>\\r\\n\"\n\n"},
+    {"MQTT",
+     "**MQTT FORMAT CONSTRAINT (MANDATORY):**\n"
+     "Output each MQTT packet as one line in text form: TYPE Key=Value Key=Value.\n"
+     "Valid types: CONNECT, PUBLISH, SUBSCRIBE, UNSUBSCRIBE, PUBACK, PUBREC, PUBREL, PUBCOMP, PINGREQ, DISCONNECT.\n"
+     "CONNECT fields: ClientId, CleanSession (0/1), KeepAlive (int), WillTopic, WillMsg, User, Pass.\n"
+     "PUBLISH fields: Topic, QoS (0/1/2), Retain (0/1), Payload, PacketId (int).\n"
+     "SUBSCRIBE fields: PacketId, Topic, QoS.  UNSUBSCRIBE fields: PacketId, Topic.\n"
+     "Example: \"CONNECT ClientId=fuzz_plateau CleanSession=1 KeepAlive=60\\n"
+     "SUBSCRIBE PacketId=1 Topic=test/# QoS=1\\n"
+     "PUBLISH Topic=test/a QoS=1 Retain=0 PacketId=2 Payload=hello\\n"
+     "DISCONNECT\\n\"\n"
+     "NEVER use binary, hex, or <<VALUE>> placeholders. Use CONCRETE values only.\n\n"},
     {NULL, NULL}
 };
 
