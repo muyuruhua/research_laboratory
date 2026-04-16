@@ -2220,8 +2220,11 @@ u8 is_state_sequence_interesting(unsigned int *state_sequence, unsigned int stat
    * legitimate repeated patterns like [SUBACK, PUB_topic_A, PUB_topic_A,
    * PUB_topic_B, ...].  Raising the threshold to 5 allows deeper
    * exploration of subscription delivery paths without unbounded growth.
-   * Text protocols keep the original threshold of 3. */
-  u32 loop_threshold = 3;
+   * Text protocols keep the original threshold (i >= 2). */
+  /* Original text-protocol threshold: i >= 2 (skip runs of 3+ identical states).
+   * MQTT raises to i >= 5 to preserve legitimate repeated patterns like
+   * [SUBACK, PUB_topic_A, PUB_topic_A, PUB_topic_B, ...]. */
+  u32 loop_threshold = 2;
   if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0)
     loop_threshold = 5;
 
@@ -3621,15 +3624,30 @@ HANDLE_RESPONSES:
     }
 
     /* H3-fix: Stabilization loop with SHM sync (single-fd fallback path).
-     * Reduced from 50 × 200 µs = 10 ms to 15 × 200 µs = 3 ms.
-     * On localhost, SHM updates propagate within 1–2 iterations;
-     * 3 ms is ample headroom while saving ~7 ms/exec. */
+     *
+     * MQTT (binary, non-forking): 15 × 200 µs = 3 ms is sufficient;
+     * SHM updates propagate within 1–2 iterations on localhost.
+     *
+     * Text protocols (FTP/SMTP/RTSP/SIP/DAAP/HTTP): use the original
+     * Fix-14 tight-spin cap of 5000 iterations (~250 ms).  Forking
+     * daemons (e.g. pure-ftpd) have a long tail of ASAN-teardown
+     * coverage bits; 500 iterations caused crash de-duplication
+     * failures, hence the 5000 cap.  See commit 36c06ad1 Fix-14. */
     memset(session_virgin_bits, 255, MAP_SIZE);
-    {
+    if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0) {
+      /* MQTT fast path: 15 × 200 µs with memory barrier */
       int stab_iter = 0;
       while (stab_iter++ < 15) {
         usleep(200);
         __sync_synchronize();
+        if (has_new_bits(session_virgin_bits) != 2)
+          break;
+      }
+    } else {
+      /* Text-protocol path: tight-spin, 5000-iteration cap (~250 ms).
+       * Non-forking servers exit in 1–2 iterations anyway. */
+      int stab_iter = 0;
+      while (stab_iter++ < 5000) {
         if (has_new_bits(session_virgin_bits) != 2)
           break;
       }

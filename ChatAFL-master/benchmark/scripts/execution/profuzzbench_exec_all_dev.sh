@@ -65,6 +65,7 @@ do
             RESULTS_DIR="results-lightftp_${TIMESTAMP}"
             RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_DIR}"
             mkdir -p "${RESULTS_DIR}"
+            chown "${RESULT_OWNER}:${RESULT_GROUP}" "${RESULTS_DIR}"
 
             if [[ $FUZZER == "aflnet" ]] || [[ $FUZZER == "all" ]]
             then
@@ -102,6 +103,7 @@ do
             RESULTS_DIR="results-bftpd_${TIMESTAMP}"
             RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_DIR}"
             mkdir -p "${RESULTS_DIR}"
+            chown "${RESULT_OWNER}:${RESULT_GROUP}" "${RESULTS_DIR}"
 
             if [[ $FUZZER == "aflnet" ]] || [[ $FUZZER == "all" ]]
             then
@@ -139,6 +141,7 @@ do
             RESULTS_DIR="results-proftpd_${TIMESTAMP}"
             RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_DIR}"
             mkdir -p "${RESULTS_DIR}"
+            chown "${RESULT_OWNER}:${RESULT_GROUP}" "${RESULTS_DIR}"
 
             if [[ $FUZZER == "aflnet" ]] || [[ $FUZZER == "all" ]]
             then
@@ -176,6 +179,7 @@ do
             RESULTS_DIR="results-pure-ftpd_${TIMESTAMP}"
             RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_DIR}"
             mkdir -p "${RESULTS_DIR}"
+            chown "${RESULT_OWNER}:${RESULT_GROUP}" "${RESULTS_DIR}"
 
             if [[ $FUZZER == "aflnet" ]] || [[ $FUZZER == "all" ]]
             then
@@ -213,6 +217,7 @@ do
             RESULTS_DIR="results-exim_${TIMESTAMP}"
             RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_DIR}"
             mkdir -p "${RESULTS_DIR}"
+            chown "${RESULT_OWNER}:${RESULT_GROUP}" "${RESULTS_DIR}"
 
             if [[ $FUZZER == "aflnet" ]] || [[ $FUZZER == "all" ]]
             then
@@ -250,6 +255,7 @@ do
             RESULTS_DIR="results-live555_${TIMESTAMP}"
             RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_DIR}"
             mkdir -p "${RESULTS_DIR}"
+            chown "${RESULT_OWNER}:${RESULT_GROUP}" "${RESULTS_DIR}"
 
             if [[ $FUZZER == "aflnet" ]] || [[ $FUZZER == "all" ]]
             then
@@ -287,6 +293,7 @@ do
             RESULTS_DIR="results-kamailio_${TIMESTAMP}"
             RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_DIR}"
             mkdir -p "${RESULTS_DIR}"
+            chown "${RESULT_OWNER}:${RESULT_GROUP}" "${RESULTS_DIR}"
 
             if [[ $FUZZER == "aflnet" ]] || [[ $FUZZER == "all" ]]
             then
@@ -324,6 +331,7 @@ do
             RESULTS_DIR="results-forked-daapd_${TIMESTAMP}"
             RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_DIR}"
             mkdir -p "${RESULTS_DIR}"
+            chown "${RESULT_OWNER}:${RESULT_GROUP}" "${RESULTS_DIR}"
 
             if [[ $FUZZER == "aflnet" ]] || [[ $FUZZER == "all" ]]
             then
@@ -361,6 +369,7 @@ do
             RESULTS_DIR="results-lighttpd1_${TIMESTAMP}"
             RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_DIR}"
             mkdir -p "${RESULTS_DIR}"
+            chown "${RESULT_OWNER}:${RESULT_GROUP}" "${RESULTS_DIR}"
 
             if [[ $FUZZER == "aflnet" ]] || [[ $FUZZER == "all" ]]
             then
@@ -399,6 +408,7 @@ do
             RESULTS_DIR="results-mosquitto_${TIMESTAMP}"
             RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_DIR}"
             mkdir -p "${RESULTS_DIR}"
+            chown "${RESULT_OWNER}:${RESULT_GROUP}" "${RESULTS_DIR}"
 
             if [[ $FUZZER == "aflnet" ]] || [[ $FUZZER == "all" ]]
             then
@@ -434,6 +444,7 @@ do
             RESULTS_DIR="results-mosquitto-v2.0.18_${TIMESTAMP}"
             RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_DIR}"
             mkdir -p "${RESULTS_DIR}"
+            chown "${RESULT_OWNER}:${RESULT_GROUP}" "${RESULTS_DIR}"
 
             if [[ $FUZZER == "aflnet" ]] || [[ $FUZZER == "all" ]]
             then
@@ -469,6 +480,7 @@ do
             RESULTS_DIR="results-mosquitto-v2.1.2_${TIMESTAMP}"
             RESULTS_DIR="${RESULTS_ROOT}/${RESULTS_DIR}"
             mkdir -p "${RESULTS_DIR}"
+            chown "${RESULT_OWNER}:${RESULT_GROUP}" "${RESULTS_DIR}"
 
             if [[ $FUZZER == "aflnet" ]] || [[ $FUZZER == "all" ]]
             then

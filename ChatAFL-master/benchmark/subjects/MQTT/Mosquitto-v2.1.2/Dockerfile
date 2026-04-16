@@ -62,7 +62,7 @@ RUN chmod 777 /tmp
 
 # cmake >= 3.18 required by mosquitto v2.1.2; Ubuntu 20.04 apt ships 3.16.3
 # Install via pip3 so it lands in /usr/local/bin and satisfies the version check
-RUN pip3 install gcovr==4.2 cmake
+RUN pip3 install gcovr==7.2 cmake
 
 USER ubuntu
 WORKDIR /home/ubuntu
@@ -121,6 +121,7 @@ RUN cd $WORKDIR && \
     git checkout v2.1.2 && \
     CC=${AFLNET}/afl-clang-fast \
     cmake -DWITH_TLS=OFF \
+          -DWITH_PERSISTENCE=OFF \
           -DWITH_DOCS=OFF \
           -DWITH_WEBSOCKETS=OFF \
           -DWITH_LTO=OFF \
@@ -137,6 +138,7 @@ RUN cd $WORKDIR && \
     cd mosquitto-gcov && \
     git checkout v2.1.2 && \
     cmake -DWITH_TLS=OFF \
+          -DWITH_PERSISTENCE=OFF \
           -DWITH_DOCS=OFF \
           -DWITH_WEBSOCKETS=OFF \
           -DWITH_LTO=OFF \

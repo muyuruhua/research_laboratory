@@ -1,3 +1,208 @@
+================================================================================
+2026-04-16 代码审计更新（以当前仓库实现为准）
+================================================================================
+
+审计范围：
+- ChatAFL-Opt/afl-fuzz.c
+- ChatAFL-Opt/aflnet.c / aflnet.h
+- ChatAFL-Opt/chat-llm.c
+- ChatAFL-Opt/grammar-hypothesis.c
+- ChatAFL-Opt/hypothesis-adapter.c
+- ChatAFL-Opt/llm-validator.c
+- ChatAFL-Opt/rfc-knowledge.c
+- ChatAFL-Opt/mp-driver.h / mp-driver-mqtt.c
+- ChatAFL-Opt/mqtt-generate.c / mqtt-scheduler.c / mqtt-differential.c
+- ChatAFL-Opt/Makefile
+
+重要说明：
+1. 本节是基于当前代码的“实现审计版结论”。
+2. 下方原有长文保留为历史分析记录；若与本节冲突，以本节为准。
+3. 当前最需要修正的旧结论包括：
+   - Fix-14a/14b 的运行语义已被 Fix-14c 改写；
+   - adaptive plateau 对 MQTT 的默认阈值已不是单纯 150/200/300；
+   - MQTT multi-broker differential feedback 已经存在于主流程；
+   - hypothesis 主初始化当前并未统一接入 RFC text。
+
+
+一、总体结论
+
+当前 ChatAFL-Opt 已不是“LLM 帮忙生成几条协议消息”的开环工具，而是：
+
+- 启动期并行 enrichment
+- 运行期状态感知调度
+- sampled validation + counterexample refinement 闭环
+- plateau fork 隔离 + strict JSON validator + actions[]
+- MQTT 二进制协议专项扩展（multi-party、binary↔text bridge、scheduler、diff feedback）
+
+换句话说，当前仓库实现的本质是：
+“状态感知 + 工程验证闭环 + MQTT 专项增强”的网络协议灰盒模糊测试器。
+
+
+二、当前主流程的真实状态
+
+1. 启动阶段
+- `setup_llm_grammars()` 仍然存在，负责启动期模板/消息类型抽取。
+- `enrich_testcases()` 不是串行实现；当前代码会先收集 enrichment tasks，再用 pthread 线程池并发执行。
+- MQTT enrichment 不是纯文本 enrichment，而是：binary seed → `mqtt_binary_to_text()` → LLM enrichment → `mqtt_text_to_binary()` 回写。
+- MQTT 还会额外调用 `mqtt_enrich_seeds()` 与 `mqtt_generate_v5_seeds()` 程序化补充二进制 seeds。
+
+2. dry_run 与 Fix-14 当前语义
+- 代码仍在 `perform_dry_run()` 前后设置 `corpus_read_or_sync=1/0`。
+- 但当前 `run_target()` 已进入 Fix-14c 语义：
+  - `child_timed_out && SIGKILL` → `FAULT_TMOUT`
+  - `child_force_killed && SIGKILL` → `FAULT_NONE`，并累计 `forced_kills++`
+- 因此，旧文中“正常 fuzzing 时 child_force_killed 走 FAULT_TMOUT”的描述已过时。
+
+3. hypothesis 初始化
+- `CHATAFL_HYPOTHESIS=1` 只会开启 `hypothesis_mode`；真正的 `init_grammar_hypothesis_system()` 延迟到第一次 plateau 触发时执行。
+- MQTT 默认会自动关闭 hypothesis，除非设置 `CHATAFL_MQTT_FORCE_HYPOTHESIS=1`。
+
+4. 当前消融开关的真实语义
+- `CHATAFL_NO_REFINEMENT=1`：只关闭 Tier-2 refinement，不关闭 Tier-1 sampled validation。
+- `CHATAFL_NO_FRONTIER=1`：同时关闭 frontier bonus 与 error/productivity penalty。
+- `CHATAFL_NO_ADAPTIVE=1`：关闭自适应 plateau 更新；若未额外设置 `CHATAFL_ABLATION_THRESHOLD`，固定值回到当前默认阈值。
+- `CHATAFL_NO_STATE_PROMPT=1`：关闭 rich state prompt 与 `actions[]` 路径，回退到 simple prompt。
+- 代码会打印统一的 `ABLATION CONFIG` banner；解释实验时应以此为准。
+
+
+三、状态调度与执行路径的当前真实结构
+
+1. 状态调度
+- 当前 `state_info_t` 已包含 `error_hint` 与 `productivity`。
+- 状态分数 = 原始 base score × `frontier_bonus` ×（可选 MQTT 差分奖励）。
+- `frontier_bonus` 当前逻辑：
+  - out-degree <= 1 → ×4.0
+  - out-degree <= 3 → ×2.0
+  - 否则 ×1.0
+- `error_hint/productivity` 当前逻辑：
+  - `error_hint==1` → ×0.5
+  - `error_hint==0 && selected_times>=30 && productivity<0.005` → ×0.7
+  - `error_hint==2` → 不惩罚
+- 外层主循环还加入了 node stagnation 检测：若 IPSM node 长时间不增长，则以 30% 概率临时切换到 `RANDOM_SELECTION`。
+
+2. send_over_network() 结构
+- 当前是“共享骨架 + MQTT 特化 + 文本协议原始单连接路径保留”。
+- `mp_driver_for_protocol()` 负责查找 multi-party driver；当前实际注册的只有 MQTT。
+- 因此文本协议默认仍走 single-fd fallback 路径。
+
+3. adaptive_wait
+- `adaptive_wait_usecs + server_warmed_up` 是共享路径优化，不是 MQTT 独占。
+- 首次成功连接后后续等待可降为 0；连接失败会回退到 full wait。
+- 这会正向提升文本协议吞吐，尤其是 forking server；因此这是“共享优化”，不是“协议串扰 bug”。
+
+4. 稳定化循环当前已按协议分流
+- MQTT 单连接路径：15 × 200µs + barrier。
+- 文本协议单连接路径：5000 次 tight-spin cap。
+- MQTT multi-fd 路径：20 × 100µs。
+- 这意味着此前“稳定化循环缩短误伤文本协议”的问题，当前代码已修复。
+
+5. 终止等待当前已按协议分流
+- MQTT：30 ms kill grace period。
+- 文本协议：200 ms kill grace period。
+
+
+四、plateau 与 LLM 调用链的当前真实状态
+
+1. adaptive plateau threshold
+- 文本协议每 60s 依据 edge growth 更新为 150 / 200 / 300。
+- MQTT 不是这组值；当前代码对 MQTT 使用更高 floor：500 / 600 / 800。
+- 另外，启动后若是 MQTT 且未关闭 adaptive，会先把 plateau threshold 提升到 500（或环境变量覆盖值）。
+
+2. plateau 前置动作
+- 首次 plateau 时，若 `hypothesis_mode=1 && hypothesis_ctx==NULL`，会 lazy init hypothesis 系统。
+- 若未关闭 refinement，还会调用 `periodic_hypothesis_refinement()`。
+
+3. plateau 提示词与执行框架
+- plateau 路径不是主进程同步直连 LLM；当前实现是 fork helper + 60 秒超时。
+- 默认 rich prompt 会构造 `state_ctx` JSON，包含：
+  - `nodes / edges / growth_rate / pending_favored / queued_paths / chat_times / target_state_id`
+  - 最差的 8 个状态：`id / paths / paths_discovered / selected_times / fuzzs / seeds_count / is_error / productivity / seed_ids`
+- 若为 MQTT，还会把 cluster diff summary 注入 `state_ctx`。
+
+4. plateau 响应不再是自由文本直用
+- 子进程结果写到 `stall-interactions/llm-suggest-*`。
+- 父进程统一走 `validate_and_parse_llm_json()`。
+- 当前已进入主流程的动作包括：
+  - `set_target_state`
+  - `prioritize_seeds`
+  - `propose_mutations`
+  - `suggest_strategy`（当前为 noop）
+
+5. MQTT plateau 已打通 binary↔text bridge
+- 请求：`mqtt_binary_to_text()`
+- 响应：`mqtt_binary_to_text()`
+- LLM 返回后：`mqtt_text_to_binary()` 再交给 `common_fuzz_stuff()`
+- 这意味着当前 MQTT plateau 不再把二进制乱码直接喂给 LLM。
+
+
+五、hypothesis / verifier / refinement 当前是否真的接入主流程
+
+1. Hypothesis：是，已接入主流程，但 RFC 仍未完全打通
+- `init_grammar_hypothesis_system()` 会收集：
+  - 最多 10 个 queue seed 样本
+  - 最多 10 份 `responses-ipsm/` 响应摘要
+- 但它当前调用 `init_hypothesis_context(protocol, NULL, pcap_samples, pcap_count)`，第二个参数仍是 `NULL`。
+- 这说明：
+  - seed 样本与服务端响应样本已接入；
+  - RFC 文本并未统一进入 hypothesis 主初始化链。
+
+2. Tier-1 sampled validation：是，已在热路径中生效
+- `common_fuzz_stuff()` 中按采样频率调用 `validate_hypothesis_sampled()`。
+- 它复用已解析的 `regions`，不重复 `extract_requests()`。
+
+3. Counterexample-guided refinement：是，但仍是软约束版本
+- Tier-1 失败会按采样节奏记录 counterexample 与 violation detail。
+- Tier-2 在 fitness 低且 counterexample 足够时调用 `refine_hypothesis_with_counterexamples()`。
+- 每次最多 refinement 一个 hypothesis。
+- 但当前并没有“只允许改单字段/单产生式”的 AST 级强约束 patch 机制。
+
+4. Verifier：是工程强有效版本，但不是形式化/全硬门控版本
+- 可解析性：有（`validate_message_against_hypothesis()`）
+- 可接受性：有，但主要通过 `error_hint + productivity` 软建模，不是简单硬布尔 accept/reject
+- 状态可达性：有，IPSM node/edge 已进入调度与 plateau 触发
+- 覆盖增益门控：输入入队仍受 `save_if_interesting()` 控制，但 hypothesis 片段本身并不是“只有带来覆盖提升才允许写回”的硬门控
+
+
+六、MQTT 专项能力：当前已真实存在，而不是历史计划
+
+1. Multi-party driver：已实现并接线
+2. Multi-broker differential feedback：已实现并接线
+3. Forwarding-difference bridge：已实现
+4. Structured MQTT generation / field-aware mutation：已实现
+5. Q-Learning + UCB1 scheduler：已进入 havoc 热路径，且有 reward update
+6. MQTT hypothesis 默认关闭：已实现
+
+因此，旧文中“与 MBFuzzer 相比仍缺多 broker 差分放大器”的结论，对当前仓库已经不再准确。
+
+
+七、对 4 项工程扩展要求的最终判定
+
+1. LLM 语法/消息模板生成（Hypothesis）
+- 已实现并进入主流程
+- 但 RFC 驱动仍不完整，当前更接近“seed + response 驱动”
+
+2. Verifier
+- 已实现工程闭环版本
+- 不是形式化证明器，也不是全硬门控版本
+
+3. Counterexample-guided Refinement
+- 已实现并进入主流程
+- 但“局部 patch 约束”仍偏软，不是强 AST diff 约束
+
+4. State-aware Scheduling
+- 已强实现并进入主流程
+- 是当前 Opt 相比基线最明确、最实质的升级之一
+
+
+八、一句话总评
+
+当前 ChatAFL-Opt 已经从“LLM 辅助消息生成器”升级为“状态感知 + 工程验证闭环 + MQTT 专项增强”的协议模糊测试系统；真正还未完全补齐的，不是主流程接线，而是 RFC 统一驱动、严格局部 patch 约束以及多协议 multi-party driver 泛化。
+
+
+================================================================================
+以下为历史版本分析记录（若与上方“2026-04-16 代码审计更新”冲突，以上方为准）
+================================================================================
+
 ChatAFL（基线）与 ChatAFL-Opt 的工作流、本质与底层逻辑
 
 一、ChatAFL 基线的完整工作流

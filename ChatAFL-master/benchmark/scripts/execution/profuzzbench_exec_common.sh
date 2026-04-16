@@ -26,14 +26,89 @@ fix_result_permissions() {
 # Log tag: FUZZER(target) e.g. CHATAFL-OPT(bftpd)
 LOG_TAG="${FUZZER^^}(${DOCIMAGE})"
 
+# ── MQTT bridge-mode support (mirrors dev-mode logic) ──
+is_mqtt_target() {
+  case "$1" in
+    mosquitto|mosquitto-v2.0.18|mosquitto-v2.1.2) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+sanitize_docker_name() {
+  local name
+  name=$(echo "$1" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9_.-' '-')
+  name=$(echo "$name" | sed 's/^-*//; s/-*$//')
+  [[ -z "$name" ]] && name="mqtt-auto"
+  echo "$name"
+}
+
+MQTT_AUTO_NETWORK=""
+MQTT_STABLE_CONTAINER=""
+MQTT_STABLE_ALIAS=""
+declare -a MQTT_AUTO_CONTAINER_NAMES=()
+declare -a MQTT_AUTO_BROKER_ALIASES=()
+
+if [[ -z "${CHATAFL_MQTT_BROKERS:-}" ]] && is_mqtt_target "$DOCIMAGE"; then
+  MQTT_AUTO_NETWORK="$(sanitize_docker_name "chatafl-mqtt-${DOCIMAGE}-${FUZZER}-$$")"
+  MQTT_AUTO_NETWORK="${MQTT_AUTO_NETWORK:0:63}"
+  MQTT_AUTO_NETWORK="$(echo "$MQTT_AUTO_NETWORK" | sed 's/-*$//')"
+  if ! docker network inspect "$MQTT_AUTO_NETWORK" >/dev/null 2>&1; then
+    docker network create "$MQTT_AUTO_NETWORK" >/dev/null
+    if [[ $? -ne 0 ]]; then
+      echo "[ERROR] Failed to create MQTT auto network: ${MQTT_AUTO_NETWORK}"
+      exit 1
+    fi
+  fi
+
+  for idx in $(seq 1 "$RUNS"); do
+    MQTT_AUTO_CONTAINER_NAMES+=("${MQTT_AUTO_NETWORK}-broker-${idx}")
+    MQTT_AUTO_BROKER_ALIASES+=("mqttb${idx}")
+  done
+
+  # Launch a stable (non-fuzzed) reference broker for bridge/differential testing
+  MQTT_STABLE_CONTAINER="${MQTT_AUTO_NETWORK}-stable"
+  MQTT_STABLE_ALIAS="mqtt-stable"
+  printf "\n${LOG_TAG}: Launching stable reference broker (%s)...\n" "$MQTT_STABLE_ALIAS"
+  docker run --cpus=0.5 --memory=256m \
+    --network "$MQTT_AUTO_NETWORK" \
+    --name "$MQTT_STABLE_CONTAINER" \
+    --hostname "$MQTT_STABLE_ALIAS" \
+    --network-alias "$MQTT_STABLE_ALIAS" \
+    --restart=unless-stopped \
+    -d "$DOCIMAGE" /bin/bash -c \
+    "exec /home/ubuntu/experiments/mosquitto-gcov/src/mosquitto -c /home/ubuntu/experiments/mosquitto.conf"
+
+  # Wait for stable broker to be ready (up to 15 sec)
+  _stable_ok=0
+  for _w in $(seq 1 30); do
+    if docker exec "$MQTT_STABLE_CONTAINER" bash -c "nc -z 127.0.0.1 1883" 2>/dev/null; then
+      _stable_ok=1; break
+    fi
+    sleep 0.5
+  done
+  if [[ $_stable_ok -eq 1 ]]; then
+    printf "${LOG_TAG}: ✓ Stable broker ready on %s:1883\n" "$MQTT_STABLE_ALIAS"
+  else
+    printf "${LOG_TAG}: [WARN] Stable broker may not be ready yet\n"
+  fi
+
+  printf "${LOG_TAG}: MQTT auto network: %s\n" "$MQTT_AUTO_NETWORK"
+fi
+
 #keep all container ids
 cids=()
 
 #create one container for each run
 for i in $(seq 1 $RUNS); do
+  run_index=$((i-1))
+
+  # MQTT network flags
+  MQTT_RUN_FLAGS=""
+  if [[ -n "$MQTT_AUTO_NETWORK" ]] && [[ ${#MQTT_AUTO_CONTAINER_NAMES[@]} -gt $run_index ]]; then
+    MQTT_RUN_FLAGS=" --network ${MQTT_AUTO_NETWORK} --name ${MQTT_AUTO_CONTAINER_NAMES[$run_index]} --hostname ${MQTT_AUTO_BROKER_ALIASES[$run_index]} --network-alias ${MQTT_AUTO_BROKER_ALIASES[$run_index]}"
+  fi
+
   # Build ablation env-var flags for chatafl-opt containers.
-  # If the host exports CHATAFL_NO_REFINEMENT / NO_FRONTIER / NO_ADAPTIVE / NO_STATE_PROMPT,
-  # they are forwarded into the container via -e.
   ABLATION_FLAGS=""
   [[ -n "${CHATAFL_NO_REFINEMENT}" ]]      && ABLATION_FLAGS+=" -e CHATAFL_NO_REFINEMENT=1"
   [[ -n "${CHATAFL_NO_FRONTIER}" ]]        && ABLATION_FLAGS+=" -e CHATAFL_NO_FRONTIER=1"
@@ -41,14 +116,21 @@ for i in $(seq 1 $RUNS); do
   [[ -n "${CHATAFL_NO_STATE_PROMPT}" ]]    && ABLATION_FLAGS+=" -e CHATAFL_NO_STATE_PROMPT=1"
   [[ -n "${CHATAFL_ABLATION_THRESHOLD}" ]] && ABLATION_FLAGS+=" -e CHATAFL_ABLATION_THRESHOLD=${CHATAFL_ABLATION_THRESHOLD}"
 
+  # Per-container MQTT broker list
   MQTT_FLAGS=""
-  [[ -n "${CHATAFL_MQTT_BROKERS}" ]] && MQTT_FLAGS+=" -e CHATAFL_MQTT_BROKERS=${CHATAFL_MQTT_BROKERS}"
+  if [[ -n "${MQTT_STABLE_ALIAS:-}" ]] && [[ -n "$MQTT_AUTO_NETWORK" ]]; then
+    _local_alias="${MQTT_AUTO_BROKER_ALIASES[$run_index]}"
+    _brokers="tcp://${_local_alias}/1883,tcp://${MQTT_STABLE_ALIAS}/1883"
+    MQTT_FLAGS=" -e CHATAFL_MQTT_BROKERS=${_brokers}"
+  elif [[ -n "${CHATAFL_MQTT_BROKERS:-}" ]]; then
+    MQTT_FLAGS=" -e CHATAFL_MQTT_BROKERS=${CHATAFL_MQTT_BROKERS}"
+  fi
 
   # Enable Grammar Hypothesis system only for chatafl-opt
   if [[ "$FUZZER" == "chatafl-opt" ]]; then
-    id=$(docker run --cpus=1 -e KEY="${KEY}" -e CHATAFL_HYPOTHESIS=1 ${ABLATION_FLAGS} ${MQTT_FLAGS} -d -it $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
+    id=$(docker run --cpus=1 -e KEY="${KEY}" -e CHATAFL_HYPOTHESIS=1 ${ABLATION_FLAGS} ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} -d -it $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   else
-    id=$(docker run --cpus=1 -e KEY="${KEY}" ${MQTT_FLAGS} -d -it $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
+    id=$(docker run --cpus=1 -e KEY="${KEY}" ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} -d -it $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   fi
   cids+=(${id::12}) #store only the first 12 characters of a container ID
 done
@@ -90,5 +172,14 @@ for id in ${cids[@]}; do
 done
 
 fix_result_permissions "${SAVETO}"
+
+# Clean up MQTT network and stable broker
+if [[ -n "$MQTT_AUTO_NETWORK" ]]; then
+  if [[ -n "${MQTT_STABLE_CONTAINER:-}" ]]; then
+    printf "\n${LOG_TAG}: Stopping stable reference broker...\n"
+    docker rm -f "$MQTT_STABLE_CONTAINER" >/dev/null 2>&1 || true
+  fi
+  docker network rm "$MQTT_AUTO_NETWORK" >/dev/null 2>&1 || true
+fi
 
 printf "\n${LOG_TAG}: I am done!\n"

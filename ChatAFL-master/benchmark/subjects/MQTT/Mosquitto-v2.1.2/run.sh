@@ -82,7 +82,7 @@ if $(strstr $FUZZER "afl") || $(strstr $FUZZER "llm"); then
   fi
 
   cd $WORKDIR/mosquitto-gcov
-  gcovr -r . --html --html-details -o index.html
+  gcovr -r . --gcov-ignore-errors=no_working_dir_found --html --html-details -o index.html
   mkdir -p ${WORKDIR}/${OUTDIR}/cov_html/
   cp *.html ${WORKDIR}/${OUTDIR}/cov_html/ 2>/dev/null || true
 

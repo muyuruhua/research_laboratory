@@ -14,7 +14,7 @@ rm $covfile > /dev/null 2>&1; touch $covfile
 
 #clear gcov data
 cd $WORKDIR/mosquitto-gcov
-gcovr -r . -s -d > /dev/null 2>&1
+gcovr -r . -s -d --gcov-ignore-errors=no_working_dir_found > /dev/null 2>&1
 
 #output the header of the coverage file which is in the CSV format
 #Time: timestamp, l_per/b_per and l_abs/b_abs: line/branch coverage in percentage and absolute number
@@ -61,7 +61,7 @@ for f in "${seed_files[@]}"; do
   kill -9 $SERVER_PID 2>/dev/null
   wait $SERVER_PID 2>/dev/null
 
-  cov_data=$(gcovr -r . -s | grep "[lb][a-z]*:")
+  cov_data=$(gcovr -r . -s --gcov-ignore-errors=no_working_dir_found | grep "[lb][a-z]*:")
   l_per=$(echo "$cov_data" | grep lines | cut -d" " -f2 | rev | cut -c2- | rev)
   l_abs=$(echo "$cov_data" | grep lines | cut -d" " -f3 | cut -c2-)
   b_per=$(echo "$cov_data" | grep branch | cut -d" " -f2 | rev | cut -c2- | rev)
@@ -107,7 +107,7 @@ for f in "${id_files[@]}"; do
   rem=$(expr $count % $step)
   if [ "$rem" != "0" ]; then continue; fi
 
-  cov_data=$(gcovr -r . -s | grep "[lb][a-z]*:")
+  cov_data=$(gcovr -r . -s --gcov-ignore-errors=no_working_dir_found | grep "[lb][a-z]*:")
   l_per=$(echo "$cov_data" | grep lines | cut -d" " -f2 | rev | cut -c2- | rev)
   l_abs=$(echo "$cov_data" | grep lines | cut -d" " -f3 | cut -c2-)
   b_per=$(echo "$cov_data" | grep branch | cut -d" " -f2 | rev | cut -c2- | rev)
@@ -121,7 +121,7 @@ if [[ $step -gt 1 ]] && [[ ${#id_files[@]} -gt 0 ]]
 then
   f="${id_files[-1]}"
   time=$(stat -c %Y "$f" 2>/dev/null || echo "0")
-  cov_data=$(gcovr -r . -s | grep "[lb][a-z]*:")
+  cov_data=$(gcovr -r . -s --gcov-ignore-errors=no_working_dir_found | grep "[lb][a-z]*:")
   l_per=$(echo "$cov_data" | grep lines | cut -d" " -f2 | rev | cut -c2- | rev)
   l_abs=$(echo "$cov_data" | grep lines | cut -d" " -f3 | cut -c2-)
   b_per=$(echo "$cov_data" | grep branch | cut -d" " -f2 | rev | cut -c2- | rev)
