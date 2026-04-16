@@ -135,6 +135,8 @@ void mqtt_ql_update(mqtt_ql_t *ql, u32 state_idx, u8 pkt_type, double reward) {
  *   Arm 1: Insert generated MQTT packet
  *   Arm 2: Field-aware byte-level mutation
  *   Arm 3: Skip (let generic havoc work alone)
+ *   Arm 4: Corpus-splice + field-aware mutation (O7: plateau)
+ *   Arm 5: SUBSCRIBE→PUBLISH pair injection (B1-companion)
  *
  * UCB1 score = exploit + explore
  *   exploit = avg_reward = rewards[arm] / attempts[arm]
@@ -151,7 +153,9 @@ void mqtt_bandit_init(mqtt_bandit_t *b) {
   b->attempts[1] = 1; b->rewards[1] = 0.5;  /* insert:  optimistic */
   b->attempts[2] = 1; b->rewards[2] = 0.5;  /* field:   optimistic */
   b->attempts[3] = 1; b->rewards[3] = 0.05; /* skip:    pessimistic */
-  b->total = 4;
+  b->attempts[4] = 1; b->rewards[4] = 0.4;  /* corpus-splice: moderate */
+  b->attempts[5] = 1; b->rewards[5] = 0.6;  /* sub-pub pair: optimistic+ */
+  b->total = 6;
 }
 
 u32 mqtt_bandit_select(mqtt_bandit_t *b) {

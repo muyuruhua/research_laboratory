@@ -52,7 +52,7 @@ typedef struct {
  * Section 2: UCB1 Multi-Armed Bandit
  * ═══════════════════════════════════════════════════════════════════ */
 
-#define MQTT_BANDIT_N_ARMS  4    /* replace / insert / field / skip */
+#define MQTT_BANDIT_N_ARMS  6    /* replace / insert / field / skip / corpus-splice / sub-pub-pair */
 
 typedef struct {
   u32    attempts[MQTT_BANDIT_N_ARMS];
@@ -71,7 +71,7 @@ void mqtt_ql_update(mqtt_ql_t *ql, u32 state_idx, u8 pkt_type, double reward);
 
 /* UCB1 Bandit */
 void mqtt_bandit_init(mqtt_bandit_t *b);
-u32  mqtt_bandit_select(mqtt_bandit_t *b);  /* returns arm index 0-3 */
+u32  mqtt_bandit_select(mqtt_bandit_t *b);  /* returns arm index 0-5 */
 void mqtt_bandit_update(mqtt_bandit_t *b, u32 arm, double reward);
 
 /* Packet type ↔ action index mapping */

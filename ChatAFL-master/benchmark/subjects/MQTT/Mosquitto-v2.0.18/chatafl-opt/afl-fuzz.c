@@ -511,6 +511,11 @@ static u64 mqtt_diff_queue_promotions    = 0;  /* Inputs promoted by diff     */
 static u64 mqtt_deep_state_promotions    = 0;  /* Deep-state energy boosts    */
 static u64 mqtt_state_stall_resets       = 0;  /* Stall-triggered resets      */
 
+/* V6: Granular P6 observability counters */
+static u64 mqtt_p6_deep_state_boosts     = 0;  /* unique_state_count ≥ 5/8    */
+static u64 mqtt_p6_stall_boosts          = 0;  /* Stall-aware energy boosts   */
+static u64 mqtt_p5_energy_boosts         = 0;  /* P5 diff_score-based boosts  */
+
 /* D4: Unique differential report counter and dedup. */
 static u64 unique_diffs = 0;
 #define MQTT_DIFF_DEDUP_SLOTS 512
@@ -556,6 +561,35 @@ u32 local_port; /* TCP/UDP port number to use as source */
  * This eliminates the dominant per-exec delay for forking servers. */
 static u32  adaptive_wait_usecs;     /* current wait (0 after warmup)  */
 static u8   server_warmed_up = 0;    /* 1 after first successful exec  */
+
+/* ── MQTT Persistent Server Mode ───────────────────────────────────────
+ * ARCHITECTURE-LEVEL optimization: instead of fork → send → kill per
+ * test case (~160 ms), keep the MQTT broker alive across multiple test
+ * cases and just reconnect TCP between them (~5 ms).
+ *
+ * Protocol flow with forkserver:
+ *   First exec:   write(ctl) → read(pid) → send_over_network() → [NO read(status)]
+ *   Reuse exec:   [NO write/read] → clear trace_bits → send_over_network()
+ *   Re-fork exec: kill(child) → read(status) → write(ctl) → read(pid) → send()
+ *
+ * The forkserver blocks on waitpid(child) between execs. When we
+ * finally kill the child (every mqtt_persistent_limit execs or on
+ * crash), the forkserver unblocks, writes status, and is ready for
+ * the next fork request.
+ *
+ * MQTT-only: text protocols keep the standard fork-per-exec model.
+ * Disabled during calibration to preserve stability measurement. */
+static u8   mqtt_persistent_mode     = 0;   /* enabled for -P MQTT        */
+static u32  mqtt_persistent_count    = 0;   /* execs on current child     */
+static u32  mqtt_persistent_limit    = 20;  /* re-fork every N execs      */
+static u8   mqtt_persistent_active   = 0;   /* 1 = child persisted alive  */
+static pid_t mqtt_persistent_pid     = 0;   /* PID of persisted child     */
+static u8   mqtt_persistent_skip_kill = 0;  /* suppress kill in send_over_network */
+static u8   mqtt_in_calibration      = 0;   /* 1 during calibrate_case()  */
+
+/* MQTT fast I/O: skip usleep(10) in aflnet.c net_send/net_recv.
+ * Defined in aflnet.c; set here in main() for MQTT protocol. */
+extern u8 mqtt_fast_io;
 
 /* flags */
 u8 use_net = 0;
@@ -2179,9 +2213,23 @@ u8 is_state_sequence_interesting(unsigned int *state_sequence, unsigned int stat
   // limit the loop count to only 1
   u32 *trimmed_state_sequence = NULL;
   u32 i, count = 0;
+
+  /* B5-fix: MQTT-aware loop suppression threshold.
+   * Original: collapse ≥3 identical consecutive states.
+   * For MQTT with B1 (PUBLISH in IPSM), forwarded PUBLISHes create
+   * legitimate repeated patterns like [SUBACK, PUB_topic_A, PUB_topic_A,
+   * PUB_topic_B, ...].  Raising the threshold to 5 allows deeper
+   * exploration of subscription delivery paths without unbounded growth.
+   * Text protocols keep the original threshold of 3. */
+  u32 loop_threshold = 3;
+  if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0)
+    loop_threshold = 5;
+
   for (i = 0; i < state_count; i++)
   {
-    if ((i >= 2) && (state_sequence[i] == state_sequence[i - 1]) && (state_sequence[i] == state_sequence[i - 2]))
+    if ((i >= loop_threshold) &&
+        (state_sequence[i] == state_sequence[i - 1]) &&
+        (state_sequence[i] == state_sequence[i - 2]))
       continue;
     count++;
     trimmed_state_sequence = (u32 *)realloc(trimmed_state_sequence, count * sizeof(unsigned int));
@@ -2403,6 +2451,16 @@ u32 update_scores_and_select_next_state(u8 mode)
         if (mqtt_diff_feedback_enabled && protocol_name &&
             strcasecmp(protocol_name, "MQTT") == 0) {
           frontier_bonus *= mqtt_state_diff_bonus(state_id);
+        }
+
+        /* V3-4: Forwarding-state priority — PUBLISH response states
+         * (type_nibble=3 → state_id in [12288,16384)) represent
+         * forwarding activity.  A modest ×1.25 bonus encourages
+         * more exploration of message-forwarding code paths
+         * (subs__send, sub__messages_queue, send__publish). */
+        if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0 &&
+            (state_id >> 12) == 3) {
+          frontier_bonus *= 1.25;
         }
 
         state->score = (u32)(base * frontier_bonus);
@@ -2995,11 +3053,22 @@ int send_over_network()
   struct sockaddr_in local_serv_addr;
 
   // Clean up the server if needed
-  if (cleanup_script)
+  // (Skip in persistent mode — server state is preserved across execs.)
+  if (cleanup_script && !mqtt_persistent_skip_kill)
     system(cleanup_script);
 
   // Wait a bit for the server initialization
-  usleep(server_wait_usecs);
+  // A1-fix: Use adaptive wait — full sleep only on first exec or after
+  // connect failure; 0 after first successful connect (forking servers
+  // are ready instantly after the first fork).
+  // (Skip in persistent mode — server is already fully initialized.)
+  if (mqtt_persistent_skip_kill) {
+    /* no wait — server is alive from previous exec */
+  } else {
+    if (!server_warmed_up)
+      adaptive_wait_usecs = server_wait_usecs;  /* cold start: full 10 ms */
+    usleep(adaptive_wait_usecs);
+  }
 
   // Clear the response buffer and reset the response buffer size
   if (response_buf)
@@ -3063,7 +3132,7 @@ int send_over_network()
         if (total_execs > 0 && mqtt_diff_last_probe_exec > 0 &&
             (total_execs - mqtt_diff_last_probe_exec) < mqtt_diff_probe_period) {
           do_multi_broker_exec = 0;
-          mqtt_last_diff_signal *= 0.95;  /* decay cached signal */
+          mqtt_last_diff_signal *= 0.98;  /* V6: slower decay keeps signal alive */
         } else {
           mqtt_diff_last_probe_exec = total_execs;
         }
@@ -3147,6 +3216,37 @@ int send_over_network()
             if (mqtt_last_diff_signal < 0.8)
               mqtt_last_diff_signal = 0.8;
             mqtt_diff_fwd_divergences++;
+
+            /* V6-Fix-1: Bridge fwd_hash divergence → field_diff.
+             *
+             * Root cause (Apr-16 analysis): Both brokers are the SAME
+             * implementation, so field-level analysis (type/code/payload)
+             * always returns MQTT_DIV_NONE.  But fwd_hash DOES diverge
+             * due to non-deterministic broker behavior (timing, session
+             * state, QoS retransmission, message ordering).
+             *
+             * Without this bridge, mqtt_diff_score = 0 for ALL queue
+             * entries → P5 energy multiplier never fires → P5/P6
+             * differential feedback is completely dead.
+             *
+             * Fix: When fwd_hash diverges but field-level found nothing,
+             * synthesize a MQTT_DIV_PAYLOAD result (lowest severity).
+             * This yields diff_score = 10 + 30*0.3 = 19 → ×2 energy
+             * in calculate_score(), activating the differential chain.
+             *
+             * This is semantically correct: fwd_hash divergence means
+             * the broker's internal message routing (subs__send,
+             * sub__messages_queue) behaved differently across runs,
+             * exercising non-deterministic code paths worth exploring. */
+            if (mqtt_last_field_diff.severity == MQTT_DIV_NONE ||
+                !mqtt_last_field_diff_valid) {
+              mqtt_last_field_diff.severity = MQTT_DIV_PAYLOAD;
+              mqtt_last_field_diff.strength = 0.3;
+              mqtt_last_field_diff.pattern_hash =
+                  fwd_hashes[0] ^ (ecnt > 1 ? fwd_hashes[1] : 0);
+              mqtt_last_field_diff_valid = 1;
+              mqtt_diff_payload_divergences++;  /* count as payload-level */
+            }
 
             /* D4: Save structured differential report */
             char fwd_detail[256];
@@ -3384,6 +3484,22 @@ MP_SINGLE_FD_FALLBACK:
     // if the server is still alive after processing all the requests
     setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
 
+    /* MQTT: disable Nagle algorithm — MQTT packets are small (4–128 bytes)
+     * and Nagle's 200 ms batching delay kills throughput.  TCP_NODELAY
+     * sends each write() immediately.  MQTT-only: text protocols may
+     * benefit from Nagle batching for multi-line commands. */
+    if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0) {
+      int tcp_nodelay_flag = 1;
+      setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY,
+                 &tcp_nodelay_flag, sizeof(tcp_nodelay_flag));
+      /* SO_LINGER with linger=0: close() sends RST immediately instead
+       * of going through TIME_WAIT.  This ensures the forked broker
+       * child receives an immediate connection-closed signal, reducing
+       * non-determinism from lingering TCP state. */
+      struct linger lg = {1, 0};
+      setsockopt(sockfd, SOL_SOCKET, SO_LINGER, &lg, sizeof(lg));
+    }
+
     memset(&serv_addr, '0', sizeof(serv_addr));
 
     serv_addr.sin_family = AF_INET;
@@ -3408,20 +3524,33 @@ MP_SINGLE_FD_FALLBACK:
 
     if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
     {
-      // If it cannot connect to the server under test
-      // try it again as the server initial startup time is varied
-      for (n = 0; n < 1000; n++)
+      /* Retry connect — MQTT on localhost via forkserver is ready within
+       * a few ms; 100 retries × 1 ms = 100 ms is ample.  Text protocols
+       * keep the original 1000 × 1 ms = 1 s for slower servers. */
+      int retry_limit = (protocol_name
+                         && strcasecmp(protocol_name, "MQTT") == 0)
+                        ? 100 : 1000;
+      for (n = 0; n < retry_limit; n++)
       {
         if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == 0)
           break;
         usleep(1000);
       }
-      if (n == 1000)
+      if (n == retry_limit)
       {
         close(sockfd);
+        /* A1-fix: connect failed after retries — reset adaptive wait
+         * so next exec gets the full server_wait_usecs delay. */
+        adaptive_wait_usecs = server_wait_usecs;
+        server_warmed_up = 0;
         return 1;
       }
     }
+
+    /* A1-fix: Successful connect — server is forking normally.
+     * Skip the initial delay on subsequent executions. */
+    server_warmed_up = 1;
+    adaptive_wait_usecs = 0;
 
     // retrieve early server response if needed
     if (net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size))
@@ -3489,12 +3618,16 @@ HANDLE_RESPONSES:
       reset_mqtt_cluster_diff_summary();
     }
 
-    /* Fix-14: Bounded coverage-stabilization loop. */
+    /* H3-fix: Stabilization loop with SHM sync (single-fd fallback path).
+     * Reduced from 50 × 200 µs = 10 ms to 15 × 200 µs = 3 ms.
+     * On localhost, SHM updates propagate within 1–2 iterations;
+     * 3 ms is ample headroom while saving ~7 ms/exec. */
     memset(session_virgin_bits, 255, MAP_SIZE);
     {
       int stab_iter = 0;
-      while (stab_iter++ < 5000)
-      {
+      while (stab_iter++ < 15) {
+        usleep(200);
+        __sync_synchronize();
         if (has_new_bits(session_virgin_bits) != 2)
           break;
       }
@@ -3507,7 +3640,19 @@ HANDLE_RESPONSES:
 MP_MULTI_DONE:
   (void)0;  /* label requires a statement */
 
-  if (likely_buggy && false_negative_reduction)
+  /* H6-fix: For MQTT multi-fd paths, do NOT skip the kill/reap block
+   * when likely_buggy is set — the multi-broker process lifecycle
+   * requires proper SIGTERM → SIGKILL escalation to avoid zombies
+   * and ensure coverage bitmaps are flushed.
+   * Text protocols keep the original early-return (no regression). */
+  if (likely_buggy && false_negative_reduction
+      && !(protocol_name && strcasecmp(protocol_name, "MQTT") == 0))
+    return 0;
+
+  /* MQTT Persistent Mode: skip the entire SIGTERM → kill → waitpid
+   * section.  The child stays alive for the next exec.  run_target()
+   * will reuse it via the persistent reuse path. */
+  if (mqtt_persistent_skip_kill)
     return 0;
 
   child_force_killed = 0;  /* Fix-14a: reset before each termination attempt */
@@ -3529,13 +3674,20 @@ MP_MULTI_DONE:
    * teardown, not in a crash-reportable state.  For non-forking servers
    * the process is already gone by the first check, so this is a no-op. */
   {
+    /* H2-fix: MQTT — mosquitto exits in <5 ms after SIGTERM; 30 ms
+     * (150 × 200 µs) is 6× that, ample for edge cases.
+     * Previous 100 ms wasted ~70 ms/exec.  Text protocols keep 200 ms. */
+    int kill_limit = (protocol_name
+                      && strcasecmp(protocol_name, "MQTT") == 0)
+                     ? 150     /* 150 × 200 µs = 30 ms */
+                     : 1000;   /* 1000 × 200 µs = 200 ms */
     int kill_wait = 0;
     while (1)
     {
       int kstat = kill(child_pid, 0);
       if ((kstat != 0) && (errno == ESRCH))
         break;
-      if (++kill_wait >= 1000) {          /* 1000 × 200 µs = 200 ms */
+      if (++kill_wait >= kill_limit) {
         kill(child_pid, SIGKILL);
         child_force_killed = 1;          /* Fix-14a: tell run_target() this is not a crash */
         usleep(1000);                    /* 1 ms for kernel cleanup */
@@ -6058,6 +6210,120 @@ static u8 run_target(char **argv, u32 timeout)
   memset(trace_bits, 0, MAP_SIZE);
   MEM_BARRIER();
 
+  /* ── MQTT Persistent Server Mode: reuse child across test cases ────
+   *
+   * When the broker child from a previous exec is still alive, we skip
+   * the forkserver fork and just reconnect TCP.  The forkserver is
+   * blocked in waitpid(child) — we leave it there until we decide to
+   * re-fork (every mqtt_persistent_limit execs, or on crash/timeout).
+   *
+   * Disabled during calibration (mqtt_in_calibration) so that stability
+   * measurement uses deterministic fresh-forked children. */
+
+  if (mqtt_persistent_mode && mqtt_persistent_active
+      && !mqtt_in_calibration) {
+
+    /* Verify the persisted child is still alive. */
+    if (kill(mqtt_persistent_pid, 0) == 0) {
+
+      /* ── Reuse path: child alive ──────────────────────────────── */
+      child_pid = mqtt_persistent_pid;   /* SIGALRM needs this */
+      child_timed_out = 0;
+
+      it.it_value.tv_sec  = (timeout / 1000);
+      it.it_value.tv_usec = (timeout % 1000) * 1000;
+      setitimer(ITIMER_REAL, &it, NULL);
+
+      mqtt_persistent_skip_kill = 1;
+      if (use_net) send_over_network();
+      mqtt_persistent_skip_kill = 0;
+
+      /* Check: did the child survive? */
+      if (child_timed_out || kill(mqtt_persistent_pid, 0) != 0) {
+        /* Child died (timeout or crash).  The forkserver's waitpid()
+         * has now returned — read the exit status it wrote. */
+        s32 res;
+        if ((res = read(fsrv_st_fd, &status, 4)) != 4) {
+          if (stop_soon) return 0;
+          RPFATAL(res, "Unable to communicate with fork server "
+                       "(persistent child died)");
+        }
+        mqtt_persistent_active = 0;
+        mqtt_persistent_count  = 0;
+        mqtt_persistent_pid    = 0;
+        child_pid = 0;
+
+        /* Cancel timer */
+        it.it_value.tv_sec = 0; it.it_value.tv_usec = 0;
+        setitimer(ITIMER_REAL, &it, NULL);
+
+        total_execs++;
+        MEM_BARRIER();
+
+#ifdef WORD_SIZE_64
+        classify_counts((u64 *)trace_bits);
+#else
+        classify_counts((u32 *)trace_bits);
+#endif
+        prev_timed_out = child_timed_out;
+
+        if (child_timed_out && WIFSIGNALED(status)
+            && WTERMSIG(status) == SIGKILL)
+          return FAULT_TMOUT;
+        if (WIFSIGNALED(status) && !stop_soon)
+          return FAULT_CRASH;
+        return FAULT_NONE;
+      }
+
+      /* Child alive — cancel timer, bump counters. */
+      it.it_value.tv_sec = 0; it.it_value.tv_usec = 0;
+      setitimer(ITIMER_REAL, &it, NULL);
+
+      total_execs++;
+      mqtt_persistent_count++;
+
+      /* Time to re-fork?  Kill the child, read status, reset. */
+      if (mqtt_persistent_count >= mqtt_persistent_limit) {
+        kill(mqtt_persistent_pid, SIGTERM);
+        usleep(5000);                        /* 5 ms graceful shutdown  */
+        kill(mqtt_persistent_pid, SIGKILL);  /* ensure it's dead        */
+        s32 res;
+        if ((res = read(fsrv_st_fd, &status, 4)) != 4) {
+          if (stop_soon) return 0;
+          RPFATAL(res, "Unable to communicate with fork server "
+                       "(persistent re-fork)");
+        }
+        mqtt_persistent_active = 0;
+        mqtt_persistent_count  = 0;
+        mqtt_persistent_pid    = 0;
+        child_pid = 0;
+      }
+
+      MEM_BARRIER();
+#ifdef WORD_SIZE_64
+      classify_counts((u64 *)trace_bits);
+#else
+      classify_counts((u32 *)trace_bits);
+#endif
+      prev_timed_out = 0;
+      return FAULT_NONE;
+
+    } else {
+      /* ── Child died between execs (spontaneous crash).
+       *    Read the forkserver status and fall through to normal fork. */
+      s32 res;
+      if ((res = read(fsrv_st_fd, &status, 4)) != 4) {
+        if (stop_soon) return 0;
+        RPFATAL(res, "Unable to communicate with fork server "
+                     "(persistent child gone)");
+      }
+      mqtt_persistent_active = 0;
+      mqtt_persistent_count  = 0;
+      mqtt_persistent_pid    = 0;
+      /* Fall through to standard fork path below. */
+    }
+  }
+
   /* If we're running in "dumb" mode, we can't rely on the fork server
      logic compiled into the target program, so we will just keep calling
      execve(). There is a bit of code duplication between here and
@@ -6189,15 +6455,63 @@ static u8 run_target(char **argv, u32 timeout)
 
   if (dumb_mode == 1 || no_forkserver)
   {
-    if (use_net)
-      send_over_network();
+    if (use_net) {
+      int net_rc = send_over_network();
+      /* H4-fix: For MQTT, log network I/O failures for diagnostics.
+       * Text protocols: net_rc is discarded (original behavior). */
+      if (net_rc != 0 && protocol_name
+          && strcasecmp(protocol_name, "MQTT") == 0)
+        fprintf(stderr, "[H4-warn] send_over_network failed "
+                "(rc=%d, dumb_mode)\n", net_rc);
+    }
     if (waitpid(child_pid, &status, 0) <= 0)
       PFATAL("waitpid() failed");
   }
   else
   {
-    if (use_net)
-      send_over_network();
+    /* MQTT persistent mode: tell send_over_network() to skip the kill. */
+    u8 try_persist = (mqtt_persistent_mode && !mqtt_in_calibration);
+    if (try_persist) mqtt_persistent_skip_kill = 1;
+
+    if (use_net) {
+      int net_rc = send_over_network();
+      /* H4-fix: For MQTT, log network I/O failures for diagnostics.
+       * Text protocols: net_rc is discarded (original behavior). */
+      if (net_rc != 0 && protocol_name
+          && strcasecmp(protocol_name, "MQTT") == 0)
+        fprintf(stderr, "[H4-warn] send_over_network failed "
+                "(rc=%d, forkserver)\n", net_rc);
+    }
+    mqtt_persistent_skip_kill = 0;
+
+    /* MQTT Persistent: if the child survived, persist it for reuse.
+     * The forkserver is blocked in waitpid(child) — we leave it there
+     * and reuse the child for the next N test cases. */
+    if (try_persist && !child_timed_out
+        && kill(child_pid, 0) == 0) {
+
+      mqtt_persistent_active = 1;
+      mqtt_persistent_pid    = child_pid;
+      mqtt_persistent_count  = 1;
+
+      /* Cancel timer. */
+      it.it_value.tv_sec = 0; it.it_value.tv_usec = 0;
+      setitimer(ITIMER_REAL, &it, NULL);
+
+      total_execs++;
+      MEM_BARRIER();
+
+#ifdef WORD_SIZE_64
+      classify_counts((u64 *)trace_bits);
+#else
+      classify_counts((u32 *)trace_bits);
+#endif
+      prev_timed_out = 0;
+      return FAULT_NONE;
+    }
+
+    /* Not persisting (calibration / timeout / child died).
+     * Read exit status from forkserver normally. */
     s32 res;
 
     if ((res = read(fsrv_st_fd, &status, 4)) != 4)
@@ -6264,8 +6578,18 @@ static u8 run_target(char **argv, u32 timeout)
     if (child_timed_out && kill_signal == SIGKILL)
       return FAULT_TMOUT;
 
-    if (kill_signal == SIGTERM)
+    if (kill_signal == SIGTERM) {
+      /* M1-fix: For MQTT, log when child received SIGTERM that we
+       * didn't send (terminate_child=0) — indicates external kill
+       * (OOM killer, cgroup limits, etc.).  Expected SIGTERMs from
+       * our own terminate_child path are silent.
+       * Text protocols: always silent (original behavior). */
+      if (!terminate_child && protocol_name
+          && strcasecmp(protocol_name, "MQTT") == 0)
+        fprintf(stderr, "[M1-warn] MQTT child received unexpected "
+                "SIGTERM (terminate_child=0)\n");
       return FAULT_NONE;
+    }
 
     /* Fix-14c: SIGKILL from send_over_network() bounded-kill-wait
      * escalation is a deliberate termination, NOT a timeout.
@@ -6350,6 +6674,24 @@ static u8 calibrate_case(char **argv, struct queue_entry *q, u8 *use_mem,
 {
 
   static u8 first_trace[MAP_SIZE];
+
+  /* MQTT Persistent Mode: disable child-reuse during calibration so
+   * that each run_target() forks a clean child.  This ensures
+   * deterministic coverage for accurate stability measurement. */
+  if (mqtt_persistent_mode) {
+    /* If a persistent child is alive, kill it and drain forkserver. */
+    if (mqtt_persistent_active && mqtt_persistent_pid > 0) {
+      kill(mqtt_persistent_pid, SIGKILL);
+      s32 res;
+      int _status;
+      res = read(fsrv_st_fd, &_status, 4);
+      (void)res;
+      mqtt_persistent_active = 0;
+      mqtt_persistent_count  = 0;
+      mqtt_persistent_pid    = 0;
+    }
+    mqtt_in_calibration = 1;
+  }
 
   u8 fault = 0, new_bits = 0, var_detected = 0,
      first_run = (q->exec_cksum == 0);
@@ -6494,6 +6836,10 @@ abort_calibration:
   stage_name = old_sn;
   stage_cur = old_sc;
   stage_max = old_sm;
+
+  /* MQTT Persistent Mode: re-enable child-reuse after calibration. */
+  if (mqtt_persistent_mode)
+    mqtt_in_calibration = 0;
 
   if (!first_run)
     show_stats();
@@ -7896,6 +8242,14 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)mqtt_state_stall_resets,
           (unsigned long long)unique_diffs);
 
+  /* V6: Granular energy scheduling observability */
+  fprintf(f, "mqtt_p5_energy_boosts : %llu\n"
+             "mqtt_p6_deep_boosts : %llu\n"
+             "mqtt_p6_stall_boosts : %llu\n",
+          (unsigned long long)mqtt_p5_energy_boosts,
+          (unsigned long long)mqtt_p6_deep_state_boosts,
+          (unsigned long long)mqtt_p6_stall_boosts);
+
   fclose(f);
 }
 
@@ -8972,16 +9326,20 @@ static void show_stats(void)
          "fwd_div:" cLRD "%-4s " cRST
          "promo:" cLGN "%-4s " cRST
          "diffs:" cLRD "%-4s " cRST
-         cYEL "[P6-deep] " cRST
-         "deep_promo:" cLGN "%-4s " cRST
-         "stall_rst:" cCYA "%-4s" cRST "\n",
+         "p5e:" cLGN "%-4s " cRST
+         cYEL "[P6] " cRST
+         "deep:" cLGN "%-4s " cRST
+         "stall:" cCYA "%-4s " cRST
+         "rst:" cCYA "%-4s" cRST "\n",
          DI(mqtt_diff_type_divergences),
          DI(mqtt_diff_code_divergences),
          DI(mqtt_diff_payload_divergences),
          DI(mqtt_diff_fwd_divergences),
          DI(mqtt_diff_queue_promotions),
          DI(unique_diffs),
-         DI(mqtt_deep_state_promotions),
+         DI(mqtt_p5_energy_boosts),
+         DI(mqtt_p6_deep_state_boosts),
+         DI(mqtt_p6_stall_boosts),
          DI(mqtt_state_stall_resets));
   }
 
@@ -9486,11 +9844,14 @@ static u32 calculate_score(struct queue_entry *q)
    * ════════════════════════════════════════════════════════════════════ */
   if (mqtt_diff_feedback_enabled && q->mqtt_diff_score >= 70) {
     perf_score *= 4;
+    mqtt_p5_energy_boosts++;
     mqtt_deep_state_promotions++;  /* reuse counter for observability */
   } else if (mqtt_diff_feedback_enabled && q->mqtt_diff_score >= 40) {
     perf_score *= 3;
+    mqtt_p5_energy_boosts++;
   } else if (mqtt_diff_feedback_enabled && q->mqtt_diff_score >= 10) {
     perf_score *= 2;
+    mqtt_p5_energy_boosts++;
   }
 
   /* D1: Coverage-stagnation boost — ROLLED BACK (A7).
@@ -9523,10 +9884,13 @@ static u32 calculate_score(struct queue_entry *q)
       mqtt_diff_feedback_enabled && state_aware_mode) {
     /* Deep-state bonus: unique_state_count reflects how many distinct
      * protocol states this input traverses. Higher = deeper. */
-    if (q->unique_state_count >= 8)
+    if (q->unique_state_count >= 8) {
       perf_score *= 3;
-    else if (q->unique_state_count >= 5)
+      mqtt_p6_deep_state_boosts++;
+    } else if (q->unique_state_count >= 5) {
       perf_score *= 2;
+      mqtt_p6_deep_state_boosts++;
+    }
 
     /* Stall-aware boost: if the generating state is stalled,
      * boost this input so the fuzzer keeps trying to break through. */
@@ -9535,6 +9899,7 @@ static u32 calculate_score(struct queue_entry *q)
       if (gen_idx < mqtt_state_stall_cap &&
           mqtt_state_stall_counter[gen_idx] >= MQTT_STALL_THRESHOLD / 2) {
         perf_score *= 2;
+        mqtt_p6_stall_boosts++;
       }
     }
   }
@@ -9824,6 +10189,69 @@ static void mqtt_field_mut_reward(u32 mut_idx, double reward) {
     for (u32 i = 0; i < MQTT_FIELD_MUT_COUNT; i++)
       mqtt_field_mut_prob[i] /= sum;
   }
+}
+
+/* ============================================
+ * B3-fix: MQTT-Structured Havoc Ranges
+ *
+ * For MQTT binary protocol, both explore and exploit havoc modes
+ * previously used a single flat range (explore) or LLM grammar
+ * ranges (exploit — useless for binary MQTT, returns single range).
+ * This means byte-level mutations (cases 0-14) operate across
+ * packet boundaries, corrupting packet framing and wasting execs.
+ *
+ * This function parses the buffer into individual MQTT packets and
+ * returns each packet as a separate range.  Havoc mutations then
+ * operate WITHIN packet boundaries, producing structurally valid
+ * variants much more often.
+ *
+ * MQTT-only; zero impact on text protocols.
+ * ============================================ */
+static range_list mqtt_parse_havoc_ranges(u8 *buf, u32 len) {
+  range_list rl;
+  kv_init(rl);
+
+  u32 pos = 0;
+  while (pos < len) {
+    u32 pkt_start = pos;
+    if (pos + 2 > len) break;
+    pos++; /* fixed header byte */
+
+    /* Decode remaining length (variable-length encoding, 1-4 bytes) */
+    u32 rem_len = 0, mult = 1;
+    u32 rl_bytes = 0;
+    while (pos < len && rl_bytes < 4) {
+      u8 byte = buf[pos];
+      rem_len += (byte & 0x7F) * mult;
+      mult *= 128;
+      pos++;
+      rl_bytes++;
+      if (!(byte & 0x80)) break;
+    }
+
+    u32 pkt_end = pos + rem_len;
+    if (pkt_end > len) pkt_end = len;
+    if (pkt_end <= pkt_start) break; /* avoid zero/negative-length */
+
+    range r;
+    r.start = pkt_start;
+    r.len = pkt_end - pkt_start;
+    r.mutable = 1;
+    kv_push(range, rl, r);
+
+    pos = pkt_end;
+  }
+
+  /* Fallback: if no valid packets found, use whole buffer as one range */
+  if (kv_size(rl) == 0) {
+    range r;
+    r.start = 0;
+    r.len = len;
+    r.mutable = 1;
+    kv_push(range, rl, r);
+  }
+
+  return rl;
 }
 
 /* ============================================
@@ -11941,7 +12369,21 @@ havoc_stage:;
   double epsilon = UR(100) / 100.0;
 
   int is_exploration = epsilon < EPSILON_CHOICE;
-  if (is_exploration)
+
+  /* B3-fix: For MQTT, ALWAYS use packet-boundary ranges instead of
+   * flat range (explore) or LLM grammar ranges (exploit, useless for
+   * binary MQTT).  This makes ALL havoc mutations (cases 0-24)
+   * MQTT-structure-aware — each mutation targets a single MQTT packet
+   * instead of randomly corrupting cross-packet bytes.
+   * Text protocols keep the original explore/exploit logic. */
+  u8 mqtt_structured = (protocol_name &&
+                        strcasecmp(protocol_name, "MQTT") == 0);
+
+  if (mqtt_structured) {
+    stage_name = is_exploration ? "havoc mqtt-explore" : "havoc mqtt-exploit";
+    stage_short = is_exploration ? "mqtt_explore" : "mqtt_exploit";
+    original_ranges = mqtt_parse_havoc_ranges(out_buf, temp_len);
+  } else if (is_exploration)
   {
     stage_name = "havoc explore";
     stage_short = "havoc_explore";
@@ -12568,13 +13010,15 @@ havoc_stage:;
       } else if (mqtt_scheduler_enabled) {
         arm = mqtt_bandit_select(&mqtt_bandit);
       } else {
-        /* Static fallback: 35%/20%/30%/15%  (O5: reduced skip arm —
-         * generic havoc is largely ineffective for binary MQTT) */
+        /* Static fallback: 25%/15%/20%/10%/10%/20%
+         * (B1/B3: reduced skip, added sub-pub pair arm for forwarding path) */
         u32 mqtt_dice = UR(20);
-        if      (mqtt_dice < 7)  arm = 0;  /* replace region  35% */
-        else if (mqtt_dice < 11) arm = 1;  /* insert packet   20% */
-        else if (mqtt_dice < 17) arm = 2;  /* field-aware     30% */
-        else                     arm = 3;  /* skip            15% */
+        if      (mqtt_dice < 5)  arm = 0;  /* replace region  25% */
+        else if (mqtt_dice < 8)  arm = 1;  /* insert packet   15% */
+        else if (mqtt_dice < 12) arm = 2;  /* field-aware     20% */
+        else if (mqtt_dice < 14) arm = 3;  /* skip            10% */
+        else if (mqtt_dice < 16) arm = 4;  /* corpus-splice   10% */
+        else                     arm = 5;  /* sub-pub pair    20% */
       }
       mqtt_last_arm = arm;
 
@@ -12657,6 +13101,40 @@ havoc_stage:;
         }
         /* Post-splice: always apply field-aware mutation */
         mqtt_field_aware_mutate(out_buf, temp_len);
+        break;
+      }
+
+      case 5: /* B1-companion: SUBSCRIBE→PUBLISH pair injection.
+       * Generate a coherent SUBSCRIBE + PUBLISH pair where the PUBLISH
+       * topic matches the SUBSCRIBE filter, ensuring the broker will
+       * forward the message and trigger the delivery code path
+       * (subs__send → sub__messages_queue → send__publish).
+       * This directly targets MBFuzzer's #1 advantage: forwarding-as-
+       * coverage.  Uses the shared mqtt_havoc_gen_ctx so topic
+       * dependencies are maintained across the pair. */
+      {
+        u8 sub_buf[MQTG_MAX_PKT], pub_buf[MQTG_MAX_PKT];
+        /* Generate SUBSCRIBE first — records topic in context */
+        u32 sub_len = mqtt_gen_packet_ctx(sub_buf, sizeof(sub_buf),
+                                          &mqtt_havoc_gen_ctx, MQTG_SUBSCRIBE);
+        /* Generate PUBLISH — context ensures topic matches subscription */
+        u32 pub_len = mqtt_gen_packet_ctx(pub_buf, sizeof(pub_buf),
+                                          &mqtt_havoc_gen_ctx, MQTG_PUBLISH);
+        u32 pair_len = sub_len + pub_len;
+        if (sub_len > 0 && pub_len > 0 &&
+            temp_len + (s32)pair_len < MAX_FILE) {
+          /* Insert the pair at a random position */
+          u32 ipos = UR(temp_len + 1);
+          u8 *new_buf = ck_alloc_nozero(temp_len + pair_len);
+          memcpy(new_buf, out_buf, ipos);
+          memcpy(new_buf + ipos, sub_buf, sub_len);
+          memcpy(new_buf + ipos + sub_len, pub_buf, pub_len);
+          memcpy(new_buf + ipos + pair_len, out_buf + ipos, temp_len - ipos);
+          ck_free(out_buf);
+          out_buf = new_buf;
+          temp_len += pair_len;
+        }
+        mqtt_last_pkt_type = MQTG_SUBSCRIBE; /* attribute to SUBSCRIBE for QL */
         break;
       }
 
@@ -14628,6 +15106,27 @@ int main(int argc, char **argv)
 
   save_cmdline(argc, argv);
 
+  /* ── MQTT Persistent Server Mode ────────────────────────────────────
+   * DISABLED by default — experiments showed +116% exec_speed but
+   * stability crashed to 9.9% (broker state accumulation), yielding
+   * zero net coverage gain.  Opt-in via MQTT_PERSIST=1 for research.
+   * Text protocols are completely unaffected. */
+  if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0) {
+    if (getenv("MQTT_PERSIST") && atoi(getenv("MQTT_PERSIST")) == 1) {
+      mqtt_persistent_mode = 1;
+      if (getenv("MQTT_PERSIST_LIMIT"))
+        mqtt_persistent_limit = atoi(getenv("MQTT_PERSIST_LIMIT"));
+      if (mqtt_persistent_limit < 2) mqtt_persistent_limit = 2;
+      if (mqtt_persistent_limit > 500) mqtt_persistent_limit = 500;
+      OKF("MQTT persistent server mode ENABLED (re-fork every %u execs)",
+          mqtt_persistent_limit);
+    } else {
+      OKF("MQTT persistent mode DISABLED (set MQTT_PERSIST=1 to enable)");
+    }
+    /* MQTT fast I/O: skip usleep(10) in net_send/net_recv */
+    mqtt_fast_io = 1;
+  }
+
   fix_up_banner(argv[optind]);
 
   check_if_tty();
@@ -14927,7 +15426,7 @@ int main(int argc, char **argv)
      * path handles execution at full throughput. */
     if (!getenv("CHATAFL_MQTT_NO_DIFF_FEEDBACK")) {
       mqtt_diff_feedback_enabled = 1;
-      mqtt_diff_probe_period = 8;  /* O1-fix: every 8th exec (was 1→too slow, orig 32→too sparse) */
+      mqtt_diff_probe_period = 4;  /* V3-2: every 4th exec (was 8→stale signal, 0.95^8=0.66 decay) */
       {
         const char *pp = getenv("CHATAFL_MQTT_DIFF_PROBE_PERIOD");
         if (pp && *pp) {

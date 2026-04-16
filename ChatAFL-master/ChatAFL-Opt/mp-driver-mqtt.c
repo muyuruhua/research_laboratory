@@ -65,6 +65,9 @@ typedef struct {
 
   /* V4-3: QoS handshake completion tracking */
   u32                   qos_acks;    /* number of QoS acks completed this exec */
+
+  /* V5: Handshake phase — needed by cleanup for version-aware DISCONNECT */
+  u8                    phase;
 } mqtt_mp_priv_t;
 
 /* ════════════════════════════════════════════════════════════════════
@@ -344,6 +347,210 @@ static u32 pack_connect_v5_alt(u8 *out, u32 cap, const char *cid) {
   return pos;
 }
 
+/* V5-1: v5 CONNECT with Will message AND Will properties.
+ * Exercises property_broker.c → property__process_will() + handle_connect.c will__read().
+ * Will properties: WILL_DELAY_INTERVAL, MESSAGE_EXPIRY_INTERVAL, CONTENT_TYPE,
+ *   PAYLOAD_FORMAT_INDICATOR, RESPONSE_TOPIC, CORRELATION_DATA, USER_PROPERTY.
+ * This single packet covers ~40 lines in property_broker.c and ~40 in handle_connect.c. */
+static u32 pack_connect_v5_will(u8 *out, u32 cap, const char *cid) {
+  u32 cid_len = (u32)strlen(cid);
+  /* CONNECT properties (session-level) */
+  u8 conn_props[] = {
+    0x11, 0x00, 0x00, 0x01, 0x00,  /* Session Expiry Interval = 256 */
+    0x21, 0x00, 0x40,              /* Receive Maximum = 64 */
+    0x27, 0x00, 0x01, 0x00, 0x00,  /* Maximum Packet Size = 65536 */
+  };
+  u32 conn_props_len = (u32)sizeof(conn_props);
+
+  /* Will properties (per-message) */
+  u8 will_props[] = {
+    0x18, 0x00, 0x00, 0x00, 0x3C,              /* Will Delay Interval = 60 */
+    0x02, 0x00, 0x00, 0x0E, 0x10,              /* Message Expiry Interval = 3600 */
+    0x01, 0x01,                                 /* Payload Format Indicator = UTF-8 */
+    0x03, 0x00, 0x10,                           /* Content Type = "application/json" */
+      'a','p','p','l','i','c','a','t','i','o','n','/','j','s','o','n',
+    0x08, 0x00, 0x05,                           /* Response Topic = "r/rsp" */
+      'r','/','r','s','p',
+    0x09, 0x00, 0x04,                           /* Correlation Data = "cid1" */
+      'c','i','d','1',
+    0x26, 0x00, 0x03, 'k','e','y',             /* User Property = "key":"val" */
+          0x00, 0x03, 'v','a','l',
+  };
+  u32 will_props_len = (u32)sizeof(will_props);
+
+  /* Will topic = "w/v5" (4 bytes), Will payload = "alive" (5 bytes) */
+  const char *will_topic = "w/v5";
+  const char *will_payload = "alive";
+  u32 wt_len = 4, wp_len = 5;
+
+  /* Total remaining length:
+   * Variable header: 10 (protocol) + 1 (conn_props_len) + conn_props
+   * Payload: 2+cid_len + 1+will_props_len + will_props + 2+wt_len + 2+wp_len */
+  u32 rem = 10 + 1 + conn_props_len + 2 + cid_len
+          + 1 + will_props_len + 2 + wt_len + 2 + wp_len;
+  if (!out || cap < (2 + rem) || cid_len > 23 || rem > 127) return 0;
+
+  u32 pos = 0;
+  out[pos++] = 0x10;             /* CONNECT */
+  out[pos++] = (u8)rem;          /* remaining length */
+  /* Variable header */
+  out[pos++] = 0x00; out[pos++] = 0x04;
+  out[pos++] = 'M'; out[pos++] = 'Q'; out[pos++] = 'T'; out[pos++] = 'T';
+  out[pos++] = 0x05;             /* Protocol Level 5 */
+  out[pos++] = 0x2E;             /* Flags: CleanStart=1 | WillFlag=1 | WillQoS=1 | WillRetain=1 */
+  out[pos++] = 0x00; out[pos++] = 0x3C; /* Keep Alive = 60s */
+  /* CONNECT properties */
+  out[pos++] = (u8)conn_props_len;
+  memcpy(out + pos, conn_props, conn_props_len); pos += conn_props_len;
+  /* Payload: Client ID */
+  out[pos++] = (u8)((cid_len >> 8) & 0xFF);
+  out[pos++] = (u8)(cid_len & 0xFF);
+  memcpy(out + pos, cid, cid_len); pos += cid_len;
+  /* Will properties */
+  out[pos++] = (u8)will_props_len;
+  memcpy(out + pos, will_props, will_props_len); pos += will_props_len;
+  /* Will topic */
+  out[pos++] = (u8)((wt_len >> 8) & 0xFF);
+  out[pos++] = (u8)(wt_len & 0xFF);
+  memcpy(out + pos, will_topic, wt_len); pos += wt_len;
+  /* Will payload */
+  out[pos++] = (u8)((wp_len >> 8) & 0xFF);
+  out[pos++] = (u8)(wp_len & 0xFF);
+  memcpy(out + pos, will_payload, wp_len); pos += wp_len;
+  return pos;
+}
+
+/* V5-2: v3.1 CONNECT using "MQIsdp" protocol name.
+ * Exercises handle__connect() v3.1 branch: protocol name "MQIsdp", version byte 3.
+ * Covers ~10-15 lines in handle_connect.c's MQIsdp parsing path. */
+static u32 pack_connect_v31(u8 *out, u32 cap, const char *cid) {
+  u32 cid_len = (u32)strlen(cid);
+  /* v3.1 variable header: protocol name "MQIsdp" (6 bytes) + version 3 */
+  u32 rem = 12 + 2 + cid_len;  /* 2+6(MQIsdp) + version + flags + keepalive + clientid */
+  if (!out || cap < (2 + rem) || cid_len > 23) return 0;
+  u32 pos = 0;
+  out[pos++] = 0x10; out[pos++] = (u8)rem;
+  out[pos++] = 0x00; out[pos++] = 0x06;  /* protocol name length = 6 */
+  out[pos++] = 'M'; out[pos++] = 'Q'; out[pos++] = 'I';
+  out[pos++] = 's'; out[pos++] = 'd'; out[pos++] = 'p';
+  out[pos++] = 0x03;         /* Protocol version 3 */
+  out[pos++] = 0x02;         /* Connect Flags: CleanSession=1 */
+  out[pos++] = 0x00; out[pos++] = 0x3C;  /* Keep Alive = 60s */
+  out[pos++] = (u8)((cid_len >> 8) & 0xFF);
+  out[pos++] = (u8)(cid_len & 0xFF);
+  memcpy(out + pos, cid, cid_len); pos += cid_len;
+  return pos;
+}
+
+/* V5-3: v5 CONNECT with zero-length client ID (auto-assign).
+ * Exercises handle__connect() client_id_gen() and assigned_id logic.
+ * Covers ~15 lines: zero-length CID handling + CONNACK ASSIGNED_CLIENT_IDENTIFIER. */
+static u32 pack_connect_v5_zero_cid(u8 *out, u32 cap) {
+  /* Properties: Session Expiry = 0 (required when zero CID + clean_start=1) */
+  u8 props[] = {
+    0x11, 0x00, 0x00, 0x00, 0x00,  /* Session Expiry Interval = 0 */
+  };
+  u32 props_len = (u32)sizeof(props);
+  u32 rem = 10 + 1 + props_len + 2; /* variable header + 0-length client ID */
+  if (!out || cap < (2 + rem)) return 0;
+  u32 pos = 0;
+  out[pos++] = 0x10; out[pos++] = (u8)rem;
+  out[pos++] = 0x00; out[pos++] = 0x04;
+  out[pos++] = 'M'; out[pos++] = 'Q'; out[pos++] = 'T'; out[pos++] = 'T';
+  out[pos++] = 0x05;         /* Protocol Level 5 */
+  out[pos++] = 0x02;         /* Clean Start = 1 (required for zero-length CID) */
+  out[pos++] = 0x00; out[pos++] = 0x3C;
+  out[pos++] = (u8)props_len;
+  memcpy(out + pos, props, props_len); pos += props_len;
+  out[pos++] = 0x00; out[pos++] = 0x00;  /* Client ID length = 0 */
+  return pos;
+}
+
+/* V5-4: CONNECT with username and password.
+ * Exercises handle__connect() username/password reading paths.
+ * Covers ~10-15 lines in flag combination handling. */
+static u32 pack_connect_userpass(u8 *out, u32 cap, const char *cid) {
+  u32 cid_len = (u32)strlen(cid);
+  const char *user = "test";
+  const char *pass = "pass";
+  u32 ulen = 4, plen = 4;
+  /* Flags: CleanSession=1 | UsernameFlag=1 | PasswordFlag=1 */
+  u32 rem = 10 + 2 + cid_len + 2 + ulen + 2 + plen;
+  if (!out || cap < (2 + rem) || cid_len > 23) return 0;
+  u32 pos = 0;
+  out[pos++] = 0x10; out[pos++] = (u8)rem;
+  out[pos++] = 0x00; out[pos++] = 0x04;
+  out[pos++] = 'M'; out[pos++] = 'Q'; out[pos++] = 'T'; out[pos++] = 'T';
+  out[pos++] = 0x04;         /* Protocol level 4 (v3.1.1) */
+  out[pos++] = 0xC2;         /* Flags: CleanSession=1 | Username=1 | Password=1 */
+  out[pos++] = 0x00; out[pos++] = 0x3C;
+  out[pos++] = (u8)((cid_len >> 8) & 0xFF);
+  out[pos++] = (u8)(cid_len & 0xFF);
+  memcpy(out + pos, cid, cid_len); pos += cid_len;
+  /* Username */
+  out[pos++] = (u8)((ulen >> 8) & 0xFF);
+  out[pos++] = (u8)(ulen & 0xFF);
+  memcpy(out + pos, user, ulen); pos += ulen;
+  /* Password */
+  out[pos++] = (u8)((plen >> 8) & 0xFF);
+  out[pos++] = (u8)(plen & 0xFF);
+  memcpy(out + pos, pass, plen); pos += plen;
+  return pos;
+}
+
+/* V5-5: v5 DISCONNECT with properties.
+ * Exercises property_broker.c → property__process_disconnect() and
+ * packet_mosq.c → packet__read() non-zero remaining length for DISCONNECT.
+ * Session Expiry Interval property in DISCONNECT. */
+static u32 pack_disconnect_v5(u8 *out, u32 cap) {
+  /* Reason Code: 0x00 (Normal) + Properties: Session Expiry Interval */
+  u8 props[] = {
+    0x11, 0x00, 0x00, 0x0E, 0x10,  /* Session Expiry Interval = 3600 */
+  };
+  u32 props_len = (u32)sizeof(props);
+  u32 rem = 1 + 1 + props_len;  /* reason_code + props_length + props */
+  if (!out || cap < (2 + rem)) return 0;
+  u32 pos = 0;
+  out[pos++] = 0xE0;         /* DISCONNECT */
+  out[pos++] = (u8)rem;
+  out[pos++] = 0x00;         /* Reason Code: Normal */
+  out[pos++] = (u8)props_len;
+  memcpy(out + pos, props, props_len); pos += props_len;
+  return pos;
+}
+
+/* V5-6: v5 CONNECT with username/password (v5 allows password without username).
+ * Exercises handle__connect() v5-specific password-only path. */
+static u32 pack_connect_v5_userpass(u8 *out, u32 cap, const char *cid) {
+  u32 cid_len = (u32)strlen(cid);
+  const char *pass = "v5pw";
+  u32 plen = 4;
+  u8 conn_props[] = {
+    0x11, 0x00, 0x00, 0x00, 0x00,  /* Session Expiry Interval = 0 */
+  };
+  u32 conn_props_len = (u32)sizeof(conn_props);
+  /* Flags: CleanStart=1 | PasswordFlag=1 (no UsernameFlag — v5 allows this) */
+  u32 rem = 10 + 1 + conn_props_len + 2 + cid_len + 2 + plen;
+  if (!out || cap < (2 + rem) || cid_len > 23) return 0;
+  u32 pos = 0;
+  out[pos++] = 0x10; out[pos++] = (u8)rem;
+  out[pos++] = 0x00; out[pos++] = 0x04;
+  out[pos++] = 'M'; out[pos++] = 'Q'; out[pos++] = 'T'; out[pos++] = 'T';
+  out[pos++] = 0x05;         /* Protocol Level 5 */
+  out[pos++] = 0x42;         /* Flags: CleanStart=1 | PasswordFlag=1 (bit 6) */
+  out[pos++] = 0x00; out[pos++] = 0x3C;
+  out[pos++] = (u8)conn_props_len;
+  memcpy(out + pos, conn_props, conn_props_len); pos += conn_props_len;
+  out[pos++] = (u8)((cid_len >> 8) & 0xFF);
+  out[pos++] = (u8)(cid_len & 0xFF);
+  memcpy(out + pos, cid, cid_len); pos += cid_len;
+  /* Password (no username) */
+  out[pos++] = (u8)((plen >> 8) & 0xFF);
+  out[pos++] = (u8)(plen & 0xFF);
+  memcpy(out + pos, pass, plen); pos += plen;
+  return pos;
+}
+
 /* ════════════════════════════════════════════════════════════════════
  * mp_driver_t callback implementations
  * ════════════════════════════════════════════════════════════════════ */
@@ -394,27 +601,53 @@ static int mqtt_handshake(mp_context_t *ctx) {
   ctx->priv = priv;
 
   /* CONNECT on all 3 fds with distinct client IDs.
-   * V4-2: Version alternation — cycle through protocol version combinations
-   * to exercise both v4→v5 and v5→v4 message conversion in forwarding.
-   *   Phase 0 (even): sub=v5, pub=v4(will), ctrl=v4
-   *   Phase 1 (odd):  sub=v4, pub=v4(will), ctrl=v5_alt
-   * The v5_alt variant uses different properties (small Receive Maximum,
-   * Maximum Packet Size) to exercise different branches in property parsing. */
+   * V5: Expanded version alternation — 6 phases to exercise diverse CONNECT
+   * handling paths in handle_connect.c & property_broker.c:
+   *   Phase 0: sub=v5,           pub=v4(will),       ctrl=v4
+   *   Phase 1: sub=v4,           pub=v4(will),       ctrl=v5_alt
+   *   Phase 2: sub=v5,           pub=v5_will(props), ctrl=v31(MQIsdp)
+   *   Phase 3: sub=v4,           pub=v5_will(props), ctrl=userpass
+   *   Phase 4: sub=v5_zero_cid,  pub=v4(will),       ctrl=v5_userpass
+   *   Phase 5: sub=v5,           pub=v5_will(props), ctrl=v5_alt
+   * Each phase exercises different property/flag combinations to maximize
+   * code path coverage across handle_connect.c, property_broker.c. */
   static u32 version_alt_counter = 0;
-  u8 phase = (u8)(version_alt_counter & 1);
+  u8 phase = (u8)(version_alt_counter % 6);
   version_alt_counter++;
-  u8 sub_is_v5 = (mqtt_field_mutate_enabled && phase == 0);
+  /* Track v5 usage for subscribe variant selection */
+  u8 sub_is_v5 = (mqtt_field_mutate_enabled &&
+                  (phase == 0 || phase == 2 || phase == 5));
+  /* Phase 4 uses zero-cid v5 for sub — still v5 but different path */
+  u8 sub_is_v5_zero_cid = (mqtt_field_mutate_enabled && phase == 4);
+  priv->phase = phase;
 
   static const char *cids[3] = { "afl_sub", "afl_pub", "afl_ctrl" };
   for (int i = 0; i < ctx->fd_count; i++) {
-    if (i == SUB_IDX && sub_is_v5)
-      pkt_len = pack_connect_v5(pkt, sizeof(pkt), cids[i]);
-    else if (i == CTRL_IDX && mqtt_field_mutate_enabled && phase == 1)
-      pkt_len = pack_connect_v5_alt(pkt, sizeof(pkt), cids[i]);
-    else if (i == PUB_IDX)
-      pkt_len = pack_connect_will(pkt, sizeof(pkt), cids[i]); /* V3-3 */
-    else
-      pkt_len = pack_connect(pkt, sizeof(pkt), cids[i]);
+    if (i == SUB_IDX) {
+      if (sub_is_v5_zero_cid)
+        pkt_len = pack_connect_v5_zero_cid(pkt, sizeof(pkt));
+      else if (sub_is_v5)
+        pkt_len = pack_connect_v5(pkt, sizeof(pkt), cids[i]);
+      else
+        pkt_len = pack_connect(pkt, sizeof(pkt), cids[i]);
+    } else if (i == PUB_IDX) {
+      /* Phases 2,3,5: v5 CONNECT with full Will properties */
+      if (mqtt_field_mutate_enabled && (phase == 2 || phase == 3 || phase == 5))
+        pkt_len = pack_connect_v5_will(pkt, sizeof(pkt), cids[i]);
+      else
+        pkt_len = pack_connect_will(pkt, sizeof(pkt), cids[i]); /* V3-3 */
+    } else { /* CTRL_IDX */
+      if (mqtt_field_mutate_enabled && (phase == 1 || phase == 5))
+        pkt_len = pack_connect_v5_alt(pkt, sizeof(pkt), cids[i]);
+      else if (mqtt_field_mutate_enabled && phase == 2)
+        pkt_len = pack_connect_v31(pkt, sizeof(pkt), cids[i]);
+      else if (mqtt_field_mutate_enabled && phase == 3)
+        pkt_len = pack_connect_userpass(pkt, sizeof(pkt), cids[i]);
+      else if (mqtt_field_mutate_enabled && phase == 4)
+        pkt_len = pack_connect_v5_userpass(pkt, sizeof(pkt), cids[i]);
+      else
+        pkt_len = pack_connect(pkt, sizeof(pkt), cids[i]);
+    }
     if (!pkt_len ||
         net_send(ctx->fds[i], ctx->timeout, (char *)pkt, pkt_len) != (int)pkt_len)
       return -1;
@@ -451,7 +684,8 @@ static int mqtt_handshake(mp_context_t *ctx) {
    * complete PUBREC→PUBREL→PUBCOMP handshake in after_send().
    * Also exercises db__message_store() QoS 2 path and inflight management. */
   u8 sub_qos = 2;
-  if (sub_is_v5)
+  u8 use_v5_sub = sub_is_v5 || sub_is_v5_zero_cid;
+  if (use_v5_sub)
     pkt_len = pack_subscribe_v5(pkt, sizeof(pkt), 1, "#", sub_qos);
   else
     pkt_len = pack_subscribe(pkt, sizeof(pkt), 1, "#", sub_qos);
@@ -467,7 +701,7 @@ static int mqtt_handshake(mp_context_t *ctx) {
    * '$SYS/#' — system topic subscription exercises mosquitto's $ prefix
    *   special handling in sub__messages_queue() and sys_tree__update().
    * These trigger code paths that the wildcard '#' alone bypasses. */
-  if (sub_is_v5)
+  if (use_v5_sub)
     pkt_len = pack_subscribe_v5(pkt, sizeof(pkt), 2, "test/+", sub_qos);
   else
     pkt_len = pack_subscribe(pkt, sizeof(pkt), 2, "test/+", sub_qos);
@@ -765,11 +999,26 @@ static void mqtt_cleanup(mp_context_t *ctx) {
       net_send(ctx->fds[PUB_IDX], ctx->timeout, (char *)rpkt, rlen);
   }
 
-  /* Graceful DISCONNECT on all fds */
-  u8 disc[2] = { 0xE0, 0x00 };
-  for (int i = 0; i < ctx->fd_count; i++) {
-    if (ctx->fds[i] >= 0)
-      net_send(ctx->fds[i], ctx->timeout, (char *)disc, 2);
+  /* Graceful DISCONNECT on all fds.
+   * V5: For phases that used v5 CONNECT on ctrl_fd (1,4,5), send a v5
+   * DISCONNECT with Session Expiry Interval property → exercises
+   * property__process_disconnect() in property_broker.c (~15 lines). */
+  {
+    mqtt_mp_priv_t *priv = (mqtt_mp_priv_t *)ctx->priv;
+    u8 v5_disc_phase = (priv && mqtt_field_mutate_enabled &&
+                        (priv->phase == 1 || priv->phase == 4 || priv->phase == 5));
+    for (int i = 0; i < ctx->fd_count; i++) {
+      if (ctx->fds[i] < 0) continue;
+      if (i == CTRL_IDX && v5_disc_phase) {
+        u8 dpkt[16];
+        u32 dlen = pack_disconnect_v5(dpkt, sizeof(dpkt));
+        if (dlen > 0)
+          net_send(ctx->fds[i], ctx->timeout, (char *)dpkt, dlen);
+      } else {
+        u8 disc[2] = { 0xE0, 0x00 };
+        net_send(ctx->fds[i], ctx->timeout, (char *)disc, 2);
+      }
+    }
   }
 
   /* Free private state */

@@ -511,6 +511,11 @@ static u64 mqtt_diff_queue_promotions    = 0;  /* Inputs promoted by diff     */
 static u64 mqtt_deep_state_promotions    = 0;  /* Deep-state energy boosts    */
 static u64 mqtt_state_stall_resets       = 0;  /* Stall-triggered resets      */
 
+/* V6: Granular P6 observability counters */
+static u64 mqtt_p6_deep_state_boosts     = 0;  /* unique_state_count ≥ 5/8    */
+static u64 mqtt_p6_stall_boosts          = 0;  /* Stall-aware energy boosts   */
+static u64 mqtt_p5_energy_boosts         = 0;  /* P5 diff_score-based boosts  */
+
 /* D4: Unique differential report counter and dedup. */
 static u64 unique_diffs = 0;
 #define MQTT_DIFF_DEDUP_SLOTS 512
@@ -3127,7 +3132,7 @@ int send_over_network()
         if (total_execs > 0 && mqtt_diff_last_probe_exec > 0 &&
             (total_execs - mqtt_diff_last_probe_exec) < mqtt_diff_probe_period) {
           do_multi_broker_exec = 0;
-          mqtt_last_diff_signal *= 0.95;  /* decay cached signal */
+          mqtt_last_diff_signal *= 0.98;  /* V6: slower decay keeps signal alive */
         } else {
           mqtt_diff_last_probe_exec = total_execs;
         }
@@ -3211,6 +3216,37 @@ int send_over_network()
             if (mqtt_last_diff_signal < 0.8)
               mqtt_last_diff_signal = 0.8;
             mqtt_diff_fwd_divergences++;
+
+            /* V6-Fix-1: Bridge fwd_hash divergence → field_diff.
+             *
+             * Root cause (Apr-16 analysis): Both brokers are the SAME
+             * implementation, so field-level analysis (type/code/payload)
+             * always returns MQTT_DIV_NONE.  But fwd_hash DOES diverge
+             * due to non-deterministic broker behavior (timing, session
+             * state, QoS retransmission, message ordering).
+             *
+             * Without this bridge, mqtt_diff_score = 0 for ALL queue
+             * entries → P5 energy multiplier never fires → P5/P6
+             * differential feedback is completely dead.
+             *
+             * Fix: When fwd_hash diverges but field-level found nothing,
+             * synthesize a MQTT_DIV_PAYLOAD result (lowest severity).
+             * This yields diff_score = 10 + 30*0.3 = 19 → ×2 energy
+             * in calculate_score(), activating the differential chain.
+             *
+             * This is semantically correct: fwd_hash divergence means
+             * the broker's internal message routing (subs__send,
+             * sub__messages_queue) behaved differently across runs,
+             * exercising non-deterministic code paths worth exploring. */
+            if (mqtt_last_field_diff.severity == MQTT_DIV_NONE ||
+                !mqtt_last_field_diff_valid) {
+              mqtt_last_field_diff.severity = MQTT_DIV_PAYLOAD;
+              mqtt_last_field_diff.strength = 0.3;
+              mqtt_last_field_diff.pattern_hash =
+                  fwd_hashes[0] ^ (ecnt > 1 ? fwd_hashes[1] : 0);
+              mqtt_last_field_diff_valid = 1;
+              mqtt_diff_payload_divergences++;  /* count as payload-level */
+            }
 
             /* D4: Save structured differential report */
             char fwd_detail[256];
@@ -8206,6 +8242,14 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)mqtt_state_stall_resets,
           (unsigned long long)unique_diffs);
 
+  /* V6: Granular energy scheduling observability */
+  fprintf(f, "mqtt_p5_energy_boosts : %llu\n"
+             "mqtt_p6_deep_boosts : %llu\n"
+             "mqtt_p6_stall_boosts : %llu\n",
+          (unsigned long long)mqtt_p5_energy_boosts,
+          (unsigned long long)mqtt_p6_deep_state_boosts,
+          (unsigned long long)mqtt_p6_stall_boosts);
+
   fclose(f);
 }
 
@@ -9282,16 +9326,20 @@ static void show_stats(void)
          "fwd_div:" cLRD "%-4s " cRST
          "promo:" cLGN "%-4s " cRST
          "diffs:" cLRD "%-4s " cRST
-         cYEL "[P6-deep] " cRST
-         "deep_promo:" cLGN "%-4s " cRST
-         "stall_rst:" cCYA "%-4s" cRST "\n",
+         "p5e:" cLGN "%-4s " cRST
+         cYEL "[P6] " cRST
+         "deep:" cLGN "%-4s " cRST
+         "stall:" cCYA "%-4s " cRST
+         "rst:" cCYA "%-4s" cRST "\n",
          DI(mqtt_diff_type_divergences),
          DI(mqtt_diff_code_divergences),
          DI(mqtt_diff_payload_divergences),
          DI(mqtt_diff_fwd_divergences),
          DI(mqtt_diff_queue_promotions),
          DI(unique_diffs),
-         DI(mqtt_deep_state_promotions),
+         DI(mqtt_p5_energy_boosts),
+         DI(mqtt_p6_deep_state_boosts),
+         DI(mqtt_p6_stall_boosts),
          DI(mqtt_state_stall_resets));
   }
 
@@ -9796,11 +9844,14 @@ static u32 calculate_score(struct queue_entry *q)
    * ════════════════════════════════════════════════════════════════════ */
   if (mqtt_diff_feedback_enabled && q->mqtt_diff_score >= 70) {
     perf_score *= 4;
+    mqtt_p5_energy_boosts++;
     mqtt_deep_state_promotions++;  /* reuse counter for observability */
   } else if (mqtt_diff_feedback_enabled && q->mqtt_diff_score >= 40) {
     perf_score *= 3;
+    mqtt_p5_energy_boosts++;
   } else if (mqtt_diff_feedback_enabled && q->mqtt_diff_score >= 10) {
     perf_score *= 2;
+    mqtt_p5_energy_boosts++;
   }
 
   /* D1: Coverage-stagnation boost — ROLLED BACK (A7).
@@ -9833,10 +9884,13 @@ static u32 calculate_score(struct queue_entry *q)
       mqtt_diff_feedback_enabled && state_aware_mode) {
     /* Deep-state bonus: unique_state_count reflects how many distinct
      * protocol states this input traverses. Higher = deeper. */
-    if (q->unique_state_count >= 8)
+    if (q->unique_state_count >= 8) {
       perf_score *= 3;
-    else if (q->unique_state_count >= 5)
+      mqtt_p6_deep_state_boosts++;
+    } else if (q->unique_state_count >= 5) {
       perf_score *= 2;
+      mqtt_p6_deep_state_boosts++;
+    }
 
     /* Stall-aware boost: if the generating state is stalled,
      * boost this input so the fuzzer keeps trying to break through. */
@@ -9845,6 +9899,7 @@ static u32 calculate_score(struct queue_entry *q)
       if (gen_idx < mqtt_state_stall_cap &&
           mqtt_state_stall_counter[gen_idx] >= MQTT_STALL_THRESHOLD / 2) {
         perf_score *= 2;
+        mqtt_p6_stall_boosts++;
       }
     }
   }
