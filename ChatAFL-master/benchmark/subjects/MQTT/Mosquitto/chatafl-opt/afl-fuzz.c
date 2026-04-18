@@ -6429,7 +6429,14 @@ static u8 calibrate_case(char **argv, struct queue_entry *q, u8 *use_mem,
           {
 
             var_bytes[i] = 1;
-            stage_max = CAL_CYCLES_LONG;
+            /* Fix-16: For MQTT (network protocol), do NOT escalate to
+             * CAL_CYCLES_LONG.  Network non-determinism (TCP timing,
+             * async PUBLISH delivery) makes variable bytes inevitable;
+             * running 40 calibration cycles per seed wastes ~10x the
+             * time and inflates var_byte_count, tanking stability from
+             * ~60% to ~14%.  Cap at CAL_CYCLES (8) for network targets. */
+            if (!(protocol_name && strcasecmp(protocol_name, "MQTT") == 0))
+              stage_max = CAL_CYCLES_LONG;
           }
         }
 
@@ -9041,10 +9048,12 @@ static void show_init_stats(void)
     havoc_div = 2; /* 50-100 execs/sec */
 
   /* D3: For MQTT network fuzzers, high avg_us is inherent (network latency),
-   * not because the target is slow. Cap havoc_div at 5 to preserve more
-   * havoc iterations and improve throughput. */
-  if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0 && havoc_div > 5)
-    havoc_div = 5;
+   * not because the target is slow.  Cap havoc_div at 2 (was 5) to preserve
+   * mutation depth — each execution already costs ~95 ms in network I/O,
+   * so reducing havoc iterations by 5x on top of that severely limits
+   * exploration.  With cap=2 we get ~128 havoc iters/seed (baseline=256). */
+  if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0 && havoc_div > 2)
+    havoc_div = 2;
 
   if (!resuming_fuzz)
   {
@@ -11903,8 +11912,16 @@ havoc_stage:;
 
     stage_name = "havoc";
     stage_short = "havoc";
-    stage_max = (doing_det ? HAVOC_CYCLES_INIT : HAVOC_CYCLES) *
-                perf_score / havoc_div / 100;
+    /* Fix-17: For MQTT, double the havoc budget.  Each execution incurs
+     * ~95 ms of network overhead regardless of mutation count, so more
+     * mutations per seed amortize the fixed cost and improve coverage
+     * throughput (execs_per_sec is network-bound, not CPU-bound). */
+    {
+      u32 base_cycles = doing_det ? HAVOC_CYCLES_INIT : HAVOC_CYCLES;
+      if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0)
+        base_cycles *= 2;
+      stage_max = base_cycles * perf_score / havoc_div / 100;
+    }
   }
   else
   {
@@ -11916,7 +11933,12 @@ havoc_stage:;
     sprintf(tmp, "splice %u", splice_cycle);
     stage_name = tmp;
     stage_short = "splice";
-    stage_max = SPLICE_HAVOC * perf_score / havoc_div / 100;
+    {
+      u32 splice_base = SPLICE_HAVOC;
+      if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0)
+        splice_base *= 2;
+      stage_max = splice_base * perf_score / havoc_div / 100;
+    }
   }
 
   if (stage_max < HAVOC_MIN)

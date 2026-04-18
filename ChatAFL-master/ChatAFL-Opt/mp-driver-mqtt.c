@@ -30,6 +30,8 @@
 extern u32 local_port;
 extern u8  mqtt_cross_session_enabled;  /* P2b: set in afl-fuzz.c init */
 extern u8  mqtt_field_mutate_enabled;   /* P0+P2: gates v5 handshake */
+extern u32 mqtt_fwd_drain_ms;           /* P8b: forwarding drain time (ms), self-adaptive */
+extern u8  mqtt_fwd_drain_fixed;        /* P8b: 1 if user pinned via env var */
 
 /* ── Forward: net_send / net_recv from aflnet.c ── */
 extern int  net_send(int sockfd, struct timeval timeout,
@@ -718,6 +720,35 @@ static int mqtt_handshake(mp_context_t *ctx) {
              ctx->response_buf, (unsigned int *)ctx->response_buf_size);
   }
 
+  /* P8: Shared subscription patterns — exercises mosquitto v2.x shared
+   * subscription code paths: handle__subscribe() shared group parsing,
+   * sub__add() '$share/group/filter' branch, sub__search() shared
+   * delivery round-robin logic, and sub__messages_queue() shared group
+   * distribution.  These paths are a major addition in v2.1.x and are
+   * the root cause of the coverage gap vs MBFuzzer on v2.1.2.
+   * Use v5 SUBSCRIBE for phases that support it (subscription ID prop). */
+  if (use_v5_sub) {
+    pkt_len = pack_subscribe_v5(pkt, sizeof(pkt), 4, "$share/grp1/test/+", sub_qos);
+  } else {
+    pkt_len = pack_subscribe(pkt, sizeof(pkt), 4, "$share/grp1/test/+", sub_qos);
+  }
+  if (pkt_len > 0) {
+    net_send(ctx->fds[SUB_IDX], ctx->timeout, (char *)pkt, pkt_len);
+    net_recv(ctx->fds[SUB_IDX], ctx->timeout, ctx->poll_wait_msecs,
+             ctx->response_buf, (unsigned int *)ctx->response_buf_size);
+  }
+
+  if (use_v5_sub) {
+    pkt_len = pack_subscribe_v5(pkt, sizeof(pkt), 5, "$share/grp2/sensor/#", 1);
+  } else {
+    pkt_len = pack_subscribe(pkt, sizeof(pkt), 5, "$share/grp2/sensor/#", 1);
+  }
+  if (pkt_len > 0) {
+    net_send(ctx->fds[SUB_IDX], ctx->timeout, (char *)pkt, pkt_len);
+    net_recv(ctx->fds[SUB_IDX], ctx->timeout, ctx->poll_wait_msecs,
+             ctx->response_buf, (unsigned int *)ctx->response_buf_size);
+  }
+
   return 0;
 }
 
@@ -758,17 +789,15 @@ static int mqtt_after_send(mp_context_t *ctx, int role) {
      * interfering with the main response collection path. */
     char         *fwd_buf  = NULL;
     unsigned int  fwd_len  = 0;
-    /* V3-1: Extended forwarding drain — 3ms initial poll for async
-     * forwarded PUBLISHes (was 1ms via ctx->poll_wait_msecs).  The
-     * broker needs time to receive the PUBLISH, walk the subscription
-     * tree (subs__send), queue the message, and write it to sub_fd.
-     * MBFuzzer uses 100ms; 3ms balances capture rate vs throughput. */
-    net_recv(ctx->fds[SUB_IDX], ctx->timeout, 3,
+    /* V3-1-adaptive: Self-tuning forwarding drain.
+     * Uses mqtt_fwd_drain_ms (starts at 3, auto-tuned to 3-6).
+     * Retry = drain_ms - 1 (min 1ms). */
+    u32 drain_ms = mqtt_fwd_drain_ms > 0 ? mqtt_fwd_drain_ms : 3;
+    u32 retry_ms = drain_ms > 1 ? drain_ms - 1 : 1;
+    net_recv(ctx->fds[SUB_IDX], ctx->timeout, (int)drain_ms,
              &fwd_buf, &fwd_len);
-    /* If data arrived, do a quick 1ms retry for straggler packets
-     * (e.g. multiple matching subscriptions, fragmented TCP) */
     if (fwd_len > 0)
-      net_recv(ctx->fds[SUB_IDX], ctx->timeout, 1,
+      net_recv(ctx->fds[SUB_IDX], ctx->timeout, (int)retry_ms,
                &fwd_buf, &fwd_len);
 
     mqtt_mp_priv_t *priv = (mqtt_mp_priv_t *)ctx->priv;
@@ -880,6 +909,29 @@ static int mqtt_after_send(mp_context_t *ctx, int role) {
       }
     }
 
+    /* P8b self-adaptive drain tuning (only if not fixed by env var).
+     * Strategy: if the fwd buffer saturated (fwd_count == max), the
+     * broker likely has complex routing (shared subs) and we're
+     * missing messages → increase drain by 1ms (cap 6ms).
+     * If we've had 200+ consecutive low-fwd calls (fwd_count ≤ 1),
+     * the broker's routing is simple → decrease drain by 1ms (floor 2ms).
+     * This converges to the right value within ~200 executions. */
+    if (priv && !mqtt_fwd_drain_fixed) {
+      static u32 quiet_streak = 0;
+      if (priv->fwd_count >= MQTT_FWD_DIFF_MAX) {
+        if (mqtt_fwd_drain_ms < 6) mqtt_fwd_drain_ms++;
+        quiet_streak = 0;
+      } else if (priv->fwd_count <= 1) {
+        quiet_streak++;
+        if (quiet_streak >= 200 && mqtt_fwd_drain_ms > 2) {
+          mqtt_fwd_drain_ms--;
+          quiet_streak = 0;
+        }
+      } else {
+        quiet_streak = 0;
+      }
+    }
+
     if (fwd_buf) ck_free(fwd_buf);
   }
   return 0;
@@ -890,10 +942,12 @@ static void mqtt_drain_all(mp_context_t *ctx) {
            ctx->response_buf, (unsigned int *)ctx->response_buf_size);
   net_recv(ctx->fds[PUB_IDX],  ctx->timeout, ctx->poll_wait_msecs,
            ctx->response_buf, (unsigned int *)ctx->response_buf_size);
-  /* V3-1b: 2ms drain on sub_fd to catch late forwarded PUBLISHes
-   * that arrived after the per-message after_send() polls. */
-  net_recv(ctx->fds[SUB_IDX],  ctx->timeout, 2,
-           ctx->response_buf, (unsigned int *)ctx->response_buf_size);
+  /* V3-1b-rev: Configurable drain on sub_fd (= mqtt_fwd_drain_ms - 1,
+   * min 2ms) to catch late forwarded PUBLISHes. */
+  { u32 dm = mqtt_fwd_drain_ms > 2 ? mqtt_fwd_drain_ms - 1 : 2;
+    net_recv(ctx->fds[SUB_IDX],  ctx->timeout, (int)dm,
+             ctx->response_buf, (unsigned int *)ctx->response_buf_size);
+  }
 }
 
 static void mqtt_cleanup(mp_context_t *ctx) {

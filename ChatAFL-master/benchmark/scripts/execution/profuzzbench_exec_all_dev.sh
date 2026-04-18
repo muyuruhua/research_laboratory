@@ -520,8 +520,12 @@ done
 # 等待所有后台任务完成（移到这里实现并行执行）
 wait
 
+RECOVERY_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/recover_result_archives.sh"
 for RESULTS_DIR in ${RESULTS_ROOT}/results-*; do
     [[ -d "$RESULTS_DIR" ]] || continue
+    if [[ -f "$RECOVERY_HELPER" ]]; then
+        bash "$RECOVERY_HELPER" "$RESULTS_DIR" >/dev/null 2>&1 || true
+    fi
     fix_result_permissions "$RESULTS_DIR"
 done
 

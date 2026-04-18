@@ -78,6 +78,11 @@ static const char *mg_topics[] = {
   "a/b/c/d/e", "#", "+/data", "home/+/temperature",
   "$share/grp/test/topic", "sensor/temp", "t", "",
   "very/deep/topic/level1/level2/level3/level4",
+  /* P8: Additional shared subscription patterns to exercise v2.1.x
+   * shared subscription routing (sub__add shared, sub__search shared,
+   * round-robin distribution, No Local interaction with shared subs). */
+  "$share/grp1/test/+", "$share/grp2/sensor/#",
+  "$share/g3/home/+/temperature", "$share/grp1/#",
 };
 #define MG_NTOPICS ((u32)(sizeof(mg_topics) / sizeof(mg_topics[0])))
 
@@ -764,6 +769,11 @@ static const v5_seed_plan_t v5_seed_plans[] = {
   { "v5_long_sess", 5, {MQTG_SUBSCRIBE, 0}, 8 },
   /* v4 baseline with same structure (for differential comparison) */
   { "v4_baseline",  4, {MQTG_SUBSCRIBE, MQTG_PUBLISH, MQTG_PUBLISH, 0}, 1 },
+  /* P8: Shared subscription sequences — exercise v2.1.x shared sub
+   * distribution, round-robin delivery, No Local + shared interaction.
+   * Multiple SUBSCRIBEs create overlapping shared groups; PUBLISHes
+   * to matching topics trigger the shared subscription code paths. */
+  { "v5_shared_sub", 5, {MQTG_SUBSCRIBE, MQTG_SUBSCRIBE, MQTG_SUBSCRIBE, MQTG_PUBLISH, MQTG_PUBLISH, MQTG_UNSUBSCRIBE, 0}, 2 },
 };
 
 #define N_V5_PLANS ARRAY_CNT(v5_seed_plans)

@@ -1199,8 +1199,33 @@ char* construct_hypothesis_generation_prompt(hypothesis_context_t *ctx) {
     
     // Protocol context
     char *escaped_protocol = json_escape_string(ctx->protocol_name, 256);
-    written = snprintf(prompt + offset, MAX_HYPOTHESIS_PROMPT - offset,
-        "Protocol: %s\\n\\n", escaped_protocol);
+
+    /* P1-rev: For MQTT, add specific instructions explaining the
+     * binary-to-text bridge format so the LLM generates constraints
+     * that match structured text like "CONNECT ClientId=x CleanSession=1"
+     * rather than trying to describe raw binary wire format. */
+    if (ctx->protocol_name && strcasecmp(ctx->protocol_name, "MQTT") == 0) {
+      written = snprintf(prompt + offset, MAX_HYPOTHESIS_PROMPT - offset,
+          "Protocol: %s (binary, presented as structured text)\\n\\n"
+          "IMPORTANT: MQTT is a binary protocol, but all seed samples and "
+          "validation targets have been converted to structured text format "
+          "by our binary-to-text decoder. Each MQTT packet appears as a "
+          "single line like:\\n"
+          "  CONNECT ClientId=fuzz_c1 CleanSession=1 KeepAlive=60\\n"
+          "  PUBLISH Topic=test/topic QoS=1 Retain=0 PktId=42 PayloadLen=15\\n"
+          "  SUBSCRIBE PktId=1 Filter=test/+ QoS=2\\n"
+          "  CONNACK SessionPresent=0 ReturnCode=0\\n\\n"
+          "Generate constraints that match THIS TEXT FORMAT, not raw binary. "
+          "For example:\\n"
+          "- REGEX: \\\"^CONNECT .*ClientId=.+\\\" to validate CONNECT structure\\n"
+          "- ENUM: [\\\"0\\\", \\\"1\\\"] for CleanSession values\\n"
+          "- NUMERIC: min=0 max=65535 for KeepAlive range\\n"
+          "- REGEX: \\\"^PUBLISH .*Topic=.+\\\" for PUBLISH structure\\n\\n",
+          escaped_protocol);
+    } else {
+      written = snprintf(prompt + offset, MAX_HYPOTHESIS_PROMPT - offset,
+          "Protocol: %s\\n\\n", escaped_protocol);
+    }
     ck_free(escaped_protocol);
     
     if (written < 0 || written >= MAX_HYPOTHESIS_PROMPT - offset) {

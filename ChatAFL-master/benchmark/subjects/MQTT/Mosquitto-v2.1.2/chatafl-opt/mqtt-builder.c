@@ -1291,6 +1291,11 @@ static void text_appendf(char **buf, size_t *len, size_t *cap, const char *fmt, 
 }
 
 char *mqtt_binary_to_text(const unsigned char *buf, size_t buf_len) {
+    if (!buf || buf_len == 0) {
+        char *empty = malloc(1);
+        if (empty) empty[0] = '\0';
+        return empty;
+    }
     size_t cap = 1024, out_len = 0;
     char *out = malloc(cap);
     if (!out) return NULL;

@@ -107,7 +107,7 @@ ENV AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
 
 RUN mkdir $WORKDIR
 
-ENV ASAN_OPTIONS='abort_on_error=1:symbolize=0:detect_leaks=0:detect_stack_use_after_return=1:detect_container_overflow=1:poison_array_cookie=1:malloc_fill_byte=0:max_malloc_fill_size=16777216:check_initialization_order=1:strict_init_order=1:alloc_dealloc_mismatch=1:strict_string_checks=1'
+ENV ASAN_OPTIONS='abort_on_error=1:symbolize=0:detect_leaks=0:detect_stack_use_after_return=1:detect_container_overflow=1:poison_array_cookie=1:malloc_fill_byte=0:max_malloc_fill_size=16777216:check_initialization_order=1:strict_init_order=1:alloc_dealloc_mismatch=1:strict_string_checks=1:allocator_may_return_null=1'
 
 # ── Download & compile Mosquitto v2.1.2 for fuzzing ──
 # Key cmake option changes vs v2.0.18:

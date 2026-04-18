@@ -154,7 +154,7 @@ void mqtt_bandit_init(mqtt_bandit_t *b) {
   b->attempts[2] = 1; b->rewards[2] = 0.5;  /* field:   optimistic */
   b->attempts[3] = 1; b->rewards[3] = 0.05; /* skip:    pessimistic */
   b->attempts[4] = 1; b->rewards[4] = 0.4;  /* corpus-splice: moderate */
-  b->attempts[5] = 1; b->rewards[5] = 0.6;  /* sub-pub pair: optimistic+ */
+  b->attempts[5] = 1; b->rewards[5] = 0.75; /* sub-pub pair: boosted for shared-sub forwarding paths */
   b->total = 6;
 }
 

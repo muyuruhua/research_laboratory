@@ -615,6 +615,8 @@ u32 chat_times = 0;
  * ============================================ */
 u8 mqtt_field_mutate_enabled  = 0;  /* P2a: field-aware MQTT mutation in havoc (extern in mp-driver-mqtt.c) */
 u8 mqtt_cross_session_enabled = 0;         /* P2b: cross-session state fuzzing (extern in mp-driver-mqtt.c) */
+u32 mqtt_fwd_drain_ms = 3;                 /* P8b: forwarding drain time in ms (self-adaptive, starts at 3) */
+u8 mqtt_fwd_drain_fixed = 0;               /* P8b: 1 if user overrode via env var (disables auto-tuning) */
 
 /* ============================================
  * P3: Q-Learning + UCB1 Bandit Schedulers (MQTT only)
@@ -2220,8 +2222,11 @@ u8 is_state_sequence_interesting(unsigned int *state_sequence, unsigned int stat
    * legitimate repeated patterns like [SUBACK, PUB_topic_A, PUB_topic_A,
    * PUB_topic_B, ...].  Raising the threshold to 5 allows deeper
    * exploration of subscription delivery paths without unbounded growth.
-   * Text protocols keep the original threshold of 3. */
-  u32 loop_threshold = 3;
+   * Text protocols keep the original threshold (i >= 2). */
+  /* Original text-protocol threshold: i >= 2 (skip runs of 3+ identical states).
+   * MQTT raises to i >= 5 to preserve legitimate repeated patterns like
+   * [SUBACK, PUB_topic_A, PUB_topic_A, PUB_topic_B, ...]. */
+  u32 loop_threshold = 2;
   if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0)
     loop_threshold = 5;
 
@@ -2443,6 +2448,19 @@ u32 update_scores_and_select_next_state(u8 mode)
             frontier_bonus *= 0.7;
           }
           /* error_hint == 2: confirmed productive → no penalty */
+        }
+
+        /* MQTT-only: cap frontier_bonus on sparse state graphs.
+         * When edge/node density is low (< 8.0 edges/node), the ×4.0
+         * bonus over-concentrates budget on dead-end frontier states
+         * that are hard to break through.  Cap at ×2.5 to spread budget
+         * more evenly across partially-explored states. */
+        if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0) {
+          u32 n_nodes = agnnodes(ipsm);
+          u32 n_edges = agnedges(ipsm);
+          if (n_nodes > 0 && (double)n_edges / n_nodes < 8.0) {
+            if (frontier_bonus > 2.5) frontier_bonus = 2.5;
+          }
         }
 
         /* MQTT-only differential bonus:
@@ -3621,15 +3639,30 @@ HANDLE_RESPONSES:
     }
 
     /* H3-fix: Stabilization loop with SHM sync (single-fd fallback path).
-     * Reduced from 50 × 200 µs = 10 ms to 15 × 200 µs = 3 ms.
-     * On localhost, SHM updates propagate within 1–2 iterations;
-     * 3 ms is ample headroom while saving ~7 ms/exec. */
+     *
+     * MQTT (binary, non-forking): 15 × 200 µs = 3 ms is sufficient;
+     * SHM updates propagate within 1–2 iterations on localhost.
+     *
+     * Text protocols (FTP/SMTP/RTSP/SIP/DAAP/HTTP): use the original
+     * Fix-14 tight-spin cap of 5000 iterations (~250 ms).  Forking
+     * daemons (e.g. pure-ftpd) have a long tail of ASAN-teardown
+     * coverage bits; 500 iterations caused crash de-duplication
+     * failures, hence the 5000 cap.  See commit 36c06ad1 Fix-14. */
     memset(session_virgin_bits, 255, MAP_SIZE);
-    {
+    if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0) {
+      /* MQTT fast path: 15 × 200 µs with memory barrier */
       int stab_iter = 0;
       while (stab_iter++ < 15) {
         usleep(200);
         __sync_synchronize();
+        if (has_new_bits(session_virgin_bits) != 2)
+          break;
+      }
+    } else {
+      /* Text-protocol path: tight-spin, 5000-iteration cap (~250 ms).
+       * Non-forking servers exit in 1–2 iterations anyway. */
+      int stab_iter = 0;
+      while (stab_iter++ < 5000) {
         if (has_new_bits(session_virgin_bits) != 2)
           break;
       }
@@ -3676,12 +3709,14 @@ MP_MULTI_DONE:
    * teardown, not in a crash-reportable state.  For non-forking servers
    * the process is already gone by the first check, so this is a no-op. */
   {
-    /* H2-fix: MQTT — mosquitto exits in <5 ms after SIGTERM; 30 ms
-     * (150 × 200 µs) is 6× that, ample for edge cases.
-     * Previous 100 ms wasted ~70 ms/exec.  Text protocols keep 200 ms. */
+    /* H2-fix: MQTT — mosquitto exits in <5 ms after SIGTERM, but
+     * ASAN abort handlers with detect_stack_use_after_return=1 can
+     * need up to 50–80 ms on deep stacks.  100 ms (500 × 200 µs)
+     * gives ASAN enough room while still being 2× faster than text
+     * protocols.  Text protocols keep 200 ms. */
     int kill_limit = (protocol_name
                       && strcasecmp(protocol_name, "MQTT") == 0)
-                     ? 150     /* 150 × 200 µs = 30 ms */
+                     ? 500     /* 500 × 200 µs = 100 ms */
                      : 1000;   /* 1000 × 200 µs = 200 ms */
     int kill_wait = 0;
     while (1)
@@ -6773,7 +6808,14 @@ static u8 calibrate_case(char **argv, struct queue_entry *q, u8 *use_mem,
           {
 
             var_bytes[i] = 1;
-            stage_max = CAL_CYCLES_LONG;
+            /* Fix-16: For MQTT (network protocol), do NOT escalate to
+             * CAL_CYCLES_LONG.  Network non-determinism (TCP timing,
+             * async PUBLISH delivery) makes variable bytes inevitable;
+             * running 40 calibration cycles per seed wastes ~10x the
+             * time and inflates var_byte_count, tanking stability from
+             * ~60% to ~14%.  Cap at CAL_CYCLES (8) for network targets. */
+            if (!(protocol_name && strcasecmp(protocol_name, "MQTT") == 0))
+              stage_max = CAL_CYCLES_LONG;
           }
         }
 
@@ -6907,6 +6949,27 @@ static void init_grammar_hypothesis_system(void)
       if (read(fd, sample, q->len) == (ssize_t)q->len)
       {
         sample[q->len] = '\0';
+
+        /* P1-rev: For MQTT, convert binary seed to structured text
+         * before storing as PCAP sample.  This ensures the LLM
+         * hypothesis prompt sees readable format like:
+         *   "CONNECT ClientId=fuzz_c1 CleanSession=1 KeepAlive=60"
+         * instead of raw \x10\x0c\x00\x04MQTT gibberish. */
+        if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0) {
+          char *text = mqtt_binary_to_text(sample, q->len);
+          if (text && *text) {
+            ck_free(sample);
+            /* Re-wrap into ck_alloc so cleanup can use ck_free uniformly */
+            size_t tlen = strlen(text);
+            sample = ck_alloc(tlen + 1);
+            memcpy(sample, text, tlen + 1);
+            free(text);
+          } else {
+            free(text);
+            /* Keep raw sample as fallback */
+          }
+        }
+
         pcap_samples = ck_realloc(pcap_samples, (pcap_count + 1) * sizeof(char *));
         pcap_samples[pcap_count++] = (char *)sample;
         fprintf(stderr, "[DEBUG] Added PCAP sample %zu (len=%u)\n", pcap_count, q->len);
@@ -7186,6 +7249,23 @@ static void validate_hypothesis_sampled(
       msg_type = alloc_type;
     }
 
+    /* P1-rev: For MQTT, convert binary region to structured text
+     * before constraint validation.  This bridges the gap between
+     * LLM-generated text constraints and binary wire format.
+     * mqtt_binary_to_text() produces e.g.:
+     *   "CONNECT ClientId=fuzz_c1 CleanSession=1 KeepAlive=60\n"
+     * which text regex/enum/numeric constraints can match. */
+    const unsigned char *val_buf = buf + rstart;
+    u32 val_len = rlen;
+    char *mqtt_text_buf = NULL;
+    if (binary && strcasecmp(protocol_name, "MQTT") == 0) {
+      mqtt_text_buf = mqtt_binary_to_text(buf + rstart, rlen);
+      if (mqtt_text_buf && *mqtt_text_buf) {
+        val_buf = (const unsigned char *)mqtt_text_buf;
+        val_len = (u32)strlen(mqtt_text_buf);
+      }
+    }
+
     /* Validate against matching hypothesis(es) */
     for (size_t i = 0; i < hypothesis_ctx->hypothesis_count; i++) {
       grammar_hypothesis_t *hyp = hypothesis_ctx->hypotheses[i];
@@ -7195,13 +7275,13 @@ static void validate_hypothesis_sampled(
         continue;
 
       int valid = validate_message_against_hypothesis(hyp,
-                                                      buf + rstart, rlen);
+                                                      val_buf, val_len);
       /* Fix-20b: Collect counterexample with specific constraint violation
        * details instead of generic "Sampled validation failed".
        * Every 10th failure to avoid flooding. */
       if (!valid && hyp->parse_failure % 10 == 0) {
-        char *detail = collect_violation_details(hyp, buf + rstart, rlen);
-        add_counterexample(hyp, buf + rstart, rlen,
+        char *detail = collect_violation_details(hyp, val_buf, val_len);
+        add_counterexample(hyp, val_buf, val_len,
                            detail ? detail : "Validation failed (no constraint detail)");
         if (detail) ck_free(detail);
       }
@@ -7209,6 +7289,7 @@ static void validate_hypothesis_sampled(
       if (msg_type) break;  /* Matched type → next region */
     }
 
+    if (mqtt_text_buf) free(mqtt_text_buf);
     if (alloc_type) ck_free(alloc_type);
   }
 }
@@ -9401,10 +9482,12 @@ static void show_init_stats(void)
     havoc_div = 2; /* 50-100 execs/sec */
 
   /* D3: For MQTT network fuzzers, high avg_us is inherent (network latency),
-   * not because the target is slow. Cap havoc_div at 5 to preserve more
-   * havoc iterations and improve throughput. */
-  if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0 && havoc_div > 5)
-    havoc_div = 5;
+   * not because the target is slow.  Cap havoc_div at 2 (was 5) to preserve
+   * mutation depth — each execution already costs ~95 ms in network I/O,
+   * so reducing havoc iterations by 5x on top of that severely limits
+   * exploration.  With cap=2 we get ~128 havoc iters/seed (baseline=256). */
+  if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0 && havoc_div > 2)
+    havoc_div = 2;
 
   if (!resuming_fuzz)
   {
@@ -10622,7 +10705,12 @@ AFLNET_REGIONS_SELECTION:;
         // reduce wasteful LLM calls (hypothesis has <10% parse success).
         u32 floor_low  = 150, floor_mid = 200, floor_high = 300;
         if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0) {
-          floor_low = 500; floor_mid = 600; floor_high = 800;
+          /* P1-rev: Lowered from 500/600/800.  The old thresholds delayed
+           * LLM intervention too long on larger targets (e.g. mosquitto
+           * v2.1.2, branch_total +46% vs v2.0.18), causing the fuzzer to
+           * plateau without semantic guidance.  300/400/500 still provides
+           * 2× spacing vs text protocols while allowing timely LLM calls. */
+          floor_low = 300; floor_mid = 400; floor_high = 500;
         }
         if (edges_growth_rate > 5.0) {
           adaptive_plateau_threshold = floor_high;
@@ -12406,8 +12494,16 @@ havoc_stage:;
 
     stage_name = "havoc";
     stage_short = "havoc";
-    stage_max = (doing_det ? HAVOC_CYCLES_INIT : HAVOC_CYCLES) *
-                perf_score / havoc_div / 100;
+    /* Fix-17: For MQTT, double the havoc budget.  Each execution incurs
+     * ~95 ms of network overhead regardless of mutation count, so more
+     * mutations per seed amortize the fixed cost and improve coverage
+     * throughput (execs_per_sec is network-bound, not CPU-bound). */
+    {
+      u32 base_cycles = doing_det ? HAVOC_CYCLES_INIT : HAVOC_CYCLES;
+      if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0)
+        base_cycles *= 2;
+      stage_max = base_cycles * perf_score / havoc_div / 100;
+    }
   }
   else
   {
@@ -12419,7 +12515,12 @@ havoc_stage:;
     sprintf(tmp, "splice %u", splice_cycle);
     stage_name = tmp;
     stage_short = "splice";
-    stage_max = SPLICE_HAVOC * perf_score / havoc_div / 100;
+    {
+      u32 splice_base = SPLICE_HAVOC;
+      if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0)
+        splice_base *= 2;
+      stage_max = splice_base * perf_score / havoc_div / 100;
+    }
   }
 
   if (stage_max < HAVOC_MIN)
@@ -15440,19 +15541,24 @@ int main(int argc, char **argv)
     }
 
     /* ============================================
-     * P1: MQTT-specific — suppress Hypothesis (S4).
+     * P1-rev: MQTT hypothesis via binary-to-text bridge.
      *
-     * Binary protocols like MQTT have <10% hypothesis parse success.
-     * The LLM-generated textual grammars cannot describe variable-
-     * length binary fields, so hypothesis validation is wasted work.
+     * Previously disabled because LLM-generated text constraints
+     * couldn't match raw binary.  Now we bridge through
+     * mqtt_binary_to_text() — both in PCAP sample prep (so the LLM
+     * sees structured text like "CONNECT ClientId=x CleanSession=1")
+     * and in validate_hypothesis_sampled() (so constraint checking
+     * runs against the same structured text format).
      *
-     * Default: OFF for MQTT.
-     * Override: CHATAFL_MQTT_FORCE_HYPOTHESIS=1 to re-enable.
+     * Override: CHATAFL_MQTT_NO_HYPOTHESIS=1 to disable.
      * ============================================ */
-    if (!getenv("CHATAFL_MQTT_FORCE_HYPOTHESIS")) {
+    if (getenv("CHATAFL_MQTT_NO_HYPOTHESIS")) {
       hypothesis_mode = 0;
-      OKF("MQTT mode: Hypothesis (S4) auto-DISABLED "
-          "(set CHATAFL_MQTT_FORCE_HYPOTHESIS=1 to override)");
+      OKF("MQTT mode: Hypothesis (S4) DISABLED by env "
+          "(unset CHATAFL_MQTT_NO_HYPOTHESIS to re-enable)");
+    } else {
+      OKF("MQTT mode: Hypothesis (S4) ENABLED via binary-to-text bridge "
+          "(set CHATAFL_MQTT_NO_HYPOTHESIS=1 to disable)");
     }
 
     /* P2a: Enable field-aware MQTT mutation in havoc.
@@ -15471,6 +15577,26 @@ int main(int argc, char **argv)
       mqtt_cross_session_enabled = 1;
       OKF("MQTT mode: Cross-session state fuzzing ENABLED "
           "(set CHATAFL_MQTT_NO_CROSS_SESSION=1 to disable)");
+    }
+
+    /* P8b: Self-adaptive forwarding drain time.
+     * Starts at 3ms (safe for all targets).  At runtime, after_send()
+     * auto-increases to 5ms when the forwarding buffer saturates
+     * (fwd_count == MQTT_FWD_DIFF_MAX), indicating the broker has
+     * complex shared-subscription routing (e.g. mosquitto v2.1.x).
+     * Auto-decreases back to 3ms after 200 quiet executions.
+     * Manual override: CHATAFL_MQTT_FWD_DRAIN_MS=N (disables auto-tuning). */
+    {
+      char *drain_env = getenv("CHATAFL_MQTT_FWD_DRAIN_MS");
+      if (drain_env) {
+        u32 v = (u32)atoi(drain_env);
+        if (v >= 1 && v <= 50) { mqtt_fwd_drain_ms = v; mqtt_fwd_drain_fixed = 1; }
+        OKF("MQTT mode: Forwarding drain = %u ms (FIXED by env)",
+            mqtt_fwd_drain_ms);
+      } else {
+        OKF("MQTT mode: Forwarding drain = %u ms (self-adaptive, "
+            "set CHATAFL_MQTT_FWD_DRAIN_MS=N to pin)", mqtt_fwd_drain_ms);
+      }
     }
 
     /* P3: Initialize Q-Learning + UCB1 bandit schedulers.
@@ -15547,8 +15673,9 @@ int main(int argc, char **argv)
    *
    * For MQTT, the default floor (150-300) triggers LLM calls every
    * ~20-40 sec.  Since MQTT hypotheses have <10% parse success, most
-   * LLM calls are wasted.  Raise floor to 500 so LLM triggers only
-   * every ~60-80s, giving the fuzzer more uninterrupted mutation time.
+   * LLM calls are wasted.  Raise floor to 300 so LLM triggers only
+   * every ~40-50s — still 2× spaced vs text protocols, but responsive
+   * enough on larger targets (v2.1.2 has 46% more branches than v2.0.18).
    *
    * This runs AFTER the ablation override so it doesn't clobber
    * ablation experiments (ablation_no_adaptive keeps a fixed threshold).
@@ -15563,8 +15690,8 @@ int main(int argc, char **argv)
       OKF("MQTT mode: Plateau threshold=%u (from CHATAFL_MQTT_LLM_THRESHOLD)",
           adaptive_plateau_threshold);
     } else {
-      adaptive_plateau_threshold = 500;
-      OKF("MQTT mode: Plateau threshold raised to 500 "
+      adaptive_plateau_threshold = 300;
+      OKF("MQTT mode: Plateau threshold raised to 300 "
           "(set CHATAFL_MQTT_LLM_THRESHOLD=N to override)");
     }
   }
@@ -15621,12 +15748,20 @@ int main(int argc, char **argv)
           node_stagnation_rounds++;
         }
 
-        /* If nodes haven't grown for 80+ rounds, occasionally use
+        /* If nodes haven't grown for N rounds, occasionally use
          * RANDOM_SELECTION to explore underrepresented states.
-         * 30% chance ensures we don't abandon FAVOR entirely. */
+         * MQTT uses tighter parameters (50 rounds / 40% chance) because
+         * its sparser state graph (fewer edges per node on larger
+         * targets) stalls earlier and needs faster diversification.
+         * Text protocols keep 80/30% to preserve existing behavior. */
+        /* P4-fix: Stagnation-based random selection is MQTT-only.
+         * Text protocols keep the original state_selection_algo
+         * untouched to avoid any behavioral change. */
         u8 effective_algo = state_selection_algo;
-        if (node_stagnation_rounds > 80 && UR(100) < 30) {
-          effective_algo = RANDOM_SELECTION;
+        if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0) {
+          if (node_stagnation_rounds > 50 && UR(100) < 40) {
+            effective_algo = RANDOM_SELECTION;
+          }
         }
 
         target_state_id = choose_target_state(effective_algo);
