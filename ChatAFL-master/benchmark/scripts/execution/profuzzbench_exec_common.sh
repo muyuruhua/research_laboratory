@@ -97,11 +97,20 @@ on_exit() {
   if [[ $RUN_COMPLETED -eq 0 && ${#cids[@]} -gt 0 ]]; then
     printf "\n${LOG_TAG}: [TRAP] Interrupted – waiting for containers to finish (cov_script must complete)...\n"
     printf "${LOG_TAG}: [TRAP] Press Ctrl+C again to force-collect without waiting.\n"
-    trap 'printf "\n${LOG_TAG}: [TRAP] Force-collecting now...\n"' INT
+    local _force_collected=0
+    trap '_force_collected=1; printf "\n${LOG_TAG}: [TRAP] Force-collecting now (data may be incomplete)...\n"' INT
     for id in "${cids[@]}"; do
+      [[ $_force_collected -eq 1 ]] && break
       docker wait "$id" >/dev/null 2>&1 || true
     done
-    RUN_COMPLETED=1
+    if [[ $_force_collected -eq 0 ]]; then
+      RUN_COMPLETED=1
+    else
+      # Force-collected: containers may still be running.
+      # Allow COLLECTION_DONE to be reset so recovery can re-run later.
+      printf "${LOG_TAG}: [TRAP] Containers may still be running – collected archives may be incomplete.\n"
+      printf "${LOG_TAG}: [TRAP] After containers finish, re-run: bash %s %s\n" "$RECOVERY_HELPER" "$SAVETO"
+    fi
     trap '' INT
   fi
   collect_results_with_recovery

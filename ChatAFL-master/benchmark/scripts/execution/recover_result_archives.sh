@@ -20,6 +20,22 @@ fix_result_permissions() {
   chmod -R u+rwX "$path" 2>/dev/null || true
 }
 
+# Required files that must be present in a complete tarball.
+REQUIRED_FILES="fuzzer_stats cov_over_time.csv"
+
+tarball_is_complete() {
+  local tarball="$1"
+  [[ -s "$tarball" ]] || return 1
+  local listing
+  listing=$(tar tzf "$tarball" 2>/dev/null) || return 1
+  for req in $REQUIRED_FILES; do
+    if [[ "$listing" != *"$req"* ]]; then
+      return 1
+    fi
+  done
+  return 0
+}
+
 collect_from_container() {
   local container_id="$1"
   local outdir="$2"
@@ -29,15 +45,22 @@ collect_from_container() {
 
   rm -f "$tmp_file"
 
+  # Strategy 1: copy the container-internal tar.gz produced by the run script
+  # (this is the most reliable source — created after fuzzing + cov_script complete)
   for attempt in 1 2 3; do
     if docker cp "${container_id}:${WORKDIR}/${outdir}.tar.gz" "$tmp_file" >/dev/null 2>&1; then
-      mv "$tmp_file" "$destination"
-      fix_result_permissions "$destination"
-      return 0
+      if tarball_is_complete "$tmp_file"; then
+        mv "$tmp_file" "$destination"
+        fix_result_permissions "$destination"
+        return 0
+      fi
+      echo "[recover] [WARN] inner tar.gz exists but is incomplete, retrying..." >&2
+      rm -f "$tmp_file"
     fi
     sleep "$attempt"
   done
 
+  # Strategy 2: copy the raw output directory and tar it locally
   extracted_root=$(mktemp -d "${TMPDIR:-/tmp}/recover-${outdir}-XXXXXX")
   if docker cp "${container_id}:${WORKDIR}/${outdir}" "${extracted_root}/" >/dev/null 2>&1; then
     tar -czf "$tmp_file" -C "$extracted_root" "$outdir"
@@ -84,9 +107,17 @@ while IFS='|' read -r run_index container_id container_name image_name fuzzer_na
   [[ "$container_name" == "-" ]] && container_name=""
 
   destination="${RESULTS_DIR}/${archive_name}"
+
+  # Check if existing tarball is complete; if incomplete, try to upgrade it
   if [[ -s "$destination" ]]; then
-    echo "[recover] exists: ${archive_name}"
-    continue
+    if tarball_is_complete "$destination"; then
+      echo "[recover] ✓ complete: ${archive_name}"
+      continue
+    fi
+    # Existing tarball is incomplete — rename it as backup and re-collect
+    _bak="${destination}.incomplete.$(date +%s)"
+    echo "[recover] [WARN] ${archive_name} is incomplete (missing required files), re-collecting..."
+    mv "$destination" "$_bak"
   fi
 
   label="$container_id"
@@ -96,21 +127,33 @@ while IFS='|' read -r run_index container_id container_name image_name fuzzer_na
 
   if collect_from_container "$container_id" "$outdir" "$destination"; then
     echo "[recover] collected ${archive_name}"
-    # Validate that cov_over_time.csv is present in the tarball
-    if ! tar tzf "$destination" 2>/dev/null | grep -q "cov_over_time.csv"; then
-      echo "[recover] [WARN] ${archive_name} missing cov_over_time.csv – coverage data may be incomplete" >&2
-      # Try to recover cov_over_time.csv directly from container
-      local cov_src="${WORKDIR}/${outdir}/cov_over_time.csv"
-      local tmp_cov=$(mktemp)
-      if docker cp "${container_id}:${cov_src}" "$tmp_cov" >/dev/null 2>&1 && [[ -s "$tmp_cov" ]]; then
-        local tmp_extract=$(mktemp -d)
-        tar xzf "$destination" -C "$tmp_extract"
-        cp "$tmp_cov" "$tmp_extract/${outdir}/cov_over_time.csv"
-        tar czf "$destination" -C "$tmp_extract" "$outdir"
-        rm -rf "$tmp_extract"
-        echo "[recover] patched cov_over_time.csv into ${archive_name}"
+    # Validate completeness of the collected tarball
+    if ! tarball_is_complete "$destination"; then
+      echo "[recover] [WARN] ${archive_name} is incomplete after collection" >&2
+      # Try to patch missing files directly from the container
+      local _dest_listing
+      _dest_listing=$(tar tzf "$destination" 2>/dev/null) || _dest_listing=""
+      for req in $REQUIRED_FILES; do
+        if [[ "$_dest_listing" != *"$req"* ]]; then
+          _src="${WORKDIR}/${outdir}/${req}"
+          _tmp_file=$(mktemp)
+          if docker cp "${container_id}:${_src}" "$_tmp_file" >/dev/null 2>&1 && [[ -s "$_tmp_file" ]]; then
+            _tmp_extract=$(mktemp -d)
+            tar xzf "$destination" -C "$_tmp_extract"
+            cp "$_tmp_file" "$_tmp_extract/${outdir}/${req}"
+            tar czf "$destination" -C "$_tmp_extract" "$outdir"
+            rm -rf "$_tmp_extract"
+            echo "[recover] patched ${req} into ${archive_name}"
+          fi
+          rm -f "$_tmp_file"
+        fi
+      done
+      # Final check
+      if tarball_is_complete "$destination"; then
+        echo "[recover] ✓ ${archive_name} now complete after patching"
+      else
+        echo "[recover] [WARN] ${archive_name} still incomplete – container may still be running" >&2
       fi
-      rm -f "$tmp_cov"
     fi
     if [[ "$DELETE_MODE" == "--delete" ]]; then
       docker rm "$container_id" >/dev/null 2>&1 || true

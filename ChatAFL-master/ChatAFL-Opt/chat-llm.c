@@ -537,7 +537,7 @@ char *llm_handle_plateau(const char *protocol_name, const char *examples,
     const char *json_str = json_object_to_json_string(jroot);
     char *out = strdup(json_str);
     json_object_put(jroot);
-    ck_free(formatted);
+    free(formatted);
     return out;
 }
 
