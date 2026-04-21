@@ -45,6 +45,32 @@ append_result_manifest() {
     "$run_index" "$container_id" "$container_name" "$DOCIMAGE" "$FUZZER" "$OUTDIR" "${OUTDIR}_${run_index}.tar.gz" >> "$RESULT_MANIFEST"
 }
 
+generate_run_summary() {
+  local results_dir="$1"
+  local summary_py="${SCRIPT_DIR}/../analysis/run_summary.py"
+  local output_file="$(cd "$results_dir" 2>/dev/null && pwd)/run_summary.csv"
+
+  if [[ ! -f "$summary_py" ]]; then
+    printf "\n${LOG_TAG}: [WARN] run_summary.py not found at %s, skipping summary generation\n" "$summary_py"
+    return 0
+  fi
+
+  local tarball_count
+  tarball_count=$(find "$results_dir" -maxdepth 1 -name '*.tar.gz' 2>/dev/null | wc -l)
+  if [[ $tarball_count -eq 0 ]]; then
+    printf "\n${LOG_TAG}: [WARN] No tarballs found in %s, skipping summary generation\n" "$results_dir"
+    return 0
+  fi
+
+  printf "\n${LOG_TAG}: Generating run_summary.csv (%d tarballs)...\n" "$tarball_count"
+  if python3 "$summary_py" "$results_dir" -o "$output_file" 2>&1; then
+    fix_result_permissions "$output_file"
+    printf "${LOG_TAG}: ✓ run_summary.csv written to %s\n" "$output_file"
+  else
+    printf "${LOG_TAG}: [WARN] run_summary.py exited with error; summary may be incomplete\n"
+  fi
+}
+
 collect_results_with_recovery() {
   local helper_status=0
   local delete_flag=""
@@ -115,6 +141,7 @@ on_exit() {
   fi
   collect_results_with_recovery
   cleanup_mqtt_resources
+  generate_run_summary "${SAVETO}" || true
 }
 
 trap on_exit EXIT INT TERM
@@ -365,35 +392,5 @@ RUN_COMPLETED=1
 
 collect_results_with_recovery
 cleanup_mqtt_resources
-
-# ── Auto-generate run_summary.csv ──
-generate_run_summary() {
-  local results_dir="$1"
-  local summary_py="${SCRIPT_DIR}/../analysis/run_summary.py"
-  local output_file="$(cd "$results_dir" 2>/dev/null && pwd)/run_summary.csv"
-
-  if [[ ! -f "$summary_py" ]]; then
-    printf "\n${LOG_TAG}: [WARN] run_summary.py not found at %s, skipping summary generation\n" "$summary_py"
-    return 0
-  fi
-
-  # Ensure at least one tarball exists before running
-  local tarball_count
-  tarball_count=$(find "$results_dir" -maxdepth 1 -name '*.tar.gz' 2>/dev/null | wc -l)
-  if [[ $tarball_count -eq 0 ]]; then
-    printf "\n${LOG_TAG}: [WARN] No tarballs found in %s, skipping summary generation\n" "$results_dir"
-    return 0
-  fi
-
-  printf "\n${LOG_TAG}: Generating run_summary.csv (%d tarballs)...\n" "$tarball_count"
-  if python3 "$summary_py" "$results_dir" -o "$output_file" 2>&1; then
-    fix_result_permissions "$output_file"
-    printf "${LOG_TAG}: ✓ run_summary.csv written to %s\n" "$output_file"
-  else
-    printf "${LOG_TAG}: [WARN] run_summary.py exited with error; summary may be incomplete\n"
-  fi
-}
-
-generate_run_summary "${SAVETO}"
 
 printf "\n${LOG_TAG}: I am done!\n"

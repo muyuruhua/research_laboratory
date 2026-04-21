@@ -524,7 +524,8 @@ RECOVERY_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/recover_result_ar
 for RESULTS_DIR in ${RESULTS_ROOT}/results-*; do
     [[ -d "$RESULTS_DIR" ]] || continue
     if [[ -f "$RECOVERY_HELPER" ]]; then
-        bash "$RECOVERY_HELPER" "$RESULTS_DIR" >/dev/null 2>&1 || true
+        bash "$RECOVERY_HELPER" "$RESULTS_DIR" || \
+          echo "[WARN] Recovery pass failed for $RESULTS_DIR (exit $?)" >&2
     fi
     fix_result_permissions "$RESULTS_DIR"
 done
