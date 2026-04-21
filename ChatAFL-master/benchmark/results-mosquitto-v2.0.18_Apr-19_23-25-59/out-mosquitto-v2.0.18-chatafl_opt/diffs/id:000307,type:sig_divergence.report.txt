@@ -1,0 +1,13 @@
+=== ChatAFL-Opt Differential Report #307 ===
+Type      : sig_divergence
+Detail    : sig[0]="len=3522,sample=3522,fnv64=c55b685f7d8870e5" vs sig[1]="len=3447,sample=3447,fnv64=b1769fb8f67a030b"
+Exec#     : 27200
+Timestamp : 1776617641
+Brokers   : 2
+  [0] mqttb3:1883 (impl=broker0) fwd_hash=0x00000000
+  [1] mqtt-stable:1883 (impl=broker1) fwd_hash=0x00000000
+
+** CROSS-IMPLEMENTATION DIVERGENCE — likely RFC non-compliance **
+
+Queue position : 1 / 945 paths
+Bitmap density : 7.96%

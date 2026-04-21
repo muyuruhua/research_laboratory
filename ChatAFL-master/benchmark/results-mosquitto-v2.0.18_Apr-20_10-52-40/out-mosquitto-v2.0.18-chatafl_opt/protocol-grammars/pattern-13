@@ -1,0 +1,2 @@
+^(?:SUBACK (.*)\r\n)
+(?|(?:QoS: (.*)\r\n)|(?:PacketId: (.*)\r\n))

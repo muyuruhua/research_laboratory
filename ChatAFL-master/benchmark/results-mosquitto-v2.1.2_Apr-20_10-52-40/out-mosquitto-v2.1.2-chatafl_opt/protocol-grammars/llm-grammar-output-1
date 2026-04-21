@@ -1,0 +1,64 @@
+Sure! Below is a comprehensive list of MQTT client request message templates, formatted as you requested. The templates cover various MQTT operations including CONNECT, SUBSCRIBE, PUBLISH, UNSUBSCRIBE, and DISCONNECT, along with variations for QoS levels, will messages, authentication, duplicate connections, and wildcard topics.
+
+```plaintext
+CONNECT: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","CleanSession: <<VALUE>>\r\n","KeepAlive: <<VALUE>>\r\n","WillTopic: <<VALUE>>\r\n","WillMessage: <<VALUE>>\r\n","WillQoS: <<VALUE>>\r\n","WillRetain: <<VALUE>>\r\n","Username: <<VALUE>>\r\n","Password: <<VALUE>>\r\n"]
+CONNECT_DUPLICATE: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","CleanSession: <<VALUE>>\r\n","KeepAlive: <<VALUE>>\r\n","WillTopic: <<VALUE>>\r\n","WillMessage: <<VALUE>>\r\n","WillQoS: <<VALUE>>\r\n","WillRetain: <<VALUE>>\r\n","Username: <<VALUE>>\r\n","Password: <<VALUE>>\r\n","Duplicate: true\r\n"]
+
+SUBSCRIBE: ["SUBSCRIBE <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n"]
+SUBSCRIBE_WILDCARD: ["SUBSCRIBE <<VALUE>>\r\n","Topic: <<VALUE>/+>\r\n","QoS: <<VALUE>>\r\n"]
+SUBSCRIBE_DUPLICATE: ["SUBSCRIBE <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n","Duplicate: true\r\n"]
+
+PUBLISH: ["PUBLISH <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","Payload: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n","Retain: <<VALUE>>\r\n"]
+PUBLISH_WILDCARD: ["PUBLISH <<VALUE>>\r\n","Topic: <<VALUE>/+>\r\n","Payload: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n","Retain: <<VALUE>>\r\n"]
+PUBLISH_DUPLICATE: ["PUBLISH <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","Payload: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n","Retain: <<VALUE>>\r\n","Duplicate: true\r\n"]
+
+UNSUBSCRIBE: ["UNSUBSCRIBE <<VALUE>>\r\n","Topic: <<VALUE>>\r\n"]
+UNSUBSCRIBE_WILDCARD: ["UNSUBSCRIBE <<VALUE>>\r\n","Topic: <<VALUE>/+>\r\n"]
+
+DISCONNECT: ["DISCONNECT <<VALUE>>\r\n","SessionExpiryInterval: <<VALUE>>\r\n"]
+```
+
+### Notes:
+- `<<VALUE>>` placeholders indicate where specific values should be inserted.
+- The `Duplicate: true` field is added to indicate a duplicate message scenario for both CONNECT and other message types.
+- Wildcard topics are represented using `+` for single-level wildcards and can be adjusted based on specific use cases.
+- Each message type can have various configurations based on the desired QoS level (0, 1, or 2) and other parameters.
+Certainly! In addition to the basic MQTT client request message templates provided earlier, there are additional templates that can be used for various MQTT client operations. Below is a more comprehensive list that includes other client request message types and variations:
+
+```plaintext
+CONNECT: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","CleanSession: <<VALUE>>\r\n","KeepAlive: <<VALUE>>\r\n","WillTopic: <<VALUE>>\r\n","WillMessage: <<VALUE>>\r\n","WillQoS: <<VALUE>>\r\n","WillRetain: <<VALUE>>\r\n","Username: <<VALUE>>\r\n","Password: <<VALUE>>\r\n"]
+CONNECT_DUPLICATE: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","CleanSession: <<VALUE>>\r\n","KeepAlive: <<VALUE>>\r\n","WillTopic: <<VALUE>>\r\n","WillMessage: <<VALUE>>\r\n","WillQoS: <<VALUE>>\r\n","WillRetain: <<VALUE>>\r\n","Username: <<VALUE>>\r\n","Password: <<VALUE>>\r\n","Duplicate: true\r\n"]
+
+SUBSCRIBE: ["SUBSCRIBE <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n"]
+SUBSCRIBE_WILDCARD: ["SUBSCRIBE <<VALUE>>\r\n","Topic: <<VALUE>/+>\r\n","QoS: <<VALUE>>\r\n"]
+SUBSCRIBE_DUPLICATE: ["SUBSCRIBE <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n","Duplicate: true\r\n"]
+
+PUBLISH: ["PUBLISH <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","Payload: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n","Retain: <<VALUE>>\r\n"]
+PUBLISH_WILDCARD: ["PUBLISH <<VALUE>>\r\n","Topic: <<VALUE>/+>\r\n","Payload: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n","Retain: <<VALUE>>\r\n"]
+PUBLISH_DUPLICATE: ["PUBLISH <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","Payload: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n","Retain: <<VALUE>>\r\n","Duplicate: true\r\n"]
+
+UNSUBSCRIBE: ["UNSUBSCRIBE <<VALUE>>\r\n","Topic: <<VALUE>>\r\n"]
+UNSUBSCRIBE_WILDCARD: ["UNSUBSCRIBE <<VALUE>>\r\n","Topic: <<VALUE>/+>\r\n"]
+
+DISCONNECT: ["DISCONNECT <<VALUE>>\r\n","SessionExpiryInterval: <<VALUE>>\r\n"]
+
+PINGREQ: ["PINGREQ <<VALUE>>\r\n"]
+PINGRESP: ["PINGRESP <<VALUE>>\r\n"]
+
+AUTH: ["AUTH <<VALUE>>\r\n","AuthenticationMethod: <<VALUE>>\r\n","AuthenticationData: <<VALUE>>\r\n"]
+
+RECONNECT: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","CleanSession: <<VALUE>>\r\n","KeepAlive: <<VALUE>>\r\n","Reconnect: true\r\n"]
+
+WILL_MESSAGE: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","WillTopic: <<VALUE>>\r\n","WillMessage: <<VALUE>>\r\n","WillQoS: <<VALUE>>\r\n","WillRetain: <<VALUE>>\r\n"]
+
+SESSION_EXPIRY: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","SessionExpiryInterval: <<VALUE>>\r\n"]
+```
+
+### Additional Notes:
+- **PINGREQ** and **PINGRESP** are used to keep the connection alive and to check if the broker is still reachable.
+- **AUTH** is used for authentication purposes, where the client may need to send authentication data to the broker.
+- **RECONNECT** is a special case that can be used to reconnect to the broker, potentially with different parameters.
+- **WILL_MESSAGE** is included in the CONNECT message to specify the last will and testament message that will be sent if the client disconnects unexpectedly.
+- **SESSION_EXPIRY** allows the client to specify how long the session should be retained by the broker after the client disconnects.
+
+This comprehensive set of templates should cover most of the MQTT client request scenarios you may encounter.

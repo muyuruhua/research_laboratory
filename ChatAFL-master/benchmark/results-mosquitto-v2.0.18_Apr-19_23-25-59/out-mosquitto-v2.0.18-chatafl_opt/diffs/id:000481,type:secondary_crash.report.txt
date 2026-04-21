@@ -1,0 +1,13 @@
+=== ChatAFL-Opt Differential Report #481 ===
+Type      : secondary_crash
+Detail    : secondary_broker=mqtt-stable:1883 rc=-1 (possible_crash)
+Exec#     : 30748
+Timestamp : 1776618293
+Brokers   : 2
+  [0] mqttb3:1883 (impl=broker0) fwd_hash=0x00000000
+  [1] mqtt-stable:1883 (impl=broker1) fwd_hash=0x00000000
+
+** CROSS-IMPLEMENTATION DIVERGENCE — likely RFC non-compliance **
+
+Queue position : 1 / 1025 paths
+Bitmap density : 7.98%

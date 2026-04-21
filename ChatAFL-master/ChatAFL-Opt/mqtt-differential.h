@@ -39,6 +39,9 @@
 #define MQTT_DIV_TYPE    3    /* Different packet type sequences         */
 #define MQTT_DIV_MISSING 4    /* One broker responded, other did not     */
 
+/* O8: Maximum brokers in heterogeneous cluster */
+#define MQTT_DIFF_MAX_BROKERS 16
+
 /* ════════════════════════════════════════════════════════════════════
  * Parsed MQTT response field summary
  *
@@ -82,6 +85,57 @@ typedef struct {
 } mqtt_diff_result_t;
 
 /* ════════════════════════════════════════════════════════════════════
+ * O8: Majority-voting result for N-way heterogeneous comparison.
+ *
+ * When N >= 3 brokers, majority voting identifies "outlier" brokers
+ * whose behavior diverges from the consensus.  This is the primary
+ * mechanism for detecting protocol non-compliance bugs — the
+ * minority broker is likely violating the MQTT specification.
+ * ════════════════════════════════════════════════════════════════════ */
+#define MQTT_OUTLIER_MAX 16
+
+typedef struct {
+  uint8_t  is_outlier[MQTT_OUTLIER_MAX];  /* 1 if broker[i] is an outlier     */
+  int      outlier_count;                  /* Total number of outlier brokers  */
+  int      consensus_count;                /* Brokers in the majority group    */
+  uint8_t  consensus_severity;             /* Divergence level of worst outlier*/
+  double   consensus_strength;             /* Strength of the worst divergence */
+  uint32_t consensus_type_hash;            /* Type-seq hash of majority group  */
+  uint32_t consensus_code_hash;            /* Code-seq hash of majority group  */
+  uint32_t pattern_hash;                   /* Dedup hash for this vote result  */
+} mqtt_majority_vote_t;
+
+/* ════════════════════════════════════════════════════════════════════
+ * O8: Forwarding differential result.
+ *
+ * Compares PUBLISH forwarding behavior across N brokers.  Each broker's
+ * forwarding fingerprint (hash of forwarded PUBLISH packets) is compared
+ * to determine if brokers agree on message routing, QoS delivery, and
+ * retain semantics.
+ * ════════════════════════════════════════════════════════════════════ */
+typedef struct {
+  uint8_t  fwd_outlier[MQTT_OUTLIER_MAX]; /* 1 if broker[i] forwarded differently */
+  int      fwd_outlier_count;              /* Brokers with divergent forwarding   */
+  int      all_forwarded;                  /* 1 if all brokers forwarded the msg  */
+  int      none_forwarded;                 /* 1 if no broker forwarded            */
+  uint32_t pattern_hash;                   /* Dedup hash                          */
+} mqtt_fwd_diff_result_t;
+
+/* ════════════════════════════════════════════════════════════════════
+ * O8: Noncompliance report entry.
+ * ════════════════════════════════════════════════════════════════════ */
+#define MQTT_NONCOMPLIANCE_DETAIL_LEN 512
+
+typedef struct {
+  int      outlier_index;                                     /* Broker index */
+  char     outlier_impl[64];                                  /* Broker impl  */
+  uint8_t  severity;                                          /* DIV level    */
+  double   strength;                                          /* Normalized   */
+  char     detail[MQTT_NONCOMPLIANCE_DETAIL_LEN];             /* Description  */
+  uint32_t pattern_hash;                                      /* Dedup        */
+} mqtt_noncompliance_entry_t;
+
+/* ════════════════════════════════════════════════════════════════════
  * Public API
  * ════════════════════════════════════════════════════════════════════ */
 
@@ -106,5 +160,53 @@ mqtt_diff_result_t mqtt_diff_compare_n(const mqtt_response_fields_t *fields,
 /* Compute a divergence score suitable for queue entry annotation.
  * Returns 0-100 based on severity and strength. */
 int mqtt_diff_score_from_result(const mqtt_diff_result_t *r);
+
+/* ════════════════════════════════════════════════════════════════════
+ * O8: Majority-voting N-way comparison.
+ *
+ * For N >= 3 brokers, identifies the consensus behavior and marks
+ * outlier brokers.  For N < 3, falls back to pairwise comparison.
+ *
+ * Parameters:
+ *   fields[]   — parsed response fields per broker
+ *   n          — number of brokers
+ *   impl_names — array of implementation name strings (can be NULL)
+ *   vote       — output: majority voting result
+ *
+ * Returns: worst-case mqtt_diff_result_t (same as mqtt_diff_compare_n)
+ * ════════════════════════════════════════════════════════════════════ */
+mqtt_diff_result_t mqtt_diff_majority_vote(
+    const mqtt_response_fields_t *fields, int n,
+    const char **impl_names,
+    mqtt_majority_vote_t *vote);
+
+/* O8: Compare forwarding hashes across N brokers with majority voting.
+ *
+ * Parameters:
+ *   fwd_hashes[] — per-broker forwarding fingerprint (from mp_driver)
+ *   n            — number of brokers
+ *   result       — output: forwarding differential result
+ */
+void mqtt_diff_fwd_majority_vote(
+    const uint32_t *fwd_hashes, int n,
+    mqtt_fwd_diff_result_t *result);
+
+/* O8: Score adjustment for cross-implementation divergence.
+ * If the outlier has a different impl_name than the consensus,
+ * the raw score is boosted by MQTT_CROSS_IMPL_BOOST_FACTOR.
+ * Returns adjusted score (0-100). */
+#define MQTT_CROSS_IMPL_BOOST_FACTOR 1.5
+int mqtt_diff_score_cross_impl(
+    const mqtt_diff_result_t *r,
+    const mqtt_majority_vote_t *vote,
+    const char **impl_names, int n);
+
+/* O8: Build a noncompliance entry from a majority vote outlier.
+ * Returns 1 if entry was populated, 0 if no outlier found. */
+int mqtt_diff_build_noncompliance(
+    const mqtt_majority_vote_t *vote,
+    const mqtt_diff_result_t *worst_pair,
+    const char **impl_names, int n,
+    mqtt_noncompliance_entry_t *out);
 
 #endif /* __MQTT_DIFFERENTIAL_H */

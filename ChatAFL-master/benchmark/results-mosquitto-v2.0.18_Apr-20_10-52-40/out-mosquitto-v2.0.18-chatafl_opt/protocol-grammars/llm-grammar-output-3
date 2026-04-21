@@ -1,0 +1,75 @@
+Here is a comprehensive list of MQTT client request message templates, following the specified format and including variations such as QoS levels, reconnect, will, auth, wildcard-topic, and duplicate-CONNECT:
+
+```plaintext
+CONNECT: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","CleanSession: <<VALUE>>\r\n","KeepAlive: <<VALUE>>\r\n","WillTopic: <<VALUE>>\r\n","WillMessage: <<VALUE>>\r\n","WillQoS: <<VALUE>>\r\n","WillRetain: <<VALUE>>\r\n","Username: <<VALUE>>\r\n","Password: <<VALUE>>\r\n"]
+CONNACK: ["CONNACK <<VALUE>>\r\n","SessionPresent: <<VALUE>>\r\n","ReturnCode: <<VALUE>>\r\n"]
+SUBSCRIBE: ["SUBSCRIBE <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n","TopicFilter: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n"]
+SUBACK: ["SUBACK <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n"]
+PUBLISH: ["PUBLISH <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","Payload: <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n","Retain: <<VALUE>>\r\n","Dup: <<VALUE>>\r\n"]
+PUBACK: ["PUBACK <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n"]
+PUBREC: ["PUBREC <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n"]
+PUBREL: ["PUBREL <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n"]
+PUBCOMP: ["PUBCOMP <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n"]
+UNSUBSCRIBE: ["UNSUBSCRIBE <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n","TopicFilter: <<VALUE>>\r\n"]
+UNSUBACK: ["UNSUBACK <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n"]
+DISCONNECT: ["DISCONNECT <<VALUE>>\r\n"]
+```
+
+### Variations
+- **CONNECT Variations**:
+  - Duplicate CONNECT: `["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","CleanSession: <<VALUE>>\r\n","KeepAlive: <<VALUE>>\r\n","WillTopic: <<VALUE>>\r\n","WillMessage: <<VALUE>>\r\n","WillQoS: <<VALUE>>\r\n","WillRetain: <<VALUE>>\r\n","Username: <<VALUE>>\r\n","Password: <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n"]`
+
+- **SUBSCRIBE Variations**:
+  - Wildcard Topic: `["SUBSCRIBE <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n","TopicFilter: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n"]`
+
+- **PUBLISH Variations**:
+  - QoS 0: `["PUBLISH <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","Payload: <<VALUE>>\r\n","QoS: 0\r\n","Retain: <<VALUE>>\r\n"]`
+  - QoS 1: `["PUBLISH <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","Payload: <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n","QoS: 1\r\n","Retain: <<VALUE>>\r\n"]`
+  - QoS 2: `["PUBLISH <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","Payload: <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n","QoS: 2\r\n","Retain: <<VALUE>>\r\n"]`
+
+This list captures the essential MQTT client request messages and their templates, allowing for various configurations and scenarios.
+In addition to the previously listed MQTT client request message templates, here are some other templates and variations that can be used in the MQTT protocol:
+
+### Additional MQTT Client Request Message Templates
+
+```plaintext
+PINGREQ: ["PINGREQ\r\n"]
+PINGRESP: ["PINGRESP\r\n"]
+AUTH: ["AUTH <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n","ReasonCode: <<VALUE>>\r\n","Properties: <<VALUE>>\r\n"]
+```
+
+### Variations and Additional Context
+
+- **PINGREQ**: 
+  - This message is sent by the client to the broker to keep the connection alive. It does not require any additional fields.
+
+- **PINGRESP**: 
+  - This is the response from the broker to a PINGREQ message. It also does not require any additional fields.
+
+- **AUTH**:
+  - This message is used in the context of authentication and authorization. It may include fields such as:
+    - `PacketId`: The identifier for the AUTH message.
+    - `ReasonCode`: A code indicating the result of the authentication attempt.
+    - `Properties`: Additional properties related to the authentication process.
+
+### Summary of Client Request Messages
+
+The complete list of MQTT client request message templates now includes:
+
+1. **CONNECT**
+2. **CONNACK**
+3. **SUBSCRIBE**
+4. **SUBACK**
+5. **PUBLISH**
+6. **PUBACK**
+7. **PUBREC**
+8. **PUBREL**
+9. **PUBCOMP**
+10. **UNSUBSCRIBE**
+11. **UNSUBACK**
+12. **DISCONNECT**
+13. **PINGREQ**
+14. **PINGRESP**
+15. **AUTH**
+
+These templates cover the essential client-side interactions with an MQTT broker, allowing for a variety of scenarios and configurations in MQTT communication.

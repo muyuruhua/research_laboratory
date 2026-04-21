@@ -1,0 +1,91 @@
+Certainly! Below is a comprehensive list of MQTT client request message templates, following the specified format and including various features such as QoS levels, reconnect, will, auth, wildcard topics, and duplicate CONNECT variations.
+
+```plaintext
+CONNECT: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","CleanSession: <<VALUE>>\r\n","KeepAlive: <<VALUE>>\r\n","WillTopic: <<VALUE>>\r\n","WillMessage: <<VALUE>>\r\n","WillQoS: <<VALUE>>\r\n","WillRetain: <<VALUE>>\r\n","Username: <<VALUE>>\r\n","Password: <<VALUE>>\r\n"]
+
+CONNACK: ["CONNACK <<VALUE>>\r\n","SessionPresent: <<VALUE>>\r\n","ReturnCode: <<VALUE>>\r\n"]
+
+SUBSCRIBE: ["SUBSCRIBE <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n","TopicFilter: <<VALUE>>\r\n","RequestedQoS: <<VALUE>>\r\n"]
+
+SUBACK: ["SUBACK <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n","GrantedQoS: <<VALUE>>\r\n"]
+
+UNSUBSCRIBE: ["UNSUBSCRIBE <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n","TopicFilter: <<VALUE>>\r\n"]
+
+UNSUBACK: ["UNSUBACK <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n"]
+
+PUBLISH: ["PUBLISH <<VALUE>>\r\n","TopicName: <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n","Payload: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n","Retain: <<VALUE>>\r\n","Dup: <<VALUE>>\r\n"]
+
+PUBACK: ["PUBACK <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n"]
+
+PUBREC: ["PUBREC <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n"]
+
+PUBREL: ["PUBREL <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n"]
+
+PUBCOMP: ["PUBCOMP <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n"]
+
+PINGREQ: ["PINGREQ\r\n"]
+
+PINGRESP: ["PINGRESP\r\n"]
+
+DISCONNECT: ["DISCONNECT\r\n"]
+```
+
+### Explanation of Features:
+- **QoS**: Quality of Service levels (0, 1, 2) are specified in the relevant messages.
+- **Will**: Will Message and Will Topic are included in the CONNECT message for clients that want to set a Last Will and Testament.
+- **Auth**: Username and Password fields are included in the CONNECT message for authentication.
+- **Wildcard Topics**: Although wildcard topics are not explicitly shown in the template, they are relevant in the SUBSCRIBE message where `TopicFilter` can contain wildcards.
+- **Duplicate CONNECT**: The `<<VALUE>>` placeholder in the CONNECT message can be used to indicate a duplicate connection attempt.
+- **Reconnect**: The `CleanSession` flag in the CONNECT message allows for reconnecting with or without a clean session.
+
+This structure allows for a variety of MQTT scenarios to be represented clearly in text form.
+Certainly! In addition to the standard MQTT client request message templates already provided, here are other relevant client request message templates that can be utilized in various scenarios. These templates may include variations and specific use cases within the MQTT protocol:
+
+```plaintext
+CONNECT: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","CleanSession: <<VALUE>>\r\n","KeepAlive: <<VALUE>>\r\n","WillTopic: <<VALUE>>\r\n","WillMessage: <<VALUE>>\r\n","WillQoS: <<VALUE>>\r\n","WillRetain: <<VALUE>>\r\n","Username: <<VALUE>>\r\n","Password: <<VALUE>>\r\n"]
+
+CONNACK: ["CONNACK <<VALUE>>\r\n","SessionPresent: <<VALUE>>\r\n","ReturnCode: <<VALUE>>\r\n"]
+
+SUBSCRIBE: ["SUBSCRIBE <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n","TopicFilter: <<VALUE>>\r\n","RequestedQoS: <<VALUE>>\r\n"]
+
+SUBACK: ["SUBACK <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n","GrantedQoS: <<VALUE>>\r\n"]
+
+UNSUBSCRIBE: ["UNSUBSCRIBE <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n","TopicFilter: <<VALUE>>\r\n"]
+
+UNSUBACK: ["UNSUBACK <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n"]
+
+PUBLISH: ["PUBLISH <<VALUE>>\r\n","TopicName: <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n","Payload: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n","Retain: <<VALUE>>\r\n","Dup: <<VALUE>>\r\n"]
+
+PUBACK: ["PUBACK <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n"]
+
+PUBREC: ["PUBREC <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n"]
+
+PUBREL: ["PUBREL <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n"]
+
+PUBCOMP: ["PUBCOMP <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n"]
+
+PINGREQ: ["PINGREQ\r\n"]
+
+PINGRESP: ["PINGRESP\r\n"]
+
+DISCONNECT: ["DISCONNECT\r\n"]
+
+RECONNECT: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","CleanSession: <<VALUE>>\r\n","KeepAlive: <<VALUE>>\r\n"]
+
+WILL: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","WillTopic: <<VALUE>>\r\n","WillMessage: <<VALUE>>\r\n","WillQoS: <<VALUE>>\r\n","WillRetain: <<VALUE>>\r\n"]
+
+DUPLICATE_CONNECT: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","CleanSession: <<VALUE>>\r\n","KeepAlive: <<VALUE>>\r\n","WillTopic: <<VALUE>>\r\n","WillMessage: <<VALUE>>\r\n","WillQoS: <<VALUE>>\r\n","WillRetain: <<VALUE>>\r\n","Username: <<VALUE>>\r\n","Password: <<VALUE>>\r\n"]
+
+WILDCARD_SUBSCRIBE: ["SUBSCRIBE <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n","TopicFilter: <<VALUE>>/+/subtopic\r\n","RequestedQoS: <<VALUE>>\r\n"]
+
+WILDCARD_UNSUBSCRIBE: ["UNSUBSCRIBE <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n","TopicFilter: <<VALUE>>/+/subtopic\r\n"]
+```
+
+### Additional Templates Explained:
+1. **RECONNECT**: This template is for clients that wish to reconnect, possibly maintaining the same session parameters.
+2. **WILL**: This template specifically highlights the will feature in the CONNECT message.
+3. **DUPLICATE_CONNECT**: A variation of the CONNECT message that indicates a duplicate connection attempt.
+4. **WILDCARD_SUBSCRIBE**: This template demonstrates subscribing to a topic with a wildcard, which allows for more flexible topic filtering.
+5. **WILDCARD_UNSUBSCRIBE**: Similar to the wildcard subscribe, this template shows how to unsubscribe from topics using wildcards.
+
+These templates provide a broader view of the possible client requests in the MQTT protocol, catering to various use cases and functionalities.

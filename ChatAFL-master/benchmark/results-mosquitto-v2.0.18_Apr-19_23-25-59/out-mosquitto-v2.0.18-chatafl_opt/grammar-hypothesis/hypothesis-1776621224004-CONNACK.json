@@ -1,0 +1,36 @@
+{
+  "hypothesis_id":1776621224004,
+  "message_type":"CONNACK",
+  "description":"Server acknowledges the connection request.",
+  "schema":{
+    "type":"object",
+    "properties":{
+      "SessionPresent":{
+        "type":"integer",
+        "enum":[
+          0,
+          1
+        ]
+      },
+      "ReturnCode":{
+        "type":"integer",
+        "enum":[
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    "required":[
+      "SessionPresent",
+      "ReturnCode"
+    ]
+  },
+  "parse_success":0,
+  "parse_failure":0,
+  "fitness":0.5,
+  "created_at":1776621224,
+  "last_updated":1776621224
+}

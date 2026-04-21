@@ -1,0 +1,2 @@
+^(?:UNSUBSCRIBE (.*)\r\n)
+(?|(?:TopicFilter: (.*)\r\n)|(?:TopicFilters: (.*)\r\n)|(?:PacketId: (.*)\r\n))

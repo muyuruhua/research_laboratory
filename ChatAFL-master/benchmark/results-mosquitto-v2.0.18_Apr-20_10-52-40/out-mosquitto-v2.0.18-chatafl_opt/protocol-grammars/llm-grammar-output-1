@@ -1,0 +1,92 @@
+Certainly! Below is a list of MQTT client request message templates formatted as you specified. This includes the main MQTT message types along with variations such as QoS levels, reconnect, will, authentication, wildcard topics, and duplicate CONNECT messages.
+
+```plaintext
+CONNECT: ["CONNECT <<VALUE>>\r\n", "ClientId: <<VALUE>>\r\n", "CleanSession: <<VALUE>>\r\n", "KeepAlive: <<VALUE>>\r\n", "WillTopic: <<VALUE>>\r\n", "WillMessage: <<VALUE>>\r\n", "WillQoS: <<VALUE>>\r\n", "WillRetain: <<VALUE>>\r\n", "Username: <<VALUE>>\r\n", "Password: <<VALUE>>\r\n"]
+
+CONNACK: ["CONNACK <<VALUE>>\r\n", "SessionPresent: <<VALUE>>\r\n", "ReturnCode: <<VALUE>>\r\n"]
+
+SUBSCRIBE: ["SUBSCRIBE <<VALUE>>\r\n", "TopicFilters: <<VALUE>>\r\n", "QoS: <<VALUE>>\r\n"]
+
+SUBACK: ["SUBACK <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "QoS: <<VALUE>>\r\n"]
+
+UNSUBSCRIBE: ["UNSUBSCRIBE <<VALUE>>\r\n", "TopicFilters: <<VALUE>>\r\n"]
+
+UNSUBACK: ["UNSUBACK <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+
+PUBLISH: ["PUBLISH <<VALUE>>\r\n", "Topic: <<VALUE>>\r\n", "Payload: <<VALUE>>\r\n", "QoS: <<VALUE>>\r\n", "Retain: <<VALUE>>\r\n", "Dup: <<VALUE>>\r\n"]
+
+PUBACK: ["PUBACK <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+
+PUBREC: ["PUBREC <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+
+PUBREL: ["PUBREL <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+
+PUBCOMP: ["PUBCOMP <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+
+PINGREQ: ["PINGREQ\r\n"]
+
+PINGRESP: ["PINGRESP\r\n"]
+
+DISCONNECT: ["DISCONNECT\r\n"]
+```
+
+### Explanation of the templates:
+- **CONNECT**: The initial connection request from the client to the broker, with options for client ID, clean session, keep alive, will topic/message, username, and password.
+- **CONNACK**: The acknowledgment from the broker to the client after a CONNECT request, indicating success or failure.
+- **SUBSCRIBE**: A request from the client to subscribe to one or more topics, specifying QoS for each.
+- **SUBACK**: The acknowledgment from the broker for the subscription request.
+- **UNSUBSCRIBE**: A request from the client to unsubscribe from one or more topics.
+- **UNSUBACK**: The acknowledgment from the broker for the unsubscribe request.
+- **PUBLISH**: A message sent from the client to the broker to publish data to a specific topic, with options for QoS, retain flag, and duplicate flag.
+- **PUBACK**, **PUBREC**, **PUBREL**, **PUBCOMP**: Messages used in the QoS 1 and QoS 2 flow for acknowledging published messages.
+- **PINGREQ** and **PINGRESP**: Used to keep the connection alive.
+- **DISCONNECT**: A request from the client to disconnect from the broker.
+
+This structure allows for various configurations and scenarios in MQTT communication, including different QoS levels and connection options.
+In addition to the core client request templates provided earlier, there are a few more specific templates and variations that can be included in the MQTT protocol, particularly around different configurations and scenarios. Here are additional client request message templates for MQTT:
+
+```plaintext
+CONNECT: ["CONNECT <<VALUE>>\r\n", "ClientId: <<VALUE>>\r\n", "CleanSession: <<VALUE>>\r\n", "KeepAlive: <<VALUE>>\r\n", "WillTopic: <<VALUE>>\r\n", "WillMessage: <<VALUE>>\r\n", "WillQoS: <<VALUE>>\r\n", "WillRetain: <<VALUE>>\r\n", "Username: <<VALUE>>\r\n", "Password: <<VALUE>>\r\n", "ProtocolName: <<VALUE>>\r\n", "ProtocolLevel: <<VALUE>>\r\n"]
+
+CONNACK: ["CONNACK <<VALUE>>\r\n", "SessionPresent: <<VALUE>>\r\n", "ReturnCode: <<VALUE>>\r\n"]
+
+SUBSCRIBE: ["SUBSCRIBE <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "TopicFilters: <<VALUE>>\r\n", "QoS: <<VALUE>>\r\n"]
+
+SUBACK: ["SUBACK <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "QoS: <<VALUE>>\r\n"]
+
+UNSUBSCRIBE: ["UNSUBSCRIBE <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "TopicFilters: <<VALUE>>\r\n"]
+
+UNSUBACK: ["UNSUBACK <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+
+PUBLISH: ["PUBLISH <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "Topic: <<VALUE>>\r\n", "Payload: <<VALUE>>\r\n", "QoS: <<VALUE>>\r\n", "Retain: <<VALUE>>\r\n", "Dup: <<VALUE>>\r\n"]
+
+PUBACK: ["PUBACK <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+
+PUBREC: ["PUBREC <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+
+PUBREL: ["PUBREL <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+
+PUBCOMP: ["PUBCOMP <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+
+PINGREQ: ["PINGREQ\r\n"]
+
+PINGRESP: ["PINGRESP\r\n"]
+
+DISCONNECT: ["DISCONNECT\r\n"]
+
+RECONNECT: ["CONNECT <<VALUE>>\r\n", "ClientId: <<VALUE>>\r\n", "CleanSession: <<VALUE>>\r\n", "KeepAlive: <<VALUE>>\r\n", "WillTopic: <<VALUE>>\r\n", "WillMessage: <<VALUE>>\r\n", "WillQoS: <<VALUE>>\r\n", "WillRetain: <<VALUE>>\r\n", "Username: <<VALUE>>\r\n", "Password: <<VALUE>>\r\n", "SessionPresent: <<VALUE>>\r\n"]
+
+DUPLICATE_CONNECT: ["CONNECT <<VALUE>>\r\n", "ClientId: <<VALUE>>\r\n", "CleanSession: <<VALUE>>\r\n", "KeepAlive: <<VALUE>>\r\n", "WillTopic: <<VALUE>>\r\n", "WillMessage: <<VALUE>>\r\n", "WillQoS: <<VALUE>>\r\n", "WillRetain: <<VALUE>>\r\n", "Username: <<VALUE>>\r\n", "Password: <<VALUE>>\r\n", "Dup: true\r\n"]
+
+WILDCARD_SUBSCRIBE: ["SUBSCRIBE <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "TopicFilters: <<VALUE>>\r\n", "QoS: <<VALUE>>\r\n", "Wildcard: true\r\n"]
+
+WILDCARD_UNSUBSCRIBE: ["UNSUBSCRIBE <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "TopicFilters: <<VALUE>>\r\n", "Wildcard: true\r\n"]
+```
+
+### Additional Templates Explained:
+- **RECONNECT**: A template for reconnecting to the broker, which can be similar to the initial CONNECT but may include session information or options.
+- **DUPLICATE_CONNECT**: A variation of the CONNECT message that indicates a duplicate connection attempt.
+- **WILDCARD_SUBSCRIBE**: A template for subscribing to topics using wildcards (e.g., `+/topic` or `#`).
+- **WILDCARD_UNSUBSCRIBE**: A template for unsubscribing from topics using wildcards.
+
+These templates cover a broader range of scenarios and configurations that clients might encounter while interacting with an MQTT broker.

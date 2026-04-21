@@ -1,0 +1,58 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0.18
+    container_name: chatafl-mosquitto
+    ports:
+      - "1883:1883"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub --help >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  emqx:
+    image: emqx/emqx:5.7.0
+    container_name: chatafl-emqx
+    ports:
+      - "1884:1883"
+    environment:
+      EMQX_ALLOW_ANONYMOUS: "true"
+    restart: unless-stopped
+
+  vernemq:
+    image: vernemq/vernemq:1.13.0
+    container_name: chatafl-vernemq
+    ports:
+      - "1885:1883"
+    environment:
+      DOCKER_VERNEMQ_ALLOW_ANONYMOUS: "on"
+      DOCKER_VERNEMQ_ACCEPT_EULA: "yes"
+    restart: unless-stopped
+
+  nanomq:
+    image: emqx/nanomq:0.22.11
+    container_name: chatafl-nanomq
+    ports:
+      - "1886:1883"
+    restart: unless-stopped
+
+  hivemq:
+    image: hivemq/hivemq4:4.28.0
+    container_name: chatafl-hivemq
+    profiles: ["extended"]
+    ports:
+      - "1887:1883"
+    restart: unless-stopped
+
+  flashmq:
+    image: ghcr.io/flashmq/flashmq:latest
+    container_name: chatafl-flashmq
+    profiles: ["extended"]
+    ports:
+      - "1888:1883"
+    restart: unless-stopped
+
+networks:
+  default:
+    name: chatafl-mqtt-cluster

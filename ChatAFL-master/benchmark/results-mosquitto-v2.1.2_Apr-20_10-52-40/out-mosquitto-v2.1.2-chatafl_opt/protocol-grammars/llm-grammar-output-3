@@ -1,0 +1,149 @@
+Here are the MQTT client request message templates, including the specified variations and states:
+
+```plaintext
+CONNECT: [
+    "CONNECT <<VALUE>>\r\n",
+    "ClientId: <<VALUE>>\r\n",
+    "CleanSession: <<VALUE>>\r\n",
+    "KeepAlive: <<VALUE>>\r\n",
+    "WillTopic: <<VALUE>>\r\n",
+    "WillMessage: <<VALUE>>\r\n",
+    "WillQoS: <<VALUE>>\r\n",
+    "WillRetain: <<VALUE>>\r\n",
+    "Username: <<VALUE>>\r\n",
+    "Password: <<VALUE>>\r\n"
+]
+
+SUBSCRIBE: [
+    "SUBSCRIBE <<VALUE>>\r\n",
+    "PacketId: <<VALUE>>\r\n",
+    "TopicFilter: <<VALUE>>\r\n",
+    "RequestedQoS: <<VALUE>>\r\n"
+]
+
+UNSUBSCRIBE: [
+    "UNSUBSCRIBE <<VALUE>>\r\n",
+    "PacketId: <<VALUE>>\r\n",
+    "TopicFilter: <<VALUE>>\r\n"
+]
+
+PUBLISH: [
+    "PUBLISH <<VALUE>>\r\n",
+    "TopicName: <<VALUE>>\r\n",
+    "PacketId: <<VALUE>>\r\n",
+    "QoS: <<VALUE>>\r\n",
+    "Retain: <<VALUE>>\r\n",
+    "Payload: <<VALUE>>\r\n"
+]
+
+DISCONNECT: [
+    "DISCONNECT <<VALUE>>\r\n",
+    "SessionExpiryInterval: <<VALUE>>\r\n"
+]
+
+PINGREQ: [
+    "PINGREQ\r\n"
+]
+
+PINGRESP: [
+    "PINGRESP\r\n"
+]
+
+RECONNECT: [
+    "CONNECT <<VALUE>>\r\n",
+    "ClientId: <<VALUE>>\r\n", 
+    "CleanSession: <<VALUE>>\r\n", 
+    "KeepAlive: <<VALUE>>\r\n"
+]
+
+DUPLICATE_CONNECT: [
+    "CONNECT <<VALUE>>\r\n",
+    "ClientId: <<VALUE>>\r\n", 
+    "CleanSession: <<VALUE>>\r\n", 
+    "KeepAlive: <<VALUE>>\r\n",
+    "Duplicate: true\r\n"
+]
+
+WILDCARD_SUBSCRIBE: [
+    "SUBSCRIBE <<VALUE>>\r\n",
+    "PacketId: <<VALUE>>\r\n",
+    "TopicFilter: <<VALUE>>\r\n",  // e.g., "home/+/temperature"
+    "RequestedQoS: <<VALUE>>\r\n"
+]
+```
+
+This format lists all client request message templates for the MQTT protocol, incorporating the specified variations like QoS levels, reconnect scenarios, will messages, authentication, wildcard topics, and duplicate connections.
+In addition to the previously mentioned client request message templates for the MQTT protocol, here are some additional templates that may be relevant:
+
+```plaintext
+AUTH: [
+    "AUTH <<VALUE>>\r\n",
+    "PacketId: <<VALUE>>\r\n",
+    "AuthMethod: <<VALUE>>\r\n",
+    "AuthData: <<VALUE>>\r\n"
+]
+
+SUBACK: [
+    "SUBACK <<VALUE>>\r\n",
+    "PacketId: <<VALUE>>\r\n",
+    "GrantedQoS: <<VALUE>>\r\n"
+]
+
+UNSUBACK: [
+    "UNSUBACK <<VALUE>>\r\n",
+    "PacketId: <<VALUE>>\r\n"
+]
+
+PUBACK: [
+    "PUBACK <<VALUE>>\r\n",
+    "PacketId: <<VALUE>>\r\n"
+]
+
+PUBREC: [
+    "PUBREC <<VALUE>>\r\n",
+    "PacketId: <<VALUE>>\r\n"
+]
+
+PUBREL: [
+    "PUBREL <<VALUE>>\r\n",
+    "PacketId: <<VALUE>>\r\n"
+]
+
+PUBCOMP: [
+    "PUBCOMP <<VALUE>>\r\n",
+    "PacketId: <<VALUE>>\r\n"
+]
+
+WILL: [
+    "WILL <<VALUE>>\r\n",
+    "WillTopic: <<VALUE>>\r\n",
+    "WillMessage: <<VALUE>>\r\n",
+    "WillQoS: <<VALUE>>\r\n",
+    "WillRetain: <<VALUE>>\r\n"
+]
+
+CLIENT_ID: [
+    "ClientId: <<VALUE>>\r\n"
+]
+
+CLEAN_SESSION: [
+    "CleanSession: <<VALUE>>\r\n"
+]
+
+KEEP_ALIVE: [
+    "KeepAlive: <<VALUE>>\r\n"
+]
+```
+
+### Explanation of Additional Templates:
+- **AUTH**: Used for authentication with optional method and data.
+- **SUBACK**: Acknowledgment for a subscription request.
+- **UNSUBACK**: Acknowledgment for an unsubscribe request.
+- **PUBACK**: Acknowledgment for a publish message with QoS 1.
+- **PUBREC**: Received acknowledgment for a publish message with QoS 2.
+- **PUBREL**: Release acknowledgment for a publish message with QoS 2.
+- **PUBCOMP**: Completion acknowledgment for a publish message with QoS 2.
+- **WILL**: Represents the will message to be sent when the client disconnects unexpectedly.
+- **CLIENT_ID, CLEAN_SESSION, KEEP_ALIVE**: Individual settings that can be used in the CONNECT message or as standalone attributes.
+
+These templates cover a wider range of MQTT client requests and functionalities, providing a more comprehensive overview of the protocol's capabilities.

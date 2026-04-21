@@ -1,0 +1,135 @@
+Certainly! Below is a comprehensive list of MQTT client request message templates, following the specified format. These templates include various message types such as CONNECT, SUBSCRIBE, PUBLISH, UNSUBSCRIBE, and DISCONNECT, along with variations for QoS levels, reconnect, will, authentication, wildcard topics, and duplicate CONNECT messages.
+
+```plaintext
+CONNECT: [
+    "CONNECT <<VALUE>>\r\n",
+    "ClientId: <<VALUE>>\r\n",
+    "CleanSession: <<VALUE>>\r\n",
+    "KeepAlive: <<VALUE>>\r\n",
+    "WillTopic: <<VALUE>>\r\n",
+    "WillPayload: <<VALUE>>\r\n",
+    "WillQoS: <<VALUE>>\r\n",
+    "WillRetain: <<VALUE>>\r\n",
+    "Username: <<VALUE>>\r\n",
+    "Password: <<VALUE>>\r\n"
+]
+
+CONNACK: [
+    "CONNACK <<RETURN_CODE>>\r\n"
+]
+
+SUBSCRIBE: [
+    "SUBSCRIBE <<VALUE>>\r\n",
+    "PacketId: <<VALUE>>\r\n",
+    "TopicFilter: <<VALUE>>\r\n",
+    "QoS: <<VALUE>>\r\n"
+]
+
+SUBACK: [
+    "SUBACK <<PACKET_ID>>\r\n",
+    "QoS: <<VALUE>>\r\n"
+]
+
+PUBLISH: [
+    "PUBLISH <<VALUE>>\r\n",
+    "Topic: <<VALUE>>\r\n",
+    "Payload: <<VALUE>>\r\n",
+    "QoS: <<VALUE>>\r\n",
+    "Retain: <<VALUE>>\r\n",
+    "Dup: <<VALUE>>\r\n"
+]
+
+PUBACK: [
+    "PUBACK <<PACKET_ID>>\r\n"
+]
+
+PUBREC: [
+    "PUBREC <<PACKET_ID>>\r\n"
+]
+
+PUBREL: [
+    "PUBREL <<PACKET_ID>>\r\n"
+]
+
+PUBCOMP: [
+    "PUBCOMP <<PACKET_ID>>\r\n"
+]
+
+UNSUBSCRIBE: [
+    "UNSUBSCRIBE <<VALUE>>\r\n",
+    "PacketId: <<VALUE>>\r\n",
+    "TopicFilter: <<VALUE>>\r\n"
+]
+
+UNSUBACK: [
+    "UNSUBACK <<PACKET_ID>>\r\n"
+]
+
+DISCONNECT: [
+    "DISCONNECT <<VALUE>>\r\n"
+]
+```
+
+### Notes:
+- The `<<VALUE>>` placeholders can be replaced with actual values based on the specific implementation or use case.
+- The `RETURN_CODE` in the CONNACK message indicates the result of the connection attempt.
+- The `PacketId` is a unique identifier for the message, particularly for QoS 1 and QoS 2 messages.
+- The `QoS` values can be 0, 1, or 2, indicating the Quality of Service level.
+- The `Dup` flag in PUBLISH indicates if the message is a duplicate. 
+
+This template covers the essential MQTT client request messages and their variations.
+In addition to the previously mentioned MQTT client request message templates, there are a few more templates that can be considered, particularly for handling specific scenarios and functionalities in the MQTT protocol. Below is a list of additional client request templates that can be useful in various MQTT implementations:
+
+```plaintext
+PINGREQ: [
+    "PINGREQ\r\n"
+]
+
+PINGRESP: [
+    "PINGRESP\r\n"
+]
+
+WILLMESSAGE: [
+    "WILLMESSAGE\r\n",
+    "Topic: <<VALUE>>\r\n",
+    "Payload: <<VALUE>>\r\n",
+    "QoS: <<VALUE>>\r\n",
+    "Retain: <<VALUE>>\r\n"
+]
+
+CLIENTID: [
+    "ClientId: <<VALUE>>\r\n"
+]
+
+AUTH: [
+    "AUTH <<METHOD>>\r\n",
+    "ReasonCode: <<VALUE>>\r\n",
+    "Properties: <<VALUE>>\r\n"
+]
+
+AUTHACK: [
+    "AUTHACK <<REASON_CODE>>\r\n"
+]
+
+RECONNECT: [
+    "CONNECT <<VALUE>>\r\n",
+    "ClientId: <<VALUE>>\r\n",
+    "CleanSession: <<VALUE>>\r\n",
+    "KeepAlive: <<VALUE>>\r\n",
+    "WillTopic: <<VALUE>>\r\n",
+    "WillPayload: <<VALUE>>\r\n",
+    "WillQoS: <<VALUE>>\r\n",
+    "WillRetain: <<VALUE>>\r\n",
+    "Username: <<VALUE>>\r\n",
+    "Password: <<VALUE>>\r\n",
+    "Duplicate: true\r\n"
+]
+```
+
+### Additional Notes:
+- **PINGREQ / PINGRESP**: These messages are used for keep-alive functionality. The client sends a PINGREQ to the broker to check the connection, and the broker responds with a PINGRESP.
+- **WILLMESSAGE**: This is a representation of the last will message that can be sent by the broker if the client disconnects unexpectedly.
+- **AUTH / AUTHACK**: These messages are part of the authentication mechanism introduced in MQTT 5.0. They allow clients to authenticate with the broker.
+- **RECONNECT**: This template represents a reconnect scenario where a client attempts to connect again, possibly with the same or different parameters, including the duplicate flag.
+
+These additional templates enhance the flexibility and functionality of the MQTT protocol, allowing for better connection management, authentication, and message handling in various use cases.

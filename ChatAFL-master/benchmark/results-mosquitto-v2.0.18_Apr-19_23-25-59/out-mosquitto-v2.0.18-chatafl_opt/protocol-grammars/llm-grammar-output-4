@@ -1,0 +1,81 @@
+Here are the MQTT client request message templates, including the specified state-edge sequences and variations:
+
+```plaintext
+CONNECT: ["CONNECT <<VALUE>>\r\n", "ClientId: <<VALUE>>\r\n", "CleanSession: <<VALUE>>\r\n", "KeepAlive: <<VALUE>>\r\n", "WillTopic: <<VALUE>>\r\n", "WillMessage: <<VALUE>>\r\n", "Username: <<VALUE>>\r\n", "Password: <<VALUE>>\r\n"]
+
+SUBSCRIBE: ["SUBSCRIBE <<VALUE>>\r\n", "Topic: <<VALUE>>\r\n", "QoS: <<VALUE>>\r\n"]
+
+PUBLISH: ["PUBLISH <<VALUE>>\r\n", "Topic: <<VALUE>>\r\n", "Payload: <<VALUE>>\r\n", "QoS: <<VALUE>>\r\n", "Retain: <<VALUE>>\r\n", "Dup: <<VALUE>>\r\n"]
+
+UNSUBSCRIBE: ["UNSUBSCRIBE <<VALUE>>\r\n", "Topic: <<VALUE>>\r\n"]
+
+DISCONNECT: ["DISCONNECT <<VALUE>>\r\n"]
+
+RECONNECT: ["CONNECT <<VALUE>>\r\n", "ClientId: <<VALUE>>\r\n", "CleanSession: <<VALUE>>\r\n", "KeepAlive: <<VALUE>>\r\n"]
+
+DUPLICATE_CONNECT: ["CONNECT <<VALUE>>\r\n", "ClientId: <<VALUE>>\r\n", "CleanSession: <<VALUE>>\r\n", "KeepAlive: <<VALUE>>\r\n", "ClientId: <<DUPLICATE_VALUE>>\r\n"]
+
+WILDCARD_SUBSCRIBE: ["SUBSCRIBE <<VALUE>>\r\n", "Topic: <<WILDCARD_TOPIC>>\r\n", "QoS: <<VALUE>>\r\n"]
+
+WILL_MESSAGE: ["CONNECT <<VALUE>>\r\n", "ClientId: <<VALUE>>\r\n", "CleanSession: <<VALUE>>\r\n", "KeepAlive: <<VALUE>>\r\n", "WillTopic: <<VALUE>>\r\n", "WillMessage: <<VALUE>>\r\n"]
+
+AUTH: ["CONNECT <<VALUE>>\r\n", "ClientId: <<VALUE>>\r\n", "CleanSession: <<VALUE>>\r\n", "KeepAlive: <<VALUE>>\r\n", "Username: <<USERNAME>>\r\n", "Password: <<PASSWORD>>\r\n"]
+
+QoS_0: ["PUBLISH <<VALUE>>\r\n", "Topic: <<VALUE>>\r\n", "Payload: <<VALUE>>\r\n", "QoS: 0\r\n"]
+
+QoS_1: ["PUBLISH <<VALUE>>\r\n", "Topic: <<VALUE>>\r\n", "Payload: <<VALUE>>\r\n", "QoS: 1\r\n"]
+
+QoS_2: ["PUBLISH <<VALUE>>\r\n", "Topic: <<VALUE>>\r\n", "Payload: <<VALUE>>\r\n", "QoS: 2\r\n"]
+```
+
+This list covers the main MQTT client request messages, including variations for QoS levels, reconnect scenarios, and other features like will messages, authentication, and wildcard subscriptions.
+In addition to the previously mentioned MQTT client request templates, there are several other templates that can be relevant in various scenarios. Here’s a more comprehensive list of MQTT client request message templates:
+
+```plaintext
+CONNECT: ["CONNECT <<VALUE>>\r\n", "ClientId: <<VALUE>>\r\n", "CleanSession: <<VALUE>>\r\n", "KeepAlive: <<VALUE>>\r\n", "WillTopic: <<VALUE>>\r\n", "WillMessage: <<VALUE>>\r\n", "Username: <<VALUE>>\r\n", "Password: <<VALUE>>\r\n"]
+
+SUBSCRIBE: ["SUBSCRIBE <<VALUE>>\r\n", "Topic: <<VALUE>>\r\n", "QoS: <<VALUE>>\r\n"]
+
+PUBLISH: ["PUBLISH <<VALUE>>\r\n", "Topic: <<VALUE>>\r\n", "Payload: <<VALUE>>\r\n", "QoS: <<VALUE>>\r\n", "Retain: <<VALUE>>\r\n", "Dup: <<VALUE>>\r\n"]
+
+UNSUBSCRIBE: ["UNSUBSCRIBE <<VALUE>>\r\n", "Topic: <<VALUE>>\r\n"]
+
+DISCONNECT: ["DISCONNECT <<VALUE>>\r\n"]
+
+RECONNECT: ["CONNECT <<VALUE>>\r\n", "ClientId: <<VALUE>>\r\n", "CleanSession: <<VALUE>>\r\n", "KeepAlive: <<VALUE>>\r\n"]
+
+DUPLICATE_CONNECT: ["CONNECT <<VALUE>>\r\n", "ClientId: <<VALUE>>\r\n", "CleanSession: <<VALUE>>\r\n", "KeepAlive: <<VALUE>>\r\n", "ClientId: <<DUPLICATE_VALUE>>\r\n"]
+
+WILDCARD_SUBSCRIBE: ["SUBSCRIBE <<VALUE>>\r\n", "Topic: <<WILDCARD_TOPIC>>\r\n", "QoS: <<VALUE>>\r\n"]
+
+WILL_MESSAGE: ["CONNECT <<VALUE>>\r\n", "ClientId: <<VALUE>>\r\n", "CleanSession: <<VALUE>>\r\n", "KeepAlive: <<VALUE>>\r\n", "WillTopic: <<VALUE>>\r\n", "WillMessage: <<VALUE>>\r\n"]
+
+AUTH: ["CONNECT <<VALUE>>\r\n", "ClientId: <<VALUE>>\r\n", "CleanSession: <<VALUE>>\r\n", "KeepAlive: <<VALUE>>\r\n", "Username: <<USERNAME>>\r\n", "Password: <<PASSWORD>>\r\n"]
+
+QoS_0: ["PUBLISH <<VALUE>>\r\n", "Topic: <<VALUE>>\r\n", "Payload: <<VALUE>>\r\n", "QoS: 0\r\n"]
+
+QoS_1: ["PUBLISH <<VALUE>>\r\n", "Topic: <<VALUE>>\r\n", "Payload: <<VALUE>>\r\n", "QoS: 1\r\n"]
+
+QoS_2: ["PUBLISH <<VALUE>>\r\n", "Topic: <<VALUE>>\r\n", "Payload: <<VALUE>>\r\n", "QoS: 2\r\n"]
+
+PINGREQ: ["PINGREQ\r\n"]
+
+PINGRESP: ["PINGRESP\r\n"]
+
+ACKNOWLEDGEMENTS: ["PUBACK <<MESSAGE_ID>>\r\n", "PUBREC <<MESSAGE_ID>>\r\n", "PUBREL <<MESSAGE_ID>>\r\n", "PUBCOMP <<MESSAGE_ID>>\r\n"]
+
+CLIENT_ID_REUSE: ["CONNECT <<VALUE>>\r\n", "ClientId: <<VALUE>>\r\n", "CleanSession: 0\r\n", "KeepAlive: <<VALUE>>\r\n"]
+
+LAST_WILL: ["CONNECT <<VALUE>>\r\n", "ClientId: <<VALUE>>\r\n", "CleanSession: <<VALUE>>\r\n", "KeepAlive: <<VALUE>>\r\n", "WillTopic: <<WILL_TOPIC>>\r\n", "WillMessage: <<WILL_MESSAGE>>\r\n", "WillQoS: <<VALUE>>\r\n", "WillRetain: <<VALUE>>\r\n"]
+
+SESSION_EXPIRY: ["CONNECT <<VALUE>>\r\n", "ClientId: <<VALUE>>\r\n", "CleanSession: <<VALUE>>\r\n", "KeepAlive: <<VALUE>>\r\n", "SessionExpiryInterval: <<VALUE>>\r\n"]
+```
+
+### Explanation of Additional Templates:
+- **PINGREQ** / **PINGRESP**: Used to keep the connection alive and check if the broker is reachable.
+- **ACKNOWLEDGEMENTS**: Various acknowledgment messages for QoS levels 1 and 2.
+- **CLIENT_ID_REUSE**: Connect with a client ID that is already in use without creating a new session.
+- **LAST_WILL**: Specifies a last will message that the broker will send if the client disconnects unexpectedly.
+- **SESSION_EXPIRY**: Indicates how long the session should be kept by the broker after the client disconnects.
+
+These templates cover a wide range of client requests and scenarios in the MQTT protocol.

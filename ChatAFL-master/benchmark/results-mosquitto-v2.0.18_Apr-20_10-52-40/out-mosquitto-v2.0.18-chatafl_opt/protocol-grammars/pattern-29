@@ -1,0 +1,2 @@
+^(?:PUBLISH (.*)\r\n)
+(?|(?:Retain: (.*)\r\n)|(?:PacketId: (.*)\r\n)|(?:TopicName: (.*)\r\n)|(?:QoS: (.*)\r\n)|(?:QoS: 1\r\n)|(?:QoS: 2\r\n)|(?:Topic: (.*)\r\n)|(?:Payload: (.*)\r\n))

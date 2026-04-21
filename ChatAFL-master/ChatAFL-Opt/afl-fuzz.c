@@ -50,6 +50,8 @@
 #include "mqtt-scheduler.h"
 #include "mp-driver.h"
 #include "mqtt-differential.h"
+#include "mqtt-cluster.h"
+#include "fuzz-stats-csv.h"
 #include "mqtt-race.h"
 
 #include <stdio.h>
@@ -259,6 +261,7 @@ static s32 cpu_aff = -1; /* Selected CPU core                */
 #endif /* HAVE_AFFINITY */
 
 static FILE *plot_file; /* Gnuplot output file              */
+static fuzz_stats_csv_writer_t fuzz_stats_csv_writer;
 
 /* ============================================
  * ChatAFL-Opt: Grammar Hypothesis Globals
@@ -480,7 +483,7 @@ u8 mqtt_cluster_diverged = 0;
 static u8 mqtt_cluster_probe_logged = 0;
 static u8 mqtt_diff_feedback_enabled = 0;   /* MQTT-only: enable diff reward loop */
 static u32 mqtt_diff_probe_period = 32;     /* Probe CHATAFL_MQTT_BROKERS every N execs (MQTT init→8) */
-static u64 mqtt_diff_last_probe_exec = 0;   /* Last exec index when cluster probe ran */
+static u64 mqtt_diff_last_probe_exec = 0;   /* Last exec index when send_over_network multi-broker ran */
 static double mqtt_last_diff_signal = 0.0;  /* Last normalized divergence signal [0,1] */
 /* Runtime-observable differential telemetry (cumulative over run). */
 static u64 mqtt_diff_obs_count = 0;         /* #executions with diff signal sampled */
@@ -507,6 +510,8 @@ static u64 mqtt_diff_code_divergences    = 0;  /* Return-code divergences     */
 static u64 mqtt_diff_payload_divergences = 0;  /* Payload-content divergences */
 static u64 mqtt_diff_fwd_divergences     = 0;  /* O2: Forward-path divergences */
 static u64 mqtt_diff_queue_promotions    = 0;  /* Inputs promoted by diff     */
+
+static mqtt_o8_state_t mqtt_o8_state;
 
 /* P6: Deep-path state promotion metrics */
 static u64 mqtt_deep_state_promotions    = 0;  /* Deep-state energy boosts    */
@@ -672,12 +677,6 @@ static u32 llm_prompt_hash_count = 0;
 
 extern char *protocol_name;
 extern klist_t(lms) *kl_messages;
-
-typedef struct {
-  u8 *ip;
-  u32 port;
-  char impl_name[32];  /* D2: broker implementation name (e.g. "mosquitto","nanomq") */
-} mqtt_broker_endpoint_t;
 
 /* ════════════════════════════════════════════════════════════════════
  * D4: Save structured differential report to out_dir/diffs/.
@@ -1142,8 +1141,13 @@ static void mqtt_probe_cluster_differences(void) {
     return;
   }
 
-  /* Skip cluster probing during dry run — partner container likely not ready. */
-  if (queue_cycle == 0) {
+  /* Skip cluster probing during dry run / calibration.
+   * Original guard used queue_cycle > 0, but MQTT's slow exec speed
+   * (~300 ms/exec) means queue_cycle stays 0 for the entire 30-min run
+   * when there are 100+ seeds.  Use total_execs > queued_paths instead:
+   * once we've executed more test cases than the seed count, calibration
+   * (perform_dry_run) is certainly finished. */
+  if (total_execs <= queued_paths) {
     reset_mqtt_cluster_diff_summary();
     return;
   }
@@ -1152,12 +1156,12 @@ static void mqtt_probe_cluster_differences(void) {
    * Throttle probes by execution count when CHATAFL_MQTT_BROKERS is set.
    * Cached signal is reused between probe intervals, with mild decay. */
   if (broker_spec && *broker_spec && mqtt_diff_probe_period > 1) {
-    if (total_execs > 0 && mqtt_diff_last_probe_exec > 0 &&
-        (total_execs - mqtt_diff_last_probe_exec) < mqtt_diff_probe_period) {
+    if (!mqtt_o8_should_cluster_probe(&mqtt_o8_state, total_execs,
+                                      mqtt_diff_probe_period,
+                                      get_cur_time(), last_path_time)) {
       mqtt_last_diff_signal *= 0.95;
       return;
     }
-    mqtt_diff_last_probe_exec = total_execs;
   }
 
   reset_mqtt_cluster_diff_summary();
@@ -1211,6 +1215,10 @@ static void mqtt_probe_cluster_differences(void) {
         end--;
       }
     }
+
+    /* O8: strip optional "impl@" prefix (e.g. "nanomq@tcp://...") */
+    { char *at = strchr(token, '@');
+      if (at && at > token && at[1]) token = at + 1; }
 
     if (*token && !parse_net_config((u8 *)token, &proto, &ip, &port) && proto == PRO_TCP) {
       mqtt_broker_endpoint_t *next = (mqtt_broker_endpoint_t *)ck_realloc(endpoints, (endpoint_count + 1) * sizeof(mqtt_broker_endpoint_t));
@@ -1459,6 +1467,10 @@ static u8 mqtt_collect_exec_brokers(mqtt_broker_endpoint_t **out_endpoints,
         end--;
       }
     }
+
+    /* O8: strip optional "impl@" prefix (e.g. "nanomq@tcp://...") */
+    { char *at = strchr(token, '@');
+      if (at && at > token && at[1]) token = at + 1; }
 
     if (*token && !parse_net_config((u8 *)token, &proto, &ip, &port) &&
         proto == PRO_TCP) {
@@ -2181,6 +2193,7 @@ static void mqtt_diff_analyze_responses(char **raw_responses,
   mqtt_diff_result_t result;
 
   mqtt_last_field_diff_valid = 0;
+  mqtt_o8_reset_last_vote(&mqtt_o8_state);
   if (broker_count < 2) return;
 
   /* Parse each broker's response into structured fields (stack-allocated). */
@@ -2193,8 +2206,13 @@ static void mqtt_diff_analyze_responses(char **raw_responses,
         raw_response_lens[i], &fields[i]);
   }
 
-  /* Pairwise comparison — find maximum divergence */
-  result = mqtt_diff_compare_n(fields, (int)broker_count);
+  /* O8: Use majority-voting comparison when N >= 3 brokers,
+   * otherwise fall back to standard pairwise comparison. */
+  if (broker_count >= 3) {
+    result = mqtt_o8_majority_vote(&mqtt_o8_state, fields, (int)broker_count);
+  } else {
+    result = mqtt_diff_compare_n(fields, (int)broker_count);
+  }
 
   /* Update telemetry */
   switch (result.severity) {
@@ -2257,6 +2275,24 @@ static void mqtt_diff_analyze_responses(char **raw_responses,
     /* Re-use existing D4 infrastructure; eps/fwd_hashes not available
      * here, so pass NULL — mqtt_save_diff_report handles gracefully. */
     mqtt_save_diff_report(div_type, detail, NULL, 0, NULL);
+  }
+
+  /* O8: When majority voting detected outlier(s) with N>=3 brokers,
+   * build and save a structured noncompliance report entry.
+   * This is the primary mechanism for RFC non-compliance bug output. */
+  if (mqtt_o8_state.last_vote_valid && mqtt_o8_state.last_vote.outlier_count > 0 &&
+      result.severity > MQTT_DIV_NONE) {
+    mqtt_noncompliance_entry_t nc_entry;
+    if (mqtt_diff_build_noncompliance(&mqtt_o8_state.last_vote, &result,
+                                       mqtt_o8_state.impl_count > 0
+                                         ? mqtt_o8_state.impl_names : NULL,
+                                       mqtt_o8_state.impl_count > 0
+                                         ? mqtt_o8_state.impl_count : (int)broker_count,
+                                       &nc_entry) &&
+        mqtt_o8_should_emit_report(&mqtt_o8_state, nc_entry.pattern_hash)) {
+      mqtt_o8_state.noncompliance_reports++;
+      mqtt_save_diff_report("noncompliance", nc_entry.detail, NULL, 0, NULL);
+    }
   }
 
   ck_free(fields);
@@ -3242,16 +3278,20 @@ int send_over_network()
      * diff signal freshness and exec/sec.  The cached diff signal decays
      * by 0.95× per non-probe exec so its influence fades gracefully.
      *
-     * SAFETY: Skip during dry run (queue_cycle == 0) — partner container
-     * may not be ready. */
+     * SAFETY: Skip during dry run / calibration — partner container
+     * may not be ready.  See mqtt_probe_cluster_differences() comment
+     * for why we use total_execs > queued_paths instead of queue_cycle. */
     if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0
-        && queue_cycle > 0) {
+        && total_execs > queued_paths) {
 
       /* O1-fix: Throttle multi-broker exec by probe period */
       u8 do_multi_broker_exec = 1;
       if (mqtt_diff_probe_period > 1) {
+        u32 effective_probe_period = mqtt_o8_effective_probe_period(
+            &mqtt_o8_state, mqtt_diff_probe_period,
+            get_cur_time(), last_path_time);
         if (total_execs > 0 && mqtt_diff_last_probe_exec > 0 &&
-            (total_execs - mqtt_diff_last_probe_exec) < mqtt_diff_probe_period) {
+            (total_execs - mqtt_diff_last_probe_exec) < effective_probe_period) {
           do_multi_broker_exec = 0;
           mqtt_last_diff_signal *= 0.98;  /* V6: slower decay keeps signal alive */
         } else {
@@ -3335,18 +3375,38 @@ int send_over_network()
 
         mqtt_set_cluster_summary_from_signatures(eps, sigs, ecnt);
 
-        /* O2: Forward-differential signal — compare fwd_hashes across brokers.
+        /* O8: Snapshot impl names for downstream cross-impl scoring */
+        mqtt_o8_snapshot_impl_names(&mqtt_o8_state, eps, ecnt);
+
+        /* O2+O8: Forward-differential signal — compare fwd_hashes across brokers.
          * If any broker's forwarding fingerprint differs, this indicates a
          * message routing / QoS / retain divergence in the broker's
-         * subs__send() / sub__messages_queue() code paths. */
+         * subs__send() / sub__messages_queue() code paths.
+         * O8: When N>=3, use majority voting to identify outlier brokers. */
         if (ecnt >= 2 && mqtt_diff_feedback_enabled) {
           u8 fwd_diverged = 0;
-          for (u32 i = 1; i < ecnt; i++) {
-            if (fwd_hashes[i] != fwd_hashes[0]) {
-              fwd_diverged = 1;
-              break;
+          mqtt_fwd_diff_result_t fwd_vote;
+
+          if (ecnt >= 3) {
+            /* O8: Majority voting on forwarding hashes */
+            mqtt_diff_fwd_majority_vote(fwd_hashes, (int)ecnt, &fwd_vote);
+            fwd_diverged = (fwd_vote.fwd_outlier_count > 0) ? 1 : 0;
+            if (fwd_diverged)
+              mqtt_o8_note_fwd_outliers(&mqtt_o8_state,
+                                        fwd_vote.fwd_outlier_count);
+          } else {
+            /* Legacy: pairwise comparison for N==2 */
+            memset(&fwd_vote, 0, sizeof(fwd_vote));
+            for (u32 i = 1; i < ecnt; i++) {
+              if (fwd_hashes[i] != fwd_hashes[0]) {
+                fwd_diverged = 1;
+                fwd_vote.fwd_outlier[i] = 1;
+                fwd_vote.fwd_outlier_count++;
+                break;
+              }
             }
           }
+
           if (fwd_diverged) {
             /* Boost diff signal — forwarding divergence is high-value */
             if (mqtt_last_diff_signal < 0.8)
@@ -3384,13 +3444,35 @@ int send_over_network()
               mqtt_diff_payload_divergences++;  /* count as payload-level */
             }
 
-            /* D4: Save structured differential report */
-            char fwd_detail[256];
-            snprintf(fwd_detail, sizeof(fwd_detail),
-                     "fwd_hash[0]=0x%08x vs fwd_hash[1]=0x%08x (brokers=%u)",
-                     fwd_hashes[0], ecnt > 1 ? fwd_hashes[1] : 0, ecnt);
-            mqtt_save_diff_report("fwd_divergence", fwd_detail,
-                                  eps, ecnt, fwd_hashes);
+            /* D4: Save structured differential report with O8 outlier info */
+            char fwd_detail[384];
+            if (ecnt >= 3 && fwd_vote.fwd_outlier_count > 0) {
+              char outlier_buf[128] = "";
+              int olen = 0;
+              for (u32 oi = 0; oi < ecnt && oi < MQTT_OUTLIER_MAX; oi++) {
+                if (fwd_vote.fwd_outlier[oi]) {
+                  olen += snprintf(outlier_buf + olen, sizeof(outlier_buf) - olen,
+                                   "%s%s:%u", olen ? "," : "",
+                                   eps[oi].ip ? (char *)eps[oi].ip : "?",
+                                   eps[oi].port);
+                }
+              }
+              snprintf(fwd_detail, sizeof(fwd_detail),
+                       "fwd_outliers=[%s] outlier_count=%d brokers=%u",
+                       outlier_buf, fwd_vote.fwd_outlier_count, ecnt);
+            } else {
+              snprintf(fwd_detail, sizeof(fwd_detail),
+                       "fwd_hash[0]=0x%08x vs fwd_hash[1]=0x%08x (brokers=%u)",
+                       fwd_hashes[0], ecnt > 1 ? fwd_hashes[1] : 0, ecnt);
+            }
+            {
+              u32 fwd_pattern_hash = fwd_vote.pattern_hash;
+              if (!fwd_pattern_hash)
+                fwd_pattern_hash = fwd_hashes[0] ^ (ecnt > 1 ? fwd_hashes[1] : 0);
+              if (mqtt_o8_should_emit_report(&mqtt_o8_state, fwd_pattern_hash))
+                mqtt_save_diff_report("fwd_divergence", fwd_detail,
+                                      eps, ecnt, fwd_hashes);
+            }
           }
         }
 
@@ -8101,6 +8183,16 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
     if (mqtt_last_field_diff_valid && protocol_name &&
         strcasecmp(protocol_name, "MQTT") == 0) {
       int dscore = mqtt_diff_score_from_result(&mqtt_last_field_diff);
+
+      /* O8: Apply cross-implementation boost when majority vote available */
+      if (mqtt_o8_state.last_vote_valid && mqtt_o8_state.last_vote.outlier_count > 0) {
+        int boosted = mqtt_o8_apply_cross_impl_boost(
+            &mqtt_o8_state, &mqtt_last_field_diff, dscore);
+        if (boosted > dscore) {
+          dscore = boosted;
+        }
+      }
+
       queue_top->mqtt_diff_score = (u8)(dscore > 100 ? 100 : dscore);
 
       /* Track promotion for observability */
@@ -8547,6 +8639,25 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)mqtt_p6_deep_state_boosts,
           (unsigned long long)mqtt_p6_stall_boosts);
 
+  /* O8: Heterogeneous broker cluster telemetry */
+  mqtt_o8_write_stats(f, &mqtt_o8_state);
+
+  fuzz_stats_csv_write_summary(&fuzz_stats_csv_writer,
+                               protocol_name ? protocol_name : (char *)use_banner,
+                               "chatafl_opt",
+                               start_time,
+                               get_cur_time(),
+                               1,
+                               total_execs,
+                               queued_paths,
+                               unique_crashes,
+                               (u32)agnnodes(ipsm),
+                               (u32)agnedges(ipsm),
+                               bitmap_cvg,
+                               eps,
+                               mqtt_diff_signal_avg(),
+                               mqtt_o8_state.noncompliance_reports);
+
   fclose(f);
 }
 
@@ -8629,6 +8740,21 @@ static void maybe_update_plot_file(double bitmap_cvg, double eps)
       (unsigned long long)mqtt_diff_fwd_divergences); /* O2 */
 
   fflush(plot_file);
+
+  fuzz_stats_csv_append(&fuzz_stats_csv_writer,
+                        get_cur_time() / 1000,
+                        start_time,
+                        total_execs,
+                        queued_paths,
+                        unique_crashes,
+                        (u32)agnnodes(ipsm),
+                        (u32)agnedges(ipsm),
+                        eps,
+                        bitmap_cvg,
+                        mqtt_diff_signal_avg(),
+                        mqtt_last_diff_signal,
+                        mqtt_o8_state.outlier_detections,
+                        mqtt_o8_state.current_probe_period);
 }
 
 /* A helper function for maybe_delete_out_dir(), deleting all prefixed
@@ -9047,6 +9173,16 @@ static void maybe_delete_out_dir(void)
   }
 
   fn = alloc_printf("%s/plot_data", out_dir);
+  if (unlink(fn) && errno != ENOENT)
+    goto dir_cleanup_failed;
+  ck_free(fn);
+
+  fn = alloc_printf("%s/fuzz_stats_timeline.csv", out_dir);
+  if (unlink(fn) && errno != ENOENT)
+    goto dir_cleanup_failed;
+  ck_free(fn);
+
+  fn = alloc_printf("%s/run_summary_live.csv", out_dir);
   if (unlink(fn) && errno != ENOENT)
     goto dir_cleanup_failed;
   ck_free(fn);
@@ -14464,6 +14600,9 @@ EXP_ST void setup_dirs_fds(void)
   if (!plot_file)
     PFATAL("fdopen() failed");
 
+  if (fuzz_stats_csv_init(&fuzz_stats_csv_writer, (const char *)out_dir))
+    PFATAL("Unable to create internal CSV stats under '%s'", out_dir);
+
   fprintf(plot_file, "# unix_time, cycles_done, cur_path, paths_total, "
                      "pending_total, pending_favs, map_size, unique_crashes, "
                      "unique_hangs, max_depth, execs_per_sec, n_nodes, n_edges, "
@@ -15857,7 +15996,8 @@ int main(int argc, char **argv)
      * path handles execution at full throughput. */
     if (!getenv("CHATAFL_MQTT_NO_DIFF_FEEDBACK")) {
       mqtt_diff_feedback_enabled = 1;
-      mqtt_diff_probe_period = 4;  /* V3-2: every 4th exec (was 8→stale signal, 0.95^8=0.66 decay) */
+      mqtt_diff_probe_period = 8;  /* Coverage-first base period; O8 narrows again automatically after long stalls. */
+      mqtt_o8_init(&mqtt_o8_state);
       {
         const char *pp = getenv("CHATAFL_MQTT_DIFF_PROBE_PERIOD");
         if (pp && *pp) {
@@ -15967,8 +16107,34 @@ int main(int argc, char **argv)
       u8 skipped_fuzz;
 
       struct queue_entry *selected_seed = NULL;
+      struct queue_entry *fallback_seed = NULL; /* Best-effort seed (may have region_count==0) */
+      u32 seed_search_attempts = 0;
+      #define SEED_SEARCH_MAX_ATTEMPTS 10000  /* Prevent infinite busy-loop */
+
       while (!selected_seed || selected_seed->region_count == 0)
       {
+        /* Bail out on signal or after too many fruitless attempts.
+         * Without this, the loop spins forever when all reachable seeds
+         * have region_count == 0 (observed on mosquitto-v2.0.18 at ~18%
+         * stability after ~3 h).  stats/show_stats are never called
+         * inside this loop, so the fuzzer appears hung. */
+        if (stop_soon) break;
+        if (++seed_search_attempts > SEED_SEARCH_MAX_ATTEMPTS) {
+          /* Accept any non-NULL seed as fallback — fuzz_one will simply
+           * skip it quickly if region_count == 0, and the outer while(1)
+           * will bring us back here for another attempt. */
+          if (fallback_seed) {
+            selected_seed = fallback_seed;
+            if (!(seed_search_attempts % 50000))
+              show_stats();   /* Keep stats file alive */
+          }
+          break;
+        }
+
+        /* Remember any non-NULL seed as a fallback even if region_count==0 */
+        if (selected_seed && !fallback_seed)
+          fallback_seed = selected_seed;
+
         /* Track node stagnation */
         u32 cur_nodes = agnnodes(ipsm);
         if (cur_nodes > prev_node_count_loop) {
@@ -16008,6 +16174,12 @@ int main(int argc, char **argv)
 
         selected_seed = choose_seed(target_state_id, seed_selection_algo);
       }
+
+      /* If we broke out of seed search due to stop_soon, exit the main loop */
+      if (stop_soon) break;
+
+      /* If no seed at all was found (empty IPSM), skip this iteration */
+      if (!selected_seed) continue;
 
       /* Seek to the selected seed */
       if (selected_seed)
@@ -16185,6 +16357,8 @@ stop_fuzzing:
    * that could touch the corrupted heap.  All essential files (fuzzer_stats,
    * plot_data, queue/, crashes/) are already synced above. */
   fflush(NULL);
+
+  fuzz_stats_csv_close(&fuzz_stats_csv_writer);
 
   OKF("We're done here. Have a nice day!\n");
 

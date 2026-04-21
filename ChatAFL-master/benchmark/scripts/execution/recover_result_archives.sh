@@ -131,7 +131,6 @@ while IFS='|' read -r run_index container_id container_name image_name fuzzer_na
     if ! tarball_is_complete "$destination"; then
       echo "[recover] [WARN] ${archive_name} is incomplete after collection" >&2
       # Try to patch missing files directly from the container
-      local _dest_listing
       _dest_listing=$(tar tzf "$destination" 2>/dev/null) || _dest_listing=""
       for req in $REQUIRED_FILES; do
         if [[ "$_dest_listing" != *"$req"* ]]; then
@@ -168,4 +167,5 @@ overall_status=$(cat "$_status_file")
 rm -f "$_status_file"
 
 fix_result_permissions "$RESULTS_DIR"
+exit "$overall_status"
 exit "$overall_status"

@@ -9,6 +9,7 @@ export SKIPCOUNT="${SKIPCOUNT:-1}"
 export TEST_TIMEOUT="${TEST_TIMEOUT:-20000}"
 export PROJECT_ROOT="${PROJECT_ROOT:-$PWD/..}"
 export RESULTS_ROOT="${RESULTS_ROOT:-.}"
+export CHATAFL_HETERO="${CHATAFL_HETERO:-}"
 RESULT_OWNER="${SUDO_USER:-$USER}"
 RESULT_GROUP="$(id -gn "${RESULT_OWNER}")"
 
@@ -524,7 +525,8 @@ RECOVERY_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/recover_result_ar
 for RESULTS_DIR in ${RESULTS_ROOT}/results-*; do
     [[ -d "$RESULTS_DIR" ]] || continue
     if [[ -f "$RECOVERY_HELPER" ]]; then
-        bash "$RECOVERY_HELPER" "$RESULTS_DIR" >/dev/null 2>&1 || true
+        bash "$RECOVERY_HELPER" "$RESULTS_DIR" || \
+          echo "[WARN] Recovery pass failed for $RESULTS_DIR (exit $?)" >&2
     fi
     fix_result_permissions "$RESULTS_DIR"
 done

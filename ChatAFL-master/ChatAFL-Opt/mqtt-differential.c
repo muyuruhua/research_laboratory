@@ -21,6 +21,7 @@
 
 #include "mqtt-differential.h"
 #include <string.h>
+#include <stdio.h>
 
 /* FNV-1a 32-bit hash — fast, well-distributed, no allocation */
 static uint32_t fnv1a_32(const unsigned char *data, unsigned int len) {
@@ -421,4 +422,321 @@ int mqtt_diff_score_from_result(const mqtt_diff_result_t *r) {
   case MQTT_DIV_PAYLOAD: return (int)(10 + 30 * r->strength);
   default:               return 0;
   }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+ * O8: Majority-voting N-way comparison.
+ *
+ * Algorithm:
+ *   1. Group brokers by their (type_seq_hash, code_seq_hash) fingerprint.
+ *   2. The largest group is the "consensus" (majority).
+ *   3. Brokers outside the consensus group are "outliers".
+ *   4. Each outlier is compared pairwise against a consensus member
+ *      to determine the divergence severity and strength.
+ *   5. The worst (highest severity) outlier divergence is returned.
+ *
+ * For N < 3: falls back to standard pairwise comparison (no voting).
+ * ════════════════════════════════════════════════════════════════════ */
+mqtt_diff_result_t mqtt_diff_majority_vote(
+    const mqtt_response_fields_t *fields, int n,
+    const char **impl_names,
+    mqtt_majority_vote_t *vote) {
+
+  mqtt_diff_result_t worst;
+  memset(&worst, 0, sizeof(worst));
+  memset(vote, 0, sizeof(*vote));
+
+  if (n < 2) return worst;
+
+  /* For N == 2, fall back to standard pairwise (no majority possible) */
+  if (n == 2) {
+    worst = mqtt_diff_compare(&fields[0], &fields[1]);
+    if (worst.severity > MQTT_DIV_NONE) {
+      /* Heuristic: broker[1] is outlier (secondary), broker[0] is primary */
+      vote->is_outlier[1] = 1;
+      vote->outlier_count = 1;
+      vote->consensus_count = 1;
+      vote->consensus_severity = worst.severity;
+      vote->consensus_strength = worst.strength;
+      vote->consensus_type_hash = fields[0].type_seq_hash;
+      vote->consensus_code_hash = fields[0].code_seq_hash;
+      vote->pattern_hash = worst.pattern_hash;
+    } else {
+      vote->consensus_count = 2;
+    }
+    return worst;
+  }
+
+  /* Step 1: Compute behavioral fingerprint for each broker.
+   * We combine type_seq_hash and code_seq_hash as the grouping key.
+   * Brokers in the same group produce identical G-field behavior. */
+  uint32_t fingerprints[MQTT_DIFF_MAX_BROKERS];
+  int group_id[MQTT_DIFF_MAX_BROKERS];     /* Which group each broker belongs to */
+  int group_count[MQTT_DIFF_MAX_BROKERS];  /* Size of each group */
+  int num_groups = 0;
+  uint32_t group_fp[MQTT_DIFF_MAX_BROKERS]; /* Fingerprint of each group */
+
+  int limit = (n > MQTT_DIFF_MAX_BROKERS) ? MQTT_DIFF_MAX_BROKERS : n;
+
+  for (int i = 0; i < limit; i++) {
+    /* Combine type + code + flags hashes into a single fingerprint */
+    fingerprints[i] = fields[i].type_seq_hash ^ (fields[i].code_seq_hash * 2654435761u)
+                    ^ (fields[i].flags_hash * 40503u);
+
+    /* Handle empty responses specially */
+    if (fields[i].pkt_count == 0)
+      fingerprints[i] = 0xDEADDEAD;
+
+    /* Find or create group */
+    int found = -1;
+    for (int g = 0; g < num_groups; g++) {
+      if (group_fp[g] == fingerprints[i]) {
+        found = g;
+        break;
+      }
+    }
+    if (found >= 0) {
+      group_id[i] = found;
+      group_count[found]++;
+    } else {
+      group_fp[num_groups] = fingerprints[i];
+      group_count[num_groups] = 1;
+      group_id[i] = num_groups;
+      num_groups++;
+    }
+  }
+
+  /* Step 2: Find the largest group (consensus) */
+  int consensus_group = 0;
+  for (int g = 1; g < num_groups; g++) {
+    if (group_count[g] > group_count[consensus_group])
+      consensus_group = g;
+  }
+
+  vote->consensus_count = group_count[consensus_group];
+  vote->consensus_type_hash = 0;
+  vote->consensus_code_hash = 0;
+
+  /* Find a consensus representative broker */
+  int consensus_rep = -1;
+  for (int i = 0; i < limit; i++) {
+    if (group_id[i] == consensus_group) {
+      consensus_rep = i;
+      vote->consensus_type_hash = fields[i].type_seq_hash;
+      vote->consensus_code_hash = fields[i].code_seq_hash;
+      break;
+    }
+  }
+
+  /* Step 3: Mark outliers and compute divergence vs consensus */
+  vote->outlier_count = 0;
+  for (int i = 0; i < limit; i++) {
+    if (group_id[i] != consensus_group) {
+      vote->is_outlier[i] = 1;
+      vote->outlier_count++;
+
+      /* Compare this outlier against the consensus representative */
+      mqtt_diff_result_t r = mqtt_diff_compare(&fields[consensus_rep], &fields[i]);
+      if (r.severity > worst.severity ||
+          (r.severity == worst.severity && r.strength > worst.strength)) {
+        worst = r;
+      }
+    }
+  }
+
+  vote->consensus_severity = worst.severity;
+  vote->consensus_strength = worst.strength;
+
+  /* Step 4: Compute pattern hash for dedup */
+  {
+    uint32_t h = 2166136261u;
+    for (int i = 0; i < limit; i++) {
+      h ^= fingerprints[i]; h *= 16777619u;
+      h ^= (uint32_t)vote->is_outlier[i]; h *= 16777619u;
+    }
+    vote->pattern_hash = h;
+    if (worst.pattern_hash == 0)
+      worst.pattern_hash = h;
+  }
+
+  (void)impl_names;  /* Used by callers for reporting, not in core algo */
+  return worst;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+ * O8: Forwarding hash majority voting.
+ *
+ * Compares per-broker forwarding fingerprints (fwd_hash from mp_driver).
+ * Uses the same majority-voting approach: group by hash value, largest
+ * group is consensus, others are outliers.
+ * ════════════════════════════════════════════════════════════════════ */
+void mqtt_diff_fwd_majority_vote(
+    const uint32_t *fwd_hashes, int n,
+    mqtt_fwd_diff_result_t *result) {
+
+  memset(result, 0, sizeof(*result));
+  if (n < 2 || !fwd_hashes) return;
+
+  int limit = (n > MQTT_DIFF_MAX_BROKERS) ? MQTT_DIFF_MAX_BROKERS : n;
+
+  /* Group by fwd_hash value */
+  uint32_t group_vals[MQTT_DIFF_MAX_BROKERS];
+  int group_counts[MQTT_DIFF_MAX_BROKERS];
+  int group_map[MQTT_DIFF_MAX_BROKERS];
+  int num_groups = 0;
+
+  /* Track zero-hash (no forwarding) separately */
+  int zero_count = 0;
+  for (int i = 0; i < limit; i++) {
+    if (fwd_hashes[i] == 0) zero_count++;
+  }
+
+  for (int i = 0; i < limit; i++) {
+    int found = -1;
+    for (int g = 0; g < num_groups; g++) {
+      if (group_vals[g] == fwd_hashes[i]) {
+        found = g; break;
+      }
+    }
+    if (found >= 0) {
+      group_map[i] = found;
+      group_counts[found]++;
+    } else {
+      group_vals[num_groups] = fwd_hashes[i];
+      group_counts[num_groups] = 1;
+      group_map[i] = num_groups;
+      num_groups++;
+    }
+  }
+
+  if (num_groups <= 1) {
+    /* All brokers agree on forwarding */
+    result->all_forwarded = (zero_count == 0);
+    result->none_forwarded = (zero_count == limit);
+    return;
+  }
+
+  /* Find consensus group */
+  int consensus_group = 0;
+  for (int g = 1; g < num_groups; g++) {
+    if (group_counts[g] > group_counts[consensus_group])
+      consensus_group = g;
+  }
+
+  /* Mark outliers */
+  uint32_t h = 2166136261u;
+  for (int i = 0; i < limit; i++) {
+    if (group_map[i] != consensus_group) {
+      result->fwd_outlier[i] = 1;
+      result->fwd_outlier_count++;
+    }
+    h ^= fwd_hashes[i]; h *= 16777619u;
+  }
+  result->pattern_hash = h;
+  result->all_forwarded = (zero_count == 0);
+  result->none_forwarded = (zero_count == limit);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+ * O8: Cross-implementation score boost.
+ *
+ * When an outlier broker has a different implementation than the
+ * consensus majority, the divergence is far more likely to be a
+ * real protocol non-compliance bug (not just non-determinism).
+ * Boost the raw score by MQTT_CROSS_IMPL_BOOST_FACTOR.
+ * ════════════════════════════════════════════════════════════════════ */
+int mqtt_diff_score_cross_impl(
+    const mqtt_diff_result_t *r,
+    const mqtt_majority_vote_t *vote,
+    const char **impl_names, int n) {
+
+  int base_score = mqtt_diff_score_from_result(r);
+  if (!vote || !impl_names || n < 2 || vote->outlier_count == 0)
+    return base_score;
+
+  /* Find consensus impl name */
+  const char *consensus_impl = NULL;
+  int limit = (n > MQTT_DIFF_MAX_BROKERS) ? MQTT_DIFF_MAX_BROKERS : n;
+  for (int i = 0; i < limit; i++) {
+    if (!vote->is_outlier[i] && impl_names[i]) {
+      consensus_impl = impl_names[i];
+      break;
+    }
+  }
+  if (!consensus_impl) return base_score;
+
+  /* Check if any outlier has a different implementation */
+  int cross_impl = 0;
+  for (int i = 0; i < limit; i++) {
+    if (vote->is_outlier[i] && impl_names[i]) {
+      if (strcmp(impl_names[i], consensus_impl) != 0) {
+        cross_impl = 1;
+        break;
+      }
+    }
+  }
+
+  if (cross_impl) {
+    int boosted = (int)(base_score * MQTT_CROSS_IMPL_BOOST_FACTOR);
+    return (boosted > 100) ? 100 : boosted;
+  }
+  return base_score;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+ * O8: Build a noncompliance report entry from majority vote outlier.
+ *
+ * Populates out with the first (worst) outlier's info.
+ * Returns 1 if populated, 0 if no actionable outlier.
+ * ════════════════════════════════════════════════════════════════════ */
+int mqtt_diff_build_noncompliance(
+    const mqtt_majority_vote_t *vote,
+    const mqtt_diff_result_t *worst_pair,
+    const char **impl_names, int n,
+    mqtt_noncompliance_entry_t *out) {
+
+  memset(out, 0, sizeof(*out));
+  if (!vote || vote->outlier_count == 0 || !worst_pair)
+    return 0;
+  if (worst_pair->severity == MQTT_DIV_NONE)
+    return 0;
+
+  int limit = (n > MQTT_DIFF_MAX_BROKERS) ? MQTT_DIFF_MAX_BROKERS : n;
+
+  /* Find the first outlier */
+  for (int i = 0; i < limit; i++) {
+    if (vote->is_outlier[i]) {
+      out->outlier_index = i;
+      if (impl_names && impl_names[i]) {
+        int slen = (int)strlen(impl_names[i]);
+        if (slen > 63) slen = 63;
+        memcpy(out->outlier_impl, impl_names[i], slen);
+      }
+      break;
+    }
+  }
+
+  out->severity = worst_pair->severity;
+  out->strength = worst_pair->strength;
+  out->pattern_hash = vote->pattern_hash;
+
+  const char *sev_name = "unknown";
+  switch (worst_pair->severity) {
+  case MQTT_DIV_MISSING: sev_name = "MISSING_RESPONSE"; break;
+  case MQTT_DIV_TYPE:    sev_name = "TYPE_MISMATCH";    break;
+  case MQTT_DIV_CODE:    sev_name = "CODE_MISMATCH";    break;
+  case MQTT_DIV_PAYLOAD: sev_name = "PAYLOAD_MISMATCH"; break;
+  }
+
+  snprintf(out->detail, MQTT_NONCOMPLIANCE_DETAIL_LEN,
+           "outlier=%s(idx=%d) severity=%s strength=%.2f "
+           "consensus=%d/%d type_diffs=%d code_diffs=%d "
+           "flags_diffs=%d payload_diffs=%d",
+           out->outlier_impl, out->outlier_index, sev_name,
+           worst_pair->strength,
+           vote->consensus_count, n,
+           worst_pair->type_diffs, worst_pair->code_diffs,
+           worst_pair->flags_diffs, worst_pair->payload_diffs);
+
+  return 1;
 }

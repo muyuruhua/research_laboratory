@@ -102,11 +102,17 @@ mqtt-scheduler.o: mqtt-scheduler.c mqtt-scheduler.h mqtt-generate.h $(COMM_HDR)
 mqtt-differential.o: mqtt-differential.c mqtt-differential.h $(COMM_HDR)
 	$(CC) $(CFLAGS) -c mqtt-differential.c -o mqtt-differential.o
 
+mqtt-cluster.o: mqtt-cluster.c mqtt-cluster.h mqtt-differential.h $(COMM_HDR)
+	$(CC) $(CFLAGS) -c mqtt-cluster.c -o mqtt-cluster.o
+
+fuzz-stats-csv.o: fuzz-stats-csv.c fuzz-stats-csv.h $(COMM_HDR)
+	$(CC) $(CFLAGS) -c fuzz-stats-csv.c -o fuzz-stats-csv.o
+
 mqtt-race.o: mqtt-race.c mqtt-race.h $(COMM_HDR)
 	$(CC) $(CFLAGS) -Wno-maybe-uninitialized -c mqtt-race.c -o mqtt-race.o
 
-afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet.o aflnet.h chat-llm.o chat-llm.h grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o llm-validator.o mqtt-builder.o mp-driver-mqtt.o mqtt-generate.o mqtt-scheduler.o mqtt-differential.o mqtt-race.o | test_x86
-	$(CC) $(CFLAGS) $@.c aflnet.o chat-llm.o grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o llm-validator.o mqtt-builder.o mp-driver-mqtt.o mqtt-generate.o mqtt-scheduler.o mqtt-differential.o mqtt-race.o -o $@ $(LDFLAGS) -lcurl -ljson-c -lpcre2-8 -lpthread
+afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet.o aflnet.h chat-llm.o chat-llm.h grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o llm-validator.o mqtt-builder.o mp-driver-mqtt.o mqtt-generate.o mqtt-scheduler.o mqtt-differential.o mqtt-cluster.o fuzz-stats-csv.o mqtt-race.o | test_x86
+	$(CC) $(CFLAGS) $@.c aflnet.o chat-llm.o grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o llm-validator.o mqtt-builder.o mp-driver-mqtt.o mqtt-generate.o mqtt-scheduler.o mqtt-differential.o mqtt-cluster.o fuzz-stats-csv.o mqtt-race.o -o $@ $(LDFLAGS) -lcurl -ljson-c -lpcre2-8 -lpthread
 
 afl-replay: afl-replay.c $(COMM_HDR) aflnet.o aflnet.h | test_x86
 	$(CC) $(CFLAGS) $@.c aflnet.o -o $@ $(LDFLAGS)

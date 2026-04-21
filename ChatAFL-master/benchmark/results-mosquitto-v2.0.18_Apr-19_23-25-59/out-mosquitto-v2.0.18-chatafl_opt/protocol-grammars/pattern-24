@@ -1,0 +1,2 @@
+^(?:SUBSCRIBE (.*)\r\n)
+(?|(?:TopicFilter: (.*)\r\n)|(?:RequestedQoS: (.*)\r\n)|(?:QoS: (.*)\r\n)|(?:PacketId: (.*)\r\n))

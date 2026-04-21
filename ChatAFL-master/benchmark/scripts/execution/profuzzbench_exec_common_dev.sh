@@ -45,6 +45,35 @@ append_result_manifest() {
     "$run_index" "$container_id" "$container_name" "$DOCIMAGE" "$FUZZER" "$OUTDIR" "${OUTDIR}_${run_index}.tar.gz" >> "$RESULT_MANIFEST"
 }
 
+# ── Auto-generate run_summary.csv ──
+# (Defined early so on_exit trap can call it)
+generate_run_summary() {
+  local results_dir="$1"
+  local summary_py="${SCRIPT_DIR}/../analysis/run_summary.py"
+  local output_file="$(cd "$results_dir" 2>/dev/null && pwd)/run_summary.csv"
+
+  if [[ ! -f "$summary_py" ]]; then
+    printf "\n${LOG_TAG}: [WARN] run_summary.py not found at %s, skipping summary generation\n" "$summary_py"
+    return 0
+  fi
+
+  # Ensure at least one tarball exists before running
+  local tarball_count
+  tarball_count=$(find "$results_dir" -maxdepth 1 -name '*.tar.gz' 2>/dev/null | wc -l)
+  if [[ $tarball_count -eq 0 ]]; then
+    printf "\n${LOG_TAG}: [WARN] No tarballs found in %s, skipping summary generation\n" "$results_dir"
+    return 0
+  fi
+
+  printf "\n${LOG_TAG}: Generating run_summary.csv (%d tarballs)...\n" "$tarball_count"
+  if python3 "$summary_py" "$results_dir" -o "$output_file" 2>&1; then
+    fix_result_permissions "$output_file"
+    printf "${LOG_TAG}: ✓ run_summary.csv written to %s\n" "$output_file"
+  else
+    printf "${LOG_TAG}: [WARN] run_summary.py exited with error; summary may be incomplete\n"
+  fi
+}
+
 collect_results_with_recovery() {
   local helper_status=0
   local delete_flag=""
@@ -87,6 +116,11 @@ cleanup_mqtt_resources() {
       printf "\n${LOG_TAG}: Stopping stable reference broker...\n"
       docker rm -f "$MQTT_STABLE_CONTAINER" >/dev/null 2>&1 || true
     fi
+    # O8: Cleanup heterogeneous broker containers
+    if type mqtt_hetero_cleanup &>/dev/null; then
+      printf "${LOG_TAG}: Stopping heterogeneous brokers...\n"
+      mqtt_hetero_cleanup
+    fi
     docker network rm "$MQTT_AUTO_NETWORK" >/dev/null 2>&1 || true
   fi
 }
@@ -115,6 +149,8 @@ on_exit() {
   fi
   collect_results_with_recovery
   cleanup_mqtt_resources
+  # Always attempt to generate run_summary.csv (even on abnormal exit)
+  generate_run_summary "${SAVETO}" || true
 }
 
 trap on_exit EXIT INT TERM
@@ -240,6 +276,28 @@ if [[ -z "${CHATAFL_MQTT_BROKERS:-}" ]] && is_mqtt_target "$DOCIMAGE"; then
 
   printf "${LOG_TAG}: [DEV] MQTT auto network: %s\n" "$MQTT_AUTO_NETWORK"
   printf "${LOG_TAG}: [DEV] Architecture: each fuzzer → tcp://<self>/1883 + tcp://%s/1883\n" "$MQTT_STABLE_ALIAS"
+
+  # ── O8: Heterogeneous Broker Cluster (cross-implementation differential) ──
+  # Launch additional MQTT broker implementations (NanoMQ, EMQX, VerneMQ, etc.)
+  # for N-way cross-implementation differential testing.
+  # Disabled by default; enable with: export CHATAFL_HETERO=1
+  MQTT_HETERO_HELPER="${SCRIPT_DIR}/mqtt_heterogeneous_brokers.sh"
+  if [[ -n "${CHATAFL_HETERO:-}" ]] && [[ -f "$MQTT_HETERO_HELPER" ]]; then
+    source "$MQTT_HETERO_HELPER"
+    mqtt_hetero_launch "$MQTT_AUTO_NETWORK" "$DOCIMAGE" "${LOG_TAG}"
+    if [[ -n "$MQTT_HETERO_BROKER_CSV" ]]; then
+      MQTT_HETERO_EXTRA=",$MQTT_HETERO_BROKER_CSV"
+      printf "${LOG_TAG}: [O8] Heterogeneous brokers added: %s\n" "$MQTT_HETERO_BROKER_CSV"
+    else
+      MQTT_HETERO_EXTRA=""
+      printf "${LOG_TAG}: [O8] No heterogeneous brokers started (images may be missing)\n"
+    fi
+  else
+    MQTT_HETERO_EXTRA=""
+    if [[ -n "${CHATAFL_HETERO:-}" ]]; then
+      printf "${LOG_TAG}: [O8] WARN: CHATAFL_HETERO set but helper script missing: %s\n" "$MQTT_HETERO_HELPER"
+    fi
+  fi
 fi
 
 #keep all container ids
@@ -266,18 +324,19 @@ for i in $(seq 1 $RUNS); do
   # If the host exports CHATAFL_NO_REFINEMENT / NO_FRONTIER / NO_ADAPTIVE,
   # they are forwarded into the container via -e.
   ABLATION_FLAGS=""
-  [[ -n "${CHATAFL_NO_REFINEMENT}" ]]      && ABLATION_FLAGS+=" -e CHATAFL_NO_REFINEMENT=1"
-  [[ -n "${CHATAFL_NO_FRONTIER}" ]]        && ABLATION_FLAGS+=" -e CHATAFL_NO_FRONTIER=1"
-  [[ -n "${CHATAFL_NO_ADAPTIVE}" ]]        && ABLATION_FLAGS+=" -e CHATAFL_NO_ADAPTIVE=1"
-  [[ -n "${CHATAFL_NO_STATE_PROMPT}" ]]    && ABLATION_FLAGS+=" -e CHATAFL_NO_STATE_PROMPT=1"
-  [[ -n "${CHATAFL_ABLATION_THRESHOLD}" ]] && ABLATION_FLAGS+=" -e CHATAFL_ABLATION_THRESHOLD=${CHATAFL_ABLATION_THRESHOLD}"
+  [[ -n "${CHATAFL_NO_REFINEMENT:-}" ]]      && ABLATION_FLAGS+=" -e CHATAFL_NO_REFINEMENT=1"
+  [[ -n "${CHATAFL_NO_FRONTIER:-}" ]]        && ABLATION_FLAGS+=" -e CHATAFL_NO_FRONTIER=1"
+  [[ -n "${CHATAFL_NO_ADAPTIVE:-}" ]]        && ABLATION_FLAGS+=" -e CHATAFL_NO_ADAPTIVE=1"
+  [[ -n "${CHATAFL_NO_STATE_PROMPT:-}" ]]    && ABLATION_FLAGS+=" -e CHATAFL_NO_STATE_PROMPT=1"
+  [[ -n "${CHATAFL_ABLATION_THRESHOLD:-}" ]] && ABLATION_FLAGS+=" -e CHATAFL_ABLATION_THRESHOLD=${CHATAFL_ABLATION_THRESHOLD}"
 
-  # Per-container MQTT broker list: local broker + stable reference
+  # Per-container MQTT broker list: local broker + stable reference + O8 heterogeneous
   MQTT_FLAGS=""
   if [[ -n "${MQTT_STABLE_ALIAS:-}" ]] && [[ -n "$MQTT_AUTO_NETWORK" ]]; then
     _local_alias="${MQTT_AUTO_BROKER_ALIASES[$run_index]}"
-    _brokers="tcp://${_local_alias}/1883,tcp://${MQTT_STABLE_ALIAS}/1883"
-    MQTT_FLAGS=" -e CHATAFL_MQTT_BROKERS=${_brokers}"
+    _brokers="tcp://${_local_alias}/1883,tcp://${MQTT_STABLE_ALIAS}/1883${MQTT_HETERO_EXTRA:-}"
+    _labels="mosquitto,mosquitto${MQTT_HETERO_EXTRA:+,}$(echo "${MQTT_HETERO_EXTRA:-}" | sed 's/^,//; s/@[^,]*//g')"
+    MQTT_FLAGS=" -e CHATAFL_MQTT_BROKERS=${_brokers} -e CHATAFL_MQTT_BROKER_LABELS=${_labels}"
   elif [[ -n "${CHATAFL_MQTT_BROKERS:-}" ]]; then
     MQTT_FLAGS=" -e CHATAFL_MQTT_BROKERS=${CHATAFL_MQTT_BROKERS}"
   fi
@@ -365,34 +424,6 @@ RUN_COMPLETED=1
 
 collect_results_with_recovery
 cleanup_mqtt_resources
-
-# ── Auto-generate run_summary.csv ──
-generate_run_summary() {
-  local results_dir="$1"
-  local summary_py="${SCRIPT_DIR}/../analysis/run_summary.py"
-  local output_file="$(cd "$results_dir" 2>/dev/null && pwd)/run_summary.csv"
-
-  if [[ ! -f "$summary_py" ]]; then
-    printf "\n${LOG_TAG}: [WARN] run_summary.py not found at %s, skipping summary generation\n" "$summary_py"
-    return 0
-  fi
-
-  # Ensure at least one tarball exists before running
-  local tarball_count
-  tarball_count=$(find "$results_dir" -maxdepth 1 -name '*.tar.gz' 2>/dev/null | wc -l)
-  if [[ $tarball_count -eq 0 ]]; then
-    printf "\n${LOG_TAG}: [WARN] No tarballs found in %s, skipping summary generation\n" "$results_dir"
-    return 0
-  fi
-
-  printf "\n${LOG_TAG}: Generating run_summary.csv (%d tarballs)...\n" "$tarball_count"
-  if python3 "$summary_py" "$results_dir" -o "$output_file" 2>&1; then
-    fix_result_permissions "$output_file"
-    printf "${LOG_TAG}: ✓ run_summary.csv written to %s\n" "$output_file"
-  else
-    printf "${LOG_TAG}: [WARN] run_summary.py exited with error; summary may be incomplete\n"
-  fi
-}
 
 generate_run_summary "${SAVETO}"
 
