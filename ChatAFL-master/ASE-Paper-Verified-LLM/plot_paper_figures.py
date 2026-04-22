@@ -3,15 +3,15 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parent.parent
 PAPER_DIR = Path(__file__).resolve().parent
 FIGURES_DIR = PAPER_DIR / 'figures'
+DATA_ROOT = Path('/home/ckt/Documents/000_2026_test_dev/experiment_data/ten groups data (ten)')
 
 FUZZER_ORDER = ['aflnet', 'chatafl', 'chatafl_opt']
 FUZZER_LABELS = {
     'aflnet': 'AFLNet',
     'chatafl': 'ChatAFL',
-    'chatafl_opt': 'VeriSPFuzz',
+    'chatafl_opt': 'LoopFuzz',
 }
 FUZZER_COLORS = {
     'aflnet': '#1f77b4',
@@ -30,50 +30,17 @@ FUZZER_MARKERS = {
 }
 
 TARGETS = [
-    {
-        'title': 'ProFTPD',
-        'subject': 'proftpd',
-        'mean_csv': ROOT / 'benchmark' / 'results-proftpd_Mar-12_00-39-29' / 'mean_plot_data.csv',
-        'results_csv': ROOT / 'benchmark' / 'results-proftpd_Mar-12_00-39-29' / 'results.csv',
-    },
-    {
-        'title': 'Exim',
-        'subject': 'exim',
-        'mean_csv': ROOT / 'benchmark' / 'results-exim_Mar-06_22-09-54' / 'mean_plot_data.csv',
-        'results_csv': ROOT / 'benchmark' / 'results-exim_Mar-06_22-09-54' / 'results.csv',
-    },
-    {
-        'title': 'Pure-FTPd',
-        'subject': 'pure-ftpd',
-        'mean_csv': ROOT / 'benchmark' / 'results-pure-ftpd_Mar-10_22-37-08' / 'mean_plot_data.csv',
-        'results_csv': ROOT / 'benchmark' / 'results-pure-ftpd_Mar-10_22-37-08' / 'results.csv',
-    },
-    {
-        'title': 'Kamailio',
-        'subject': 'kamailio',
-        'mean_csv': ROOT / 'benchmark' / 'results-kamailio_Mar-12_00-39-29' / 'mean_plot_data.csv',
-        'results_csv': ROOT / 'benchmark' / 'results-kamailio_Mar-12_00-39-29' / 'results.csv',
-    },
-    {
-        'title': 'Forked-daapd',
-        'subject': 'forked-daapd',
-        'mean_csv': ROOT / 'benchmark' / 'results-forked-daapd_Mar-08_14-28-15' / 'mean_plot_data.csv',
-        'results_csv': ROOT / 'benchmark' / 'results-forked-daapd_Mar-08_14-28-15' / 'results.csv',
-    },
-    {
-        'title': 'Mosquitto',
-        'subject': 'mosquitto',
-        'mean_csv': ROOT / 'benchmark' / 'results-mosquitto_Mar-10_22-37-08' / 'mean_plot_data.csv',
-        'results_csv': ROOT / 'benchmark' / 'results-mosquitto_Mar-10_22-37-08' / 'results.csv',
-    },
+    ('LightFTP', 'lightftp'),
+    ('bftpd', 'bftpd'),
+    ('ProFTPD', 'proftpd'),
+    ('Pure-FTPd', 'pure-ftpd'),
+    ('Exim', 'exim'),
+    ('Live555', 'live555'),
+    ('Kamailio', 'kamailio'),
+    ('Forked-daapd', 'forked-daapd'),
+    ('Lighttpd1', 'lighttpd1'),
+    ('Mosquitto*', 'mosquitto'),
 ]
-
-RESERVED_TARGET = 'Live555\nReserved'
-
-
-def load_mean_data(target):
-    dataframe = pd.read_csv(target['mean_csv'])
-    return dataframe[dataframe['subject'] == target['subject']].copy()
 
 
 def style_axis(axis, title, ylabel):
@@ -84,14 +51,14 @@ def style_axis(axis, title, ylabel):
     axis.grid(True, alpha=0.25, linewidth=0.6)
 
 
-def add_series(axis, dataframe, metric_column, metric_name):
+def add_series(axis, dataframe, time_column, value_column):
     for fuzzer in FUZZER_ORDER:
-        series = dataframe[(dataframe[metric_column] == metric_name) & (dataframe['fuzzer'] == fuzzer)]
+        series = dataframe[dataframe['fuzzer'] == fuzzer]
         if series.empty:
             continue
         axis.plot(
-            series['time'],
-            series['data'],
+            series[time_column],
+            series[value_column],
             label=FUZZER_LABELS[fuzzer],
             color=FUZZER_COLORS[fuzzer],
             linestyle=FUZZER_STYLES[fuzzer],
@@ -103,22 +70,40 @@ def add_series(axis, dataframe, metric_column, metric_name):
 
 
 def create_figure_grid():
-    figure, axes = plt.subplots(2, 4, figsize=(11.4, 5.8), constrained_layout=True)
+    figure, axes = plt.subplots(3, 4, figsize=(11.6, 8.2), constrained_layout=True)
     return figure, axes.flatten()
+
+
+def build_mean_series(dataframe, value_column, step_minutes=60):
+    rows = []
+    for fuzzer in FUZZER_ORDER:
+        fuzzer_df = dataframe[dataframe['fuzzer'] == fuzzer]
+        if fuzzer_df.empty:
+            continue
+        for minute in range(0, 1441, step_minutes):
+            values = []
+            for run in sorted(fuzzer_df['run'].unique()):
+                run_df = fuzzer_df[fuzzer_df['run'] == run].sort_values('elapsed_min')
+                clipped = run_df[run_df['elapsed_min'] <= minute]
+                if clipped.empty:
+                    continue
+                values.append(float(clipped.iloc[-1][value_column]))
+            if values:
+                rows.append({'fuzzer': fuzzer, 'elapsed_min': minute, 'value': sum(values) / len(values)})
+    return pd.DataFrame(rows)
 
 
 def generate_state_figure():
     figure, axes = create_figure_grid()
-    for axis, target in zip(axes, TARGETS):
-        dataframe = load_mean_data(target)
-        add_series(axis, dataframe, 'data_type', 'edges')
-        style_axis(axis, target['title'], 'State transitions')
-    reserved_axis = axes[len(TARGETS)]
-    reserved_axis.text(0.5, 0.55, RESERVED_TARGET, ha='center', va='center', fontsize=11, fontweight='bold')
-    reserved_axis.set_xticks([])
-    reserved_axis.set_yticks([])
-    reserved_axis.set_frame_on(True)
-    for axis in axes[len(TARGETS) + 1:]:
+    for axis, (title, subject) in zip(axes, TARGETS):
+        state_path = DATA_ROOT / f'results-{subject}_Mar-16_23-10-02_ten' / 'states.csv'
+        dataframe = pd.read_csv(state_path)
+        dataframe = dataframe[(dataframe['subject'] == subject) & (dataframe['state_type'] == 'edges')].copy()
+        dataframe['elapsed_min'] = dataframe.groupby(['fuzzer', 'run'])['time'].transform(lambda s: (s - s.min()) / 60.0)
+        mean_df = build_mean_series(dataframe, 'state')
+        add_series(axis, mean_df, 'elapsed_min', 'value')
+        style_axis(axis, title, 'IPSM edges')
+    for axis in axes[len(TARGETS):]:
         axis.axis('off')
     handles, labels = axes[0].get_legend_handles_labels()
     figure.legend(handles, labels, loc='upper center', ncol=3, frameon=False, bbox_to_anchor=(0.5, 1.08), fontsize=9)
@@ -128,53 +113,18 @@ def generate_state_figure():
 
 def generate_edge_figure():
     figure, axes = create_figure_grid()
-    for axis, target in zip(axes, TARGETS):
-        dataframe = pd.read_csv(target['results_csv'])
-        dataframe = dataframe[(dataframe['subject'] == target['subject']) & (dataframe['cov_type'] == 'b_abs')]
-        mean_rows = []
-        for fuzzer in FUZZER_ORDER:
-            fuzzer_df = dataframe[dataframe['fuzzer'] == fuzzer]
-            if fuzzer_df.empty:
-                continue
-            mean_rows.append((target['subject'], fuzzer, 0, 0.0))
-            for time in range(1, 1441, 60):
-                coverage_total = 0.0
-                run_count = 0
-                for run in sorted(fuzzer_df['run'].unique()):
-                    run_df = fuzzer_df[fuzzer_df['run'] == run]
-                    start_time = run_df.iloc[0]['time']
-                    clipped_df = run_df[run_df['time'] <= start_time + time * 60]
-                    if clipped_df.empty:
-                        continue
-                    coverage_total += clipped_df.tail(1).iloc[0]['cov']
-                    run_count += 1
-                mean_rows.append((target['subject'], fuzzer, time, coverage_total / max(run_count, 1)))
-        mean_df = pd.DataFrame(mean_rows, columns=['subject', 'fuzzer', 'time', 'data'])
-        for fuzzer in FUZZER_ORDER:
-            series = mean_df[mean_df['fuzzer'] == fuzzer]
-            if series.empty:
-                continue
-            axis.plot(
-                series['time'],
-                series['data'],
-                label=FUZZER_LABELS[fuzzer],
-                color=FUZZER_COLORS[fuzzer],
-                linestyle=FUZZER_STYLES[fuzzer],
-                marker=FUZZER_MARKERS[fuzzer],
-                markevery=max(1, len(series) // 8),
-                markersize=3.5,
-                linewidth=1.8,
-            )
-        style_axis(axis, target['title'], 'Code-edge coverage')
-    reserved_axis = axes[len(TARGETS)]
-    reserved_axis.text(0.5, 0.55, RESERVED_TARGET, ha='center', va='center', fontsize=11, fontweight='bold')
-    reserved_axis.set_xticks([])
-    reserved_axis.set_yticks([])
-    reserved_axis.set_frame_on(True)
-    for axis in axes[len(TARGETS) + 1:]:
+    for axis, (title, subject) in zip(axes, TARGETS):
+        coverage_path = DATA_ROOT / f'results-{subject}_Mar-16_23-10-02_ten' / 'results.csv'
+        dataframe = pd.read_csv(coverage_path)
+        dataframe = dataframe[(dataframe['subject'] == subject) & (dataframe['cov_type'] == 'b_abs')].copy()
+        dataframe['elapsed_min'] = dataframe.groupby(['fuzzer', 'run'])['time'].transform(lambda s: (s - s.min()) / 60.0)
+        mean_df = build_mean_series(dataframe, 'cov')
+        add_series(axis, mean_df, 'elapsed_min', 'value')
+        style_axis(axis, title, 'Code-edge coverage')
+    for axis in axes[len(TARGETS):]:
         axis.axis('off')
     handles, labels = axes[0].get_legend_handles_labels()
-    figure.legend(handles, labels, loc='upper center', ncol=3, frameon=False, bbox_to_anchor=(0.5, 1.08), fontsize=9)
+    figure.legend(handles, labels, loc='upper center', ncol=3, frameon=False, bbox_to_anchor=(0.5, 1.02), fontsize=9)
     figure.savefig(FIGURES_DIR / 'edge_coverage.pdf', bbox_inches='tight')
     plt.close(figure)
 

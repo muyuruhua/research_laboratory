@@ -14,17 +14,16 @@
 \citation{aflnet,stateafl,sgf_usenix22,formatted_stateful_greybox_fuzzing_2024}
 \citation{gramatron_effective_grammar_aware_2021,griffin_grammar_free_dbms_2022,formatted_stateful_greybox_fuzzing_2024}
 \citation{snapfuzz_high_throughput_fuzzing_2022}
-\citation{snipuzz_black_box_fuzzing_2021,token_level_fuzzing_2021,gramatron_effective_grammar_aware_2021,griffin_grammar_free_dbms_2022,no_grammar_no_problem_2023,likely_invariants_feedback_2021,mundofuzz_grammar_inference_2022}
-\citation{aflnet,stateafl,sgf_usenix22,profuzzbench_benchmark_stateful_protocol_2021}
-\citation{bleem_packet_sequence_2023,formatted_stateful_greybox_fuzzing_2024,logos_log_guided_fuzzing_2024,msgfuzzer_message_sequence_guided_2024,resolverfuzz_query_response_2024,mbfuzzer_mqtt_2025,fuzzusb_hybrid_stateful_fuzzing_2022,dtls_fuzzer_dtls_protocol_2022,edhoc_fuzzer_edhoc_protocol_2023,tron_fuzzing_linux_network_2025}
 \@writefile{toc}{\contentsline {section}{\numberline {II}Background and Motivation}{2}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {II-A}}Coverage-Guided Fuzzing vs. Network Targets}{2}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {II-B}}Stateful Greybox Fuzzing (SGF)}{2}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {II-C}}LLM Integration into Protocol Fuzzing}{2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {II-D}}A Motivating Example: Semantic Drift}{2}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces An example of semantic drift where a fluent request violates protocol state preconditions, contrasting open-loop admission with LoopFuzz's runtime-validated rejection and refinement.}}{2}\protected@file@percent }
 \newlabel{fig:motivation}{{1}{2}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {II-D}}A Motivating Example: Semantic Drift}{2}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {III}Related Work}{2}\protected@file@percent }
+\citation{snipuzz_black_box_fuzzing_2021,token_level_fuzzing_2021,gramatron_effective_grammar_aware_2021,griffin_grammar_free_dbms_2022,no_grammar_no_problem_2023,likely_invariants_feedback_2021,mundofuzz_grammar_inference_2022}
+\citation{aflnet,stateafl,sgf_usenix22,profuzzbench_benchmark_stateful_protocol_2021}
+\citation{bleem_packet_sequence_2023,formatted_stateful_greybox_fuzzing_2024,logos_log_guided_fuzzing_2024,msgfuzzer_message_sequence_guided_2024,resolverfuzz_query_response_2024,mbfuzzer_mqtt_2025,fuzzusb_hybrid_stateful_fuzzing_2022,dtls_fuzzer_dtls_protocol_2022,edhoc_fuzzer_edhoc_protocol_2023,tron_fuzzing_linux_network_2025}
 \citation{pgfuzz_policy_guided_fuzzing_2021,android_smarttvs_vulnerability_discovery_2021,fuzzware_mmio_2022,statefuzz_linux_driver_2022,differential_fuzzing_data_distribution_2024,fuzzing_hardware_like_software_2022,coverage_guided_fuzzing_embedded_2023}
 \citation{directed_greybox_fuzzing_2017,windranger_blocks_2022,when_analysis_2025}
 \citation{seed_selection_successful_fuzzing_2021,one_fuzzing_strategy_rule_2022,regression_greybox_fuzzing_2021,efficient_errors_2022}
@@ -36,17 +35,17 @@
 \citation{sok_prudent_evaluation_practices_2024,reliability_benchmarking_2022,many_stack_2022}
 \@writefile{lot}{\contentsline {table}{\numberline {I}{\ignorespaces Representative protocol fuzzers and their control boundaries.}}{3}\protected@file@percent }
 \newlabel{tab:taxonomy}{{I}{3}}
+\@writefile{toc}{\contentsline {section}{\numberline {III}Related Work}{3}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {IV}LoopFuzz Design}{3}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-A}}Grammar Hypothesis Loop}{3}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Control architecture of LoopFuzz. The Grammar Hypothesis Loop maintains message hypotheses, the Fuzz Execution Loop updates coverage and IPSM feedback, and the LLM Intervention Loop proposes bounded interventions; a Runtime Verifier mediates admission before any proposal can affect the queue.}}{4}\protected@file@percent }
 \newlabel{fig:arch}{{2}{4}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-A}}Grammar Hypothesis Loop}{4}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-B}}Runtime Admission Controller}{4}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {IV-B}1}Structured Output and Parseability}{4}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {IV-B}2}Response-Grounded Acceptability}{4}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {IV-B}3}State Reachability and Coverage Gain}{4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {IV-B}3}State Reachability and Coverage Gain}{5}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-C}}CEGR}{5}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-D}}State-Aware Scheduling and Plateau-Triggered Assistance}{5}\protected@file@percent }
-\citation{sok_prudent_evaluation_practices_2024,reliability_benchmarking_2022,many_stack_2022}
 \@writefile{loa}{\contentsline {algocf}{\numberline {1}{\ignorespaces Runtime-Validated Plateau Recovery in LoopFuzz}}{6}\protected@file@percent }
 \newlabel{alg:fuzz}{{1}{6}}
 \@writefile{toc}{\contentsline {section}{\numberline {V}Experimental Evaluation Design}{6}\protected@file@percent }
@@ -56,16 +55,21 @@
 \@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-D}}Trace Accounting and Cost Reporting}{7}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {VI}Results}{7}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VI-A}}RQ1: Whole-Campaign Effect}{7}\protected@file@percent }
-\citation{chatafl}
-\@writefile{lot}{\contentsline {table}{\numberline {II}{\ignorespaces End-of-campaign coverage and IPSM edges (mean $\pm $ SD over five 24-hour runs). Bold marks the best mean. Percentages in parentheses show LoopFuzz's relative growth versus (AFLNet, ChatAFL). $^*$ marks code-edge wins significant versus both baselines under a two-sided exact Mann-Whitney U test at $p < 0.05$; $^\dagger $ marks IPSM-edge wins significant versus both baselines. Only the six completed targets carry numeric summaries in this draft; the remaining four suite targets are shown explicitly as pending for transparency.}}{8}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VI-B}}RQ2: IPSM Escape Dynamics}{7}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {II}{\ignorespaces Primary end-of-campaign results (mean $\pm $ sample SD over 10 24-hour runs). Bold marks the highest mean among AFLNet, ChatAFL, and LoopFuzz. $^*$ marks code-edge wins significant versus both primary baselines under a two-sided exact Mann-Whitney U test at $p < 0.05$; $^\dagger $ marks IPSM-edge wins significant versus both primary baselines. Mosquitto is a matched-support supplemental case and is excluded from the nine-target off-the-shelf aggregate claim set.}}{8}\protected@file@percent }
 \newlabel{tab:24h_results}{{II}{8}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VI-B}}RQ2: IPSM Escape Dynamics}{8}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {III}{\ignorespaces Auxiliary reproduced baselines, coverage only. Each row compares LoopFuzz against the strongest additional archived baseline available for that target: NSFuzz on eight non-HTTP/non-MQTT targets and MBFuzzer on Mosquitto. These rows are not pooled with the primary IPSM-aware comparison because the auxiliary artifacts do not expose directly compatible IPSM summaries across targets.}}{8}\protected@file@percent }
+\newlabel{tab:aux_results}{{III}{8}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VI-C}}RQ3: End-of-Campaign Outcome}{8}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {VII}Discussion}{8}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces IPSM-edge trajectories for the targets in the current normalized comparison. Each panel summarizes the aggregated 24-hour campaign dynamics of one reported target.}}{9}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VI-D}}Ablation: Code-Driven Perturbations}{8}\protected@file@percent }
+\citation{chatafl}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces IPSM-edge trajectories for the 10 archived primary-result targets. The first nine panels are the off-the-shelf aggregate claim set; Mosquitto$^{\S  }$ remains a matched-support supplemental case. Each curve reports the mean trajectory over the archived runs.}}{9}\protected@file@percent }
 \newlabel{fig:states}{{3}{9}}
-\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Code-edge coverage trajectories for the targets in the current normalized comparison. Each panel summarizes the aggregated 24-hour campaign dynamics of one reported target.}}{9}\protected@file@percent }
-\newlabel{fig:coverage}{{4}{9}}
+\@writefile{toc}{\contentsline {section}{\numberline {VII}Discussion}{9}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Code-edge coverage trajectories for the 10 archived primary-result targets. The first nine panels are the off-the-shelf aggregate claim set; Mosquitto$^{\S  }$ remains a matched-support supplemental case. Each curve reports the mean trajectory over the archived runs.}}{10}\protected@file@percent }
+\newlabel{fig:coverage}{{4}{10}}
+\@writefile{lot}{\contentsline {table}{\numberline {IV}{\ignorespaces Code-driven ablation results relative to the shipped \texttt  {adaptive\_full} controller. The \texttt  {Adaptive} column reports mean final coverage / IPSM-edge count over the selected archived runs. Other cells report $\Delta $coverage / $\Delta $IPSM-edge count relative to that adaptive mean. Runs with archived runtime below 1400 minutes are excluded; when more than 10 valid runs remain, we keep the lowest 10 run IDs. Mosquitto$^{\S  }$ has only three valid archived runs per variant.}}{10}\protected@file@percent }
+\newlabel{tab:ablation_results}{{IV}{10}}
 \bibstyle{IEEEtran}
 \bibdata{references}
 \bibcite{aflnet}{1}
@@ -75,9 +79,9 @@
 \bibcite{resolverfuzz_query_response_2024}{5}
 \bibcite{mbfuzzer_mqtt_2025}{6}
 \bibcite{bleem_packet_sequence_2023}{7}
-\@writefile{toc}{\contentsline {section}{\numberline {VIII}Threats to Validity}{10}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {IX}Conclusion}{10}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{References}{10}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {VIII}Threats to Validity}{11}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {IX}Conclusion}{11}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{References}{11}\protected@file@percent }
 \bibcite{logos_log_guided_fuzzing_2024}{8}
 \bibcite{diane_identifying_fuzzing_triggers_2021}{9}
 \bibcite{corecrisis_context_aware_2025}{10}
