@@ -139,22 +139,87 @@ sanitize_docker_name() {
   echo "$name"
 }
 
+docker_name_hash() {
+  local value="$1"
+  if command -v sha1sum >/dev/null 2>&1; then
+    printf '%s' "$value" | sha1sum | awk '{print substr($1, 1, 12)}'
+  elif command -v md5sum >/dev/null 2>&1; then
+    printf '%s' "$value" | md5sum | awk '{print substr($1, 1, 12)}'
+  else
+    printf '%s' "$value" | cksum | awk '{print $1}'
+  fi
+}
+
+build_unique_docker_name() {
+  local raw_name="$1"
+  local max_len="${2:-63}"
+  local sanitized hash suffix keep_len base
+
+  sanitized=$(sanitize_docker_name "$raw_name")
+  hash=$(docker_name_hash "$sanitized")
+  suffix="-${hash}"
+  keep_len=$((max_len - ${#suffix}))
+  if (( keep_len < 1 )); then
+    printf '%s' "${hash:0:max_len}"
+    return 0
+  fi
+
+  base="${sanitized:0:keep_len}"
+  base=$(echo "$base" | sed 's/-*$//')
+  if [[ -z "$base" ]]; then
+    base="mqtt-auto"
+  fi
+
+  printf '%s%s' "$base" "$suffix"
+}
+
+remove_existing_named_container() {
+  local container_name="$1"
+  [[ -n "$container_name" ]] || return 0
+
+  if docker container inspect "$container_name" >/dev/null 2>&1; then
+    printf "\n${LOG_TAG}: Removing stale container with exact name: %s\n" "$container_name"
+    docker rm -f "$container_name" >/dev/null 2>&1 || return 1
+  fi
+
+  return 0
+}
+
+recreate_named_network() {
+  local network_name="$1"
+  [[ -n "$network_name" ]] || return 1
+
+  if docker network inspect "$network_name" >/dev/null 2>&1; then
+    printf "\n${LOG_TAG}: Removing stale network with exact name: %s\n" "$network_name"
+    docker network rm "$network_name" >/dev/null 2>&1 || return 1
+  fi
+
+  docker network create "$network_name" >/dev/null 2>&1 || return 1
+  return 0
+}
+
+require_container_id() {
+  local container_id="$1"
+  local context="$2"
+
+  if [[ -z "$container_id" ]] || [[ ! "$container_id" =~ ^[a-f0-9]{12,64}$ ]]; then
+    printf "\n${LOG_TAG}: [ERROR] Failed to start %s\n" "$context" >&2
+    exit 1
+  fi
+}
+
 MQTT_AUTO_NETWORK=""
 MQTT_STABLE_CONTAINER=""
 MQTT_STABLE_ALIAS=""
+MQTT_STABLE_ALIAS_HASH=""
 declare -a MQTT_AUTO_CONTAINER_NAMES=()
 declare -a MQTT_AUTO_BROKER_ALIASES=()
 
 if [[ -z "${CHATAFL_MQTT_BROKERS:-}" ]] && is_mqtt_target "$DOCIMAGE"; then
-  MQTT_AUTO_NETWORK="$(sanitize_docker_name "chatafl-mqtt-${DOCIMAGE}-${FUZZER}-$$")"
-  MQTT_AUTO_NETWORK="${MQTT_AUTO_NETWORK:0:63}"
-  MQTT_AUTO_NETWORK="$(echo "$MQTT_AUTO_NETWORK" | sed 's/-*$//')"
-  if ! docker network inspect "$MQTT_AUTO_NETWORK" >/dev/null 2>&1; then
-    docker network create "$MQTT_AUTO_NETWORK" >/dev/null
-    if [[ $? -ne 0 ]]; then
-      echo "[ERROR] Failed to create MQTT auto network: ${MQTT_AUTO_NETWORK}"
-      exit 1
-    fi
+  MQTT_AUTO_NETWORK="$(build_unique_docker_name "chatafl-mqtt-${DOCIMAGE}-${FUZZER}-${TIMESTAMP:-manual}-${$}")"
+  if ! recreate_named_network "$MQTT_AUTO_NETWORK"; then
+    echo "[ERROR] Failed to create MQTT auto network: ${MQTT_AUTO_NETWORK}"
+    exit 1
   fi
 
   for idx in $(seq 1 "$RUNS"); do
@@ -164,16 +229,23 @@ if [[ -z "${CHATAFL_MQTT_BROKERS:-}" ]] && is_mqtt_target "$DOCIMAGE"; then
 
   # Launch a stable (non-fuzzed) reference broker for bridge/differential testing
   MQTT_STABLE_CONTAINER="${MQTT_AUTO_NETWORK}-stable"
-  MQTT_STABLE_ALIAS="mqtt-stable"
+  MQTT_STABLE_ALIAS_HASH="$(docker_name_hash "${MQTT_AUTO_NETWORK}-stable-alias")"
+  MQTT_STABLE_ALIAS="mqtt-stable-${MQTT_STABLE_ALIAS_HASH:0:8}"
   printf "\n${LOG_TAG}: Launching stable reference broker (%s)...\n" "$MQTT_STABLE_ALIAS"
-  docker run --cpus=0.5 --memory=256m \
+  remove_existing_named_container "$MQTT_STABLE_CONTAINER" || {
+    echo "[ERROR] Failed to remove stale MQTT stable container: ${MQTT_STABLE_CONTAINER}"
+    exit 1
+  }
+
+  stable_id=$(docker run --cpus=0.5 --memory=256m \
     --network "$MQTT_AUTO_NETWORK" \
     --name "$MQTT_STABLE_CONTAINER" \
     --hostname "$MQTT_STABLE_ALIAS" \
     --network-alias "$MQTT_STABLE_ALIAS" \
     --restart=unless-stopped \
     -d "$DOCIMAGE" /bin/bash -c \
-    "exec /home/ubuntu/experiments/mosquitto-gcov/src/mosquitto -c /home/ubuntu/experiments/mosquitto.conf"
+    "exec /home/ubuntu/experiments/mosquitto-gcov/src/mosquitto -c /home/ubuntu/experiments/mosquitto.conf")
+  require_container_id "$stable_id" "MQTT stable broker container ${MQTT_STABLE_CONTAINER}"
 
   # Wait for stable broker to be ready (up to 15 sec)
   _stable_ok=0
@@ -186,7 +258,8 @@ if [[ -z "${CHATAFL_MQTT_BROKERS:-}" ]] && is_mqtt_target "$DOCIMAGE"; then
   if [[ $_stable_ok -eq 1 ]]; then
     printf "${LOG_TAG}: ✓ Stable broker ready on %s:1883\n" "$MQTT_STABLE_ALIAS"
   else
-    printf "${LOG_TAG}: [WARN] Stable broker may not be ready yet\n"
+    printf "${LOG_TAG}: [ERROR] Stable broker is not reachable on %s:1883; aborting this run to avoid invalid differential metrics\n" "$MQTT_STABLE_ALIAS"
+    exit 1
   fi
 
   printf "${LOG_TAG}: MQTT auto network: %s\n" "$MQTT_AUTO_NETWORK"
@@ -210,6 +283,10 @@ for i in $(seq 1 $RUNS); do
   # MQTT network flags
   MQTT_RUN_FLAGS=""
   if [[ -n "$MQTT_AUTO_NETWORK" ]] && [[ ${#MQTT_AUTO_CONTAINER_NAMES[@]} -gt $run_index ]]; then
+    remove_existing_named_container "${MQTT_AUTO_CONTAINER_NAMES[$run_index]}" || {
+      echo "[ERROR] Failed to remove stale MQTT broker container: ${MQTT_AUTO_CONTAINER_NAMES[$run_index]}"
+      exit 1
+    }
     MQTT_RUN_FLAGS=" --network ${MQTT_AUTO_NETWORK} --name ${MQTT_AUTO_CONTAINER_NAMES[$run_index]} --hostname ${MQTT_AUTO_BROKER_ALIASES[$run_index]} --network-alias ${MQTT_AUTO_BROKER_ALIASES[$run_index]}"
     container_name="${MQTT_AUTO_CONTAINER_NAMES[$run_index]}"
   fi
@@ -225,8 +302,7 @@ for i in $(seq 1 $RUNS); do
   # Per-container MQTT broker list
   MQTT_FLAGS=""
   if [[ -n "${MQTT_STABLE_ALIAS:-}" ]] && [[ -n "$MQTT_AUTO_NETWORK" ]]; then
-    _local_alias="${MQTT_AUTO_BROKER_ALIASES[$run_index]}"
-    _brokers="tcp://${_local_alias}/1883,tcp://${MQTT_STABLE_ALIAS}/1883"
+    _brokers="tcp://127.0.0.1/1883,tcp://${MQTT_STABLE_ALIAS}/1883"
     MQTT_FLAGS=" -e CHATAFL_MQTT_BROKERS=${_brokers}"
   elif [[ -n "${CHATAFL_MQTT_BROKERS:-}" ]]; then
     MQTT_FLAGS=" -e CHATAFL_MQTT_BROKERS=${CHATAFL_MQTT_BROKERS}"
@@ -238,6 +314,7 @@ for i in $(seq 1 $RUNS); do
   else
     id=$(docker run --cpus=1 -e KEY="${KEY}" ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} -d -it $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   fi
+  require_container_id "$id" "fuzz container run #${i}"
   cids+=("$id")
   append_result_manifest "$i" "$id" "$container_name"
 done
