@@ -1,0 +1,244 @@
+[
+    {
+        "Id": "a4f1d6d2a30679c17fd0a4f16c512fdc6953dd380b498a510b900ab61eb0108c",
+        "Created": "2026-04-24T03:50:36.380897551Z",
+        "Path": "/bin/bash",
+        "Args": [
+            "-c",
+            "        cp -f /tmp/subject-src/run.sh /home/ubuntu/experiments/run && chmod +x /home/ubuntu/experiments/run && cp -f /tmp/subject-src/mosquitto.conf /home/ubuntu/experiments/mosquitto.conf &&         echo '[DEV] Copying and compiling updated code...' &&         cp -f /tmp/chatafl-opt-src/*.c /tmp/chatafl-opt-src/*.h /tmp/chatafl-opt-src/Makefile /home/ubuntu/chatafl-opt/ 2>/dev/null || true &&         cd /home/ubuntu/chatafl-opt && make clean && make -j$(nproc) &&         echo '[DEV] Compilation complete, MD5: '$(md5sum grammar-hypothesis.c | cut -d' ' -f1) &&         cd /home/ubuntu/experiments && run chatafl-opt out-mosquitto-v2.0.18-chatafl_opt '-P MQTT -D 10000 -q 3 -s 3 -E -K -m none -t 5000+' 88800 40"
+        ],
+        "State": {
+            "Status": "running",
+            "Running": true,
+            "Paused": false,
+            "Restarting": false,
+            "OOMKilled": false,
+            "Dead": false,
+            "Pid": 3397230,
+            "ExitCode": 0,
+            "Error": "",
+            "StartedAt": "2026-04-24T03:50:37.070699186Z",
+            "FinishedAt": "0001-01-01T00:00:00Z"
+        },
+        "Image": "sha256:1df4e15b73ebb5a4ca4f8f6bfb2f83556c9ed2e8c71a6c525882a21bd79cc8cd",
+        "ResolvConfPath": "/var/lib/docker/containers/a4f1d6d2a30679c17fd0a4f16c512fdc6953dd380b498a510b900ab61eb0108c/resolv.conf",
+        "HostnamePath": "/var/lib/docker/containers/a4f1d6d2a30679c17fd0a4f16c512fdc6953dd380b498a510b900ab61eb0108c/hostname",
+        "HostsPath": "/var/lib/docker/containers/a4f1d6d2a30679c17fd0a4f16c512fdc6953dd380b498a510b900ab61eb0108c/hosts",
+        "LogPath": "/var/lib/docker/containers/a4f1d6d2a30679c17fd0a4f16c512fdc6953dd380b498a510b900ab61eb0108c/a4f1d6d2a30679c17fd0a4f16c512fdc6953dd380b498a510b900ab61eb0108c-json.log",
+        "Name": "/chatafl-mqtt-mosquitto-v2.0.18-chatafl-opt-ablatio-2de61c38980a-broker-1",
+        "RestartCount": 0,
+        "Driver": "overlay2",
+        "Platform": "linux",
+        "MountLabel": "",
+        "ProcessLabel": "",
+        "AppArmorProfile": "docker-default",
+        "ExecIDs": null,
+        "HostConfig": {
+            "Binds": [
+                "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/../ChatAFL-Opt:/tmp/chatafl-opt-src:ro",
+                "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/../benchmark/subjects/MQTT/Mosquitto-v2.0.18:/tmp/subject-src:ro"
+            ],
+            "ContainerIDFile": "",
+            "LogConfig": {
+                "Type": "json-file",
+                "Config": {}
+            },
+            "NetworkMode": "chatafl-mqtt-mosquitto-v2.0.18-chatafl-opt-ablatio-2de61c38980a",
+            "PortBindings": {},
+            "RestartPolicy": {
+                "Name": "no",
+                "MaximumRetryCount": 0
+            },
+            "AutoRemove": false,
+            "VolumeDriver": "",
+            "VolumesFrom": null,
+            "ConsoleSize": [
+                0,
+                0
+            ],
+            "CapAdd": null,
+            "CapDrop": null,
+            "CgroupnsMode": "host",
+            "Dns": [],
+            "DnsOptions": [],
+            "DnsSearch": [],
+            "ExtraHosts": null,
+            "GroupAdd": null,
+            "IpcMode": "private",
+            "Cgroup": "",
+            "Links": null,
+            "OomScoreAdj": 0,
+            "PidMode": "",
+            "Privileged": false,
+            "PublishAllPorts": false,
+            "ReadonlyRootfs": false,
+            "SecurityOpt": null,
+            "UTSMode": "",
+            "UsernsMode": "",
+            "ShmSize": 67108864,
+            "Runtime": "runc",
+            "Isolation": "",
+            "CpuShares": 0,
+            "Memory": 0,
+            "NanoCpus": 1000000000,
+            "CgroupParent": "",
+            "BlkioWeight": 0,
+            "BlkioWeightDevice": [],
+            "BlkioDeviceReadBps": [],
+            "BlkioDeviceWriteBps": [],
+            "BlkioDeviceReadIOps": [],
+            "BlkioDeviceWriteIOps": [],
+            "CpuPeriod": 0,
+            "CpuQuota": 0,
+            "CpuRealtimePeriod": 0,
+            "CpuRealtimeRuntime": 0,
+            "CpusetCpus": "",
+            "CpusetMems": "",
+            "Devices": [],
+            "DeviceCgroupRules": null,
+            "DeviceRequests": null,
+            "MemoryReservation": 0,
+            "MemorySwap": 0,
+            "MemorySwappiness": null,
+            "OomKillDisable": false,
+            "PidsLimit": null,
+            "Ulimits": [],
+            "CpuCount": 0,
+            "CpuPercent": 0,
+            "IOMaximumIOps": 0,
+            "IOMaximumBandwidth": 0,
+            "MaskedPaths": [
+                "/proc/asound",
+                "/proc/acpi",
+                "/proc/kcore",
+                "/proc/keys",
+                "/proc/latency_stats",
+                "/proc/timer_list",
+                "/proc/timer_stats",
+                "/proc/sched_debug",
+                "/proc/scsi",
+                "/sys/firmware",
+                "/sys/devices/virtual/powercap"
+            ],
+            "ReadonlyPaths": [
+                "/proc/bus",
+                "/proc/fs",
+                "/proc/irq",
+                "/proc/sys",
+                "/proc/sysrq-trigger"
+            ]
+        },
+        "GraphDriver": {
+            "Data": {
+                "LowerDir": "/var/lib/docker/overlay2/cef1662c21a9195c6d1d917a4d3004ecf1f7084ae0cb223a5554d0f1d3482b6d-init/diff:/var/lib/docker/overlay2/8be75722d8818093bc1e222944c84b7c89a84b4fc20e0d7641b6e69b37a1d2fb/diff:/var/lib/docker/overlay2/22be7502276b273373ccda134fad8bb0f7ba679cff18f249d44d8747402ef10e/diff:/var/lib/docker/overlay2/94da0c48f871b9a33338d805ace221cb329e0b6c068ebe0feb798dd4155a65b3/diff:/var/lib/docker/overlay2/28e57e2c61f0787aead68fc94d120487e7058d0b7d3cf36670e5275d5d6fd972/diff:/var/lib/docker/overlay2/94213ec728ccb90d73c3adba34230533c51be4e488571d0b9fda67765f0fe79d/diff:/var/lib/docker/overlay2/0fe5aa760e1eed318726b291b8e03074fe4636a266d5e3359074e4cbcd79acb8/diff:/var/lib/docker/overlay2/52bbfa673349c3a8bd1b6c165b2c058117a47efb279615cbde6c5ae6e41b88ad/diff:/var/lib/docker/overlay2/237a877f13fd9ab499766c2fc249c005bba957eac221899ad2fd12b0e6785c85/diff:/var/lib/docker/overlay2/e02e3a80522099f4c69b2755853339b8be8098211285c0c2905783ee2d0c66d8/diff:/var/lib/docker/overlay2/4e55190733c2b11d9f8c10884e2f8bdd0654a098c1afda7c5c7e1d0f77d0a644/diff:/var/lib/docker/overlay2/9a8d49fcd8ce42aa93d3d0f64f3709567ba44f35cad58bd70381a2d022544e89/diff:/var/lib/docker/overlay2/b8040d01e3df0cb4861421172f36c1de00f703909af680865dca3379f605d0d5/diff:/var/lib/docker/overlay2/d66c9142177babdaa8dc9d4ef84eee3e9a3dcef5370aac1a3b92322a417e2e38/diff:/var/lib/docker/overlay2/ecc2441d1e69106b5391300c6dd7ef6b4cc8a74b0f517af6b40f7d34bbbf2631/diff:/var/lib/docker/overlay2/288ec05ee1272db74028d0f217bfe623cdc63b3e1306709cfc9d0d31c157b445/diff:/var/lib/docker/overlay2/4cb34be22fa4f1e3f8c8c10b315348fe86d0212a8d121f6c2478ed5fa9cf7a02/diff:/var/lib/docker/overlay2/44532ceff3bfa74d6b583edcca3ac91f1407b26007d3f7de0eca95c3856116c5/diff:/var/lib/docker/overlay2/e3a5d6636fdfe3d8826653206f137a136c82ac7c9317cd0c6c2ed34ba470ede9/diff:/var/lib/docker/overlay2/e88512d924d90a7909519fc92967de8590c6da0d3ca472154778880d2aac82ab/diff:/var/lib/docker/overlay2/0ae974570188ab769d058f86234833587b85d6c95b66d681ce58842c8d3e34ea/diff:/var/lib/docker/overlay2/8c8529b4aeca1e6ea127092f4e8f64f7923687e58725f09f98a22d8d0afb45d4/diff:/var/lib/docker/overlay2/cd788a44b5185ed5c0870a9af9af195dfff713910b049a1ce17329e3b1e34960/diff:/var/lib/docker/overlay2/b70f09f08bfc9d02b2cbc09685075b9eeefe82cc98215416507b3c6b39f40cd9/diff:/var/lib/docker/overlay2/9760fb895c535f022c85cfe3e3fd753e3238d2b64cb204ade79b44dcbed0c75e/diff",
+                "MergedDir": "/var/lib/docker/overlay2/cef1662c21a9195c6d1d917a4d3004ecf1f7084ae0cb223a5554d0f1d3482b6d/merged",
+                "UpperDir": "/var/lib/docker/overlay2/cef1662c21a9195c6d1d917a4d3004ecf1f7084ae0cb223a5554d0f1d3482b6d/diff",
+                "WorkDir": "/var/lib/docker/overlay2/cef1662c21a9195c6d1d917a4d3004ecf1f7084ae0cb223a5554d0f1d3482b6d/work"
+            },
+            "Name": "overlay2"
+        },
+        "Mounts": [
+            {
+                "Type": "bind",
+                "Source": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/ChatAFL-Opt",
+                "Destination": "/tmp/chatafl-opt-src",
+                "Mode": "ro",
+                "RW": false,
+                "Propagation": "rprivate"
+            },
+            {
+                "Type": "bind",
+                "Source": "/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/benchmark/subjects/MQTT/Mosquitto-v2.0.18",
+                "Destination": "/tmp/subject-src",
+                "Mode": "ro",
+                "RW": false,
+                "Propagation": "rprivate"
+            }
+        ],
+        "Config": {
+            "Hostname": "mqttb1",
+            "Domainname": "",
+            "User": "root",
+            "AttachStdin": false,
+            "AttachStdout": false,
+            "AttachStderr": false,
+            "Tty": true,
+            "OpenStdin": true,
+            "StdinOnce": false,
+            "Env": [
+                "CHATAFL_ABLATION_THRESHOLD=512",
+                "CHATAFL_MQTT_BROKERS=tcp://127.0.0.1/1883,tcp://mqtt-stable-b450cac0/1883",
+                "KEY=sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS",
+                "CHATAFL_HYPOTHESIS=1",
+                "CHATAFL_NO_ADAPTIVE=1",
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/ubuntu/aflnet:/home/ubuntu/.local/bin:/home/ubuntu/experiments",
+                "DEBIAN_FRONTEND=noninteractive",
+                "WORKDIR=/home/ubuntu/experiments",
+                "AFLNET=/home/ubuntu/aflnet",
+                "AFL_PATH=/home/ubuntu/aflnet",
+                "AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1",
+                "AFL_SKIP_CPUFREQ=1",
+                "AFL_NO_AFFINITY=1",
+                "AFL_ENABLE_CHATAFL_OPT=1",
+                "ASAN_OPTIONS=abort_on_error=1:symbolize=0:detect_leaks=0:detect_stack_use_after_return=1:detect_container_overflow=1:poison_array_cookie=1:malloc_fill_byte=0:max_malloc_fill_size=16777216:check_initialization_order=1:strict_init_order=1:alloc_dealloc_mismatch=1:strict_string_checks=1"
+            ],
+            "Cmd": [
+                "/bin/bash",
+                "-c",
+                "        cp -f /tmp/subject-src/run.sh /home/ubuntu/experiments/run && chmod +x /home/ubuntu/experiments/run && cp -f /tmp/subject-src/mosquitto.conf /home/ubuntu/experiments/mosquitto.conf &&         echo '[DEV] Copying and compiling updated code...' &&         cp -f /tmp/chatafl-opt-src/*.c /tmp/chatafl-opt-src/*.h /tmp/chatafl-opt-src/Makefile /home/ubuntu/chatafl-opt/ 2>/dev/null || true &&         cd /home/ubuntu/chatafl-opt && make clean && make -j$(nproc) &&         echo '[DEV] Compilation complete, MD5: '$(md5sum grammar-hypothesis.c | cut -d' ' -f1) &&         cd /home/ubuntu/experiments && run chatafl-opt out-mosquitto-v2.0.18-chatafl_opt '-P MQTT -D 10000 -q 3 -s 3 -E -K -m none -t 5000+' 88800 40"
+            ],
+            "Image": "mosquitto-v2.0.18",
+            "Volumes": null,
+            "WorkingDir": "/home/ubuntu",
+            "Entrypoint": null,
+            "OnBuild": null,
+            "Labels": {
+                "org.opencontainers.image.ref.name": "ubuntu",
+                "org.opencontainers.image.version": "20.04"
+            }
+        },
+        "NetworkSettings": {
+            "Bridge": "",
+            "SandboxID": "4a7f8c0ad53324cbbf940a8cb306c82d47cb9ed5f3951dad93da66d2d466fc92",
+            "SandboxKey": "/var/run/docker/netns/4a7f8c0ad533",
+            "Ports": {},
+            "HairpinMode": false,
+            "LinkLocalIPv6Address": "",
+            "LinkLocalIPv6PrefixLen": 0,
+            "SecondaryIPAddresses": null,
+            "SecondaryIPv6Addresses": null,
+            "EndpointID": "",
+            "Gateway": "",
+            "GlobalIPv6Address": "",
+            "GlobalIPv6PrefixLen": 0,
+            "IPAddress": "",
+            "IPPrefixLen": 0,
+            "IPv6Gateway": "",
+            "MacAddress": "",
+            "Networks": {
+                "chatafl-mqtt-mosquitto-v2.0.18-chatafl-opt-ablatio-2de61c38980a": {
+                    "IPAMConfig": null,
+                    "Links": null,
+                    "Aliases": [
+                        "mqttb1"
+                    ],
+                    "MacAddress": "02:42:c0:a8:50:03",
+                    "NetworkID": "7be8d8c4324d87b0c3ea6d0365f3c006137a6e009f782ce7cf684022c2b979f8",
+                    "EndpointID": "5edcd2a92dedfdd860e8c054c5fafe8a0c8edbf92ba62aee751f04e45c6f5d90",
+                    "Gateway": "192.168.80.1",
+                    "IPAddress": "192.168.80.3",
+                    "IPPrefixLen": 20,
+                    "IPv6Gateway": "",
+                    "GlobalIPv6Address": "",
+                    "GlobalIPv6PrefixLen": 0,
+                    "DriverOpts": null,
+                    "DNSNames": [
+                        "chatafl-mqtt-mosquitto-v2.0.18-chatafl-opt-ablatio-2de61c38980a-broker-1",
+                        "mqttb1",
+                        "a4f1d6d2a306"
+                    ]
+                }
+            }
+        }
+    }
+]

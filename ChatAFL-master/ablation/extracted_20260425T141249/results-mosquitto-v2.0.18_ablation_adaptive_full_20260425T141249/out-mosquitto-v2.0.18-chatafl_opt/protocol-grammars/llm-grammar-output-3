@@ -1,0 +1,64 @@
+Here is a comprehensive list of MQTT client request message templates, formatted as specified. This includes various state-edge sequences and options such as QoS levels, reconnects, will messages, authentication, wildcard topics, and duplicate CONNECT variations.
+
+```plaintext
+CONNECT: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","CleanSession: <<VALUE>>\r\n","KeepAlive: <<VALUE>>\r\n","WillTopic: <<VALUE>>\r\n","WillMessage: <<VALUE>>\r\n","WillQoS: <<VALUE>>\r\n","WillRetain: <<VALUE>>\r\n","Username: <<VALUE>>\r\n","Password: <<VALUE>>\r\n"]
+
+CONNECT_DUPLICATE: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","CleanSession: <<VALUE>>\r\n","KeepAlive: <<VALUE>>\r\n","WillTopic: <<VALUE>>\r\n","WillMessage: <<VALUE>>\r\n","WillQoS: <<VALUE>>\r\n","WillRetain: <<VALUE>>\r\n","Username: <<VALUE>>\r\n","Password: <<VALUE>>\r\n","CleanSession: 0\r\n"]
+
+SUBSCRIBE: ["SUBSCRIBE <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n"]
+
+UNSUBSCRIBE: ["UNSUBSCRIBE <<VALUE>>\r\n","Topic: <<VALUE>>\r\n"]
+
+PUBLISH_QOS0: ["PUBLISH <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","Message: <<VALUE>>\r\n","QoS: 0\r\n"]
+
+PUBLISH_QOS1: ["PUBLISH <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","Message: <<VALUE>>\r\n","QoS: 1\r\n","MessageId: <<VALUE>>\r\n"]
+
+PUBLISH_QOS2: ["PUBLISH <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","Message: <<VALUE>>\r\n","QoS: 2\r\n","MessageId: <<VALUE>>\r\n"]
+
+DISCONNECT: ["DISCONNECT <<VALUE>>\r\n"]
+
+RECONNECT: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","CleanSession: <<VALUE>>\r\n","KeepAlive: <<VALUE>>\r\n"]
+
+WILDCARD_SUBSCRIBE: ["SUBSCRIBE <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n"]
+
+DUPLICATE_CONNECT: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","CleanSession: <<VALUE>>\r\n","KeepAlive: <<VALUE>>\r\n","WillTopic: <<VALUE>>\r\n","WillMessage: <<VALUE>>\r\n","WillQoS: <<VALUE>>\r\n","WillRetain: <<VALUE>>\r\n","Username: <<VALUE>>\r\n","Password: <<VALUE>>\r\n","CleanSession: 0\r\n"]
+
+```
+
+This list captures the essential MQTT client request messages, covering the various scenarios and configurations you mentioned. Each message template includes placeholders (<<VALUE>>) for the actual values that would be used in a real MQTT communication.
+In addition to the previously listed MQTT client request message templates, here are more templates that cover additional scenarios and variations for client requests in the MQTT protocol:
+
+```plaintext
+PINGREQ: ["PINGREQ\r\n"]
+
+PINGRESP: ["PINGRESP\r\n"]
+
+AUTH: ["AUTH <<VALUE>>\r\n","Username: <<VALUE>>\r\n","Password: <<VALUE>>\r\n"]
+
+WILL_MESSAGE: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","CleanSession: <<VALUE>>\r\n","KeepAlive: <<VALUE>>\r\n","WillTopic: <<VALUE>>\r\n","WillMessage: <<VALUE>>\r\n","WillQoS: <<VALUE>>\r\n","WillRetain: <<VALUE>>\r\n"]
+
+RECONNECT_WITH_WILL: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","CleanSession: <<VALUE>>\r\n","KeepAlive: <<VALUE>>\r\n","WillTopic: <<VALUE>>\r\n","WillMessage: <<VALUE>>\r\n","WillQoS: <<VALUE>>\r\n","WillRetain: <<VALUE>>\r\n","Username: <<VALUE>>\r\n","Password: <<VALUE>>\r\n"]
+
+UNSUBSCRIBE_WITH_QOS: ["UNSUBSCRIBE <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n"]
+
+SUBSCRIBE_WITH_WILD_CARD: ["SUBSCRIBE <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n"]
+
+PUBLISH_WITH_RETAIN: ["PUBLISH <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","Message: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n","Retain: 1\r\n"]
+
+PUBLISH_WITH_DUPLICATE: ["PUBLISH <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","Message: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n","MessageId: <<VALUE>>\r\n","Duplicate: 1\r\n"]
+
+```
+
+### Description of Each Template:
+
+1. **PINGREQ**: Used to check the connection to the broker; a keep-alive mechanism.
+2. **PINGRESP**: The response from the broker to a PINGREQ.
+3. **AUTH**: Represents an authentication request, which may include username and password.
+4. **WILL_MESSAGE**: A template for setting up a will message in the CONNECT request.
+5. **RECONNECT_WITH_WILL**: A CONNECT request that includes a will message for reconnection scenarios.
+6. **UNSUBSCRIBE_WITH_QOS**: An unsubscribe request that specifies a QoS level.
+7. **SUBSCRIBE_WITH_WILD_CARD**: A subscribe request that uses wildcard topics.
+8. **PUBLISH_WITH_RETAIN**: A publish request that indicates the message should be retained by the broker.
+9. **PUBLISH_WITH_DUPLICATE**: A publish request that indicates the message is a duplicate.
+
+These templates provide a broader set of MQTT client request scenarios and configurations, useful for various applications and use cases within the MQTT protocol.

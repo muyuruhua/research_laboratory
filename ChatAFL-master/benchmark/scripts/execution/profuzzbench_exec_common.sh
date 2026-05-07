@@ -17,10 +17,14 @@ RESULT_OWNER="${SUDO_USER:-$USER}"
 RESULT_GROUP="$(id -gn "${RESULT_OWNER}")"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RECOVERY_HELPER="${SCRIPT_DIR}/recover_result_archives.sh"
+WATCHDOG_HELPER="${SCRIPT_DIR}/fuzz_stall_watchdog.sh"
 RESULT_MANIFEST="${SAVETO}/.result_manifest.tsv"
+STATUS_DIR="${SAVETO}/.sample_status"
+FORENSICS_DIR="${SAVETO}/.forensics"
 COLLECTION_DONE=0
 CLEANUP_DONE=0
 RUN_COMPLETED=0
+WATCHDOG_DONE=0
 
 fix_result_permissions() {
   local path="$1"
@@ -43,6 +47,110 @@ append_result_manifest() {
   local container_name="${3:--}"
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$run_index" "$container_id" "$container_name" "$DOCIMAGE" "$FUZZER" "$OUTDIR" "${OUTDIR}_${run_index}.tar.gz" >> "$RESULT_MANIFEST"
+}
+
+sample_status_file() {
+  local archive_name="$1"
+  printf '%s/%s.status' "$STATUS_DIR" "$archive_name"
+}
+
+init_sample_status_dir() {
+  mkdir -p "$STATUS_DIR" "$FORENSICS_DIR"
+  fix_result_permissions "$STATUS_DIR"
+  fix_result_permissions "$FORENSICS_DIR"
+}
+
+write_sample_status() {
+  local archive_name="$1"
+  shift
+  local status_file
+  local tmp_file
+
+  status_file="$(sample_status_file "$archive_name")"
+  tmp_file="${status_file}.tmp"
+
+  {
+    printf 'archive_name=%s\n' "$archive_name"
+    for kv in "$@"; do
+      printf '%s\n' "$kv"
+    done
+  } > "$tmp_file"
+
+  mv "$tmp_file" "$status_file"
+  fix_result_permissions "$status_file"
+}
+
+read_sample_status_value() {
+  local archive_name="$1"
+  local key="$2"
+  local status_file
+
+  status_file="$(sample_status_file "$archive_name")"
+  [[ -f "$status_file" ]] || return 0
+  awk -F'=' -v want="$key" '$1 == want { print substr($0, index($0, "=") + 1); exit }' "$status_file"
+}
+
+mark_completed_samples() {
+  local idx archive_name container_id current_status exit_code
+
+  for idx in "${!cids[@]}"; do
+    archive_name="${archive_names[$idx]}"
+    container_id="${cids[$idx]}"
+    current_status="$(read_sample_status_value "$archive_name" status)"
+
+    if [[ -z "$current_status" || "$current_status" == "running" ]]; then
+      exit_code="$(docker inspect --format '{{.State.ExitCode}}' "$container_id" 2>/dev/null || true)"
+      write_sample_status "$archive_name" \
+        "container_id=${container_id}" \
+        "status=completed" \
+        "reason=completed" \
+        "finished_at=$(date -Iseconds)" \
+        "exit_code=${exit_code}"
+    fi
+  done
+}
+
+cleanup_watchdogs() {
+  local pid
+
+  if [[ $WATCHDOG_DONE -eq 1 ]]; then
+    return 0
+  fi
+  WATCHDOG_DONE=1
+
+  for pid in "${watchdog_pids[@]}"; do
+    kill "$pid" >/dev/null 2>&1 || true
+  done
+
+  for pid in "${watchdog_pids[@]}"; do
+    wait "$pid" >/dev/null 2>&1 || true
+  done
+}
+
+launch_watchdog() {
+  local container_id="$1"
+  local archive_name="$2"
+
+  if [[ "${CHATAFL_ENABLE_WATCHDOG:-0}" != "1" ]]; then
+    return 0
+  fi
+
+  if [[ ! -x "$WATCHDOG_HELPER" && -f "$WATCHDOG_HELPER" ]]; then
+    chmod +x "$WATCHDOG_HELPER" >/dev/null 2>&1 || true
+  fi
+
+  if [[ -x "$WATCHDOG_HELPER" ]]; then
+    bash "$WATCHDOG_HELPER" \
+      "$container_id" \
+      "$WORKDIR" \
+      "$OUTDIR" \
+      "$SAVETO" \
+      "$archive_name" \
+      "$LOG_TAG" &
+    watchdog_pids+=("$!")
+  else
+    printf "\n%s: [WARN] Watchdog helper not executable: %s\n" "$LOG_TAG" "$WATCHDOG_HELPER"
+  fi
 }
 
 collect_results_with_recovery() {
@@ -113,15 +221,24 @@ on_exit() {
     fi
     trap '' INT
   fi
+  if [[ $RUN_COMPLETED -eq 1 ]]; then
+    mark_completed_samples
+  fi
+  cleanup_watchdogs
   collect_results_with_recovery
   cleanup_mqtt_resources
 }
 
 trap on_exit EXIT INT TERM
 cids=()
+archive_names=()
+watchdog_pids=()
 
 # Log tag: FUZZER(target) e.g. CHATAFL-OPT(bftpd)
 LOG_TAG="${FUZZER^^}(${DOCIMAGE})"
+
+init_result_manifest
+init_sample_status_dir
 
 # ── MQTT bridge-mode support (mirrors dev-mode logic) ──
 is_mqtt_target() {
@@ -187,6 +304,7 @@ remove_existing_named_container() {
 
 recreate_named_network() {
   local network_name="$1"
+  local err_file
   [[ -n "$network_name" ]] || return 1
 
   if docker network inspect "$network_name" >/dev/null 2>&1; then
@@ -194,8 +312,30 @@ recreate_named_network() {
     docker network rm "$network_name" >/dev/null 2>&1 || return 1
   fi
 
-  docker network create "$network_name" >/dev/null 2>&1 || return 1
-  return 0
+  err_file=$(mktemp)
+  if docker network create "$network_name" >/dev/null 2>"$err_file"; then
+    rm -f "$err_file"
+    return 0
+  fi
+
+  if grep -q 'available, non-overlapping IPv4 address pool' "$err_file" 2>/dev/null; then
+    printf "\n${LOG_TAG}: Docker bridge address pool exhausted, pruning unused chatafl-mqtt-* networks...\n" >&2
+    while IFS= read -r stale_network; do
+      [[ -n "$stale_network" ]] || continue
+      if [[ "$(docker network inspect --format '{{len .Containers}}' "$stale_network" 2>/dev/null || echo 1)" == "0" ]]; then
+        docker network rm "$stale_network" >/dev/null 2>&1 || true
+      fi
+    done < <(docker network ls --format '{{.Name}}' | grep '^chatafl-mqtt-' || true)
+
+    if docker network create "$network_name" >/dev/null 2>"$err_file"; then
+      rm -f "$err_file"
+      return 0
+    fi
+  fi
+
+  printf "\n${LOG_TAG}: [ERROR] docker network create %s failed: %s\n" "$network_name" "$(tr '\n' ' ' < "$err_file")" >&2
+  rm -f "$err_file"
+  return 1
 }
 
 require_container_id() {
@@ -268,7 +408,10 @@ fi
 #keep all container ids
 cids=()
 
-init_result_manifest
+DIAG_PTRACE_FLAGS=""
+if [[ "${CHATAFL_ENABLE_DIAG_PTRACE:-1}" == "1" ]]; then
+  DIAG_PTRACE_FLAGS=" --cap-add SYS_PTRACE --security-opt seccomp=unconfined"
+fi
 
 short_container_id() {
   local container_id="$1"
@@ -278,6 +421,7 @@ short_container_id() {
 #create one container for each run
 for i in $(seq 1 $RUNS); do
   run_index=$((i-1))
+  archive_name="${OUTDIR}_${i}.tar.gz"
   container_name=""
 
   # MQTT network flags
@@ -310,13 +454,20 @@ for i in $(seq 1 $RUNS); do
 
   # Enable Grammar Hypothesis system only for chatafl-opt
   if [[ "$FUZZER" == "chatafl-opt" ]]; then
-    id=$(docker run --cpus=1 -e KEY="${KEY}" -e CHATAFL_HYPOTHESIS=1 ${ABLATION_FLAGS} ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} -d -it $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
+    id=$(docker run --cpus=1 ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" -e CHATAFL_HYPOTHESIS=1 ${ABLATION_FLAGS} ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} -d -it $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   else
-    id=$(docker run --cpus=1 -e KEY="${KEY}" ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} -d -it $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
+    id=$(docker run --cpus=1 ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} -d -it $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   fi
   require_container_id "$id" "fuzz container run #${i}"
   cids+=("$id")
+  archive_names+=("$archive_name")
   append_result_manifest "$i" "$id" "$container_name"
+  write_sample_status "$archive_name" \
+    "container_id=${id}" \
+    "status=running" \
+    "reason=" \
+    "started_at=$(date -Iseconds)"
+  launch_watchdog "$id" "$archive_name"
 done
 
 dlist="" #docker list
@@ -338,6 +489,8 @@ if [ -n "${dlist}" ]; then
 fi
 wait
 RUN_COMPLETED=1
+mark_completed_samples
+cleanup_watchdogs
 
 collect_results_with_recovery
 cleanup_mqtt_resources

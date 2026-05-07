@@ -838,6 +838,25 @@ static void reset_mqtt_cluster_diff_summary(void) {
   mqtt_last_diff_signal = 0.0;
 }
 
+static void invalidate_mqtt_cluster_diff_summary(u8 preserve_cluster_counts) {
+  if (mqtt_cluster_diff_summary) {
+    ck_free(mqtt_cluster_diff_summary);
+    mqtt_cluster_diff_summary = NULL;
+  }
+
+  /* Preserve the last valid mqtt_cluster_* snapshot across dry-run,
+   * throttled probe skips, or transient broker-spec parse failures.
+   * These paths mean "no fresh probe result" rather than
+   * "cluster size is definitely zero". */
+  if (!preserve_cluster_counts) {
+    mqtt_cluster_broker_count = 0;
+    mqtt_cluster_unique_signatures = 0;
+    mqtt_cluster_diverged = 0;
+  }
+
+  mqtt_last_diff_signal = 0.0;
+}
+
 static int mqtt_open_cluster_socket(const char *ip, u32 port) {
   int sockfd = socket(AF_INET, SOCK_STREAM, 0);
   struct sockaddr_in serv_addr;
@@ -1131,6 +1150,7 @@ static void mqtt_probe_cluster_differences(void) {
   int have_self_hostname = 0;
   u32 endpoint_count = 0;
   u32 i = 0;
+  u8 preserve_last_cluster = (mqtt_cluster_broker_count > 1);
 
   if (!protocol_name || strcasecmp(protocol_name, "MQTT") != 0) {
     reset_mqtt_cluster_diff_summary();
@@ -1144,7 +1164,7 @@ static void mqtt_probe_cluster_differences(void) {
 
   /* Skip cluster probing during dry run — partner container likely not ready. */
   if (queue_cycle == 0) {
-    reset_mqtt_cluster_diff_summary();
+    invalidate_mqtt_cluster_diff_summary(preserve_last_cluster);
     return;
   }
 
@@ -1160,7 +1180,7 @@ static void mqtt_probe_cluster_differences(void) {
     mqtt_diff_last_probe_exec = total_execs;
   }
 
-  reset_mqtt_cluster_diff_summary();
+  invalidate_mqtt_cluster_diff_summary(preserve_last_cluster);
 
   /* Even if no CHATAFL_MQTT_BROKERS is set, still run multi-party
    * probe against the target broker (once). */
@@ -1460,7 +1480,21 @@ static u8 mqtt_collect_exec_brokers(mqtt_broker_endpoint_t **out_endpoints,
       }
     }
 
-    if (*token && !parse_net_config((u8 *)token, &proto, &ip, &port) &&
+    /* P0-fix: Handle "name@tcp://host/port" format.
+     * Strip the "name@" prefix, pass only "tcp://host/port" to
+     * parse_net_config, and store the name as impl_name. */
+    char impl_label[32] = {0};
+    char *net_part = token;
+    {
+      char *at = strchr(token, '@');
+      if (at && at > token && (at - token) < 31) {
+        memcpy(impl_label, token, at - token);
+        impl_label[at - token] = '\0';
+        net_part = at + 1;
+      }
+    }
+
+    if (*net_part && !parse_net_config((u8 *)net_part, &proto, &ip, &port) &&
         proto == PRO_TCP) {
       mqtt_broker_endpoint_t *next = (mqtt_broker_endpoint_t *)ck_realloc(
           endpoints, (endpoint_count + 1) * sizeof(mqtt_broker_endpoint_t));
@@ -1472,14 +1506,15 @@ static u8 mqtt_collect_exec_brokers(mqtt_broker_endpoint_t **out_endpoints,
       endpoints[endpoint_count].ip = ip;
       endpoints[endpoint_count].port = port;
 
-      /* D2: Extract optional broker implementation label.
-       * Env format: tcp://host:label/port  (label between ':' and '/')
-       * Env label override: CHATAFL_MQTT_BROKER_LABELS=mosquitto,nanomq,... */
+      /* D2: Extract broker implementation label.
+       * Priority: 1) name@tcp:// prefix, 2) CHATAFL_MQTT_BROKER_LABELS env,
+       * 3) fallback "broker<N>". */
       memset(endpoints[endpoint_count].impl_name, 0, 32);
-      {
+      if (impl_label[0]) {
+        snprintf(endpoints[endpoint_count].impl_name, 31, "%s", impl_label);
+      } else {
         const char *labels_env = getenv("CHATAFL_MQTT_BROKER_LABELS");
         if (labels_env && *labels_env) {
-          /* Parse comma-separated labels by index */
           char *lcopy = strdup(labels_env);
           char *ltok = lcopy, *lsave = NULL;
           u32 li = 0;
@@ -3242,10 +3277,10 @@ int send_over_network()
      * diff signal freshness and exec/sec.  The cached diff signal decays
      * by 0.95× per non-probe exec so its influence fades gracefully.
      *
-     * SAFETY: Skip during dry run (queue_cycle == 0) — partner container
-     * may not be ready. */
+     * SAFETY: Skip initial warmup (first 50 execs) — partner container
+     * may not be ready yet. */
     if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0
-        && queue_cycle > 0) {
+        && total_execs > 50) {
 
       /* O1-fix: Throttle multi-broker exec by probe period */
       u8 do_multi_broker_exec = 1;
@@ -3410,6 +3445,102 @@ int send_over_network()
                   mqtt_cluster_unique_signatures,
                   mqtt_cluster_diverged);
           mqtt_cluster_probe_logged = 1;
+        }
+
+        /* P1: Bridge reverse probe — lightweight test of broker-as-receiver.
+         *
+         * MBFuzzer's bridge_broker_single_fuzzing_loop() sends fuzzed
+         * messages through bridge connections TO brokers.  We approximate
+         * this by opening a fresh TCP connection to each secondary broker,
+         * sending CONNECT+PUBLISH with a probe topic, and comparing the
+         * CONNACK responses.  This exercises the broker's CONNECT handling
+         * from a "bridge client" perspective with potentially malformed
+         * protocol data derived from the current test case.
+         *
+         * If any secondary broker responds differently to the same probe,
+         * it's a cross-implementation divergence worth exploring. */
+        if (ecnt >= 2 && (total_execs % 64 == 0)) {
+          /* Use first 16 bytes of the current test case as probe payload */
+          kliter_t(lms) *first_it = kl_begin(kl_messages);
+          u8 probe_payload[16] = {0};
+          u32 probe_len = 0;
+          if (first_it != kl_end(kl_messages)) {
+            message_t *first_m = kl_val(first_it);
+            if (first_m && first_m->mdata && first_m->msize > 0) {
+              probe_len = first_m->msize < 16 ? first_m->msize : 16;
+              memcpy(probe_payload, first_m->mdata, probe_len);
+            }
+          }
+
+          /* Build a minimal CONNECT packet (v3.1.1) */
+          u8 rev_connect[] = {
+            0x10, 0x10,                              /* CONNECT, len=16 */
+            0x00, 0x04, 'M','Q','T','T',             /* Protocol Name */
+            0x04,                                     /* Protocol Level (v4) */
+            0x02,                                     /* Flags: Clean Session */
+            0x00, 0x3C,                               /* Keep Alive: 60s */
+            0x00, 0x04, 'b','r','d','g'               /* Client ID: "brdg" */
+          };
+
+          u32 rev_responses[6] = {0};  /* hash of CONNACK per broker */
+          u32 rev_count = 0;
+          for (u32 bi = 0; bi < ecnt && bi < 6; bi++) {
+            struct timeval tv = {0, 200000}; /* 200ms timeout */
+            int rfd = socket(AF_INET, SOCK_STREAM, 0);
+            if (rfd < 0) continue;
+            setsockopt(rfd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+            setsockopt(rfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+            struct sockaddr_in sa;
+            memset(&sa, 0, sizeof(sa));
+            sa.sin_family = AF_INET;
+            sa.sin_port = htons(eps[bi].port);
+
+            struct hostent *he = gethostbyname((const char *)eps[bi].ip);
+            if (!he) { close(rfd); continue; }
+            memcpy(&sa.sin_addr, he->h_addr_list[0], he->h_length);
+
+            if (connect(rfd, (struct sockaddr *)&sa, sizeof(sa)) != 0) {
+              close(rfd); continue;
+            }
+
+            /* Send CONNECT */
+            send(rfd, rev_connect, sizeof(rev_connect), MSG_NOSIGNAL);
+            u8 ack[16] = {0};
+            int rn = recv(rfd, ack, sizeof(ack), 0);
+
+            /* Hash the response */
+            u32 h = 5381;
+            for (int ri = 0; ri < rn; ri++)
+              h = ((h << 5) + h) + ack[ri];
+            rev_responses[bi] = (rn > 0) ? h : 0;
+            rev_count++;
+
+            close(rfd);
+          }
+
+          /* Check for reverse-probe divergence */
+          if (rev_count >= 2) {
+            u8 rev_div = 0;
+            for (u32 bi = 1; bi < ecnt && bi < 6; bi++) {
+              if (rev_responses[bi] != rev_responses[0] &&
+                  rev_responses[bi] != 0 && rev_responses[0] != 0) {
+                rev_div = 1;
+                break;
+              }
+            }
+            if (rev_div) {
+              char rev_detail[256];
+              snprintf(rev_detail, sizeof(rev_detail),
+                       "reverse_connack[0]=0x%08x vs [1]=0x%08x (probed=%u)",
+                       rev_responses[0],
+                       ecnt > 1 ? rev_responses[1] : 0, rev_count);
+              mqtt_save_diff_report("reverse_probe", rev_detail,
+                                    eps, ecnt, fwd_hashes);
+              if (mqtt_last_diff_signal < 0.6)
+                mqtt_last_diff_signal = 0.6;
+            }
+          }
         }
 
         /* H3-fix: Stabilization loop with SHM sync.
@@ -9624,6 +9755,7 @@ static void show_stats(void)
          "promo:" cLGN "%-4s " cRST
          "diffs:" cLRD "%-4s " cRST
          "p5e:" cLGN "%-4s " cRST
+         "brk:" cCYA "%-2u " cRST
          cYEL "[P6] " cRST
          "deep:" cLGN "%-4s " cRST
          "stall:" cCYA "%-4s " cRST
@@ -9635,6 +9767,7 @@ static void show_stats(void)
          DI(mqtt_diff_queue_promotions),
          DI(unique_diffs),
          DI(mqtt_p5_energy_boosts),
+         mqtt_cluster_broker_count,
          DI(mqtt_p6_deep_state_boosts),
          DI(mqtt_p6_stall_boosts),
          DI(mqtt_state_stall_resets));

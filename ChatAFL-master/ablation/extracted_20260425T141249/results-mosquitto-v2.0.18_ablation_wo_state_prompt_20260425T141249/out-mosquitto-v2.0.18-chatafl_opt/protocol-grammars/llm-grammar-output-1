@@ -1,0 +1,190 @@
+Certainly! Below are the MQTT client request message templates formatted as specified, covering the various states and features of the MQTT protocol, including the CONNECT, SUBSCRIBE, PUBLISH, UNSUBSCRIBE, and DISCONNECT messages, along with their variations.
+
+```plaintext
+CONNECT: [
+    "CONNECT <<VALUE>>\r\n",
+    "ClientId: <<VALUE>>\r\n",
+    "CleanSession: <<VALUE>>\r\n",
+    "KeepAlive: <<VALUE>>\r\n",
+    "WillTopic: <<VALUE>>\r\n",
+    "WillMessage: <<VALUE>>\r\n",
+    "WillQoS: <<VALUE>>\r\n",
+    "WillRetain: <<VALUE>>\r\n",
+    "Username: <<VALUE>>\r\n",
+    "Password: <<VALUE>>\r\n"
+]
+
+SUBSCRIBE: [
+    "SUBSCRIBE <<VALUE>>\r\n",
+    "PacketId: <<VALUE>>\r\n",
+    "TopicFilter: <<VALUE>>\r\n",
+    "QoS: <<VALUE>>\r\n"
+]
+
+PUBLISH: [
+    "PUBLISH <<VALUE>>\r\n",
+    "PacketId: <<VALUE>>\r\n",
+    "TopicName: <<VALUE>>\r\n",
+    "Payload: <<VALUE>>\r\n",
+    "QoS: <<VALUE>>\r\n",
+    "Retain: <<VALUE>>\r\n",
+    "Dup: <<VALUE>>\r\n"
+]
+
+UNSUBSCRIBE: [
+    "UNSUBSCRIBE <<VALUE>>\r\n",
+    "PacketId: <<VALUE>>\r\n",
+    "TopicFilter: <<VALUE>>\r\n"
+]
+
+DISCONNECT: [
+    "DISCONNECT <<VALUE>>\r\n",
+    "ReasonCode: <<VALUE>>\r\n"
+]
+```
+
+### Additional Variations
+
+1. **Duplicate CONNECT**:
+   ```plaintext
+   CONNECT: [
+       "CONNECT <<VALUE>>\r\n",
+       "ClientId: <<VALUE>>\r\n",
+       "CleanSession: <<VALUE>>\r\n",
+       "KeepAlive: <<VALUE>>\r\n",
+       "WillTopic: <<VALUE>>\r\n",
+       "WillMessage: <<VALUE>>\r\n",
+       "WillQoS: <<VALUE>>\r\n",
+       "WillRetain: <<VALUE>>\r\n",
+       "Username: <<VALUE>>\r\n",
+       "Password: <<VALUE>>\r\n",
+       "Dup: true\r\n"
+   ]
+   ```
+
+2. **Reconnect**:
+   ```plaintext
+   CONNECT: [
+       "CONNECT <<VALUE>>\r\n",
+       "ClientId: <<VALUE>>\r\n",
+       "CleanSession: false\r\n",
+       "KeepAlive: <<VALUE>>\r\n"
+   ]
+   ```
+
+3. **Wildcard Topic in SUBSCRIBE**:
+   ```plaintext
+   SUBSCRIBE: [
+       "SUBSCRIBE <<VALUE>>\r\n",
+       "PacketId: <<VALUE>>\r\n",
+       "TopicFilter: <<VALUE>>\r\n",  // e.g., "home/+/temperature"
+       "QoS: <<VALUE>>\r\n"
+   ]
+   ```
+
+4. **QoS Levels in PUBLISH**:
+   ```plaintext
+   PUBLISH: [
+       "PUBLISH <<VALUE>>\r\n",
+       "PacketId: <<VALUE>>\r\n",
+       "TopicName: <<VALUE>>\r\n",
+       "Payload: <<VALUE>>\r\n",
+       "QoS: 0\r\n",  // QoS 0
+       "Retain: <<VALUE>>\r\n",
+       "Dup: <<VALUE>>\r\n"
+   ],
+   PUBLISH: [
+       "PUBLISH <<VALUE>>\r\n",
+       "PacketId: <<VALUE>>\r\n",
+       "TopicName: <<VALUE>>\r\n",
+       "Payload: <<VALUE>>\r\n",
+       "QoS: 1\r\n",  // QoS 1
+       "Retain: <<VALUE>>\r\n",
+       "Dup: <<VALUE>>\r\n"
+   ],
+   PUBLISH: [
+       "PUBLISH <<VALUE>>\r\n",
+       "PacketId: <<VALUE>>\r\n",
+       "TopicName: <<VALUE>>\r\n",
+       "Payload: <<VALUE>>\r\n",
+       "QoS: 2\r\n",  // QoS 2
+       "Retain: <<VALUE>>\r\n",
+       "Dup: <<VALUE>>\r\n"
+   ]
+   ```
+
+This comprehensive list covers the main client request message templates in the MQTT protocol, including variations for different scenarios.
+In addition to the primary MQTT client request message templates already provided (CONNECT, SUBSCRIBE, PUBLISH, UNSUBSCRIBE, and DISCONNECT), there are several other message types and variations that can be considered as client requests in the MQTT protocol. Here are additional templates that can be utilized:
+
+### Additional Client Request Message Templates
+
+```plaintext
+PINGREQ: [
+    "PINGREQ\r\n"
+]
+
+PINGRESP: [
+    "PINGRESP\r\n"  // This is a response from the broker, not a request from the client.
+]
+
+PUBACK: [
+    "PUBACK <<VALUE>>\r\n",
+    "PacketId: <<VALUE>>\r\n"
+]
+
+PUBREC: [
+    "PUBREC <<VALUE>>\r\n",
+    "PacketId: <<VALUE>>\r\n"
+]
+
+PUBREL: [
+    "PUBREL <<VALUE>>\r\n",
+    "PacketId: <<VALUE>>\r\n"
+]
+
+PUBCOMP: [
+    "PUBCOMP <<VALUE>>\r\n",
+    "PacketId: <<VALUE>>\r\n"
+]
+
+SUBACK: [
+    "SUBACK <<VALUE>>\r\n",
+    "PacketId: <<VALUE>>\r\n",
+    "QoS: <<VALUE>>\r\n"
+]
+
+UNSUBACK: [
+    "UNSUBACK <<VALUE>>\r\n",
+    "PacketId: <<VALUE>>\r\n"
+]
+```
+
+### Explanation of Additional Templates
+
+1. **PINGREQ**:
+   - This message is sent by the client to the broker to keep the connection alive. It does not carry any payload.
+
+2. **PINGRESP**:
+   - This is the response from the broker to a PINGREQ message. It confirms that the broker is still connected and responsive.
+
+3. **PUBACK**:
+   - This message is sent by the broker in response to a PUBLISH message with QoS level 1. It acknowledges receipt of the message.
+
+4. **PUBREC**:
+   - This message is sent by the broker in response to a PUBLISH message with QoS level 2. It indicates that the message has been received but not yet acknowledged.
+
+5. **PUBREL**:
+   - This message is sent by the publisher to acknowledge receipt of a PUBREC message, completing the QoS level 2 handshake.
+
+6. **PUBCOMP**:
+   - This message is sent by the broker to acknowledge the receipt of a PUBREL message, completing the QoS level 2 process.
+
+7. **SUBACK**:
+   - This message is sent by the broker in response to a SUBSCRIBE request, indicating the subscription status and the QoS level granted.
+
+8. **UNSUBACK**:
+   - This message is sent by the broker in response to an UNSUBSCRIBE request, confirming that the client has been unsubscribed from the specified topics.
+
+### Summary
+
+These additional templates provide a more comprehensive view of the MQTT protocol's client request messages and their interactions with the broker. They help in managing the connection, message acknowledgments, and subscriptions effectively.

@@ -1,0 +1,200 @@
+tq[0;36m cycle progress [1;90mqqqqqqqqqqqqqqqqqqqqwq[0;36m map coverage [1;90mqvqqqqqqqqqqqqqqqqqqqqqqqu
+x  now processing : [0m87 (9.66%)        [1;90mx    map density : [0m5.11% / 7.84%         [1;90mx
+x paths timed out : [0m0 (0.00%)         [1;90mx count coverage : [0m2.28 bits/tuple       [1;90mx
+tq[0;36m stage progress [1;90mqqqqqqqqqqqqqqqqqqqqnq[0;36m findings in depth [1;90mqqqqqqqqqqqqqqqqqqqqu
+x  now trying : [0mhavoc mqtt-exploit    [1;90mx favored paths : [0m112 (12.43%)           [1;90mx
+x stage execs : [0m41/128 (32.03%)       [1;90mx  new edges on : [0m351 (38.96%)           [1;90mx
+x total execs : [0m88.0k                 [1;90mx total crashes : [0m0 (0 unique)           [1;90mx
+x  exec speed : [1;91m5.67/sec (zzzz...)    [1;90mx  total tmouts : [0m0 (0 unique)           [1;90mx
+tq[0;36m fuzzing strategy yields [1;90mqqqqqqqqqqqvqqqqqqqqqqqqqqqwq[0;36m path geometry [1;90mqqqqqqqqu
+x   bit flips : [0mn/a, n/a, n/a                         [1;90mx    levels : [0m3          [1;90mx
+x  byte flips : [0mn/a, n/a, n/a                         [1;90mx   pending : [0m896        [1;90mx
+x arithmetics : [0mn/a, n/a, n/a                         [1;90mx  pend fav : [0m44         [1;90mx
+x  known ints : [0mn/a, n/a, n/a                         [1;90mx own finds : [0m441        [1;90mx
+x  dictionary : [0mn/a, n/a, n/a                         [1;90mx  imported : [0mn/a        [1;90mx
+x       havoc : [0m367/63.7k, 74/17.0k                   [1;90mx stability : [1;91m26.43%     [1;90mx
+x        trim : [0mn/a, n/a                              [1;90mtqqqqqqqqqqqqqqqqqqqqqqqqj
+mqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqj[0m)B          [1;90m   [cpu:[1;92m 13%[1;90m][0m[0m
+[1;93m[P5-diff] [0mtype_div:[1;91m0    [0mcode_div:[1;91m0    [0mpay_div:[1;91m1    [0mfwd_div:[1;91m1    [0mpromo:[1;92m1    [0mdiffs:[1;91m1707 [0mp5e:[1;92m0    [0m[1;93m[P6] [0mdeep:[1;92m11   [0mstall:[0;36m1    [0mrst:[0;36m250 [0m
+[H
+                      [1;93mamerican fuzzy lop [1;96m2.56b[1;92m (mosquitto)
+
+)0[1;90mlq[0;36m process timing [1;90mqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqwq[0;36m overall results [1;90mqqqqqk
+x        run time : [0m0 days, 4 hrs, 52 min, 55 sec      [1;90mx  cycles done : [0;35m4      [1;90mx
+x   last new path : [0m0 days, 0 hrs, 1 min, 1 sec        [1;90mx  total paths : [0m901    [1;90mx
+x last uniq crash : [0mnone seen yet                      [1;90mx uniq crashes : [0m0      [1;90mx
+x  last uniq hang : [0mnone seen yet                      [1;90mx   uniq hangs : [0m0      [1;90mx
+tq[0;36m cycle progress [1;90mqqqqqqqqqqqqqqqqqqqqwq[0;36m map coverage [1;90mqvqqqqqqqqqqqqqqqqqqqqqqqu
+x  now processing : [0m87 (9.66%)        [1;90mx    map density : [0m5.11% / 7.84%         [1;90mx
+x paths timed out : [0m0 (0.00%)         [1;90mx count coverage : [0m2.28 bits/tuple       [1;90mx
+tq[0;36m stage progress [1;90mqqqqqqqqqqqqqqqqqqqqnq[0;36m findings in depth [1;90mqqqqqqqqqqqqqqqqqqqqu
+x  now trying : [0mhavoc mqtt-exploit    [1;90mx favored paths : [0m112 (12.43%)           [1;90mx
+x stage execs : [0m43/128 (33.59%)       [1;90mx  new edges on : [0m351 (38.96%)           [1;90mx
+x total execs : [0m88.0k                 [1;90mx total crashes : [0m0 (0 unique)           [1;90mx
+x  exec speed : [1;91m5.68/sec (zzzz...)    [1;90mx  total tmouts : [0m0 (0 unique)           [1;90mx
+tq[0;36m fuzzing strategy yields [1;90mqqqqqqqqqqqvqqqqqqqqqqqqqqqwq[0;36m path geometry [1;90mqqqqqqqqu
+x   bit flips : [0mn/a, n/a, n/a                         [1;90mx    levels : [0m3          [1;90mx
+x  byte flips : [0mn/a, n/a, n/a                         [1;90mx   pending : [0m896        [1;90mx
+x arithmetics : [0mn/a, n/a, n/a                         [1;90mx  pend fav : [0m44         [1;90mx
+x  known ints : [0mn/a, n/a, n/a                         [1;90mx own finds : [0m441        [1;90mx
+x  dictionary : [0mn/a, n/a, n/a                         [1;90mx  imported : [0mn/a        [1;90mx
+x       havoc : [0m367/63.7k, 74/17.0k                   [1;90mx stability : [1;91m26.43%     [1;90mx
+x        trim : [0mn/a, n/a                              [1;90mtqqqqqqqqqqqqqqqqqqqqqqqqj
+mqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqj[0m)B          [1;90m   [cpu:[1;92m 13%[1;90m][0m[0m
+[1;93m[P5-diff] [0mtype_div:[1;91m0    [0mcode_div:[1;91m0    [0mpay_div:[1;91m1    [0mfwd_div:[1;91m1    [0mpromo:[1;92m1    [0mdiffs:[1;91m1707 [0mp5e:[1;92m0    [0m[1;93m[P6] [0mdeep:[1;92m11   [0mstall:[0;36m1    [0mrst:[0;36m250 [0m
+[H
+                      [1;93mamerican fuzzy lop [1;96m2.56b[1;92m (mosquitto)
+
+)0[1;90mlq[0;36m process timing [1;90mqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqwq[0;36m overall results [1;90mqqqqqk
+x        run time : [0m0 days, 4 hrs, 52 min, 55 sec      [1;90mx  cycles done : [0;35m4      [1;90mx
+x   last new path : [0m0 days, 0 hrs, 1 min, 1 sec        [1;90mx  total paths : [0m901    [1;90mx
+x last uniq crash : [0mnone seen yet                      [1;90mx uniq crashes : [0m0      [1;90mx
+x  last uniq hang : [0mnone seen yet                      [1;90mx   uniq hangs : [0m0      [1;90mx
+tq[0;36m cycle progress [1;90mqqqqqqqqqqqqqqqqqqqqwq[0;36m map coverage [1;90mqvqqqqqqqqqqqqqqqqqqqqqqqu
+x  now processing : [0m87 (9.66%)        [1;90mx    map density : [0m5.11% / 7.84%         [1;90mx
+x paths timed out : [0m0 (0.00%)         [1;90mx count coverage : [0m2.28 bits/tuple       [1;90mx
+tq[0;36m stage progress [1;90mqqqqqqqqqqqqqqqqqqqqnq[0;36m findings in depth [1;90mqqqqqqqqqqqqqqqqqqqqu
+x  now trying : [0mhavoc mqtt-exploit    [1;90mx favored paths : [0m112 (12.43%)           [1;90mx
+x stage execs : [0m45/128 (35.16%)       [1;90mx  new edges on : [0m351 (38.96%)           [1;90mx
+x total execs : [0m88.0k                 [1;90mx total crashes : [0m0 (0 unique)           [1;90mx
+x  exec speed : [1;91m5.69/sec (zzzz...)    [1;90mx  total tmouts : [0m0 (0 unique)           [1;90mx
+tq[0;36m fuzzing strategy yields [1;90mqqqqqqqqqqqvqqqqqqqqqqqqqqqwq[0;36m path geometry [1;90mqqqqqqqqu
+x   bit flips : [0mn/a, n/a, n/a                         [1;90mx    levels : [0m3          [1;90mx
+x  byte flips : [0mn/a, n/a, n/a                         [1;90mx   pending : [0m896        [1;90mx
+x arithmetics : [0mn/a, n/a, n/a                         [1;90mx  pend fav : [0m44         [1;90mx
+x  known ints : [0mn/a, n/a, n/a                         [1;90mx own finds : [0m441        [1;90mx
+x  dictionary : [0mn/a, n/a, n/a                         [1;90mx  imported : [0mn/a        [1;90mx
+x       havoc : [0m367/63.7k, 74/17.0k                   [1;90mx stability : [1;91m26.43%     [1;90mx
+x        trim : [0mn/a, n/a                              [1;90mtqqqqqqqqqqqqqqqqqqqqqqqqj
+mqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqj[0m)B          [1;90m   [cpu:[1;92m 13%[1;90m][0m[0m
+[1;93m[P5-diff] [0mtype_div:[1;91m0    [0mcode_div:[1;91m0    [0mpay_div:[1;91m1    [0mfwd_div:[1;91m1    [0mpromo:[1;92m1    [0mdiffs:[1;91m1707 [0mp5e:[1;92m0    [0m[1;93m[P6] [0mdeep:[1;92m11   [0mstall:[0;36m1    [0mrst:[0;36m250 [0m
+[H
+                      [1;93mamerican fuzzy lop [1;96m2.56b[1;92m (mosquitto)
+
+)0[1;90mlq[0;36m process timing [1;90mqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqwq[0;36m overall results [1;90mqqqqqk
+x        run time : [0m0 days, 4 hrs, 52 min, 55 sec      [1;90mx  cycles done : [0;35m4      [1;90mx
+x   last new path : [0m0 days, 0 hrs, 1 min, 1 sec        [1;90mx  total paths : [0m901    [1;90mx
+x last uniq crash : [0mnone seen yet                      [1;90mx uniq crashes : [0m0      [1;90mx
+x  last uniq hang : [0mnone seen yet                      [1;90mx   uniq hangs : [0m0      [1;90mx
+tq[0;36m cycle progress [1;90mqqqqqqqqqqqqqqqqqqqqwq[0;36m map coverage [1;90mqvqqqqqqqqqqqqqqqqqqqqqqqu
+x  now processing : [0m87 (9.66%)        [1;90mx    map density : [0m5.11% / 7.84%         [1;90mx
+x paths timed out : [0m0 (0.00%)         [1;90mx count coverage : [0m2.28 bits/tuple       [1;90mx
+tq[0;36m stage progress [1;90mqqqqqqqqqqqqqqqqqqqqnq[0;36m findings in depth [1;90mqqqqqqqqqqqqqqqqqqqqu
+x  now trying : [0mhavoc mqtt-exploit    [1;90mx favored paths : [0m112 (12.43%)           [1;90mx
+x stage execs : [0m47/128 (36.72%)       [1;90mx  new edges on : [0m351 (38.96%)           [1;90mx
+x total execs : [0m88.0k                 [1;90mx total crashes : [0m0 (0 unique)           [1;90mx
+x  exec speed : [1;91m5.69/sec (zzzz...)    [1;90mx  total tmouts : [0m0 (0 unique)           [1;90mx
+tq[0;36m fuzzing strategy yields [1;90mqqqqqqqqqqqvqqqqqqqqqqqqqqqwq[0;36m path geometry [1;90mqqqqqqqqu
+x   bit flips : [0mn/a, n/a, n/a                         [1;90mx    levels : [0m3          [1;90mx
+x  byte flips : [0mn/a, n/a, n/a                         [1;90mx   pending : [0m896        [1;90mx
+x arithmetics : [0mn/a, n/a, n/a                         [1;90mx  pend fav : [0m44         [1;90mx
+x  known ints : [0mn/a, n/a, n/a                         [1;90mx own finds : [0m441        [1;90mx
+x  dictionary : [0mn/a, n/a, n/a                         [1;90mx  imported : [0mn/a        [1;90mx
+x       havoc : [0m367/63.7k, 74/17.0k                   [1;90mx stability : [1;91m26.43%     [1;90mx
+x        trim : [0mn/a, n/a                              [1;90mtqqqqqqqqqqqqqqqqqqqqqqqqj
+mqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqj[0m)B          [1;90m   [cpu:[1;92m 12%[1;90m][0m[0m
+[1;93m[P5-diff] [0mtype_div:[1;91m0    [0mcode_div:[1;91m0    [0mpay_div:[1;91m1    [0mfwd_div:[1;91m1    [0mpromo:[1;92m1    [0mdiffs:[1;91m1707 [0mp5e:[1;92m0    [0m[1;93m[P6] [0mdeep:[1;92m11   [0mstall:[0;36m1    [0mrst:[0;36m250 [0m
+[H
+                      [1;93mamerican fuzzy lop [1;96m2.56b[1;92m (mosquitto)
+
+)0[1;90mlq[0;36m process timing [1;90mqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqwq[0;36m overall results [1;90mqqqqqk
+x        run time : [0m0 days, 4 hrs, 52 min, 56 sec      [1;90mx  cycles done : [0;35m4      [1;90mx
+x   last new path : [0m0 days, 0 hrs, 1 min, 2 sec        [1;90mx  total paths : [0m901    [1;90mx
+x last uniq crash : [0mnone seen yet                      [1;90mx uniq crashes : [0m0      [1;90mx
+x  last uniq hang : [0mnone seen yet                      [1;90mx   uniq hangs : [0m0      [1;90mx
+tq[0;36m cycle progress [1;90mqqqqqqqqqqqqqqqqqqqqwq[0;36m map coverage [1;90mqvqqqqqqqqqqqqqqqqqqqqqqqu
+x  now processing : [0m87 (9.66%)        [1;90mx    map density : [0m5.11% / 7.84%         [1;90mx
+x paths timed out : [0m0 (0.00%)         [1;90mx count coverage : [0m2.28 bits/tuple       [1;90mx
+tq[0;36m stage progress [1;90mqqqqqqqqqqqqqqqqqqqqnq[0;36m findings in depth [1;90mqqqqqqqqqqqqqqqqqqqqu
+x  now trying : [0mhavoc mqtt-exploit    [1;90mx favored paths : [0m112 (12.43%)           [1;90mx
+x stage execs : [0m49/128 (38.28%)       [1;90mx  new edges on : [0m351 (38.96%)           [1;90mx
+x total execs : [0m88.0k                 [1;90mx total crashes : [0m0 (0 unique)           [1;90mx
+x  exec speed : [1;91m5.65/sec (zzzz...)    [1;90mx  total tmouts : [0m0 (0 unique)           [1;90mx
+tq[0;36m fuzzing strategy yields [1;90mqqqqqqqqqqqvqqqqqqqqqqqqqqqwq[0;36m path geometry [1;90mqqqqqqqqu
+x   bit flips : [0mn/a, n/a, n/a                         [1;90mx    levels : [0m3          [1;90mx
+x  byte flips : [0mn/a, n/a, n/a                         [1;90mx   pending : [0m896        [1;90mx
+x arithmetics : [0mn/a, n/a, n/a                         [1;90mx  pend fav : [0m44         [1;90mx
+x  known ints : [0mn/a, n/a, n/a                         [1;90mx own finds : [0m441        [1;90mx
+x  dictionary : [0mn/a, n/a, n/a                         [1;90mx  imported : [0mn/a        [1;90mx
+x       havoc : [0m367/63.7k, 74/17.0k                   [1;90mx stability : [1;91m26.43%     [1;90mx
+x        trim : [0mn/a, n/a                              [1;90mtqqqqqqqqqqqqqqqqqqqqqqqqj
+mqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqj[0m)B          [1;90m   [cpu:[1;92m 12%[1;90m][0m[0m
+[1;93m[P5-diff] [0mtype_div:[1;91m0    [0mcode_div:[1;91m0    [0mpay_div:[1;91m1    [0mfwd_div:[1;91m1    [0mpromo:[1;92m1    [0mdiffs:[1;91m1707 [0mp5e:[1;92m0    [0m[1;93m[P6] [0mdeep:[1;92m11   [0mstall:[0;36m1    [0mrst:[0;36m250 [0m
+[H
+                      [1;93mamerican fuzzy lop [1;96m2.56b[1;92m (mosquitto)
+
+)0[1;90mlq[0;36m process timing [1;90mqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqwq[0;36m overall results [1;90mqqqqqk
+x        run time : [0m0 days, 4 hrs, 52 min, 56 sec      [1;90mx  cycles done : [0;35m4      [1;90mx
+x   last new path : [0m0 days, 0 hrs, 1 min, 2 sec        [1;90mx  total paths : [0m901    [1;90mx
+x last uniq crash : [0mnone seen yet                      [1;90mx uniq crashes : [0m0      [1;90mx
+x  last uniq hang : [0mnone seen yet                      [1;90mx   uniq hangs : [0m0      [1;90mx
+tq[0;36m cycle progress [1;90mqqqqqqqqqqqqqqqqqqqqwq[0;36m map coverage [1;90mqvqqqqqqqqqqqqqqqqqqqqqqqu
+x  now processing : [0m87 (9.66%)        [1;90mx    map density : [0m5.11% / 7.84%         [1;90mx
+x paths timed out : [0m0 (0.00%)         [1;90mx count coverage : [0m2.28 bits/tuple       [1;90mx
+tq[0;36m stage progress [1;90mqqqqqqqqqqqqqqqqqqqqnq[0;36m findings in depth [1;90mqqqqqqqqqqqqqqqqqqqqu
+x  now trying : [0mhavoc mqtt-exploit    [1;90mx favored paths : [0m112 (12.43%)           [1;90mx
+x stage execs : [0m51/128 (39.84%)       [1;90mx  new edges on : [0m351 (38.96%)           [1;90mx
+x total execs : [0m88.0k                 [1;90mx total crashes : [0m0 (0 unique)           [1;90mx
+x  exec speed : [1;91m5.71/sec (zzzz...)    [1;90mx  total tmouts : [0m0 (0 unique)           [1;90mx
+tq[0;36m fuzzing strategy yields [1;90mqqqqqqqqqqqvqqqqqqqqqqqqqqqwq[0;36m path geometry [1;90mqqqqqqqqu
+x   bit flips : [0mn/a, n/a, n/a                         [1;90mx    levels : [0m3          [1;90mx
+x  byte flips : [0mn/a, n/a, n/a                         [1;90mx   pending : [0m896        [1;90mx
+x arithmetics : [0mn/a, n/a, n/a                         [1;90mx  pend fav : [0m44         [1;90mx
+x  known ints : [0mn/a, n/a, n/a                         [1;90mx own finds : [0m441        [1;90mx
+x  dictionary : [0mn/a, n/a, n/a                         [1;90mx  imported : [0mn/a        [1;90mx
+x       havoc : [0m367/63.7k, 74/17.0k                   [1;90mx stability : [1;91m26.43%     [1;90mx
+x        trim : [0mn/a, n/a                              [1;90mtqqqqqqqqqqqqqqqqqqqqqqqqj
+mqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqj[0m)B          [1;90m   [cpu:[1;92m 12%[1;90m][0m[0m
+[1;93m[P5-diff] [0mtype_div:[1;91m0    [0mcode_div:[1;91m0    [0mpay_div:[1;91m1    [0mfwd_div:[1;91m1    [0mpromo:[1;92m1    [0mdiffs:[1;91m1707 [0mp5e:[1;92m0    [0m[1;93m[P6] [0mdeep:[1;92m11   [0mstall:[0;36m1    [0mrst:[0;36m250 [0m
+[H
+                      [1;93mamerican fuzzy lop [1;96m2.56b[1;92m (mosquitto)
+
+)0[1;90mlq[0;36m process timing [1;90mqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqwq[0;36m overall results [1;90mqqqqqk
+x        run time : [0m0 days, 4 hrs, 52 min, 56 sec      [1;90mx  cycles done : [0;35m4      [1;90mx
+x   last new path : [0m0 days, 0 hrs, 1 min, 2 sec        [1;90mx  total paths : [0m901    [1;90mx
+x last uniq crash : [0mnone seen yet                      [1;90mx uniq crashes : [0m0      [1;90mx
+x  last uniq hang : [0mnone seen yet                      [1;90mx   uniq hangs : [0m0      [1;90mx
+tq[0;36m cycle progress [1;90mqqqqqqqqqqqqqqqqqqqqwq[0;36m map coverage [1;90mqvqqqqqqqqqqqqqqqqqqqqqqqu
+x  now processing : [0m87 (9.66%)        [1;90mx    map density : [0m5.11% / 7.84%         [1;90mx
+x paths timed out : [0m0 (0.00%)         [1;90mx count coverage : [0m2.28 bits/tuple       [1;90mx
+tq[0;36m stage progress [1;90mqqqqqqqqqqqqqqqqqqqqnq[0;36m findings in depth [1;90mqqqqqqqqqqqqqqqqqqqqu
+x  now trying : [0mhavoc mqtt-exploit    [1;90mx favored paths : [0m112 (12.43%)           [1;90mx
+x stage execs : [0m53/128 (41.41%)       [1;90mx  new edges on : [0m351 (38.96%)           [1;90mx
+x total execs : [0m88.0k                 [1;90mx total crashes : [0m0 (0 unique)           [1;90mx
+x  exec speed : [1;91m5.69/sec (zzzz...)    [1;90mx  total tmouts : [0m0 (0 unique)           [1;90mx
+tq[0;36m fuzzing strategy yields [1;90mqqqqqqqqqqqvqqqqqqqqqqqqqqqwq[0;36m path geometry [1;90mqqqqqqqqu
+x   bit flips : [0mn/a, n/a, n/a                         [1;90mx    levels : [0m3          [1;90mx
+x  byte flips : [0mn/a, n/a, n/a                         [1;90mx   pending : [0m896        [1;90mx
+x arithmetics : [0mn/a, n/a, n/a                         [1;90mx  pend fav : [0m44         [1;90mx
+x  known ints : [0mn/a, n/a, n/a                         [1;90mx own finds : [0m441        [1;90mx
+x  dictionary : [0mn/a, n/a, n/a                         [1;90mx  imported : [0mn/a        [1;90mx
+x       havoc : [0m367/63.7k, 74/17.0k                   [1;90mx stability : [1;91m26.43%     [1;90mx
+x        trim : [0mn/a, n/a                              [1;90mtqqqqqqqqqqqqqqqqqqqqqqqqj
+mqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqj[0m)B          [1;90m   [cpu:[1;92m 12%[1;90m][0m[0m
+[1;93m[P5-diff] [0mtype_div:[1;91m0    [0mcode_div:[1;91m0    [0mpay_div:[1;91m1    [0mfwd_div:[1;91m1    [0mpromo:[1;92m1    [0mdiffs:[1;91m1707 [0mp5e:[1;92m0    [0m[1;93m[P6] [0mdeep:[1;92m11   [0mstall:[0;36m1    [0mrst:[0;36m250 [0m
+[H
+                      [1;93mamerican fuzzy lop [1;96m2.56b[1;92m (mosquitto)
+
+)0[1;90mlq[0;36m process timing [1;90mqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqwq[0;36m overall results [1;90mqqqqqk
+x        run time : [0m0 days, 4 hrs, 52 min, 57 sec      [1;90mx  cycles done : [0;35m4      [1;90mx
+x   last new path : [0m0 days, 0 hrs, 1 min, 3 sec        [1;90mx  total paths : [0m901    [1;90mx
+x last uniq crash : [0mnone seen yet                      [1;90mx uniq crashes : [0m0      [1;90mx
+x  last uniq hang : [0mnone seen yet                      [1;90mx   uniq hangs : [0m0      [1;90mx
+tq[0;36m cycle progress [1;90mqqqqqqqqqqqqqqqqqqqqwq[0;36m map coverage [1;90mqvqqqqqqqqqqqqqqqqqqqqqqqu
+x  now processing : [0m87 (9.66%)        [1;90mx    map density : [0m5.11% / 7.84%         [1;90mx
+x paths timed out : [0m0 (0.00%)         [1;90mx count coverage : [0m2.28 bits/tuple       [1;90mx
+tq[0;36m stage progress [1;90mqqqqqqqqqqqqqqqqqqqqnq[0;36m findings in depth [1;90mqqqqqqqqqqqqqqqqqqqqu
+x  now trying : [0mhavoc mqtt-exploit    [1;90mx favored paths : [0m112 (12.43%)           [1;90mx
+x stage execs : [0m55/128 (42.97%)       [1;90mx  new edges on : [0m351 (38.96%)           [1;90mx
+x total execs : [0m88.0k                 [1;90mx total crashes : [0m0 (0 unique)           [1;90mx
+x  exec speed : [1;91m5.71/sec (zzzz...)    [1;90mx  total tmouts : [0m0 (0 unique)           [1;90mx
+tq[0;36m fuzzing strategy yields [1;90mqqqqqqqqqqqvqqqqqqqqqqqqqqqwq[0;36m path geometry [1;90mqqqqqqqqu
+x   bit flips : [0mn/a, n/a, n/a                         [1;90mx    levels : [0m3          [1;90mx
+x  byte flips : [0mn/a, n/a, n/a                         [1;90mx   pending : [0m896        [1;90mx
+x arithmetics : [0mn/a, n/a, n/a                         [1;90mx  pend fav : [0m44         [1;90mx
+x  known ints : [0mn/a, n/a, n/a                         [1;90mx own finds : [0m441        [1;90mx
+x  dictionary : [0mn/a, n/a, n/a                         [1;90mx  imported : [0mn/a        [1;90mx
+x       havoc : [0m367/63.7k, 74/17.0k                   [1;90mx stability : [1;91m26.43%     [1;90mx
+x        trim : [0mn/a, n/a                              [1;90mtqqqqqqqqqqqqqqqqqqqqqqqqj
+mqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqj[0m)B          [1;90m   [cpu:[1;92m 12%[1;90m][0m[0m
+[1;93m[P5-diff] [0mtype_div:[1;91m0    [0mcode_div:[1;91m0    [0mpay_div:[1;91m1    [0mfwd_div:[1;91m1    [0mpromo:[1;92m1    [0mdiffs:[1;91m1707 [0mp5e:[1;92m0    [0m[1;93m[P6] [0mdeep:[1;92m11   [0mstall:[0;36m1    [0mrst:[0;36m250 [0m

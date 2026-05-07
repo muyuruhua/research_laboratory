@@ -1,0 +1,6 @@
+    PID    PPID STAT     ELAPSED %CPU COMMAND         COMMAND
+      1       0 Ss+     01:57:44  0.0 run             /bin/bash /home/ubuntu/experiments/run chatafl-opt out-mosquitto-v2.0.18-chatafl_opt -P MQTT -D 10000 -q 3 -s 3 -E -K -m none -t 5000+ 88800 40
+    192       1 S       01:57:35  0.0 timeout         timeout -k 2s --preserve-status 88800 /home/ubuntu/chatafl-opt/afl-fuzz -d -i /home/ubuntu/experiments/in-mqtt -o out-mosquitto-v2.0.18-chatafl_opt -N tcp://127.0.0.1/1883 -P MQTT -D 10000 -q 3 -s 3 -E -K -m none -t 5000+ /home/ubuntu/experiments/mosquitto/src/mosquitto -c /home/ubuntu/experiments/mosquitto.conf
+    193     192 Sl      01:57:35  1.4 afl-fuzz        /home/ubuntu/chatafl-opt/afl-fuzz -d -i /home/ubuntu/experiments/in-mqtt -o out-mosquitto-v2.0.18-chatafl_opt -N tcp://127.0.0.1/1883 -P MQTT -D 10000 -q 3 -s 3 -E -K -m none -t 5000+ /home/ubuntu/experiments/mosquitto/src/mosquitto -c /home/ubuntu/experiments/mosquitto.conf
+   1418     193 Ss      01:52:17  0.1 mosquitto       /home/ubuntu/experiments/mosquitto/src/mosquitto -c /home/ubuntu/experiments/mosquitto.conf
+  56048       0 Rs         00:00  0.0 ps              ps -eo pid,ppid,stat,etime,pcpu,comm,args

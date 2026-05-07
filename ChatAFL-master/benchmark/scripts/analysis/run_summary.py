@@ -46,6 +46,12 @@ class RunMetrics:
     edges: int | None = None
     start_time: int | None = None
     last_update: int | None = None
+    status: str = "unknown"
+    invalid_reason: str = ""
+    diagnostics_dir: str = ""
+
+
+INVALID_STATUSES = {"stalled", "invalid", "failed"}
 
 
 def parse_run_name(name: str) -> Optional[tuple[str, str, int]]:
@@ -81,6 +87,30 @@ def read_text_from_dir(root: Path, suffix: str) -> str:
         if path.is_file() and path.name == suffix or str(path).endswith(suffix):
             return path.read_text(encoding="utf-8", errors="replace")
     return ""
+
+
+def read_status_metadata(results_dir: Path) -> dict[str, dict[str, str]]:
+    status_dir = results_dir / ".sample_status"
+    metadata: dict[str, dict[str, str]] = {}
+
+    if not status_dir.is_dir():
+        return metadata
+
+    for path in sorted(status_dir.glob("*.status")):
+        values: dict[str, str] = {}
+        try:
+            for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+                if "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                values[key.strip()] = value.strip()
+        except OSError:
+            continue
+
+        archive_name = values.get("archive_name") or path.name[:-7]
+        metadata[archive_name] = values
+
+    return metadata
 
 
 def parse_cov_text(text: str) -> tuple[Optional[int], Optional[int]]:
@@ -125,7 +155,7 @@ def iter_sources(results_dir: Path) -> Iterable[Path]:
             yield path
 
 
-def read_metrics(path: Path) -> Optional[RunMetrics]:
+def read_metrics(path: Path, status_map: dict[str, dict[str, str]]) -> Optional[RunMetrics]:
     parsed = parse_run_name(path.name)
     if not parsed:
         return None
@@ -145,6 +175,10 @@ def read_metrics(path: Path) -> Optional[RunMetrics]:
     metrics.l_abs, metrics.b_abs = parse_cov_text(cov_text)
     metrics.nodes, metrics.edges = parse_plot_text(plot_text)
     metrics.runtime_min, metrics.start_time, metrics.last_update = parse_fuzzer_stats(stats_text)
+    status_meta = status_map.get(path.name, {})
+    metrics.status = status_meta.get("status", "completed" if status_meta else "unknown")
+    metrics.invalid_reason = status_meta.get("reason", "")
+    metrics.diagnostics_dir = status_meta.get("diagnostics_dir", "")
     return metrics
 
 
@@ -152,16 +186,21 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Generate a per-run CSV summary from a results directory.")
     parser.add_argument("results_dir", help="Directory containing out-*.tar.gz files or extracted out-* folders")
     parser.add_argument("--output", "-o", help="Write CSV to this path instead of stdout")
+    parser.add_argument("--include-invalid", action="store_true", help="Include stalled/invalid runs in the generated CSV")
     args = parser.parse_args()
 
     results_dir = Path(args.results_dir).resolve()
     if not results_dir.is_dir():
         raise SystemExit(f"results directory not found: {results_dir}")
 
+    status_map = read_status_metadata(results_dir)
+
     rows = []
     for source in iter_sources(results_dir):
-        metrics = read_metrics(source)
+        metrics = read_metrics(source, status_map)
         if metrics is not None:
+            if not args.include_invalid and metrics.status in INVALID_STATUSES:
+                continue
             rows.append(metrics)
 
     rows.sort(key=lambda r: (r.subject, r.fuzzer, r.run, r.source))
@@ -179,6 +218,9 @@ def main() -> int:
         "edges",
         "start_time",
         "last_update",
+        "status",
+        "invalid_reason",
+        "diagnostics_dir",
     ]
 
     output_stream = open(args.output, "w", newline="", encoding="utf-8") if args.output else None
@@ -199,6 +241,9 @@ def main() -> int:
                 "edges": row.edges if row.edges is not None else "",
                 "start_time": row.start_time if row.start_time is not None else "",
                 "last_update": row.last_update if row.last_update is not None else "",
+                "status": row.status,
+                "invalid_reason": row.invalid_reason,
+                "diagnostics_dir": row.diagnostics_dir,
             })
     finally:
         if output_stream is not None:

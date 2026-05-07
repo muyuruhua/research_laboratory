@@ -131,8 +131,11 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
             
             // Set timeouts to prevent hanging
+            curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);   // REQUIRED for multi-threaded: disable SIGALRM-based timeout
             curl_easy_setopt(curl, CURLOPT_TIMEOUT, 120L);  // Total request timeout: 120 seconds
             curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 30L);  // Connection timeout: 30 seconds
+            curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1L);  // Abort if < 1 byte/sec
+            curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 60L);  // ... for 60 seconds
 
             res = curl_easy_perform(curl);
 

@@ -1,0 +1,61 @@
+Certainly! Below are the MQTT client request message templates formatted as specified, including various states and features such as QoS levels, reconnect, will, authentication, wildcard topics, and duplicate CONNECT variations.
+
+```plaintext
+CONNECT: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","CleanSession: <<VALUE>>\r\n","KeepAlive: <<VALUE>>\r\n","WillTopic: <<VALUE>>\r\n","WillMessage: <<VALUE>>\r\n","WillQoS: <<VALUE>>\r\n","WillRetain: <<VALUE>>\r\n","Username: <<VALUE>>\r\n","Password: <<VALUE>>\r\n"]
+CONNECT_DUPLICATE: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","CleanSession: <<VALUE>>\r\n","KeepAlive: <<VALUE>>\r\n","WillTopic: <<VALUE>>\r\n","WillMessage: <<VALUE>>\r\n","WillQoS: <<VALUE>>\r\n","WillRetain: <<VALUE>>\r\n","Username: <<VALUE>>\r\n","Password: <<VALUE>>\r\n"]
+
+SUBSCRIBE: ["SUBSCRIBE <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n"]
+SUBSCRIBE_WILDCARD: ["SUBSCRIBE <<VALUE>>\r\n","Topic: <<VALUE>><<WILDCARD>>\r\n","QoS: <<VALUE>>\r\n"]
+
+PUBLISH: ["PUBLISH <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","Payload: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n","Retain: <<VALUE>>\r\n","Dup: <<VALUE>>\r\n"]
+PUBLISH_QOS0: ["PUBLISH <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","Payload: <<VALUE>>\r\n","QoS: 0\r\n","Retain: <<VALUE>>\r\n"]
+PUBLISH_QOS1: ["PUBLISH <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","Payload: <<VALUE>>\r\n","QoS: 1\r\n","Retain: <<VALUE>>\r\n","MessageId: <<VALUE>>\r\n"]
+PUBLISH_QOS2: ["PUBLISH <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","Payload: <<VALUE>>\r\n","QoS: 2\r\n","Retain: <<VALUE>>\r\n","MessageId: <<VALUE>>\r\n"]
+
+UNSUBSCRIBE: ["UNSUBSCRIBE <<VALUE>>\r\n","Topic: <<VALUE>>\r\n"]
+UNSUBSCRIBE_WILDCARD: ["UNSUBSCRIBE <<VALUE>>\r\n","Topic: <<VALUE>><<WILDCARD>>\r\n"]
+
+DISCONNECT: ["DISCONNECT <<VALUE>>\r\n"]
+```
+
+### Notes:
+- `<<VALUE>>` placeholders can be replaced with actual values relevant to the MQTT message being constructed.
+- `<<WILDCARD>>` can be replaced with MQTT wildcard characters such as `+` or `#` for subscribing or unsubscribing to topics.
+- The `QoS` values can be set to `0`, `1`, or `2` as needed for the respective messages.
+- The `Dup` field in the PUBLISH message indicates whether the message is a duplicate (1 for true, 0 for false).
+- The `MessageId` is included in QoS 1 and QoS 2 messages to track the message delivery.
+In addition to the previously provided templates, MQTT has a few more client request message types that can be included. Below are additional templates for MQTT client requests, including variations and specific features:
+
+```plaintext
+PINGREQ: ["PINGREQ\r\n"]
+
+PINGRESP: ["PINGRESP\r\n"]
+
+ACKNOWLEDGE: ["PUBACK <<VALUE>>\r\n","MessageId: <<VALUE>>\r\n"]
+PUBREC: ["PUBREC <<VALUE>>\r\n","MessageId: <<VALUE>>\r\n"]
+PUBREL: ["PUBREL <<VALUE>>\r\n","MessageId: <<VALUE>>\r\n"]
+PUBCOMP: ["PUBCOMP <<VALUE>>\r\n","MessageId: <<VALUE>>\r\n"]
+
+SUBACK: ["SUBACK <<VALUE>>\r\n","MessageId: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n"]
+UNSUBACK: ["UNSUBACK <<VALUE>>\r\n","MessageId: <<VALUE>>\r\n"]
+```
+
+### Descriptions of Additional Templates:
+1. **PINGREQ**: This message is sent by the client to the broker to keep the connection alive. It does not require any parameters.
+   
+2. **PINGRESP**: This is the response from the broker to a PINGREQ message. It does not require any parameters.
+
+3. **PUBACK**: This message acknowledges the receipt of a message published with QoS 1. It includes the `MessageId` of the message being acknowledged.
+
+4. **PUBREC**: This message is sent by the broker to acknowledge receipt of a message published with QoS 2. It includes the `MessageId` of the message being acknowledged.
+
+5. **PUBREL**: This message is sent by the publisher to release a QoS 2 message after receiving a PUBREC. It includes the `MessageId`.
+
+6. **PUBCOMP**: This message is sent by the broker to confirm that a QoS 2 message has been completely processed. It includes the `MessageId`.
+
+7. **SUBACK**: This message is sent by the broker in response to a SUBSCRIBE request, acknowledging the subscription and indicating the QoS level granted for each topic.
+
+8. **UNSUBACK**: This message is sent by the broker in response to an UNSUBSCRIBE request, acknowledging the unsubscription.
+
+### Summary:
+These templates complete the list of client request messages in the MQTT protocol, covering the essential interactions between clients and brokers. Each message type is crucial for various aspects of MQTT's operation, especially regarding message delivery guarantees and connection management.

@@ -1,0 +1,52 @@
+Here is a comprehensive list of MQTT client request message templates in the specified format, including various types of messages and options:
+
+```plaintext
+CONNECT: ["CONNECT <<VALUE>>\r\n", "ClientId: <<VALUE>>\r\n", "CleanSession: <<VALUE>>\r\n", "KeepAlive: <<VALUE>>\r\n", "WillTopic: <<VALUE>>\r\n", "WillMessage: <<VALUE>>\r\n", "WillQoS: <<VALUE>>\r\n", "WillRetain: <<VALUE>>\r\n", "Username: <<VALUE>>\r\n", "Password: <<VALUE>>\r\n"]
+CONNACK: ["CONNACK <<VALUE>>\r\n", "SessionPresent: <<VALUE>>\r\n", "ReturnCode: <<VALUE>>\r\n"]
+SUBSCRIBE: ["SUBSCRIBE <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "TopicFilter: <<VALUE>>\r\n", "QoS: <<VALUE>>\r\n"]
+SUBACK: ["SUBACK <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "QoS: <<VALUE>>\r\n"]
+UNSUBSCRIBE: ["UNSUBSCRIBE <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "TopicFilter: <<VALUE>>\r\n"]
+UNSUBACK: ["UNSUBACK <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+PUBLISH: ["PUBLISH <<VALUE>>\r\n", "TopicName: <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "QoS: <<VALUE>>\r\n", "Retain: <<VALUE>>\r\n", "Payload: <<VALUE>>\r\n"]
+PUBACK: ["PUBACK <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+PUBREC: ["PUBREC <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+PUBREL: ["PUBREL <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+PUBCOMP: ["PUBCOMP <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+PINGREQ: ["PINGREQ\r\n"]
+PINGRESP: ["PINGRESP\r\n"]
+DISCONNECT: ["DISCONNECT\r\n"]
+```
+
+This list includes the essential MQTT client request messages, along with their relevant fields. Each message type is formatted to show the structure and expected parameters, such as `<<VALUE>>`, which can be replaced with actual values during implementation.
+In addition to the basic MQTT client request message templates previously provided, here are some additional templates and variations for client requests in the MQTT protocol:
+
+```plaintext
+CONNECT: ["CONNECT <<VALUE>>\r\n", "ClientId: <<VALUE>>\r\n", "CleanSession: <<VALUE>>\r\n", "KeepAlive: <<VALUE>>\r\n", "WillTopic: <<VALUE>>\r\n", "WillMessage: <<VALUE>>\r\n", "WillQoS: <<VALUE>>\r\n", "WillRetain: <<VALUE>>\r\n", "Username: <<VALUE>>\r\n", "Password: <<VALUE>>\r\n"]
+CONNACK: ["CONNACK <<VALUE>>\r\n", "SessionPresent: <<VALUE>>\r\n", "ReturnCode: <<VALUE>>\r\n"]
+SUBSCRIBE: ["SUBSCRIBE <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "TopicFilter: <<VALUE>>\r\n", "QoS: <<VALUE>>\r\n"]
+SUBACK: ["SUBACK <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "QoS: <<VALUE>>\r\n"]
+UNSUBSCRIBE: ["UNSUBSCRIBE <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "TopicFilter: <<VALUE>>\r\n"]
+UNSUBACK: ["UNSUBACK <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+PUBLISH: ["PUBLISH <<VALUE>>\r\n", "TopicName: <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "QoS: <<VALUE>>\r\n", "Retain: <<VALUE>>\r\n", "Payload: <<VALUE>>\r\n"]
+PUBACK: ["PUBACK <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+PUBREC: ["PUBREC <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+PUBREL: ["PUBREL <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+PUBCOMP: ["PUBCOMP <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n"]
+PINGREQ: ["PINGREQ\r\n"]
+PINGRESP: ["PINGRESP\r\n"]
+DISCONNECT: ["DISCONNECT\r\n"]
+
+// Additional variations and templates
+CONNECT_DUP: ["CONNECT <<VALUE>>\r\n", "ClientId: <<VALUE>>\r\n", "CleanSession: <<VALUE>>\r\n", "KeepAlive: <<VALUE>>\r\n", "WillTopic: <<VALUE>>\r\n", "WillMessage: <<VALUE>>\r\n", "WillQoS: <<VALUE>>\r\n", "WillRetain: <<VALUE>>\r\n", "Username: <<VALUE>>\r\n", "Password: <<VALUE>>\r\n", "Duplicate: <<VALUE>>\r\n"]
+SUBSCRIBE_WILDCARD: ["SUBSCRIBE <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "TopicFilter: <<VALUE>>/#\r\n", "QoS: <<VALUE>>\r\n"] // Wildcard subscription
+PUBLISH_DUP: ["PUBLISH <<VALUE>>\r\n", "TopicName: <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "QoS: <<VALUE>>\r\n", "Retain: <<VALUE>>\r\n", "Payload: <<VALUE>>\r\n", "Duplicate: <<VALUE>>\r\n"]
+PUBLISH_RETAIN: ["PUBLISH <<VALUE>>\r\n", "TopicName: <<VALUE>>\r\n", "PacketId: <<VALUE>>\r\n", "QoS: <<VALUE>>\r\n", "Retain: true\r\n", "Payload: <<VALUE>>\r\n"]
+```
+
+### Explanation of Additional Templates:
+- **CONNECT_DUP**: Represents a connection request with the duplicate flag set, indicating a reconnection attempt.
+- **SUBSCRIBE_WILDCARD**: Allows for subscribing to topics with a wildcard character (e.g., `#` or `+`).
+- **PUBLISH_DUP**: Represents a publish request with the duplicate flag, which is used when a message is being resent.
+- **PUBLISH_RETAIN**: Indicates a publish request where the message should be retained by the broker.
+
+These templates cover various scenarios and options available in the MQTT protocol for client requests.

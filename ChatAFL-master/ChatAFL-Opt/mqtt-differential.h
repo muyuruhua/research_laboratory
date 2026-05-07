@@ -107,4 +107,37 @@ mqtt_diff_result_t mqtt_diff_compare_n(const mqtt_response_fields_t *fields,
  * Returns 0-100 based on severity and strength. */
 int mqtt_diff_score_from_result(const mqtt_diff_result_t *r);
 
+/* ════════════════════════════════════════════════════════════════════
+ * B2: Forwarding-level differential analysis (MBFuzzer-style).
+ *
+ * Compares PUBLISH forwarding behavior across brokers:
+ *   - Did the broker forward the message to subscribers?
+ *   - Was the forwarded QoS/retain/topic correct?
+ *   - Did bridge/remap alter the topic as expected?
+ *
+ * This matches MBFuzzer's core "multi-party forwarding differential"
+ * where divergence in forwarded messages (not just direct responses)
+ * is the primary bug-finding signal for non-compliance bugs.
+ * ════════════════════════════════════════════════════════════════════ */
+
+/* Forwarding fingerprint from one broker execution */
+typedef struct {
+  uint32_t fwd_count;                                    /* Number of forwarded PUBLISHes  */
+  uint32_t fwd_topics[MQTT_DIFF_MAX_PACKETS];            /* FNV-1a of each forwarded topic */
+  uint8_t  fwd_qos[MQTT_DIFF_MAX_PACKETS];              /* QoS of each forwarded msg      */
+  uint8_t  fwd_retain[MQTT_DIFF_MAX_PACKETS];            /* Retain flag                    */
+  uint32_t fwd_payload_hashes[MQTT_DIFF_MAX_PACKETS];    /* FNV-1a of each payload         */
+  uint32_t combined_hash;                                /* Overall forwarding fingerprint  */
+} mqtt_fwd_fields_t;
+
+/* Parse forwarding data (subscriber fd buffer after PUBLISH) into fields. */
+void mqtt_diff_parse_forwarding(const unsigned char *fwd_buf, unsigned int fwd_len,
+                                mqtt_fwd_fields_t *out);
+
+/* Compare forwarding fields from two brokers.
+ * Detects: missing forwards, count mismatch, topic remap divergence,
+ * QoS downgrade differences, retain propagation inconsistencies. */
+mqtt_diff_result_t mqtt_diff_compare_fwd(const mqtt_fwd_fields_t *a,
+                                         const mqtt_fwd_fields_t *b);
+
 #endif /* __MQTT_DIFFERENTIAL_H */

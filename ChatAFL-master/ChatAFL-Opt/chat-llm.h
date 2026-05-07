@@ -45,7 +45,7 @@ Similarly 1700 is for the example request in the seed enrichment
 // multiple pthread workers share the single --cpus=1 container core
 // without contention.  With 32 threads the worst case (live555, 315
 // calls) takes ~2 min instead of 63 min serial.
-#define ENRICHMENT_THREADS 32
+#define ENRICHMENT_THREADS 4
 
 #define PCRE2_CODE_UNIT_WIDTH 8 // Characters are 8 bits
 #include <pcre2.h>

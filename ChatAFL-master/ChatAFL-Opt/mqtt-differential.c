@@ -422,3 +422,163 @@ int mqtt_diff_score_from_result(const mqtt_diff_result_t *r) {
   default:               return 0;
   }
 }
+
+/* ════════════════════════════════════════════════════════════════════
+ * B2: Forwarding-level differential analysis.
+ *
+ * Parse subscriber-received PUBLISH packets into structured forwarding
+ * fingerprint, then compare across brokers to detect:
+ *   - Missing forwarding (broker silently drops messages)
+ *   - Topic remap inconsistencies (bridge prefix mismatch)
+ *   - QoS downgrade divergence (different QoS in forwarded message)
+ *   - Retain propagation differences
+ *   - Payload modification during forwarding
+ *
+ * This directly matches MBFuzzer's forward_message differential
+ * (handle_network_response.py → difftest → compare_g_fields/h_fields)
+ * but implemented in zero-allocation C for the hot fuzzing path.
+ * ════════════════════════════════════════════════════════════════════ */
+
+void mqtt_diff_parse_forwarding(const unsigned char *fwd_buf,
+                                unsigned int fwd_len,
+                                mqtt_fwd_fields_t *out) {
+  unsigned int pos = 0;
+
+  memset(out, 0, sizeof(*out));
+
+  if (!fwd_buf || fwd_len == 0) return;
+
+  while (pos < fwd_len && out->fwd_count < MQTT_DIFF_MAX_PACKETS) {
+    if (pos + 1 >= fwd_len) break;
+
+    uint8_t byte0 = fwd_buf[pos];
+    uint8_t type_nibble = (byte0 >> 4) & 0x0F;
+
+    /* Decode remaining length */
+    unsigned int rl_bytes = 0;
+    int remaining_length = mqtt_diff_decode_remaining_length(
+        fwd_buf + pos + 1, fwd_len - pos - 1, &rl_bytes);
+
+    if (remaining_length < 0) { pos++; continue; }
+
+    unsigned int header_size = 1 + rl_bytes;
+    unsigned int pkt_total = header_size + (unsigned int)remaining_length;
+
+    if (pos + pkt_total > fwd_len) break;
+
+    /* Only process PUBLISH packets (type 3) for forwarding analysis */
+    if (type_nibble == 3) {
+      int idx = (int)out->fwd_count;
+      const unsigned char *body = fwd_buf + pos + header_size;
+      unsigned int body_len = (unsigned int)remaining_length;
+
+      out->fwd_qos[idx] = (byte0 >> 1) & 0x03;
+      out->fwd_retain[idx] = byte0 & 0x01;
+
+      /* Extract topic */
+      if (body_len >= 2) {
+        unsigned int tlen = ((unsigned int)body[0] << 8) | body[1];
+        if (tlen <= body_len - 2) {
+          out->fwd_topics[idx] = fnv1a_32(body + 2, tlen);
+
+          /* Extract payload hash */
+          unsigned int consumed = 2 + tlen;
+          if (out->fwd_qos[idx] > 0) consumed += 2; /* packet ID */
+          if (consumed < body_len) {
+            out->fwd_payload_hashes[idx] = fnv1a_32(
+                body + consumed, body_len - consumed);
+          }
+        }
+      }
+
+      out->fwd_count++;
+    }
+
+    pos += pkt_total;
+  }
+
+  /* Combined hash */
+  if (out->fwd_count > 0) {
+    uint32_t h = 2166136261u;
+    for (unsigned int i = 0; i < out->fwd_count; i++) {
+      h ^= out->fwd_topics[i];          h *= 16777619u;
+      h ^= out->fwd_qos[i];             h *= 16777619u;
+      h ^= out->fwd_retain[i];          h *= 16777619u;
+      h ^= out->fwd_payload_hashes[i];  h *= 16777619u;
+    }
+    h ^= out->fwd_count; h *= 16777619u;
+    out->combined_hash = h;
+  }
+}
+
+mqtt_diff_result_t mqtt_diff_compare_fwd(const mqtt_fwd_fields_t *a,
+                                         const mqtt_fwd_fields_t *b) {
+  mqtt_diff_result_t r;
+  memset(&r, 0, sizeof(r));
+
+  /* Both empty = no divergence */
+  if (a->fwd_count == 0 && b->fwd_count == 0) {
+    r.severity = MQTT_DIV_NONE;
+    return r;
+  }
+
+  /* One forwarded, other didn't = MISSING (strongest signal) */
+  if (a->fwd_count == 0 || b->fwd_count == 0) {
+    r.severity = MQTT_DIV_MISSING;
+    r.strength = 1.0;
+    r.pattern_hash = a->combined_hash ^ b->combined_hash ^ 0xFD00;
+    return r;
+  }
+
+  /* Fast path: identical combined hash */
+  if (a->combined_hash == b->combined_hash && a->fwd_count == b->fwd_count) {
+    r.severity = MQTT_DIV_NONE;
+    return r;
+  }
+
+  /* Different forward counts = TYPE-level divergence
+   * (e.g., one broker duplicates shared-sub delivery) */
+  if (a->fwd_count != b->fwd_count) {
+    r.severity = MQTT_DIV_TYPE;
+    int diff = (int)a->fwd_count - (int)b->fwd_count;
+    if (diff < 0) diff = -diff;
+    int max_c = (int)(a->fwd_count > b->fwd_count ? a->fwd_count : b->fwd_count);
+    r.strength = (double)diff / (double)max_c;
+    r.type_diffs = diff;
+    r.pattern_hash = a->combined_hash ^ b->combined_hash ^ 0xFD01;
+    return r;
+  }
+
+  /* Same count: compare per-message topic/QoS/retain (CODE-level = remap divergence) */
+  unsigned int min_c = a->fwd_count < b->fwd_count ? a->fwd_count : b->fwd_count;
+  int topic_diffs = 0, qos_diffs = 0, retain_diffs = 0, payload_diffs = 0;
+
+  for (unsigned int i = 0; i < min_c; i++) {
+    if (a->fwd_topics[i] != b->fwd_topics[i]) topic_diffs++;
+    if (a->fwd_qos[i] != b->fwd_qos[i]) qos_diffs++;
+    if (a->fwd_retain[i] != b->fwd_retain[i]) retain_diffs++;
+    if (a->fwd_payload_hashes[i] != b->fwd_payload_hashes[i]) payload_diffs++;
+  }
+
+  /* Topic or QoS divergence = CODE level (remap/downgrade bug) */
+  if (topic_diffs > 0 || qos_diffs > 0 || retain_diffs > 0) {
+    r.severity = MQTT_DIV_CODE;
+    r.code_diffs = topic_diffs + qos_diffs + retain_diffs;
+    r.strength = (double)r.code_diffs / (double)(min_c * 3);
+    if (r.strength > 1.0) r.strength = 1.0;
+    r.pattern_hash = a->combined_hash ^ b->combined_hash ^ 0xFD02;
+    return r;
+  }
+
+  /* Payload-only divergence */
+  if (payload_diffs > 0) {
+    r.severity = MQTT_DIV_PAYLOAD;
+    r.payload_diffs = payload_diffs;
+    r.strength = (double)payload_diffs / (double)min_c;
+    r.pattern_hash = a->combined_hash ^ b->combined_hash ^ 0xFD03;
+    return r;
+  }
+
+  r.severity = MQTT_DIV_NONE;
+  return r;
+}

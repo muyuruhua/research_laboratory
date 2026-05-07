@@ -1,0 +1,70 @@
+Certainly! Below is a comprehensive list of MQTT client request message templates, formatted as you specified. This includes various message types and variations such as QoS levels, reconnects, will messages, authentication, wildcard topics, and duplicate CONNECT messages.
+
+```plaintext
+CONNECT: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","CleanSession: <<VALUE>>\r\n","KeepAlive: <<VALUE>>\r\n","WillTopic: <<VALUE>>\r\n","WillMessage: <<VALUE>>\r\n","WillQoS: <<VALUE>>\r\n","WillRetain: <<VALUE>>\r\n","Username: <<VALUE>>\r\n","Password: <<VALUE>>\r\n"]
+
+SUBSCRIBE: ["SUBSCRIBE <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n","TopicFilter: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n"]
+
+UNSUBSCRIBE: ["UNSUBSCRIBE <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n","TopicFilter: <<VALUE>>\r\n"]
+
+PUBLISH: ["PUBLISH <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","Payload: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n","Retain: <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n"]
+
+DISCONNECT: ["DISCONNECT <<VALUE>>\r\n"]
+
+PINGREQ: ["PINGREQ\r\n"]
+
+PINGRESP: ["PINGRESP\r\n"]
+
+RECONNECT: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","CleanSession: <<VALUE>>\r\n","KeepAlive: <<VALUE>>\r\n","Duplicate: <<VALUE>>\r\n"]
+
+WILDCARD_SUBSCRIBE: ["SUBSCRIBE <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n","TopicFilter: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n"]  // For wildcards in topic filters
+
+DUPLICATE_CONNECT: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","CleanSession: <<VALUE>>\r\n","KeepAlive: <<VALUE>>\r\n","Duplicate: true\r\n"]
+```
+
+### Explanation of the templates:
+- `<<VALUE>>` placeholders are meant to be replaced with actual values as per the MQTT protocol requirements.
+- The `QoS` values can be `0`, `1`, or `2`, representing the Quality of Service level.
+- The `CleanSession` flag indicates whether the session should be clean or persistent.
+- The `WillTopic` and `WillMessage` fields are used for the Last Will and Testament feature of MQTT.
+- The `Retain` flag in the PUBLISH message indicates whether the message should be retained by the broker.
+- The `Duplicate` flag in the CONNECT message indicates whether this is a duplicate connection attempt.
+
+This list covers the fundamental client request messages in the MQTT protocol, along with their variations.
+In addition to the standard client request message templates provided earlier, there are a few more MQTT client request message types and variations that can be included. Here are additional templates for client requests in the MQTT protocol:
+
+```plaintext
+AUTH: ["AUTH <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n","AuthMethod: <<VALUE>>\r\n","AuthData: <<VALUE>>\r\n"]
+
+SUBACK: ["SUBACK <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n","ReturnCodes: <<VALUE>>\r\n"]
+
+UNSUBACK: ["UNSUBACK <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n"]
+
+PUBACK: ["PUBACK <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n"]
+
+PUBREC: ["PUBREC <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n"]
+
+PUBREL: ["PUBREL <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n"]
+
+PUBCOMP: ["PUBCOMP <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n"]
+
+WILL: ["WILL <<VALUE>>\r\n","WillTopic: <<VALUE>>\r\n","WillMessage: <<VALUE>>\r\n","WillQoS: <<VALUE>>\r\n","WillRetain: <<VALUE>>\r\n"]
+
+DUPLICATE_PUBLISH: ["PUBLISH <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","Payload: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n","Retain: <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n","Duplicate: true\r\n"]
+
+WILDCARD_UNSUBSCRIBE: ["UNSUBSCRIBE <<VALUE>>\r\n","PacketId: <<VALUE>>\r\n","TopicFilter: <<VALUE>>\r\n"]  // For wildcards in topic filters
+```
+
+### Explanation of Additional Templates:
+- **AUTH**: Used for authentication purposes, where clients can send authentication-related data.
+- **SUBACK**: The acknowledgment message sent back by the broker in response to a SUBSCRIBE request, confirming the subscription and indicating the QoS level granted.
+- **UNSUBACK**: The acknowledgment message sent back by the broker in response to an UNSUBSCRIBE request.
+- **PUBACK**: The acknowledgment message sent back by the broker in response to a PUBLISH request (QoS 1).
+- **PUBREC**: The message sent by the broker to acknowledge receipt of a PUBLISH message with QoS 2.
+- **PUBREL**: The message sent by the client to release a QoS 2 message.
+- **PUBCOMP**: The message sent by the broker to confirm the completion of a QoS 2 message exchange.
+- **WILL**: Represents the Last Will and Testament feature, specifying a message to be sent if the client disconnects unexpectedly.
+- **DUPLICATE_PUBLISH**: A variation of the PUBLISH message that indicates it is a duplicate message.
+- **WILDCARD_UNSUBSCRIBE**: Used to unsubscribe from topics with wildcard patterns.
+
+This extended list provides a more complete view of the various client request message templates in the MQTT protocol.

@@ -339,6 +339,7 @@ char* fetch_rfc_text(const char *protocol_name) {
         curl_error_buffer[0] = '\0';
         
         curl_easy_setopt(curl, CURLOPT_URL, url);
+        curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);   // Thread-safe timeout
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, rfc_write_callback);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buffer);
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, (long)RFC_FETCH_TIMEOUT);

@@ -17,10 +17,14 @@ RESULT_OWNER="${SUDO_USER:-$USER}"
 RESULT_GROUP="$(id -gn "${RESULT_OWNER}")"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RECOVERY_HELPER="${SCRIPT_DIR}/recover_result_archives.sh"
+WATCHDOG_HELPER="${SCRIPT_DIR}/fuzz_stall_watchdog.sh"
 RESULT_MANIFEST="${SAVETO}/.result_manifest.tsv"
+STATUS_DIR="${SAVETO}/.sample_status"
+FORENSICS_DIR="${SAVETO}/.forensics"
 COLLECTION_DONE=0
 CLEANUP_DONE=0
 RUN_COMPLETED=0
+WATCHDOG_DONE=0
 
 fix_result_permissions() {
   local path="$1"
@@ -43,6 +47,112 @@ append_result_manifest() {
   local container_name="${3:--}"
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$run_index" "$container_id" "$container_name" "$DOCIMAGE" "$FUZZER" "$OUTDIR" "${OUTDIR}_${run_index}.tar.gz" >> "$RESULT_MANIFEST"
+}
+
+sample_status_file() {
+  local archive_name="$1"
+  printf '%s/%s.status' "$STATUS_DIR" "$archive_name"
+}
+
+init_sample_status_dir() {
+  mkdir -p "$STATUS_DIR" "$FORENSICS_DIR"
+  fix_result_permissions "$STATUS_DIR"
+  fix_result_permissions "$FORENSICS_DIR"
+}
+
+write_sample_status() {
+  local archive_name="$1"
+  shift
+  local status_file
+  local tmp_file
+
+  status_file="$(sample_status_file "$archive_name")"
+  tmp_file="${status_file}.tmp"
+
+  {
+    printf 'archive_name=%s\n' "$archive_name"
+    for kv in "$@"; do
+      printf '%s\n' "$kv"
+    done
+  } > "$tmp_file"
+
+  mv "$tmp_file" "$status_file"
+  fix_result_permissions "$status_file"
+}
+
+read_sample_status_value() {
+  local archive_name="$1"
+  local key="$2"
+  local status_file
+
+  status_file="$(sample_status_file "$archive_name")"
+  [[ -f "$status_file" ]] || return 0
+  awk -F'=' -v want="$key" '$1 == want { print substr($0, index($0, "=") + 1); exit }' "$status_file"
+}
+
+mark_completed_samples() {
+  local idx archive_name container_id current_status exit_code
+
+  for idx in "${!cids[@]}"; do
+    archive_name="${archive_names[$idx]}"
+    container_id="${cids[$idx]}"
+    current_status="$(read_sample_status_value "$archive_name" status)"
+
+    if [[ -z "$current_status" || "$current_status" == "running" ]]; then
+      exit_code="$(docker inspect --format '{{.State.ExitCode}}' "$container_id" 2>/dev/null || true)"
+      write_sample_status "$archive_name" \
+        "container_id=${container_id}" \
+        "status=completed" \
+        "reason=completed" \
+        "finished_at=$(date -Iseconds)" \
+        "exit_code=${exit_code}"
+    fi
+  done
+}
+
+cleanup_watchdogs() {
+  local pid
+
+  if [[ $WATCHDOG_DONE -eq 1 ]]; then
+    return 0
+  fi
+  WATCHDOG_DONE=1
+
+  for pid in "${watchdog_pids[@]}"; do
+    kill "$pid" >/dev/null 2>&1 || true
+  done
+
+  for pid in "${watchdog_pids[@]}"; do
+    wait "$pid" >/dev/null 2>&1 || true
+  done
+}
+
+launch_watchdog() {
+  local container_id="$1"
+  local archive_name="$2"
+
+  if [[ "${CHATAFL_ENABLE_WATCHDOG:-0}" != "1" ]]; then
+    return 0
+  fi
+
+  if [[ ! -x "$WATCHDOG_HELPER" ]]; then
+    if [[ -f "$WATCHDOG_HELPER" ]]; then
+      chmod +x "$WATCHDOG_HELPER" >/dev/null 2>&1 || true
+    fi
+  fi
+
+  if [[ -x "$WATCHDOG_HELPER" ]]; then
+    bash "$WATCHDOG_HELPER" \
+      "$container_id" \
+      "$WORKDIR" \
+      "$OUTDIR" \
+      "$SAVETO" \
+      "$archive_name" \
+      "$LOG_TAG" &
+    watchdog_pids+=("$!")
+  else
+    printf "\n%s: [WARN] Watchdog helper not executable: %s\n" "$LOG_TAG" "$WATCHDOG_HELPER"
+  fi
 }
 
 generate_run_summary() {
@@ -113,7 +223,26 @@ cleanup_mqtt_resources() {
       printf "\n${LOG_TAG}: Stopping stable reference broker...\n"
       docker rm -f "$MQTT_STABLE_CONTAINER" >/dev/null 2>&1 || true
     fi
+    # B3: Also clean up multi-broker fleet container
+    if [[ -n "${MQTT_MULTI_CONTAINER:-}" ]]; then
+      printf "${LOG_TAG}: Stopping multi-broker fleet...\n"
+      docker rm -f "$MQTT_MULTI_CONTAINER" >/dev/null 2>&1 || true
+    fi
+    # P0: Clean up heterogeneous broker containers
+    if [[ ${#HETERO_CONTAINERS[@]} -gt 0 ]]; then
+      printf "${LOG_TAG}: Stopping heterogeneous brokers...\n"
+      for _hc in "${HETERO_CONTAINERS[@]}"; do
+        docker rm -f "$_hc" >/dev/null 2>&1 || true
+      done
+    fi
+    # Force-disconnect any remaining containers from the network before removal
+    for _cid in $(docker network inspect -f '{{range .Containers}}{{.Name}} {{end}}' "$MQTT_AUTO_NETWORK" 2>/dev/null); do
+      docker network disconnect -f "$MQTT_AUTO_NETWORK" "$_cid" >/dev/null 2>&1 || true
+    done
     docker network rm "$MQTT_AUTO_NETWORK" >/dev/null 2>&1 || true
+    if docker network inspect "$MQTT_AUTO_NETWORK" >/dev/null 2>&1; then
+      printf "${LOG_TAG}: [WARN] Network %s still exists, retrying after container removal...\n" "$MQTT_AUTO_NETWORK"
+    fi
   fi
 }
 
@@ -139,19 +268,36 @@ on_exit() {
     fi
     trap '' INT
   fi
+  if [[ $RUN_COMPLETED -eq 1 ]]; then
+    mark_completed_samples
+  fi
+  cleanup_watchdogs
   collect_results_with_recovery
+  # Remove fuzzer containers before network cleanup
+  for id in "${cids[@]}"; do
+    docker rm -f "$id" >/dev/null 2>&1 || true
+  done
   cleanup_mqtt_resources
+  # Final safety net for network
+  if [[ -n "${MQTT_AUTO_NETWORK:-}" ]] && docker network inspect "$MQTT_AUTO_NETWORK" >/dev/null 2>&1; then
+    docker network rm "$MQTT_AUTO_NETWORK" >/dev/null 2>&1 || true
+  fi
   generate_run_summary "${SAVETO}" || true
 }
 
 trap on_exit EXIT INT TERM
 cids=()
+archive_names=()
+watchdog_pids=()
 
 # 获取项目根目录
 PROJECT_ROOT="${PROJECT_ROOT:-$PWD/../..}"
 
 # Log tag: FUZZER(target) e.g. CHATAFL-OPT(bftpd)
 LOG_TAG="${FUZZER^^}(${DOCIMAGE})"
+
+init_result_manifest
+init_sample_status_dir
 
 is_mqtt_target() {
   case "$1" in
@@ -218,6 +364,7 @@ remove_existing_named_container() {
 
 recreate_named_network() {
   local network_name="$1"
+  local err_file
   [[ -n "$network_name" ]] || return 1
 
   if docker network inspect "$network_name" >/dev/null 2>&1; then
@@ -225,8 +372,30 @@ recreate_named_network() {
     docker network rm "$network_name" >/dev/null 2>&1 || return 1
   fi
 
-  docker network create "$network_name" >/dev/null 2>&1 || return 1
-  return 0
+  err_file=$(mktemp)
+  if docker network create "$network_name" >/dev/null 2>"$err_file"; then
+    rm -f "$err_file"
+    return 0
+  fi
+
+  if grep -q 'available, non-overlapping IPv4 address pool' "$err_file" 2>/dev/null; then
+    printf "\n${LOG_TAG}: [DEV] Docker bridge address pool exhausted, pruning unused chatafl-mqtt-* networks...\n" >&2
+    while IFS= read -r stale_network; do
+      [[ -n "$stale_network" ]] || continue
+      if [[ "$(docker network inspect --format '{{len .Containers}}' "$stale_network" 2>/dev/null || echo 1)" == "0" ]]; then
+        docker network rm "$stale_network" >/dev/null 2>&1 || true
+      fi
+    done < <(docker network ls --format '{{.Name}}' | grep '^chatafl-mqtt-' || true)
+
+    if docker network create "$network_name" >/dev/null 2>"$err_file"; then
+      rm -f "$err_file"
+      return 0
+    fi
+  fi
+
+  printf "\n${LOG_TAG}: [ERROR] docker network create %s failed: %s\n" "$network_name" "$(tr '\n' ' ' < "$err_file")" >&2
+  rm -f "$err_file"
+  return 1
 }
 
 require_container_id() {
@@ -280,6 +449,8 @@ MQTT_AUTO_BROKER_LIST=""
 MQTT_STABLE_CONTAINER=""
 MQTT_STABLE_ALIAS=""
 MQTT_STABLE_ALIAS_HASH=""
+MQTT_MULTI_CONTAINER=""
+MQTT_MULTI_ALIAS=""
 declare -a MQTT_AUTO_CONTAINER_NAMES=()
 declare -a MQTT_AUTO_BROKER_ALIASES=()
 
@@ -338,14 +509,163 @@ if [[ -z "${CHATAFL_MQTT_BROKERS:-}" ]] && is_mqtt_target "$DOCIMAGE"; then
     exit 1
   fi
 
+  # ── B3: Multi-broker differential fleet (MBFuzzer-style 6-impl support) ──
+  # When CHATAFL_MULTI_BROKER=1 and chatafl-multibroker image exists, launch
+  # a container running 2 Mosquitto instances (different configs) for differential testing
+  # alongside the existing stable reference broker.
+  #
+  # Architecture:
+  #   Entry 0: tcp://127.0.0.1/1883                 (fuzzed broker, AFL fork-server)
+  #   Entry 1: mosquitto@tcp://mqtt-stable/1883      (stable reference, same impl)
+  #   Entry 2: mosquitto@tcp://multibroker/1883       (Broker A, default config)
+  #   Entry 3: mosquitto-b@tcp://multibroker/1884     (Broker B, restricted config)
+  #
+  # Enable via:  export CHATAFL_MULTI_BROKER=1
+  # Build image: cd benchmark/subjects/MQTT/multi-broker && docker build -t chatafl-multibroker .
+  MQTT_MULTI_ALIAS=""
+  MQTT_MULTI_CONTAINER=""
+  if [[ "${CHATAFL_MULTI_BROKER:-0}" == "1" ]] && docker image inspect chatafl-multibroker >/dev/null 2>&1; then
+    MQTT_MULTI_CONTAINER="${MQTT_AUTO_NETWORK}-multibroker"
+    _multi_hash="$(docker_name_hash "${MQTT_AUTO_NETWORK}-multi-alias")"
+    MQTT_MULTI_ALIAS="multibroker-${_multi_hash:0:8}"
+    printf "${LOG_TAG}: [DEV] Launching multi-broker fleet (%s)...\n" "$MQTT_MULTI_ALIAS"
+    remove_existing_named_container "$MQTT_MULTI_CONTAINER" || true
+
+    multi_id=$(docker run --cpus=1 --memory=1g \
+      --network "$MQTT_AUTO_NETWORK" \
+      --name "$MQTT_MULTI_CONTAINER" \
+      --hostname "$MQTT_MULTI_ALIAS" \
+      --network-alias "$MQTT_MULTI_ALIAS" \
+      --restart=unless-stopped \
+      -d chatafl-multibroker)
+
+    if [[ -n "$multi_id" ]]; then
+      # Wait for at least mosquitto (port 1883) to be ready
+      _multi_ok=0
+      for _w in $(seq 1 30); do
+        if docker exec "$MQTT_MULTI_CONTAINER" bash -c "nc -z 127.0.0.1 1883" 2>/dev/null; then
+          _multi_ok=1; break
+        fi
+        sleep 0.5
+      done
+      if [[ $_multi_ok -eq 1 ]]; then
+        printf "${LOG_TAG}: [DEV] ✓ Multi-broker fleet ready on %s:1883-1887\n" "$MQTT_MULTI_ALIAS"
+      else
+        printf "${LOG_TAG}: [WARN] Multi-broker fleet not ready; continuing with stable-only mode\n"
+        docker rm -f "$MQTT_MULTI_CONTAINER" >/dev/null 2>&1 || true
+        MQTT_MULTI_ALIAS=""
+        MQTT_MULTI_CONTAINER=""
+      fi
+    else
+      MQTT_MULTI_ALIAS=""
+      MQTT_MULTI_CONTAINER=""
+    fi
+  elif [[ "${CHATAFL_MULTI_BROKER:-0}" == "1" ]]; then
+    printf "${LOG_TAG}: [WARN] CHATAFL_MULTI_BROKER=1 but chatafl-multibroker image not found.\n"
+    printf "${LOG_TAG}: [WARN] Build it: cd benchmark/subjects/MQTT/multi-broker && docker build -t chatafl-multibroker .\n"
+  fi
+
+  # ── P0: Heterogeneous broker fleet (NanoMQ, EMQX, VerneMQ) ──
+  # Launch lightweight containers from locally available images for
+  # cross-implementation differential testing (MBFuzzer-style).
+  # Each broker listens on default port 1883 within the Docker network.
+  # The fuzzer reaches them via hostname aliases on the shared network.
+  HETERO_BROKER_SPECS=""  # will be appended to _brokers
+  HETERO_CONTAINERS=()    # for cleanup tracking
+
+  # _launch_hetero_broker IMAGE NAME ALIAS PORT CMD EXTRA_DOCKER_ARGS TIMEOUT_SEC
+  _launch_hetero_broker() {
+    local _img="$1" _name="$2" _alias="$3" _port="${4:-1883}" _cmd="$5"
+    local _extra_args="$6" _timeout="${7:-60}"
+    local _cname="${MQTT_AUTO_NETWORK}-${_name}"
+    local _iters=$(( _timeout * 2 ))   # sleep 0.5 per iter
+    if ! docker image inspect "$_img" >/dev/null 2>&1; then
+      printf "${LOG_TAG}: [P0] Image %s not found, skipping %s\n" "$_img" "$_name"
+      return 1
+    fi
+    remove_existing_named_container "$_cname" 2>/dev/null || true
+    local _hid _mem="256m"
+    # Heavy brokers get more memory
+    case "$_name" in emqx|hivemq) _mem="512m";; vernemq) _mem="384m";; esac
+    _hid=$(docker run --cpus=0.5 --memory="$_mem" \
+      --network "$MQTT_AUTO_NETWORK" \
+      --name "$_cname" \
+      --hostname "$_alias" \
+      --network-alias "$_alias" \
+      --restart=unless-stopped \
+      $_extra_args \
+      -d "$_img" $_cmd 2>/dev/null)
+    if [[ -z "$_hid" ]]; then
+      printf "${LOG_TAG}: [P0] Failed to start %s\n" "$_name"
+      return 1
+    fi
+    # Wait for port ready with multiple probe strategies
+    local _ok=0
+    for _w in $(seq 1 "$_iters"); do
+      # Strategy 1: nc -z (works if netcat installed)
+      if docker exec "$_cname" sh -c "nc -z 127.0.0.1 $_port" 2>/dev/null; then
+        _ok=1; break
+      fi
+      # Strategy 2: bash /dev/tcp (works in bash-based images)
+      if docker exec "$_cname" bash -c "echo >/dev/tcp/127.0.0.1/$_port" 2>/dev/null; then
+        _ok=1; break
+      fi
+      # Strategy 3: timeout+cat (works in sh-only images)
+      if timeout 1 docker exec "$_cname" sh -c "cat < /dev/null > /dev/tcp/127.0.0.1/$_port" 2>/dev/null; then
+        _ok=1; break
+      fi
+      # Progress every 30s
+      if (( _w % 60 == 0 )); then
+        printf "${LOG_TAG}: [P0] %s still starting... (%ds/%ds)\n" "$_name" $((_w/2)) "$_timeout"
+      fi
+      sleep 0.5
+    done
+    if [[ $_ok -eq 1 ]]; then
+      printf "${LOG_TAG}: [P0] ✓ %s ready on %s:%s (took ~%ds)\n" "$_name" "$_alias" "$_port" $((_w/2))
+      HETERO_CONTAINERS+=("$_cname")
+      HETERO_BROKER_SPECS="${HETERO_BROKER_SPECS},${_name}@tcp://${_alias}/${_port}"
+      return 0
+    else
+      printf "${LOG_TAG}: [P0] %s not ready after %ds, removing\n" "$_name" "$_timeout"
+      docker rm -f "$_cname" >/dev/null 2>&1 || true
+      return 1
+    fi
+  }
+
+  # Launch available heterogeneous brokers (matching MBFuzzer's 6 implementations)
+  # 1. NanoMQ — lightweight C broker (fast start, 60s timeout)
+  _launch_hetero_broker "emqx/nanomq:latest" "nanomq" "mqtt-nanomq" "1883" "" "" "60"
+  # 2. EMQX — Erlang broker (cold start ~60-90s, give 180s)
+  _launch_hetero_broker "emqx/emqx:5.0.12" "emqx" "mqtt-emqx" "1883" "" "" "180"
+  # 3. FlashMQ — C++ broker (built locally from halfgaar/FlashMQ source)
+  _launch_hetero_broker "flashmq-local:latest" "flashmq" "mqtt-flashmq" "1883" "" "" "60"
+  # 4. VerneMQ — Erlang broker (cold start ~60-90s, give 180s)
+  _launch_hetero_broker "vernemq/vernemq:latest" "vernemq" "mqtt-vernemq" "1883" "" \
+    "-e DOCKER_VERNEMQ_ALLOW_ANONYMOUS=on -e DOCKER_VERNEMQ_ACCEPT_EULA=yes" "180"
+  # 5. HiveMQ CE — Java broker (cold start ~90-120s, give 180s)
+  _launch_hetero_broker "hivemq/hivemq-ce:latest" "hivemq" "mqtt-hivemq" "1883" "" \
+    "-e HIVEMQ_ALLOW_ALL_CLIENTS=true" "180"
+  # (6th = Mosquitto itself, the SUT, already running as the primary target)
+
+  if [[ ${#HETERO_CONTAINERS[@]} -gt 0 ]]; then
+    printf "${LOG_TAG}: [P0] Heterogeneous fleet: %d brokers launched\n" "${#HETERO_CONTAINERS[@]}"
+  fi
+
   printf "${LOG_TAG}: [DEV] MQTT auto network: %s\n" "$MQTT_AUTO_NETWORK"
-  printf "${LOG_TAG}: [DEV] Architecture: each fuzzer → tcp://<self>/1883 + tcp://%s/1883\n" "$MQTT_STABLE_ALIAS"
+  if [[ -n "$MQTT_MULTI_ALIAS" ]]; then
+    printf "${LOG_TAG}: [DEV] Architecture: each fuzzer → tcp://<self>/1883 + tcp://%s/1883 + broker-b on %s:1884%s\n" "$MQTT_STABLE_ALIAS" "$MQTT_MULTI_ALIAS" "$HETERO_BROKER_SPECS"
+  else
+    printf "${LOG_TAG}: [DEV] Architecture: each fuzzer → tcp://<self>/1883 + tcp://%s/1883%s\n" "$MQTT_STABLE_ALIAS" "$HETERO_BROKER_SPECS"
+  fi
 fi
 
 #keep all container ids
 cids=()
 
-init_result_manifest
+DIAG_PTRACE_FLAGS=""
+if [[ "${CHATAFL_ENABLE_DIAG_PTRACE:-1}" == "1" ]]; then
+  DIAG_PTRACE_FLAGS=" --cap-add SYS_PTRACE --security-opt seccomp=unconfined"
+fi
 
 short_container_id() {
   local container_id="$1"
@@ -355,6 +675,7 @@ short_container_id() {
 #create one container for each run
 for i in $(seq 1 $RUNS); do
   run_index=$((i-1))
+  archive_name="${OUTDIR}_${i}.tar.gz"
   container_name=""
   MQTT_RUN_FLAGS=""
   if [[ -n "$MQTT_AUTO_NETWORK" ]] && [[ ${#MQTT_AUTO_CONTAINER_NAMES[@]} -gt $run_index ]]; then
@@ -376,10 +697,19 @@ for i in $(seq 1 $RUNS); do
   [[ -n "${CHATAFL_NO_STATE_PROMPT}" ]]    && ABLATION_FLAGS+=" -e CHATAFL_NO_STATE_PROMPT=1"
   [[ -n "${CHATAFL_ABLATION_THRESHOLD}" ]] && ABLATION_FLAGS+=" -e CHATAFL_ABLATION_THRESHOLD=${CHATAFL_ABLATION_THRESHOLD}"
 
-  # Per-container MQTT broker list: local broker + stable reference
+  # Per-container MQTT broker list: local broker + stable reference + multi-broker fleet
   MQTT_FLAGS=""
   if [[ -n "${MQTT_STABLE_ALIAS:-}" ]] && [[ -n "$MQTT_AUTO_NETWORK" ]]; then
-    _brokers="tcp://127.0.0.1/1883,tcp://${MQTT_STABLE_ALIAS}/1883"
+    _brokers="tcp://127.0.0.1/1883,mosquitto@tcp://${MQTT_STABLE_ALIAS}/1883"
+    # B3: Append multi-broker fleet endpoints when available
+    if [[ -n "${MQTT_MULTI_ALIAS:-}" ]]; then
+      _brokers="${_brokers},mosquitto@tcp://${MQTT_MULTI_ALIAS}/1883"
+      _brokers="${_brokers},mosquitto-b@tcp://${MQTT_MULTI_ALIAS}/1884"
+    fi
+    # P0: Append heterogeneous broker endpoints
+    if [[ -n "${HETERO_BROKER_SPECS:-}" ]]; then
+      _brokers="${_brokers}${HETERO_BROKER_SPECS}"
+    fi
     MQTT_FLAGS=" -e CHATAFL_MQTT_BROKERS=${_brokers}"
   elif [[ -n "${CHATAFL_MQTT_BROKERS:-}" ]]; then
     MQTT_FLAGS=" -e CHATAFL_MQTT_BROKERS=${CHATAFL_MQTT_BROKERS}"
@@ -389,6 +719,7 @@ for i in $(seq 1 $RUNS); do
   if [[ "$FUZZER" == "chatafl-opt" ]]; then
     # Volume挂载本地代码并在容器内重新编译
     id=$(docker run --cpus=1 \
+      ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
       -e CHATAFL_HYPOTHESIS=1 \
       ${ABLATION_FLAGS} \
@@ -405,6 +736,7 @@ for i in $(seq 1 $RUNS); do
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   elif [[ "$FUZZER" == "chatafl" ]]; then
     id=$(docker run --cpus=1 \
+      ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
       ${MQTT_FLAGS} \
       ${MQTT_RUN_FLAGS} \
@@ -417,6 +749,7 @@ for i in $(seq 1 $RUNS); do
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   elif [[ "$FUZZER" == "chatafl-cl1" ]]; then
     id=$(docker run --cpus=1 \
+      ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
       ${MQTT_FLAGS} \
       ${MQTT_RUN_FLAGS} \
@@ -429,6 +762,7 @@ for i in $(seq 1 $RUNS); do
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   elif [[ "$FUZZER" == "chatafl-cl2" ]]; then
     id=$(docker run --cpus=1 \
+      ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
       ${MQTT_FLAGS} \
       ${MQTT_RUN_FLAGS} \
@@ -440,11 +774,18 @@ for i in $(seq 1 $RUNS); do
         cd /home/ubuntu/chatafl-cl2 && make clean && make -j\$(nproc) && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   else
-    id=$(docker run --cpus=1 -e KEY="${KEY}" ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
+    id=$(docker run --cpus=1 ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   fi
   require_container_id "$id" "fuzz container run #${i}"
   cids+=("$id")
+  archive_names+=("$archive_name")
   append_result_manifest "$i" "$id" "$container_name"
+  write_sample_status "$archive_name" \
+    "container_id=${id}" \
+    "status=running" \
+    "reason=" \
+    "started_at=$(date -Iseconds)"
+  launch_watchdog "$id" "$archive_name"
 done
 
 dlist="" #docker list
@@ -466,8 +807,23 @@ if [ -n "${dlist}" ]; then
 fi
 wait
 RUN_COMPLETED=1
+mark_completed_samples
+cleanup_watchdogs
 
 collect_results_with_recovery
+
+# Remove fuzzing containers FIRST (so network can be cleaned)
+for id in "${cids[@]}"; do
+  docker rm -f "$id" >/dev/null 2>&1 || true
+done
+
+# Now clean up MQTT infra (stable broker, hetero brokers, network)
 cleanup_mqtt_resources
+
+# Final safety net: if the network somehow survived, force-remove it
+if [[ -n "${MQTT_AUTO_NETWORK:-}" ]] && docker network inspect "$MQTT_AUTO_NETWORK" >/dev/null 2>&1; then
+  printf "${LOG_TAG}: [CLEANUP] Force-removing residual network %s\n" "$MQTT_AUTO_NETWORK"
+  docker network rm "$MQTT_AUTO_NETWORK" >/dev/null 2>&1 || true
+fi
 
 printf "\n${LOG_TAG}: I am done!\n"

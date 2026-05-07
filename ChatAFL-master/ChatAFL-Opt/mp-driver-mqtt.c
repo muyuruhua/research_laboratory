@@ -749,6 +749,108 @@ static int mqtt_handshake(mp_context_t *ctx) {
              ctx->response_buf, (unsigned int *)ctx->response_buf_size);
   }
 
+  /* ════════════════════════════════════════════════════════════════════
+   * B1: Bridge-aware subscriptions — exercises MQTT bridge, topic remap,
+   * and multi-hop forwarding code paths in mosquitto and other brokers.
+   *
+   * Bridge configuration in mosquitto uses topic patterns like:
+   *   topic <pattern> [in|out|both] [qos] [local_prefix/] [remote_prefix/]
+   *
+   * These subscriptions exercise:
+   *   - bridge__connect() connection establishment
+   *   - bridge__on_connect() subscription exchange
+   *   - Topic remap: local_prefix → remote_prefix translation in
+   *     bridge__remap_topic_in() / bridge__remap_topic_out()
+   *   - Multi-hop forwarding: message routing through bridged brokers
+   *   - $SYS/broker/bridge/ status topic handling
+   *   - Retained message propagation across bridge links
+   *
+   * Topic patterns chosen to cover common bridge configurations:
+   *   "bridge/+"        — explicit bridge namespace (remap target)
+   *   "remote/#"        — remote prefix patterns (remap source)
+   *   "local/#"         — local prefix patterns (remap target)
+   *   "$SYS/broker/#"   — broker status including bridge status topics
+   * ════════════════════════════════════════════════════════════════════ */
+
+  /* B1-1: Bridge namespace — catches messages forwarded through bridge links.
+   * Exercises handle__subscribe() with bridge-typical topic patterns and
+   * sub__messages_queue() for messages with bridge-prefixed topics. */
+  if (use_v5_sub)
+    pkt_len = pack_subscribe_v5(pkt, sizeof(pkt), 6, "bridge/+", sub_qos);
+  else
+    pkt_len = pack_subscribe(pkt, sizeof(pkt), 6, "bridge/+", sub_qos);
+  if (pkt_len > 0) {
+    net_send(ctx->fds[SUB_IDX], ctx->timeout, (char *)pkt, pkt_len);
+    net_recv(ctx->fds[SUB_IDX], ctx->timeout, ctx->poll_wait_msecs,
+             ctx->response_buf, (unsigned int *)ctx->response_buf_size);
+  }
+
+  /* B1-2: Remote prefix pattern — simulates the remote side of a topic
+   * remap rule.  When a bridge is configured with remote_prefix "remote/",
+   * messages published to "remote/X" on the remote broker get remapped
+   * to "local/X" locally.  This subscription captures the remote side. */
+  if (use_v5_sub)
+    pkt_len = pack_subscribe_v5(pkt, sizeof(pkt), 7, "remote/#", 1);
+  else
+    pkt_len = pack_subscribe(pkt, sizeof(pkt), 7, "remote/#", 1);
+  if (pkt_len > 0) {
+    net_send(ctx->fds[SUB_IDX], ctx->timeout, (char *)pkt, pkt_len);
+    net_recv(ctx->fds[SUB_IDX], ctx->timeout, ctx->poll_wait_msecs,
+             ctx->response_buf, (unsigned int *)ctx->response_buf_size);
+  }
+
+  /* B1-3: Local prefix pattern — the local side of remap.
+   * Messages arriving from bridge with local_prefix "local/" appear here. */
+  pkt_len = pack_subscribe(pkt, sizeof(pkt), 8, "local/#", 1);
+  if (pkt_len > 0) {
+    net_send(ctx->fds[SUB_IDX], ctx->timeout, (char *)pkt, pkt_len);
+    net_recv(ctx->fds[SUB_IDX], ctx->timeout, ctx->poll_wait_msecs,
+             ctx->response_buf, (unsigned int *)ctx->response_buf_size);
+  }
+
+  /* B1-4: Broker status topics including bridge status.
+   * $SYS/broker/connection/<bridge_name>/state reports bridge up/down.
+   * Exercises sys_tree.c → sys_tree__update_*() bridge status paths. */
+  pkt_len = pack_subscribe(pkt, sizeof(pkt), 9, "$SYS/broker/#", 0);
+  if (pkt_len > 0) {
+    net_send(ctx->fds[SUB_IDX], ctx->timeout, (char *)pkt, pkt_len);
+    net_recv(ctx->fds[SUB_IDX], ctx->timeout, ctx->poll_wait_msecs,
+             ctx->response_buf, (unsigned int *)ctx->response_buf_size);
+  }
+
+  /* B1-5: Publish to bridge/remap topics from pub_fd to trigger
+   * cross-topic forwarding paths.  This exercises:
+   *   - db__messages_queue() with bridge-prefixed topics
+   *   - bridge__remap_topic_out() when bridge is configured
+   *   - Retained message delivery for bridge topics */
+  pkt_len = pack_publish_simple(pkt, sizeof(pkt), "bridge/test", "BRG1", 1, 0, 101);
+  if (pkt_len > 0) {
+    net_send(ctx->fds[PUB_IDX], ctx->timeout, (char *)pkt, pkt_len);
+    net_recv(ctx->fds[PUB_IDX], ctx->timeout, ctx->poll_wait_msecs,
+             &priv->handshake_resp, &priv->handshake_resp_len);
+    /* Drain forwarded message on sub_fd */
+    net_recv(ctx->fds[SUB_IDX], ctx->timeout, 2,
+             ctx->response_buf, (unsigned int *)ctx->response_buf_size);
+  }
+
+  pkt_len = pack_publish_simple(pkt, sizeof(pkt), "remote/data", "REM1", 0, 0, 0);
+  if (pkt_len > 0) {
+    net_send(ctx->fds[PUB_IDX], ctx->timeout, (char *)pkt, pkt_len);
+    net_recv(ctx->fds[PUB_IDX], ctx->timeout, 1,
+             &priv->handshake_resp, &priv->handshake_resp_len);
+    net_recv(ctx->fds[SUB_IDX], ctx->timeout, 2,
+             ctx->response_buf, (unsigned int *)ctx->response_buf_size);
+  }
+
+  /* B1-6: Retained message on bridge topic — exercises retain__store()
+   * for bridge-prefixed topics + subsequent delivery on bridge subscribe. */
+  pkt_len = pack_publish_simple(pkt, sizeof(pkt), "bridge/retained", "BR_RET", 0, 1, 0);
+  if (pkt_len > 0) {
+    net_send(ctx->fds[PUB_IDX], ctx->timeout, (char *)pkt, pkt_len);
+    net_recv(ctx->fds[PUB_IDX], ctx->timeout, 1,
+             &priv->handshake_resp, &priv->handshake_resp_len);
+  }
+
   return 0;
 }
 
@@ -1049,6 +1151,10 @@ static void mqtt_cleanup(mp_context_t *ctx) {
     if (rlen > 0)
       net_send(ctx->fds[PUB_IDX], ctx->timeout, (char *)rpkt, rlen);
     rlen = pack_publish_simple(rpkt, sizeof(rpkt), "r/sys", "", 0, 1, 0);
+    if (rlen > 0)
+      net_send(ctx->fds[PUB_IDX], ctx->timeout, (char *)rpkt, rlen);
+    /* B1-cleanup: Clear bridge-related retained messages */
+    rlen = pack_publish_simple(rpkt, sizeof(rpkt), "bridge/retained", "", 0, 1, 0);
     if (rlen > 0)
       net_send(ctx->fds[PUB_IDX], ctx->timeout, (char *)rpkt, rlen);
   }

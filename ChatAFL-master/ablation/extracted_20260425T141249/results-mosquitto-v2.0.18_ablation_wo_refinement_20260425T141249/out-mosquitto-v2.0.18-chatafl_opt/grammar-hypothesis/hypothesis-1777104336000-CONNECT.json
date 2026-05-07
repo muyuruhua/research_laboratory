@@ -1,0 +1,37 @@
+{
+  "hypothesis_id":1777104336000,
+  "message_type":"CONNECT",
+  "description":"Client requests a connection to a Server.",
+  "schema":{
+    "type":"object",
+    "properties":{
+      "ClientId":{
+        "type":"string",
+        "minLength":1,
+        "maxLength":23
+      },
+      "CleanSession":{
+        "type":"integer",
+        "enum":[
+          0,
+          1
+        ]
+      },
+      "KeepAlive":{
+        "type":"integer",
+        "minimum":0,
+        "maximum":65535
+      }
+    },
+    "required":[
+      "ClientId",
+      "CleanSession",
+      "KeepAlive"
+    ]
+  },
+  "parse_success":0,
+  "parse_failure":0,
+  "fitness":0.5,
+  "created_at":1777104336,
+  "last_updated":1777104336
+}

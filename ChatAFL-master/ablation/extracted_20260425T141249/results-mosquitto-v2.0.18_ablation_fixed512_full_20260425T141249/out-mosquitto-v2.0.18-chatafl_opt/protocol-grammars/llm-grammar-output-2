@@ -1,0 +1,64 @@
+Certainly! Below is a comprehensive list of MQTT client request message templates formatted as specified. The templates include various scenarios and options, including QoS levels, reconnect options, will messages, authentication, wildcard topics, and duplicate CONNECT variations.
+
+```plaintext
+CONNECT: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","CleanSession: <<VALUE>>\r\n","KeepAlive: <<VALUE>>\r\n","WillTopic: <<VALUE>>\r\n","WillMessage: <<VALUE>>\r\n","WillQoS: <<VALUE>>\r\n","WillRetain: <<VALUE>>\r\n","Username: <<VALUE>>\r\n","Password: <<VALUE>>\r\n"]
+CONNECT_DUPLICATE: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","CleanSession: <<VALUE>>\r\n","KeepAlive: <<VALUE>>\r\n","WillTopic: <<VALUE>>\r\n","WillMessage: <<VALUE>>\r\n","WillQoS: <<VALUE>>\r\n","WillRetain: <<VALUE>>\r\n","Username: <<VALUE>>\r\n","Password: <<VALUE>>\r\n","Duplicate: true\r\n"]
+
+SUBSCRIBE: ["SUBSCRIBE <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n"]
+SUBSCRIBE_WILDCARD: ["SUBSCRIBE <<VALUE>>\r\n","Topic: <<VALUE>/+>\r\n","QoS: <<VALUE>>\r\n"]
+SUBSCRIBE_DUPLICATE: ["SUBSCRIBE <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n","Duplicate: true\r\n"]
+
+PUBLISH: ["PUBLISH <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","Payload: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n","Retain: <<VALUE>>\r\n"]
+PUBLISH_DUPLICATE: ["PUBLISH <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","Payload: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n","Retain: <<VALUE>>\r\n","Duplicate: true\r\n"]
+
+UNSUBSCRIBE: ["UNSUBSCRIBE <<VALUE>>\r\n","Topic: <<VALUE>>\r\n"]
+UNSUBSCRIBE_WILDCARD: ["UNSUBSCRIBE <<VALUE>>\r\n","Topic: <<VALUE>/+>\r\n"]
+
+DISCONNECT: ["DISCONNECT <<VALUE>>\r\n"]
+
+RECONNECT: ["CONNECT <<VALUE>>\r\n","ClientId: <<VALUE>>\r\n","CleanSession: <<VALUE>>\r\n","KeepAlive: <<VALUE>>\r\n"]
+```
+
+### Explanation:
+- **CONNECT**: Initiates a connection to the MQTT broker with optional parameters such as client ID, clean session, keep-alive, will message configurations, and authentication.
+- **CONNECT_DUPLICATE**: Similar to CONNECT, but indicates a duplicate connection attempt.
+- **SUBSCRIBE**: Subscribes to a topic with a specified QoS level.
+- **SUBSCRIBE_WILDCARD**: Subscribes to a topic using a wildcard.
+- **SUBSCRIBE_DUPLICATE**: Indicates a duplicate subscription attempt.
+- **PUBLISH**: Publishes a message to a specified topic with payload and QoS.
+- **PUBLISH_DUPLICATE**: Indicates a duplicate publish attempt.
+- **UNSUBSCRIBE**: Unsubscribes from a specified topic.
+- **UNSUBSCRIBE_WILDCARD**: Unsubscribes from topics using a wildcard.
+- **DISCONNECT**: Disconnects from the MQTT broker.
+- **RECONNECT**: A reconnect attempt to the broker.
+
+These templates cover the various states and options available in the MQTT protocol for client requests.
+In addition to the previously listed client request message templates for the MQTT protocol, here are some additional templates that can be relevant, including variations and additional features that may be utilized in MQTT communication:
+
+```plaintext
+PINGREQ: ["PINGREQ <<VALUE>>\r\n"]
+PINGRESP: ["PINGRESP <<VALUE>>\r\n"]
+
+AUTH: ["AUTH <<VALUE>>\r\n","Username: <<VALUE>>\r\n","Password: <<VALUE>>\r\n"]
+AUTH_DUPLICATE: ["AUTH <<VALUE>>\r\n","Username: <<VALUE>>\r\n","Password: <<VALUE>>\r\n","Duplicate: true\r\n"]
+
+SUBSCRIBE_SHARED: ["SUBSCRIBE <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n","Shared: true\r\n"]
+
+PUBLISH_RETAINED: ["PUBLISH <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","Payload: <<VALUE>>\r\n","QoS: <<VALUE>>\r\n","Retain: true\r\n"]
+
+UNSUBSCRIBE_SHARED: ["UNSUBSCRIBE <<VALUE>>\r\n","Topic: <<VALUE>>\r\n","Shared: true\r\n"]
+
+DISCONNECT_WILL: ["DISCONNECT <<VALUE>>\r\n","WillTopic: <<VALUE>>\r\n","WillMessage: <<VALUE>>\r\n"]
+```
+
+### Explanation:
+- **PINGREQ**: A request sent by the client to the broker to keep the connection alive.
+- **PINGRESP**: The response from the broker to acknowledge the PINGREQ.
+- **AUTH**: An authentication request to the broker, which may include username and password.
+- **AUTH_DUPLICATE**: An authentication request indicating a duplicate attempt.
+- **SUBSCRIBE_SHARED**: A subscription request that indicates the subscription is shared among multiple clients.
+- **PUBLISH_RETAINED**: A publish request that indicates the message should be retained by the broker.
+- **UNSUBSCRIBE_SHARED**: An unsubscribe request that indicates the unsubscription is shared.
+- **DISCONNECT_WILL**: A disconnect request that includes a will message to be sent when the client disconnects.
+
+These templates provide additional functionality and features that can be utilized in MQTT communication, reflecting the flexibility and capabilities of the protocol.
