@@ -51,6 +51,7 @@
 #include "mp-driver.h"
 #include "mqtt-differential.h"
 #include "mqtt-race.h"
+#include "protocol-oracle.h"
 
 #include <stdio.h>
 #include <unistd.h>
@@ -8678,6 +8679,24 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)mqtt_p6_deep_state_boosts,
           (unsigned long long)mqtt_p6_stall_boosts);
 
+  /* Protocol Oracle Statistics */
+  fprintf(f, "oracle_total_checks : %llu\n"
+             "oracle_total_violations : %llu\n"
+             "oracle_unique_violations : %llu\n"
+             "oracle_auth_bypass : %llu\n"
+             "oracle_state_violations : %llu\n"
+             "oracle_info_leaks  : %llu\n"
+             "oracle_path_traversals : %llu\n"
+             "oracle_dos_patterns : %llu\n",
+          (unsigned long long)oracle_total_checks,
+          (unsigned long long)oracle_total_violations,
+          (unsigned long long)oracle_unique_violations,
+          (unsigned long long)oracle_auth_bypass_count,
+          (unsigned long long)oracle_state_violation_count,
+          (unsigned long long)oracle_info_leak_count,
+          (unsigned long long)oracle_path_traversal_count,
+          (unsigned long long)oracle_dos_count);
+
   fclose(f);
 }
 
@@ -10041,6 +10060,40 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
 
   fault = run_target(argv, exec_tmout);
 
+  /* Protocol-specific semantic oracle check.
+   * Analyzes request-response pairs for security property violations
+   * (auth bypass, state machine violations, info leak, path traversal, etc.)
+   * Goes beyond crash-only detection to find logic vulnerabilities. */
+  if (protocol_name && response_buf && response_buf_size > 0 && fault != FAULT_CRASH) {
+    /* Build request array from kl_messages for oracle check */
+    int oracle_req_count = 0;
+    kliter_t(lms) *it;
+    for (it = kl_begin(kl_messages); it != kl_end(kl_messages); it = kl_next(it))
+      oracle_req_count++;
+
+    if (oracle_req_count > 0 && oracle_req_count <= 64) {
+      const unsigned char *oracle_reqs[64];
+      unsigned int oracle_req_lens[64];
+      int idx = 0;
+      for (it = kl_begin(kl_messages); it != kl_end(kl_messages) && idx < 64; it = kl_next(it)) {
+        oracle_reqs[idx] = (const unsigned char *)kl_val(it)->mdata;
+        oracle_req_lens[idx] = (unsigned int)kl_val(it)->msize;
+        idx++;
+      }
+
+      oracle_result_t oracle_result;
+      int nviol = oracle_check(protocol_name, oracle_reqs, oracle_req_lens,
+                                idx, (const unsigned char *)response_buf,
+                                (unsigned int)response_buf_size, &oracle_result);
+      if (nviol > 0 && oracle_result.max_severity >= ORACLE_SEV_MEDIUM) {
+        oracle_save_violation(out_dir, &oracle_result,
+                              out_buf, len,
+                              (const unsigned char *)response_buf,
+                              (unsigned int)response_buf_size);
+      }
+    }
+  }
+
   /* MQTT-only differential signal ingestion.
    * Treat cross-broker signature divergence as an auxiliary reward channel
    * (independent of single-target coverage), then feed it to per-state stats. */
@@ -10048,12 +10101,23 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
       strcasecmp(protocol_name, "MQTT") == 0) {
     double diff_signal = mqtt_last_diff_signal;
 
-    /* Defensive recompute from current cluster metadata if available */
+    /* Defensive recompute from current cluster metadata if available.
+     * IMPORTANT: When ALL brokers produce different signatures (unique == count),
+     * the divergence is uninformative — random/garbled fuzz data naturally
+     * triggers different error handling in each implementation.  Only treat
+     * divergence as meaningful when a MINORITY of brokers disagree (i.e.,
+     * some consensus exists among the majority). */
     if (mqtt_cluster_broker_count > 1 && mqtt_cluster_unique_signatures > 1) {
-      double recomputed = (double)(mqtt_cluster_unique_signatures - 1) /
-                          (double)(mqtt_cluster_broker_count - 1);
-      if (recomputed > diff_signal)
-        diff_signal = recomputed;
+      if (mqtt_cluster_unique_signatures >= mqtt_cluster_broker_count) {
+        /* All brokers disagree → uninformative, suppress signal */
+        diff_signal = 0.0;
+      } else {
+        /* Minority divergence: scale by fraction that disagree */
+        double recomputed = (double)(mqtt_cluster_unique_signatures - 1) /
+                            (double)(mqtt_cluster_broker_count - 1);
+        if (recomputed > diff_signal)
+          diff_signal = recomputed;
+      }
     }
 
     if (diff_signal < 0.0) diff_signal = 0.0;
@@ -15680,6 +15744,9 @@ int main(int argc, char **argv)
   setup_ipsm();
 
   setup_dirs_fds();
+
+  /* Initialize protocol-specific semantic oracle */
+  oracle_init(protocol_name);
 
   if (protocol_selected)
   {
