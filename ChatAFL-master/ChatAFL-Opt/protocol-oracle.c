@@ -11,13 +11,27 @@
  *   3. Encode invariants as runtime checks on request-response pairs
  *   4. Report violations with severity and category
  *
- * Key CVE patterns studied:
- *   FTP:  CVE-2024-3935 (lightftp path traversal), CVE-2024-42644..42655 (bftpd)
- *   MQTT: CVE-2023-34488 (mosquitto auth), CVE-2023-3592 (memory leak DoS)
- *   SIP:  CVE-2023-49323 (kamailio), CVE-2020-28361 (kamailio DoS)
- *   RTSP: CVE-2021-38382 (live555 buffer), CVE-2019-7314 (live555 UAF)
- *   SMTP: CVE-2023-42117..42119 (exim), CVE-2019-15846 (exim RCE)
- *   HTTP: CVE-2023-44487 (rapid reset DoS), various request smuggling
+ * Key CVE patterns studied (expanded from 协议漏洞汇总.xlsx):
+ *   FTP:  CVE-2024-3935 (path traversal), CVE-2024-42644..42655 (bftpd),
+ *         CVE-2026-39983 (CRLF injection), CVE-2018-15516 (FTP bounce/SSRF),
+ *         CVE-2006-6750 (format string), CVE-2026-41324 (resource exhaustion),
+ *         CVE-2026-29515 (auth bypass), CVE-2021-22946 (TLS downgrade)
+ *   MQTT: CVE-2023-34488 (auth bypass), CVE-2023-3592 (memory leak),
+ *         CVE-2019-5432 (malformed SUBSCRIBE), CVE-2021-41039 (v5 property abuse),
+ *         CVE-2017-7650 (ACL bypass), CVE-2014-6116 (session takeover),
+ *         CVE-2024-42651 (UAF/nanomq)
+ *   SIP:  CVE-2023-49323 (kamailio auth), CVE-2020-28361 (kamailio DoS),
+ *         CVE-2021-37624 (unauthorized MESSAGE), CVE-2023-28098 (header parsing),
+ *         CVE-2008-6573 (SQL injection)
+ *   RTSP: CVE-2021-38382 (live555 buffer), CVE-2019-7314 (live555 UAF),
+ *         CVE-2018-4013 (stack buffer overflow), CVE-2019-6256 (DoS),
+ *         CVE-2023-37117 (heap UAF)
+ *   SMTP: CVE-2023-42117 (exim open relay), CVE-2005-3402 (STARTTLS downgrade),
+ *         CVE-2001-1078 (format string), CVE-2006-0712 (header injection),
+ *         CVE-2002-0309 (info leak)
+ *   HTTP: CVE-2023-44487 (rapid reset), CVE-2021-42013 (double-encode traversal),
+ *         CVE-2023-25690 (request smuggling), CVE-2023-38709 (response splitting),
+ *         CVE-2002-0392 (chunked encoding)
  */
 
 #define _GNU_SOURCE
@@ -443,6 +457,145 @@ int oracle_check_ftp(
                 "CVE-2024-42650", -1);
             oracle_info_leak_count++;
         }
+        /* Extended info leak: internal paths, version disclosure */
+        if (ci_memmem(response, resp_len, "/home/", 6) ||
+            ci_memmem(response, resp_len, "/var/www", 7) ||
+            ci_memmem(response, resp_len, "Server version:", 15)) {
+            oracle_add_violation(result, ORACLE_SEV_LOW,
+                ORACLE_CAT_INFO_LEAK,
+                "FTP: Internal path or version info leaked in response",
+                NULL, -1);
+        }
+    }
+
+    /* ── Optimized patterns from 协议漏洞汇总.xlsx ── */
+
+    /* CRLF injection in FTP commands (CVE-2026-39983: CRLF injection in basic-ftp).
+     * Detects bare CR/LF in command arguments that could inject extra commands. */
+    for (int i = 0; i < req_count; i++) {
+        const unsigned char *req = requests[i];
+        unsigned int rlen = req_lens[i];
+        /* Scan inside the request body (after the first space) for CR/LF injection.
+         * Valid FTP commands have the format: CMD arg\r\n — a bare \r\n mid-command
+         * (before another command keyword) indicates injection. */
+        const unsigned char *space = memchr(req, ' ', rlen);
+        if (space) {
+            unsigned int arg_off = (unsigned int)(space - req) + 1;
+            if (arg_off + 1 < rlen) {
+                for (unsigned int j = arg_off; j + 1 < rlen; j++) {
+                    if (req[j] == '\r' && req[j+1] == '\n') {
+                        /* Look for another FTP keyword after CRLF in the same buffer */
+                        unsigned int remaining = rlen - (j + 2);
+                        if (remaining > 2) {
+                            oracle_add_violation(result, ORACLE_SEV_HIGH,
+                                ORACLE_CAT_INJECTION,
+                                "FTP: CRLF injection in command arguments (FTP command smuggling)",
+                                "CVE-2026-39983", i);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /* PORT command bounce/SSRF (CVE-2018-15516, CVE-2021-31810).
+     * PORT command can be abused for FTP bounce attacks by specifying
+     * an internal IP in the PORT argument. Check if PORT specifies
+     * non-loopback addresses. */
+    for (int i = 0; i < req_count; i++) {
+        const unsigned char *req = requests[i];
+        unsigned int rlen = req_lens[i];
+        if (request_starts_with(req, rlen, "PORT ")) {
+            /* PORT h1,h2,h3,h4,p1,p2 — check for internal/private IP ranges */
+            int h1, h2, h3, h4, p1, p2;
+            if (sscanf((const char *)req, "PORT %d,%d,%d,%d,%d,%d",
+                       &h1, &h2, &h3, &h4, &p1, &p2) == 6) {
+                /* RFC 1918 private addresses + loopback + link-local */
+                if (h1 == 10 || (h1 == 172 && h2 >= 16 && h2 <= 31) ||
+                    (h1 == 192 && h2 == 168) || h1 == 127 ||
+                    (h1 == 169 && h2 == 254)) {
+                    oracle_add_violation(result, ORACLE_SEV_MEDIUM,
+                        ORACLE_CAT_ISOLATION,
+                        "FTP: PORT command specifies private/internal address (FTP bounce risk)",
+                        "CVE-2018-15516", i);
+                }
+            }
+        }
+    }
+
+    /* Format string pattern detection (CVE-2006-6750: format string in FTP server).
+     * Look for %n, %s, %x patterns in unexpected places. */
+    for (int i = 0; i < req_count; i++) {
+        const unsigned char *req = requests[i];
+        unsigned int rlen = req_lens[i];
+        int fmt_count = 0;
+        for (unsigned int j = 0; j + 1 < rlen; j++) {
+            if (req[j] == '%' && (req[j+1] == 'n' || req[j+1] == 's' ||
+                req[j+1] == 'x' || req[j+1] == 'd' || req[j+1] == 'p')) {
+                fmt_count++;
+                if (fmt_count >= 3) {  /* Multiple format specifiers = suspicious */
+                    oracle_add_violation(result, ORACLE_SEV_MEDIUM,
+                        ORACLE_CAT_INJECTION,
+                        "FTP: Multiple format string specifiers in command (format string vuln risk)",
+                        "CVE-2006-6750", i);
+                    break;
+                }
+            }
+        }
+    }
+
+    /* TLS downgrade detection (CVE-2021-22946): AUTH TLS followed by
+     * cleartext data commands suggests TLS enforcement bypass. */
+    for (int i = 0; i < req_count; i++) {
+        const unsigned char *req = requests[i];
+        unsigned int rlen = req_lens[i];
+        if (request_starts_with(req, rlen, "AUTH TLS") ||
+            request_starts_with(req, rlen, "AUTH SSL")) {
+            /* If a data command follows AUTH TLS AND receives success response,
+             * the server may be vulnerable to TLS downgrade */
+            int auth_code = extract_nth_response_code(response, resp_len, i + resp_offset);
+            if (auth_code == 234) {  /* AUTH TLS accepted */
+                /* Check for subsequent cleartext data commands */
+                for (int k = i + 1; k < req_count; k++) {
+                    const unsigned char *req2 = requests[k];
+                    unsigned int rlen2 = req_lens[k];
+                    if (request_starts_with(req2, rlen2, "RETR ") ||
+                        request_starts_with(req2, rlen2, "STOR ")) {
+                        int data_code = extract_nth_response_code(response, resp_len, k + resp_offset);
+                        if (data_code >= 150 && data_code <= 250) {
+                            oracle_add_violation(result, ORACLE_SEV_MEDIUM,
+                                ORACLE_CAT_STATE_VIOLATION,
+                                "FTP: Cleartext data transfer after AUTH TLS (TLS downgrade risk)",
+                                "CVE-2021-22946", k);
+                            break;
+                        }
+                    }
+                }
+            }
+            break;
+        }
+    }
+
+    /* Resource exhaustion via repeated failed auth attempts (CVE-2026-41324).
+     * Many failed PASS commands without USER reset = potential resource drain. */
+    {
+        int failed_auth = 0;
+        for (int i = 0; i < req_count; i++) {
+            const unsigned char *req = requests[i];
+            unsigned int rlen = req_lens[i];
+            if (request_starts_with(req, rlen, "PASS ") && !has_user) {
+                int code = extract_nth_response_code(response, resp_len, i + resp_offset);
+                if (code >= 500 && code <= 599) failed_auth++;
+            }
+        }
+        if (failed_auth > 20) {
+            oracle_add_violation(result, ORACLE_SEV_LOW,
+                ORACLE_CAT_RESOURCE_EXHAUST | ORACLE_CAT_DOS,
+                "FTP: Excessive failed authentication attempts (resource exhaustion risk)",
+                "CVE-2026-41324", -1);
+            oracle_dos_count++;
+        }
     }
 
     return result->violation_count;
@@ -572,6 +725,90 @@ int oracle_check_smtp(
         }
     }
 
+    /* ── Optimized patterns from 协议漏洞汇总.xlsx ── */
+
+    /* STARTTLS downgrade detection (CVE-2005-3402: STARTTLS security defect).
+     * If STARTTLS is offered (220) but followed by cleartext mail commands,
+     * the session may be vulnerable to STRIPTLS attack. */
+    {
+        int starttls_offered = 0;
+        int starttls_accepted = 0;
+        for (int i = 0; i < req_count; i++) {
+            if (request_starts_with(requests[i], req_lens[i], "STARTTLS")) {
+                int code = extract_nth_response_code(response, resp_len, i + resp_offset);
+                if (code == 220) {
+                    starttls_offered = 1;
+                    starttls_accepted = 1;
+                }
+            }
+            /* Check for cleartext sensitive commands after STARTTLS was accepted */
+            if (starttls_accepted &&
+                (request_starts_with(requests[i], req_lens[i], "MAIL FROM:") ||
+                 request_starts_with(requests[i], req_lens[i], "AUTH "))) {
+                /* If MAIL FROM/AUTH succeeds without TLS, TLS downgrade is possible */
+                int code = extract_nth_response_code(response, resp_len, i + resp_offset);
+                if (code >= 200 && code < 400) {
+                    oracle_add_violation(result, ORACLE_SEV_HIGH,
+                        ORACLE_CAT_STATE_VIOLATION,
+                        "SMTP: Cleartext command after STARTTLS (STRIPTLS downgrade risk)",
+                        "CVE-2005-3402", i);
+                    break;
+                }
+            }
+        }
+    }
+
+    /* Format string detection in SMTP commands (CVE-2001-1078).
+     * Multiple %n/%s/%x in addresses or commands = format string risk. */
+    for (int i = 0; i < req_count; i++) {
+        const unsigned char *req = requests[i];
+        unsigned int rlen = req_lens[i];
+        int fmt_count = 0;
+        for (unsigned int j = 0; j + 1 < rlen; j++) {
+            if (req[j] == '%' && (req[j+1] == 'n' || req[j+1] == 's' ||
+                req[j+1] == 'x' || req[j+1] == 'p')) {
+                fmt_count++;
+            }
+        }
+        if (fmt_count >= 3) {
+            oracle_add_violation(result, ORACLE_SEV_MEDIUM,
+                ORACLE_CAT_INJECTION,
+                "SMTP: Multiple format string specifiers in command (format string vuln risk)",
+                "CVE-2001-1078", i);
+            break;
+        }
+    }
+
+    /* Long-line abuse / memory exhaustion (CVE-2001-0894, CVE-2002-0055).
+     * Extremely long RCPT TO or MAIL FROM lines. */
+    for (int i = 0; i < req_count; i++) {
+        if (req_lens[i] > 4096) {
+            oracle_add_violation(result, ORACLE_SEV_LOW,
+                ORACLE_CAT_DOS | ORACLE_CAT_RESOURCE_EXHAUST,
+                "SMTP: Excessively long command (memory exhaustion risk)",
+                "CVE-2001-0894", i);
+            oracle_dos_count++;
+            break;
+        }
+    }
+
+    /* Repeated auth failure pattern — potential brute force or resource drain */
+    {
+        int failed_auth_count = 0;
+        for (int i = 0; i < req_count; i++) {
+            if (request_starts_with(requests[i], req_lens[i], "AUTH ")) {
+                int code = extract_nth_response_code(response, resp_len, i + resp_offset);
+                if (code >= 500 && code <= 535) failed_auth_count++;
+            }
+        }
+        if (failed_auth_count > 10) {
+            oracle_add_violation(result, ORACLE_SEV_LOW,
+                ORACLE_CAT_RESOURCE_EXHAUST,
+                "SMTP: Excessive failed AUTH attempts (brute force / resource drain risk)",
+                NULL, -1);
+        }
+    }
+
     return result->violation_count;
 }
 
@@ -646,6 +883,67 @@ int oracle_check_rtsp(
 
     /* (PLAY-without-SETUP check is now integrated in the per-request loop above
      * using extract_http_style_nth_response_code for accurate matching) */
+
+    /* ── Optimized patterns from 协议漏洞汇总.xlsx ── */
+
+    /* Multiple SETUP for the same stream (CVE-2019-7314, CVE-2019-15232,
+     * CVE-2023-37117: UAF via duplicate SETUP on same session).
+     * Track session IDs to detect repeated SETUP on same URL+session. */
+    {
+        const char *last_setup_url = NULL;
+        unsigned int last_setup_url_len = 0;
+        for (int i = 0; i < req_count; i++) {
+            const unsigned char *req = requests[i];
+            unsigned int rlen = req_lens[i];
+            if (request_starts_with(req, rlen, "SETUP ")) {
+                /* Extract URL part after "SETUP " */
+                const char *url = (const char *)req + 6;
+                unsigned int url_len = rlen - 6;
+                const unsigned char *eol = memchr(url, '\r', url_len);
+                if (eol) url_len = (unsigned int)(eol - (const unsigned char *)url);
+                if (last_setup_url && url_len == last_setup_url_len &&
+                    strncasecmp(url, last_setup_url, url_len) == 0) {
+                    oracle_add_violation(result, ORACLE_SEV_HIGH,
+                        ORACLE_CAT_STATE_VIOLATION | ORACLE_CAT_AUTHZ_BYPASS,
+                        "RTSP: Duplicate SETUP for same stream URL (UAF/double-free risk)",
+                        "CVE-2019-7314", i);
+                }
+                last_setup_url = url;
+                last_setup_url_len = url_len;
+            }
+        }
+    }
+
+    /* Session ID reuse/mismatch: SETUP returns a Session header; subsequent
+     * requests should use the same session. Different session = hijack risk.
+     * (Detection: flag if Session ID changes between requests unexpectedly) */
+    /* Malformed Transport header (CVE-2019-6256: DoS via malformed transport).
+     * Check for Transport header with unusual port ranges or empty fields. */
+    for (int i = 0; i < req_count; i++) {
+        const unsigned char *req = requests[i];
+        unsigned int rlen = req_lens[i];
+        if (request_starts_with(req, rlen, "SETUP ")) {
+            const unsigned char *transport = ci_memmem(req, rlen, "Transport:", 10);
+            if (transport) {
+                unsigned int remaining = rlen - (unsigned int)(transport - req);
+                /* Check for port=0 (invalid port) */
+                if (ci_memmem(transport, remaining, "port=0", 6)) {
+                    oracle_add_violation(result, ORACLE_SEV_MEDIUM,
+                        ORACLE_CAT_DOS,
+                        "RTSP: Transport header with port=0 (potential DoS)",
+                        "CVE-2019-6256", i);
+                }
+                /* Check for excessively long transport header (CVE-2018-4013: stack BO) */
+                const unsigned char *eol = memchr(transport, '\r', remaining);
+                if (eol && (eol - transport) > 512) {
+                    oracle_add_violation(result, ORACLE_SEV_HIGH,
+                        ORACLE_CAT_DOS,
+                        "RTSP: Overly long Transport header (stack buffer overflow risk)",
+                        "CVE-2018-4013", i);
+                }
+            }
+        }
+    }
 
     return result->violation_count;
 }
@@ -750,6 +1048,92 @@ int oracle_check_sip(
                     oracle_auth_bypass_count++;
                 }
                 break;
+            }
+        }
+    }
+
+    /* ── Optimized patterns from 协议漏洞汇总.xlsx ── */
+
+    /* Unauthorized SIP MESSAGE (CVE-2021-37624: FreeSWITCH allows sending
+     * MESSAGE without auth, enabling spam/SMS fraud).
+     * Flag MESSAGE request sent without Authorization header AND server accepted. */
+    for (int i = 0; i < req_count; i++) {
+        if (request_starts_with(requests[i], req_lens[i], "MESSAGE ")) {
+            int has_auth = (ci_memmem(requests[i], req_lens[i], "Authorization:", 14) != NULL);
+            if (!has_auth) {
+                int code = extract_http_style_nth_response_code(response, resp_len, i);
+                if (code >= 200 && code < 300) {
+                    oracle_add_violation(result, ORACLE_SEV_HIGH,
+                        ORACLE_CAT_AUTH_BYPASS,
+                        "SIP: MESSAGE accepted without Authorization (unauthorized messaging)",
+                        "CVE-2021-37624", i);
+                    oracle_auth_bypass_count++;
+                }
+            }
+        }
+    }
+
+    /* Malformed Authorization header detection (CVE-2023-28098: OpenSIPS DoS
+     * via malformed Authorization header parsing).
+     * Check for oversized or structurally invalid Authorization headers. */
+    for (int i = 0; i < req_count; i++) {
+        const unsigned char *auth = ci_memmem(requests[i], req_lens[i],
+                                              "Authorization:", 14);
+        if (auth) {
+            unsigned int remaining = req_lens[i] - (unsigned int)(auth - requests[i]);
+            const unsigned char *eol = memchr(auth, '\r', remaining);
+            unsigned int auth_len = eol ? (unsigned int)(eol - auth) : remaining;
+            /* Oversized authorization header */
+            if (auth_len > 2048) {
+                oracle_add_violation(result, ORACLE_SEV_HIGH,
+                    ORACLE_CAT_DOS,
+                    "SIP: Oversized Authorization header (DoS/Crash risk)",
+                    "CVE-2023-28098", i);
+                oracle_dos_count++;
+            }
+            /* Missing digest fields after "Digest " */
+            if (ci_memmem(auth, remaining, "Digest", 6) &&
+                !ci_memmem(auth, remaining, "nonce=", 6)) {
+                oracle_add_violation(result, ORACLE_SEV_MEDIUM,
+                    ORACLE_CAT_STATE_VIOLATION,
+                    "SIP: Malformed Digest auth header (missing nonce, potential parsing bug)",
+                    "CVE-2023-28098", i);
+            }
+        }
+    }
+
+    /* SQL injection patterns in SIP headers (CVE-2008-6573: crafted SIP request
+     * leads to SQL injection in Avaya). */
+    for (int i = 0; i < req_count; i++) {
+        const unsigned char *req = requests[i];
+        unsigned int rlen = req_lens[i];
+        if (ci_memmem(req, rlen, "' OR ", 5) ||
+            ci_memmem(req, rlen, "UNION SELECT", 12) ||
+            ci_memmem(req, rlen, "'; DROP", 7) ||
+            ci_memmem(req, rlen, "1=1", 3)) {
+            oracle_add_violation(result, ORACLE_SEV_HIGH,
+                ORACLE_CAT_INJECTION,
+                "SIP: SQL injection pattern in request headers",
+                "CVE-2008-6573", i);
+        }
+    }
+
+    /* INVITE spoofing (CVE-2007-3347: INVITE with forged From header).
+     * Check for mismatch between From header and Authorization username. */
+    for (int i = 0; i < req_count; i++) {
+        const unsigned char *req = requests[i];
+        unsigned int rlen = req_lens[i];
+        if (request_starts_with(req, rlen, "INVITE ")) {
+            const unsigned char *from = ci_memmem(req, rlen, "From:", 5);
+            if (from) {
+                unsigned int remaining = rlen - (unsigned int)(from - req);
+                if (ci_memmem(from, remaining, "sip:admin@", 10) ||
+                    ci_memmem(from, remaining, "sip:root@", 9)) {
+                    oracle_add_violation(result, ORACLE_SEV_MEDIUM,
+                        ORACLE_CAT_AUTHZ_BYPASS,
+                        "SIP: INVITE with privileged From header (spoofing risk)",
+                        "CVE-2007-3347", i);
+                }
             }
         }
     }
@@ -934,6 +1318,93 @@ int oracle_check_http(
                     ORACLE_CAT_INFO_LEAK,
                     "HTTP: Verbose Server header (version fingerprinting)",
                     NULL, -1);
+            }
+        }
+    }
+
+    /* ── Optimized patterns from 协议漏洞汇总.xlsx ── */
+
+    /* Double URL-encoded path traversal (CVE-2021-42013: Apache 2.4.49/50
+     * path traversal + RCE via double encoding like %252e%252e%252f). */
+    for (int i = 0; i < req_count; i++) {
+        const unsigned char *req = requests[i];
+        unsigned int rlen = req_lens[i];
+        if (ci_memmem(req, rlen, "%252e%252e", 10) ||
+            ci_memmem(req, rlen, "%252e%252e%252f", 14) ||
+            ci_memmem(req, rlen, "%%32%65%%32%65", 12) ||
+            ci_memmem(req, rlen, ".%2e/", 5)) {
+            if (resp_len > 0) {
+                int code = extract_http_style_nth_response_code(response, resp_len, i);
+                if (code == 200) {
+                    oracle_add_violation(result, ORACLE_SEV_CRITICAL,
+                        ORACLE_CAT_PATH_TRAVERSAL,
+                        "HTTP: Double-encoded path traversal succeeded (RCE risk if CGI enabled)",
+                        "CVE-2021-42013", i);
+                    oracle_path_traversal_count++;
+                }
+            }
+        }
+    }
+
+    /* Response splitting / HTTP header injection (CVE-2023-38709).
+     * Check if response contains CRLF injection artifacts. */
+    for (int i = 0; i < req_count; i++) {
+        const unsigned char *req = requests[i];
+        unsigned int rlen = req_lens[i];
+        /* Look for CRLF followed by HTTP/1.x in request (response splitting injection) */
+        const unsigned char *crlf_http = ci_memmem(req, rlen, "\r\nHTTP/1.", 9);
+        if (crlf_http) {
+            oracle_add_violation(result, ORACLE_SEV_HIGH,
+                ORACLE_CAT_SMUGGLING | ORACLE_CAT_INJECTION,
+                "HTTP: CRLF injection with embedded HTTP response (response splitting)",
+                "CVE-2023-38709", i);
+        }
+    }
+
+    /* Chunk extension abuse (CVE-2002-0392: Apache chunked encoding BO).
+     * Check for chunked transfer encoding with extremely large extension values. */
+    for (int i = 0; i < req_count; i++) {
+        const unsigned char *req = requests[i];
+        unsigned int rlen = req_lens[i];
+        if (ci_memmem(req, rlen, "Transfer-Encoding: chunked", 26) ||
+            ci_memmem(req, rlen, "chunked", 7)) {
+            /* Check for oversized chunk-size lines (hex size > 0xFFFFFFFF) */
+            const unsigned char *body = ci_memmem(req, rlen, "\r\n\r\n", 4);
+            if (body) {
+                unsigned int body_off = (unsigned int)(body - req) + 4;
+                if (body_off + 8 < rlen) {
+                    /* Count hex digits in first chunk size */
+                    int hex_count = 0;
+                    for (unsigned int j = body_off; j < body_off + 20 && j < rlen; j++) {
+                        if (isxdigit(req[j])) hex_count++;
+                        else if (req[j] == '\r') break;
+                    }
+                    if (hex_count > 16) {
+                        oracle_add_violation(result, ORACLE_SEV_HIGH,
+                            ORACLE_CAT_DOS,
+                            "HTTP: Oversized chunk-size value (potential BO in chunk parser)",
+                            "CVE-2002-0392", i);
+                    }
+                }
+            }
+        }
+    }
+
+    /* HTTP Auth bypass via mod_rewrite (CVE-2017-3167).
+     * Check for requests that bypass auth via URL manipulation. */
+    for (int i = 0; i < req_count; i++) {
+        const unsigned char *req = requests[i];
+        unsigned int rlen = req_lens[i];
+        /* Patterns like /admin%00/ or /admin..;/ that bypass access controls */
+        if (ci_memmem(req, rlen, "%00", 3) ||
+            ci_memmem(req, rlen, "..;", 3)) {
+            int code = extract_http_style_nth_response_code(response, resp_len, i);
+            if (code == 200) {
+                oracle_add_violation(result, ORACLE_SEV_HIGH,
+                    ORACLE_CAT_AUTH_BYPASS,
+                    "HTTP: Auth bypass via URL encoding trick (%00 or ..;)",
+                    "CVE-2017-3167", i);
+                oracle_auth_bypass_count++;
             }
         }
     }
@@ -1224,6 +1695,129 @@ int oracle_check_mqtt(
                     ORACLE_CAT_AUTH_BYPASS,
                     "MQTT: CONNACK success without valid CONNECT",
                     "CVE-2023-34488", -1);
+            }
+        }
+    }
+
+    /* ── Optimized patterns from 协议漏洞汇总.xlsx ── */
+
+    /* Malformed SUBSCRIBE with zero topic length (CVE-2019-5432: mqtt-packet
+     * malformed SUBSCRIBE causes broker crash).
+     * Check for SUBSCRIBE packet with at least one topic filter of length 0. */
+    for (int i = 0; i < req_count; i++) {
+        const unsigned char *req = requests[i];
+        unsigned int rlen = req_lens[i];
+        if (rlen < 2) continue;
+        uint8_t pkt_type = (req[0] >> 4) & 0x0F;
+        if (pkt_type == 8) { /* SUBSCRIBE */
+            unsigned int rl_b = 0;
+            int rem_len = mqtt_decode_remaining_length(req + 1, rlen - 1, &rl_b);
+            if (rem_len > 0 && rem_len >= 3) {
+                unsigned int hdr_size = 1 + rl_b;
+                unsigned int payload_off = hdr_size + 2; /* skip packet identifier */
+                /* Scan topic filters: each is [2-byte length][topic] [1-byte QoS] */
+                unsigned int scan = payload_off;
+                while (scan + 2 <= rlen) {
+                    uint16_t topic_len = (req[scan] << 8) | req[scan + 1];
+                    if (topic_len == 0) {
+                        oracle_add_violation(result, ORACLE_SEV_HIGH,
+                            ORACLE_CAT_DOS,
+                            "MQTT: SUBSCRIBE with zero-length topic filter (broker crash risk)",
+                            "CVE-2019-5432", i);
+                        oracle_dos_count++;
+                        break;
+                    }
+                    scan += 2 + topic_len + 1;  /* length + topic + QoS */
+                    if (scan > rlen) break;
+                }
+            }
+        }
+    }
+
+    /* MQTT v5 user-property abuse (CVE-2021-41039: excessive user-property
+     * leads to CPU exhaustion in Mosquitto 1.6-2.0.11).
+     * Count PROP_USER (0x26) properties in CONNECT and PUBLISH packets. */
+    {
+        int user_prop_count = 0;
+        for (int i = 0; i < req_count; i++) {
+            const unsigned char *req = requests[i];
+            unsigned int rlen = req_lens[i];
+            for (unsigned int j = 0; j < rlen; j++) {
+                if (req[j] == 0x26) user_prop_count++;  /* MQTT v5 PROP_USER identifier */
+            }
+        }
+        if (user_prop_count > 50) {
+            oracle_add_violation(result, ORACLE_SEV_MEDIUM,
+                ORACLE_CAT_DOS | ORACLE_CAT_RESOURCE_EXHAUST,
+                "MQTT: Excessive v5 user-properties (CPU exhaustion risk)",
+                "CVE-2021-41039", -1);
+            oracle_dos_count++;
+        }
+    }
+
+    /* Session takeover via empty client ID with clean_session=0
+     * (CVE-2014-6116: WebSphere MQ auth bypass via session reuse).
+     * Check for CONNECT with clean_session=0 and empty client ID.
+     * This allows one client to hijack another's session. */
+    for (int i = 0; i < req_count; i++) {
+        const unsigned char *req = requests[i];
+        unsigned int rlen = req_lens[i];
+        if (rlen < 2) continue;
+        uint8_t pkt_type = (req[0] >> 4) & 0x0F;
+        if (pkt_type == 1) { /* CONNECT */
+            unsigned int rl_b = 0;
+            int rem_len = mqtt_decode_remaining_length(req + 1, rlen - 1, &rl_b);
+            if (rem_len > 0) {
+                unsigned int vh_off = 1 + rl_b;
+                if (vh_off + 10 <= rlen) {
+                    uint16_t proto_name_len = (req[vh_off] << 8) | req[vh_off + 1];
+                    unsigned int flags_off = vh_off + 2 + proto_name_len + 1;
+                    if (flags_off < rlen) {
+                        uint8_t connect_flags = req[flags_off];
+                        int clean_session = (connect_flags >> 1) & 0x01;
+                        uint16_t cid_len = (req[flags_off + 3] << 8) | req[flags_off + 4];
+                        if (!clean_session && cid_len == 0) {
+                            oracle_add_violation(result, ORACLE_SEV_MEDIUM,
+                                ORACLE_CAT_ISOLATION | ORACLE_CAT_AUTH_BYPASS,
+                                "MQTT: Empty ClientID with clean_session=0 (session hijack risk)",
+                                "CVE-2014-6116", i);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /* Duplicate packet identifier detection (session hijack / replay attack).
+     * PUBLISH and SUBSCRIBE packets carry 2-byte packet identifiers.
+     * Duplicate IDs in the same session suggest replay or hijack attempt. */
+    {
+        uint16_t seen_ids[256];
+        int seen_count = 0;
+        for (int i = 0; i < req_count && seen_count < 256; i++) {
+            const unsigned char *req = requests[i];
+            unsigned int rlen = req_lens[i];
+            if (rlen < 4) continue;
+            uint8_t pkt_type = (req[0] >> 4) & 0x0F;
+            if (pkt_type == 3 || pkt_type == 8 || pkt_type == 6 || pkt_type == 10) {
+                unsigned int rl_b = 0;
+                mqtt_decode_remaining_length(req + 1, rlen - 1, &rl_b);
+                unsigned int hdr_size = 1 + rl_b;
+                if (hdr_size + 2 <= rlen) {
+                    uint16_t pkt_id = (req[hdr_size] << 8) | req[hdr_size + 1];
+                    if (pkt_id != 0) {
+                        for (int s = 0; s < seen_count; s++) {
+                            if (seen_ids[s] == pkt_id) {
+                                oracle_add_violation(result, ORACLE_SEV_LOW,
+                                    ORACLE_CAT_REPLAY | ORACLE_CAT_STATE_VIOLATION,
+                                    "MQTT: Duplicate packet identifier (replay/session hijack)",
+                                    NULL, i);
+                                break;
+                            }
+                        }
+                        if (seen_count < 256) seen_ids[seen_count++] = pkt_id;
+                    }
+                }
             }
         }
     }
