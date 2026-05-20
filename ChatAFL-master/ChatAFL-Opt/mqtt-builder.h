@@ -44,6 +44,7 @@
 #define MQTT_PINGREQ     0xC0
 #define MQTT_PINGRESP    0xD0
 #define MQTT_DISCONNECT  0xE0
+#define MQTT_AUTH        0xF0
 
 /* Maximum size for a single MQTT test packet */
 #define MQTT_MAX_PACKET_SIZE 1024
@@ -90,6 +91,25 @@ unsigned char *mqtt_build_pingreq(size_t *out_len);
 
 /* DISCONNECT: fixed 2-byte packet */
 unsigned char *mqtt_build_disconnect(size_t *out_len);
+
+/* Sync MBFuzzer: v5 packet builders
+ * CONNECT_V5: adds Session Expiry, Receive Max, Max Packet Size,
+ *   Topic Alias Max, Request Response/Problem Info, User Property.
+ * AUTH: v5-only authentication exchange with reason code + auth method.
+ * DISCONNECT_V5: enhanced disconnect with reason code + properties. */
+unsigned char *mqtt_build_connect_v5(const char *client_id,
+                                      int clean_start,
+                                      uint16_t keepalive,
+                                      const char *will_topic,
+                                      const char *will_message,
+                                      const char *username,
+                                      const char *password,
+                                      size_t *out_len);
+unsigned char *mqtt_build_auth(unsigned char reason_code,
+                                const char *auth_method,
+                                const char *auth_data,
+                                size_t *out_len);
+unsigned char *mqtt_build_disconnect_v5(unsigned char reason_code, size_t *out_len);
 
 /* PUBACK/PUBREC/PUBREL/PUBCOMP: packet_id */
 unsigned char *mqtt_build_puback(uint16_t packet_id, size_t *out_len);

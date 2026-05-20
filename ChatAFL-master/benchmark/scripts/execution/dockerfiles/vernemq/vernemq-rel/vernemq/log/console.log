@@ -1,0 +1,31 @@
+2024-04-17T12:09:55.142912+00:00 [notice] <0.95.0>: alarm_handler: {set,{system_memory_high_watermark,[]}}
+2024-04-17T12:09:55.245634+00:00 [info] <0.207.0> vmq_swc_peer_service_manager:write_old_actor_to_disk/1:182: writing (updated) old actor <<221,247,10,120,11,180,147,60,142,36,92,78,180,145,175,23,62,255,241,143>> to disk
+2024-04-17T12:09:55.250559+00:00 [info] <0.207.0> vmq_swc_peer_service_manager:write_state_to_disk/1:165: writing state {[{[{actor,<<221,247,10,120,11,180,147,60,142,36,92,78,180,145,175,23,62,255,241,143>>}],1}],{dict,1,16,16,8,80,48,{[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[]},{{[],[['VerneMQ@127.0.0.1',{[{actor,<<221,247,10,120,11,180,147,60,142,36,92,78,180,145,175,23,62,255,241,143>>}],1}]],[],[],[],[],[],[],[],[],[],[],[],[],[],[]}}},{dict,0,16,16,8,80,48,{[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[]},{{[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[]}}}} to disk <<75,2,131,80,0,0,0,247,120,1,203,96,206,97,96,96,96,204,96,130,82,41,12,172,137,201,37,249,69,185,64,81,145,187,223,185,42,184,183,76,182,233,83,137,241,219,50,113,189,184,221,255,143,253,89,137,140,89,25,156,41,12,44,41,153,201,37,137,140,137,2,64,200,145,24,144,104,144,33,144,133,6,50,24,129,98,96,115,65,4,83,10,131,96,88,106,81,94,170,111,160,131,161,145,185,158,1,16,26,146,102,47,186,249,112,103,48,16,116,6,154,86,0,103,72,77,201>>
+2024-04-17T12:09:55.266284+00:00 [info] <0.212.0> vmq_swc_db_leveldb:open_db/4:272: Opening LevelDB SWC database at "./data/swc_meta/meta1"
+2024-04-17T12:09:55.284180+00:00 [info] <0.222.0> vmq_swc_db_leveldb:open_db/4:272: Opening LevelDB SWC database at "./data/swc_meta/meta2"
+2024-04-17T12:09:55.291249+00:00 [info] <0.231.0> vmq_swc_db_leveldb:open_db/4:272: Opening LevelDB SWC database at "./data/swc_meta/meta3"
+2024-04-17T12:09:55.299286+00:00 [info] <0.240.0> vmq_swc_db_leveldb:open_db/4:272: Opening LevelDB SWC database at "./data/swc_meta/meta4"
+2024-04-17T12:09:55.305675+00:00 [info] <0.249.0> vmq_swc_db_leveldb:open_db/4:272: Opening LevelDB SWC database at "./data/swc_meta/meta5"
+2024-04-17T12:09:55.331406+00:00 [info] <0.258.0> vmq_swc_db_leveldb:open_db/4:272: Opening LevelDB SWC database at "./data/swc_meta/meta6"
+2024-04-17T12:09:55.339799+00:00 [info] <0.267.0> vmq_swc_db_leveldb:open_db/4:272: Opening LevelDB SWC database at "./data/swc_meta/meta7"
+2024-04-17T12:09:55.347589+00:00 [info] <0.276.0> vmq_swc_db_leveldb:open_db/4:272: Opening LevelDB SWC database at "./data/swc_meta/meta8"
+2024-04-17T12:09:55.354503+00:00 [info] <0.285.0> vmq_swc_db_leveldb:open_db/4:272: Opening LevelDB SWC database at "./data/swc_meta/meta9"
+2024-04-17T12:09:55.398446+00:00 [info] <0.294.0> vmq_swc_db_leveldb:open_db/4:272: Opening LevelDB SWC database at "./data/swc_meta/meta10"
+2024-04-17T12:09:55.519901+00:00 [info] <0.200.0> vmq_metadata:start/0:31: Trying to start vmq_swc: ok
+2024-04-17T12:09:55.552902+00:00 [info] <0.307.0> vmq_storage_engine_leveldb:open_db/4:146: Opening LevelDB database at "./data/msgstore/1"
+2024-04-17T12:09:55.558754+00:00 [info] <0.308.0> vmq_storage_engine_leveldb:open_db/4:146: Opening LevelDB database at "./data/msgstore/2"
+2024-04-17T12:09:55.565642+00:00 [info] <0.309.0> vmq_storage_engine_leveldb:open_db/4:146: Opening LevelDB database at "./data/msgstore/3"
+2024-04-17T12:09:55.572601+00:00 [info] <0.310.0> vmq_storage_engine_leveldb:open_db/4:146: Opening LevelDB database at "./data/msgstore/4"
+2024-04-17T12:09:55.633400+00:00 [info] <0.311.0> vmq_storage_engine_leveldb:open_db/4:146: Opening LevelDB database at "./data/msgstore/5"
+2024-04-17T12:09:55.640524+00:00 [info] <0.312.0> vmq_storage_engine_leveldb:open_db/4:146: Opening LevelDB database at "./data/msgstore/6"
+2024-04-17T12:09:55.647938+00:00 [info] <0.313.0> vmq_storage_engine_leveldb:open_db/4:146: Opening LevelDB database at "./data/msgstore/7"
+2024-04-17T12:09:55.654964+00:00 [info] <0.314.0> vmq_storage_engine_leveldb:open_db/4:146: Opening LevelDB database at "./data/msgstore/8"
+2024-04-17T12:09:55.709123+00:00 [info] <0.315.0> vmq_storage_engine_leveldb:open_db/4:146: Opening LevelDB database at "./data/msgstore/9"
+2024-04-17T12:09:55.718442+00:00 [info] <0.316.0> vmq_storage_engine_leveldb:open_db/4:146: Opening LevelDB database at "./data/msgstore/10"
+2024-04-17T12:09:55.788430+00:00 [info] <0.317.0> vmq_storage_engine_leveldb:open_db/4:146: Opening LevelDB database at "./data/msgstore/11"
+2024-04-17T12:09:55.806326+00:00 [info] <0.318.0> vmq_storage_engine_leveldb:open_db/4:146: Opening LevelDB database at "./data/msgstore/12"
+2024-04-17T12:09:55.834750+00:00 [info] <0.200.0> vmq_message_store:start/0:32: Trying to start vmq_generic_msg_store: ok
+2024-04-17T12:09:55.925435+00:00 [info] <0.406.0> vmq_reg_trie:handle_info/2:256: loaded 0 subscriptions into vmq_reg_trie
+2024-04-17T12:09:55.931022+00:00 [info] <0.210.0> vmq_cluster:init/0:165: cluster event handler 'vmq_cluster' registered
+2024-04-17T12:10:06.959053+00:00 [notice] <0.566.0>: Administrative stop
+2024-04-17T12:10:07.030421+00:00 [notice] <0.95.0>: alarm_handler: {clear,system_memory_high_watermark}

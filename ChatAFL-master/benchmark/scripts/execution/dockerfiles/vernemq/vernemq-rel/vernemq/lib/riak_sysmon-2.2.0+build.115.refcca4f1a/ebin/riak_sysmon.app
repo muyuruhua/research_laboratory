@@ -1,0 +1,10 @@
+{application,riak_sysmon,
+             [{description,"Rate-limiting system_monitor event handler"},
+              {vsn,"2.2.0+build.115.refcca4f1a"},
+              {applications,[kernel,stdlib,sasl]},
+              {registered,[]},
+              {mod,{riak_sysmon_app,[]}},
+              {env,[]},
+              {modules,[riak_sysmon_app,riak_sysmon_example_handler,
+                        riak_sysmon_filter,riak_sysmon_sup,
+                        riak_sysmon_testhandler]}]}.

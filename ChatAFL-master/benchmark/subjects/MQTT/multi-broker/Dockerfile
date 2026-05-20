@@ -1,12 +1,28 @@
 # chatafl-multibroker: Lightweight multi-broker for differential testing
-# Ports: 1883=Mosquitto (instance A), 1884=Mosquitto (instance B, different config)
-# Two Mosquitto instances with different settings to trigger fwd_div differences
+# Sync MBFuzzer: Mosquitto v2.0.18 (was system 2.0.11 from apt)
+# Ports: 1883=Mosquitto A (default), 1884=Mosquitto B (restricted)
+# Two Mosquitto v2.0.18 instances with different settings for diff testing
 FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    mosquitto netcat-openbsd procps \
+    git build-essential cmake libssl-dev libcjson-dev xsltproc docbook-xsl \
+    netcat-openbsd ca-certificates \
+    && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Build Mosquitto v2.0.18 from source (matches MBFuzzer)
+RUN cd /opt && \
+    git clone https://github.com/eclipse/mosquitto.git && \
+    cd mosquitto && \
+    git checkout v2.0.18 && \
+    cmake -DWITH_TLS=OFF -DWITH_PERSISTENCE=OFF \
+          -DDOCUMENTATION=OFF -DWITH_WEBSOCKETS=OFF \
+          -DCMAKE_BUILD_TYPE=Release . && \
+    make -j$(nproc) && \
+    make install
+
+RUN mkdir -p /etc/mosquitto
 
 # Instance A config (port 1883) - default settings
 RUN printf 'listener 1883 0.0.0.0\nallow_anonymous true\npersistence false\nlog_dest none\n' \

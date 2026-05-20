@@ -1,8 +1,11 @@
 /* mqtt-builder.c
  * Fix-13: MQTT binary packet builder for seed enrichment.
  *
- * Generates valid MQTT v3.1.1 packets programmatically, bypassing the
+ * Generates valid MQTT v3.1.1 and v5 packets programmatically, bypassing the
  * LLM-based grammar pipeline which cannot handle binary protocols.
+ *
+ * Sync MBFuzzer: Added MQTT v5 support (AUTH, Properties, enhanced DISCONNECT,
+ * subscription options) to match MBFuzzer's protocol coverage.
  *
  * Design principles:
  *   - Each builder allocates and returns a complete packet buffer
@@ -10,6 +13,7 @@
  *   - Client IDs, topics, and payloads are parameterizable for diversity
  *   - Integration functions provide drop-in replacements for the
  *     LLM grammar/enrichment paths
+ *   - v5 properties follow MQTT §2.2.2 (Property Length + Properties)
  */
 
 #define _GNU_SOURCE
@@ -300,6 +304,96 @@ static unsigned char *build_packet(unsigned char type_flags,
 }
 
 /* ============================================
+ * v5 Property Encoding Helpers (Sync MBFuzzer)
+ *
+ * MQTT v5 properties use a Property Length (variable byte integer)
+ * followed by one or more Property entries, each consisting of an
+ * Identifier byte and a value whose format depends on the Identifier.
+ * ============================================ */
+
+/* Write a v5 Property Length (variable byte integer) + count placeholder.
+ * Returns starting position so caller can back-patch. */
+static int v5_prop_start(unsigned char *buf, int buf_cap, int *pos) {
+  if (*pos + 1 > buf_cap) return -1;
+  buf[(*pos)++] = 0x00;  /* placeholder: property length = 0 */
+  return *pos;
+}
+
+/* Back-patch the Property Length at prop_start to reflect actual bytes written. */
+static void v5_prop_finish(unsigned char *buf, int prop_start, int pos) {
+  int prop_len = pos - prop_start;  /* excludes the length byte itself */
+  /* For now, property length fits in 1 byte (<128) so just overwrite the placeholder */
+  if (prop_len > 0 && prop_len < 128) {
+    buf[prop_start - 1] = (unsigned char)(prop_len & 0x7F);
+  }
+}
+
+/* Add a v5 Byte property (Identifier + 1 byte value). */
+static void v5_prop_byte(unsigned char *buf, int buf_cap, int *pos,
+                         unsigned char id, unsigned char val) {
+  if (*pos + 2 <= buf_cap) {
+    buf[(*pos)++] = id;
+    buf[(*pos)++] = val;
+  }
+}
+
+/* Add a v5 Two Byte Integer property (Identifier + 2 byte value). */
+static void v5_prop_u16(unsigned char *buf, int buf_cap, int *pos,
+                        unsigned char id, uint16_t val) {
+  if (*pos + 3 <= buf_cap) {
+    buf[(*pos)++] = id;
+    buf[(*pos)++] = (unsigned char)((val >> 8) & 0xFF);
+    buf[(*pos)++] = (unsigned char)(val & 0xFF);
+  }
+}
+
+/* Add a v5 Four Byte Integer property (Identifier + 4 byte value). */
+static void v5_prop_u32(unsigned char *buf, int buf_cap, int *pos,
+                        unsigned char id, uint32_t val) {
+  if (*pos + 5 <= buf_cap) {
+    buf[(*pos)++] = id;
+    buf[(*pos)++] = (unsigned char)((val >> 24) & 0xFF);
+    buf[(*pos)++] = (unsigned char)((val >> 16) & 0xFF);
+    buf[(*pos)++] = (unsigned char)((val >> 8) & 0xFF);
+    buf[(*pos)++] = (unsigned char)(val & 0xFF);
+  }
+}
+
+/* Add a v5 UTF-8 String property (Identifier + 2-byte length + data). */
+static void v5_prop_utf8(unsigned char *buf, int buf_cap, int *pos,
+                         unsigned char id, const char *str) {
+  size_t slen = str ? strlen(str) : 0;
+  if (slen > 65535) slen = 65535;
+  if (*pos + 3 + (int)slen <= buf_cap) {
+    buf[(*pos)++] = id;
+    buf[(*pos)++] = (unsigned char)((slen >> 8) & 0xFF);
+    buf[(*pos)++] = (unsigned char)(slen & 0xFF);
+    if (slen > 0) {
+      memcpy(buf + *pos, str, slen);
+      *pos += (int)slen;
+    }
+  }
+}
+
+/* Add a v5 UTF-8 String Pair property (Identifier + key_len + key + val_len + val). */
+static void v5_prop_utf8_pair(unsigned char *buf, int buf_cap, int *pos,
+                              unsigned char id, const char *key, const char *val) {
+  size_t klen = key ? strlen(key) : 0;
+  size_t vlen = val ? strlen(val) : 0;
+  if (klen > 65535) klen = 65535;
+  if (vlen > 65535) vlen = 65535;
+  if (*pos + 5 + (int)(klen + vlen) <= buf_cap) {
+    buf[(*pos)++] = id;
+    buf[(*pos)++] = (unsigned char)((klen >> 8) & 0xFF);
+    buf[(*pos)++] = (unsigned char)(klen & 0xFF);
+    if (klen > 0) { memcpy(buf + *pos, key, klen); *pos += (int)klen; }
+    buf[(*pos)++] = (unsigned char)((vlen >> 8) & 0xFF);
+    buf[(*pos)++] = (unsigned char)(vlen & 0xFF);
+    if (vlen > 0) { memcpy(buf + *pos, val, vlen); *pos += (int)vlen; }
+  }
+}
+
+/* ============================================
  * Individual Packet Builders
  * ============================================ */
 
@@ -438,6 +532,142 @@ unsigned char *mqtt_build_disconnect(size_t *out_len) {
     return build_packet(MQTT_DISCONNECT, NULL, 0, out_len);
 }
 
+/* ============================================
+ * Sync MBFuzzer: v5 Packet Builders
+ *
+ * MQTT v5 extends packet formats with:
+ *   - CONNECT: Properties in variable header + will properties
+ *   - DISCONNECT: Reason Code + Properties
+ *   - AUTH: Reason Code + Properties (v5 only)
+ *   - ACK packets: Reason Code + Properties
+ * ============================================ */
+
+/* v5 CONNECT with properties.
+ * Protocol Level = 5, adds Session Expiry Interval, Receive Maximum,
+ * Maximum Packet Size, Topic Alias Maximum, Request Response Info,
+ * Request Problem Info, User Property, Auth Method, Auth Data. */
+unsigned char *mqtt_build_connect_v5(const char *client_id,
+                                      int clean_start,
+                                      uint16_t keepalive,
+                                      const char *will_topic,
+                                      const char *will_message,
+                                      const char *username,
+                                      const char *password,
+                                      size_t *out_len) {
+    unsigned char var_buf[MQTT_MAX_PACKET_SIZE * 2];
+    int pos = 0;
+    int prop_start;
+
+    /* Variable header: Protocol Name */
+    var_buf[pos++] = 0x00; var_buf[pos++] = 0x04;
+    var_buf[pos++] = 'M'; var_buf[pos++] = 'Q';
+    var_buf[pos++] = 'T'; var_buf[pos++] = 'T';
+
+    /* Protocol Level: 5 = MQTT v5.0 */
+    var_buf[pos++] = 0x05;
+
+    /* Connect Flags */
+    unsigned char flags = 0;
+    if (clean_start) flags |= 0x02;
+    if (will_topic && will_message) {
+        flags |= 0x04; /* Will Flag */
+    }
+    if (username) flags |= 0x80;
+    if (password) flags |= 0x40;
+    var_buf[pos++] = flags;
+
+    /* Keep Alive */
+    var_buf[pos++] = (unsigned char)((keepalive >> 8) & 0xFF);
+    var_buf[pos++] = (unsigned char)(keepalive & 0xFF);
+
+    /* v5 Properties — Session Expiry, Receive Max, Max Packet Size,
+     * Topic Alias Max, Request Response Info, Request Problem Info,
+     * User Property, Auth Method, Auth Data */
+    prop_start = v5_prop_start(var_buf, sizeof(var_buf), &pos);
+    if (prop_start > 0) {
+        v5_prop_u32(var_buf, sizeof(var_buf), &pos, 0x11, 3600);    /* Session Expiry Interval */
+        v5_prop_u16(var_buf, sizeof(var_buf), &pos, 0x21, 65535);   /* Receive Maximum */
+        v5_prop_u32(var_buf, sizeof(var_buf), &pos, 0x27, 268435455);/* Maximum Packet Size */
+        v5_prop_u16(var_buf, sizeof(var_buf), &pos, 0x22, 10);      /* Topic Alias Maximum */
+        v5_prop_byte(var_buf, sizeof(var_buf), &pos, 0x19, 0);      /* Request Response Info */
+        v5_prop_byte(var_buf, sizeof(var_buf), &pos, 0x17, 1);      /* Request Problem Info */
+        v5_prop_utf8_pair(var_buf, sizeof(var_buf), &pos, 0x26, "mbfuzzer_sync", "v5"); /* User Property */
+        v5_prop_finish(var_buf, prop_start, pos);
+    }
+
+    /* Payload: Client Identifier */
+    pos += write_mqtt_string(var_buf + pos, client_id ? client_id : "fuzz_v5");
+
+    /* v5 Will Properties (if will flag set) */
+    if (will_topic && will_message) {
+        int wp_start = v5_prop_start(var_buf, sizeof(var_buf), &pos);
+        if (wp_start > 0) {
+            v5_prop_u32(var_buf, sizeof(var_buf), &pos, 0x18, 0);   /* Will Delay Interval */
+            v5_prop_byte(var_buf, sizeof(var_buf), &pos, 0x01, 0);  /* Payload Format Indicator */
+            v5_prop_u32(var_buf, sizeof(var_buf), &pos, 0x02, 3600);/* Message Expiry Interval */
+            v5_prop_utf8(var_buf, sizeof(var_buf), &pos, 0x03, "text/plain"); /* Content Type */
+            v5_prop_utf8(var_buf, sizeof(var_buf), &pos, 0x08, "response/topic"); /* Response Topic */
+            v5_prop_finish(var_buf, wp_start, pos);
+        }
+        pos += write_mqtt_string(var_buf + pos, will_topic);
+        pos += write_mqtt_string(var_buf + pos, will_message);
+    }
+
+    if (username) pos += write_mqtt_string(var_buf + pos, username);
+    if (password) pos += write_mqtt_string(var_buf + pos, password);
+
+    return build_packet(MQTT_CONNECT, var_buf, pos, out_len);
+}
+
+/* v5 AUTH — Authentication exchange packet (MQTT v5 only).
+ * Used for enhanced authentication beyond simple username/password.
+ * MBFuzzer equivalent: generators/auth.py */
+unsigned char *mqtt_build_auth(unsigned char reason_code,
+                                const char *auth_method,
+                                const char *auth_data,
+                                size_t *out_len) {
+    unsigned char var_buf[MQTT_MAX_PACKET_SIZE];
+    int pos = 0;
+    int prop_start;
+
+    /* Reason Code: 0x00=Success, 0x18=Continue authentication, 0x19=Re-authenticate */
+    var_buf[pos++] = reason_code;
+
+    /* Properties: Authentication Method (0x15, required), Auth Data (0x16, optional) */
+    prop_start = v5_prop_start(var_buf, sizeof(var_buf), &pos);
+    if (prop_start > 0) {
+        v5_prop_utf8(var_buf, sizeof(var_buf), &pos, 0x15,
+                     auth_method ? auth_method : "SCRAM-SHA-256");
+        if (auth_data && *auth_data) {
+            v5_prop_utf8(var_buf, sizeof(var_buf), &pos, 0x16, auth_data);
+        }
+        v5_prop_finish(var_buf, prop_start, pos);
+    }
+
+    return build_packet(MQTT_AUTH, var_buf, pos, out_len);
+}
+
+/* v5 DISCONNECT with Reason Code + Properties.
+ * MBFuzzer equivalent: generators/disconnect.py with reason codes. */
+unsigned char *mqtt_build_disconnect_v5(unsigned char reason_code, size_t *out_len) {
+    unsigned char var_buf[MQTT_MAX_PACKET_SIZE];
+    int pos = 0;
+    int prop_start;
+
+    /* Reason Code */
+    var_buf[pos++] = reason_code;
+
+    /* Properties: Session Expiry Interval, Reason String, User Property */
+    prop_start = v5_prop_start(var_buf, sizeof(var_buf), &pos);
+    if (prop_start > 0) {
+        v5_prop_u32(var_buf, sizeof(var_buf), &pos, 0x11, 0);       /* Session Expiry Interval */
+        v5_prop_utf8(var_buf, sizeof(var_buf), &pos, 0x1f, "normal"); /* Reason String */
+        v5_prop_finish(var_buf, prop_start, pos);
+    }
+
+    return build_packet(MQTT_DISCONNECT, var_buf, pos, out_len);
+}
+
 /* Simple 2-byte-packet-id response packets */
 static unsigned char *build_ack_packet(unsigned char type_flags,
                                         uint16_t packet_id,
@@ -538,6 +768,34 @@ static const mqtt_seed_template_t MQTT_SEED_TEMPLATES[] = {
     /* Template 15: Topic churn and subscription churn */
     {"topic_churn_boundary", 6,
      {"CONNECT", "SUBSCRIBE", "SUBSCRIBE", "UNSUBSCRIBE", "PUBLISH", "DISCONNECT"}},
+
+    /* Sync MBFuzzer: v5 seed templates exercising v5-only features.
+     * These use CONNECT_V5, AUTH, and DISCONNECT_V5 to reach broker
+     * code paths that v3.1.1-only seeds can never hit:
+     *   - handle__auth() (v5 only — entirely unreachable without this)
+     *   - property__read_all() in v5 CONNECT path
+     *   - handle__disconnect() with reason code + properties
+     *   - subscription options (No Local, Retain Handling) in SUBSCRIBE */
+    {"v5_connect_sub_pub", 5,
+     {"CONNECT_V5", "SUBSCRIBE", "PUBLISH", "PINGREQ", "DISCONNECT_V5"}},
+
+    {"v5_auth_exchange", 5,
+     {"CONNECT_V5", "AUTH", "AUTH", "PINGREQ", "DISCONNECT_V5"}},
+
+    {"v5_pub_properties", 7,
+     {"CONNECT_V5", "SUBSCRIBE", "PUBLISH", "PUBLISH", "PUBLISH", "PINGREQ", "DISCONNECT_V5"}},
+
+    {"v5_qos2_flow", 7,
+     {"CONNECT_V5", "PUBLISH", "PUBREC", "PUBREL", "PUBCOMP", "PINGREQ", "DISCONNECT_V5"}},
+
+    {"v5_disconnect_reason", 4,
+     {"CONNECT_V5", "SUBSCRIBE", "PUBLISH", "DISCONNECT_V5"}},
+
+    {"v5_mixed_full", 8,
+     {"CONNECT_V5", "SUBSCRIBE", "PUBLISH", "AUTH", "UNSUBSCRIBE", "PUBLISH", "PINGREQ", "DISCONNECT_V5"}},
+
+    {"v5_reconnect_edge", 5,
+     {"CONNECT_V5", "DISCONNECT_V5", "CONNECT_V5", "PINGREQ", "DISCONNECT_V5"}},
 
     {NULL, 0, {NULL}}
 };
@@ -970,6 +1228,21 @@ static unsigned char *build_packet_by_type(const char *type_name,
     }
     if (strcasecmp(type_name, "PUBCOMP") == 0) {
         return mqtt_build_pubcomp(pkt_id, out_len);
+    }
+    if (strcasecmp(type_name, "AUTH") == 0) {
+        return mqtt_build_auth(0x18, "SCRAM-SHA-256", "auth_data_fuzz", out_len);
+    }
+    if (strcasecmp(type_name, "DISCONNECT_V5") == 0) {
+        return mqtt_build_disconnect_v5(0x00, out_len);
+    }
+    if (strcasecmp(type_name, "CONNECT_V5") == 0) {
+        return mqtt_build_connect_v5(
+            client, 1, 60,
+            has_will ? "will/v5/topic" : NULL,
+            has_will ? "will_v5_msg" : NULL,
+            has_auth ? "fuzz_v5_user" : NULL,
+            has_auth ? "fuzz_v5_pass" : NULL,
+            out_len);
     }
 
     /* Unknown type — return a PINGREQ as fallback */

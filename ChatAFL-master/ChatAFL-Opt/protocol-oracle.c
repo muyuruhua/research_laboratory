@@ -1465,6 +1465,18 @@ int oracle_check_mqtt(
         resp_buffer_trustworthy = 0;
     }
 
+    /* Pre-scan response for CONNACK: if broker sent any CONNACK, a CONNECT
+     * was processed — retroactively acknowledge has_connect BEFORE the
+     * per-request loop, so PUBLISH/SUBSCRIBE after CONNECT don't false-trigger
+     * auth-bypass (critical for anonymous fuzzing setups where fuzzed CONNECT
+     * bytes fail the magic-byte check). */
+    if (resp_len >= 4) {
+        uint8_t first_resp = (response[0] >> 4) & 0x0F;
+        if (first_resp == 2) { /* CONNACK */
+            has_connect = 1;
+        }
+    }
+
     for (int i = 0; i < req_count; i++) {
         const unsigned char *req = requests[i];
         unsigned int rlen = req_lens[i];
@@ -1681,21 +1693,6 @@ int oracle_check_mqtt(
 
             default:
                 break;
-        }
-    }
-
-    /* Check CONNACK response for anomalies */
-    if (resp_len >= 4) {
-        uint8_t resp_type = (response[0] >> 4) & 0x0F;
-        if (resp_type == 2) { /* CONNACK */
-            uint8_t return_code = response[3];
-            /* If CONNECT was sent with bad credentials but got accepted */
-            if (return_code == 0 && !has_connect) {
-                oracle_add_violation(result, ORACLE_SEV_HIGH,
-                    ORACLE_CAT_AUTH_BYPASS,
-                    "MQTT: CONNACK success without valid CONNECT",
-                    "CVE-2023-34488", -1);
-            }
         }
     }
 

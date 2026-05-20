@@ -1,0 +1,12 @@
+{application,vmq_web_ui,
+             [{description,"VerneMQ Web Interface"},
+              {vsn,"2.0.0-rc1+build.2510.reff0e6dc15"},
+              {registered,[]},
+              {applications,[kernel,stdlib,cowboy]},
+              {mod,{vmq_web_ui,[]}},
+              {maintainers,[]},
+              {licenses,["Apache 2.0"]},
+              {links,[]},
+              {env,[{vmq_config_enabled,true},
+                    {vmq_metrics_mfa,{vmq_web_ui_sup,metrics,[]}}]},
+              {modules,[vmq_web_ui,vmq_web_ui_cli,vmq_web_ui_sup]}]}.

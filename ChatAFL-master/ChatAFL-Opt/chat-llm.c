@@ -67,13 +67,13 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
     llm_last_prompt_tokens = 0;
     llm_last_completion_tokens = 0;
     char *url = NULL;
-    if (strcmp(model, "gpt-4o") == 0)
+    if (strcmp(model, "gpt-5.4") == 0) //https://code.b886.top/v1
     {
-        url = "https://lingyunapi.com/v1/completions";
+        url = "https://code.b886.top/v1/completions";
     }
     else
     {
-        url = "https://lingyunapi.com/v1/chat/completions";
+        url = "https://code.b886.top/v1/chat/completions";
     }
     const char *api_key = getenv("KEY");
     if (!api_key || api_key[0] == '\0') {
@@ -92,13 +92,13 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
     char *content_header = "Content-Type: application/json";
     char *accept_header = "Accept: application/json";
     char *data = NULL;
-    if (strcmp(model, "gpt-4o") == 0)
+    if (strcmp(model, "gpt-5.4") == 0)
     {
-        asprintf(&data, "{\"model\": \"gpt-4o\", \"prompt\": \"%s\", \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
+        asprintf(&data, "{\"model\": \"gpt-5.4\", \"prompt\": \"%s\", \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
     }
     else
     {
-        asprintf(&data, "{\"model\": \"gpt-4o-mini\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
+        asprintf(&data, "{\"model\": \"gpt-5.4-mini\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
     }
     
     // DEBUG: Print request data for hypothesis system debugging
@@ -151,7 +151,7 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
                     const char *data;
 
                     // The answer begins with a newline character, so we remove it
-                    if (strcmp(model, "gpt-4o") == 0)
+                    if (strcmp(model, "gpt-5.4") == 0)
                     {
                         json_object *jobj4 = json_object_object_get(first_choice, "text");
                         data = json_object_get_string(jobj4);
@@ -506,7 +506,7 @@ char *llm_handle_plateau(const char *protocol_name, const char *examples,
     json_object_put(messages_array);
     if (!prompt) return NULL;
 
-    char *resp = chat_with_llm(prompt, "gpt-4o-mini", STALL_RETRIES, 1.2);
+    char *resp = chat_with_llm(prompt, "gpt-5.4-mini", STALL_RETRIES, 1.2);
     free(prompt);
     if (!resp) return NULL;
 
@@ -1660,7 +1660,7 @@ void get_protocol_message_types(char *state_prompt, khash_t(strSet) * states_set
 
     for (int i = 0; i < CONFIDENT_TIMES; i++)
     {
-        char *state_answer = chat_with_llm(state_prompt, "gpt-4o-mini", MESSAGE_TYPE_RETRIES, 0.5);
+        char *state_answer = chat_with_llm(state_prompt, "gpt-5.4-mini", MESSAGE_TYPE_RETRIES, 0.5);
         if (state_answer == NULL)
             continue;
         // printf("## Answer from LLM:\n %s\n", state_answer);
@@ -2257,7 +2257,7 @@ char *enrich_sequence(char *sequence, khash_t(strSet) *missing_message_types, co
     free(content);
     free(missing_fields_seq);
 
-    char *response = chat_with_llm(prompt, "gpt-4o-mini", ENRICHMENT_RETRIES, 0.5);
+    char *response = chat_with_llm(prompt, "gpt-5.4-mini", ENRICHMENT_RETRIES, 0.5);
 
     free(prompt);
 
@@ -2319,7 +2319,7 @@ char *enrich_sequence(char *sequence, khash_t(strSet) *missing_message_types, co
 //     // char *prompt = NULL;
 //     // asprintf(&prompt, "user: The colors of flowers:\\nassistant: red and yellow.\\nuser: Other colors are:");
 //     // printf("## Prompt to LLM:\n %s\n", prompt);
-//     // char *answer = chat_with_llm(prompt, "gpt-4o-mini");
+//     // char *answer = chat_with_llm(prompt, "gpt-5.4-mini");
 //     // printf("## Answer from LLM:\n %s\n", answer);
 
 //     char *protocol_name = argv[1];
@@ -2330,11 +2330,11 @@ char *enrich_sequence(char *sequence, khash_t(strSet) *missing_message_types, co
 //     {
 
 //         char *templates_prompt = construct_prompt_for_templates(protocol_name);
-//         char *templates_answer = chat_with_llm(templates_prompt, "gpt-4o-mini");
+//         char *templates_answer = chat_with_llm(templates_prompt, "gpt-5.4-mini");
 //         // printf("## Answer from LLM:\n %s\n", templates_answer);
 //         char *remaining_prompt = construct_prompt_for_remaining_templates(protocol_name, templates_prompt, templates_answer);
 //         // printf("remaining prompt is:\n %s\n", remaining_prompt);
-//         char *remaining_templates = chat_with_llm(remaining_prompt, "gpt-4o-mini");
+//         char *remaining_templates = chat_with_llm(remaining_prompt, "gpt-5.4-mini");
 //         // printf("## Remaining templates:\n %s\n", remaining_templates);
 
 //         char *combined_templates = NULL;

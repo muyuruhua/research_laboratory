@@ -601,22 +601,20 @@ if [[ -z "${CHATAFL_MQTT_BROKERS:-}" ]] && is_mqtt_target "$DOCIMAGE"; then
     fi
     # Wait for port ready with multiple probe strategies
     local _ok=0
+    # Brief initial wait for container init to accept exec (esp. Java-based brokers)
+    sleep 2
     for _w in $(seq 1 "$_iters"); do
-      # Strategy 1: nc -z (works if netcat installed)
-      if docker exec "$_cname" sh -c "nc -z 127.0.0.1 $_port" 2>/dev/null; then
-        _ok=1; break
-      fi
-      # Strategy 2: bash /dev/tcp (works in bash-based images)
+      # Strategy 1: bash /dev/tcp (built-in, no extra package needed)
       if docker exec "$_cname" bash -c "echo >/dev/tcp/127.0.0.1/$_port" 2>/dev/null; then
         _ok=1; break
       fi
-      # Strategy 3: timeout+cat (works in sh-only images)
-      if timeout 1 docker exec "$_cname" sh -c "cat < /dev/null > /dev/tcp/127.0.0.1/$_port" 2>/dev/null; then
+      # Strategy 2: nc -z (works if netcat installed)
+      if docker exec "$_cname" sh -c "nc -z 127.0.0.1 $_port" 2>/dev/null; then
         _ok=1; break
       fi
       # Progress every 30s
       if (( _w % 60 == 0 )); then
-        printf "${LOG_TAG}: [P0] %s still starting... (%ds/%ds)\n" "$_name" $((_w/2)) "$_timeout"
+        printf "${LOG_TAG}: [P0] %s still starting... (%ds/%ds)\n" "$_name" $(( (_w+4)/2 )) "$_timeout"
       fi
       sleep 0.5
     done
@@ -632,19 +630,23 @@ if [[ -z "${CHATAFL_MQTT_BROKERS:-}" ]] && is_mqtt_target "$DOCIMAGE"; then
     fi
   }
 
-  # Launch available heterogeneous brokers (matching MBFuzzer's 6 implementations)
-  # 1. NanoMQ — lightweight C broker (fast start, 60s timeout)
-  _launch_hetero_broker "emqx/nanomq:latest" "nanomq" "mqtt-nanomq" "1883" "" "" "60"
-  # 2. EMQX — Erlang broker (cold start ~60-90s, give 180s)
-  _launch_hetero_broker "emqx/emqx:5.0.12" "emqx" "mqtt-emqx" "1883" "" "" "180"
-  # 3. FlashMQ — C++ broker (built locally from halfgaar/FlashMQ source)
-  _launch_hetero_broker "flashmq-local:latest" "flashmq" "mqtt-flashmq" "1883" "" "" "60"
-  # 4. VerneMQ — Erlang broker (cold start ~60-90s, give 180s)
-  _launch_hetero_broker "vernemq/vernemq:latest" "vernemq" "mqtt-vernemq" "1883" "" \
+  # Launch available heterogeneous brokers (EXACT match with MBFuzzer's 6 implementations)
+  # MBFuzzer refs: Mosquitto=v2.0.18, NanoMQ=236c9c5, EMQX=v5.6.0, FlashMQ=d82cba5, VerneMQ=f0e6dc15, HiveMQ=v4.24.0
+  # All images are built locally from benchmark/scripts/execution/dockerfiles/
+  # Build with:  for d in nanomq emqx flashmq vernemq hivemq; do
+  #                docker build -t chatafl-${d}:<tag> benchmark/scripts/execution/dockerfiles/${d}/
+  #              done
+  # 1. NanoMQ — MBFuzzer git:236c9c5; built from source at exact commit
+  _launch_hetero_broker "chatafl-nanomq:236c9c5" "nanomq" "mqtt-nanomq" "1883" "" "" "60"
+  # 2. EMQX — MBFuzzer v5.6.0; wrapper around emqx/emqx:5.6.0 with anonymous auth
+  _launch_hetero_broker "chatafl-emqx:5.6.0" "emqx" "mqtt-emqx" "1883" "" "" "180"
+  # 3. FlashMQ — MBFuzzer git:d82cba5 (v1.12.1); built from synced source
+  _launch_hetero_broker "chatafl-flashmq:d82cba5" "flashmq" "mqtt-flashmq" "1883" "" "" "60"
+  # 4. VerneMQ — MBFuzzer EXACT: 2.0.0-rc1-5-gf0e6dc15 (extracted from LFS tarball)
+  _launch_hetero_broker "chatafl-vernemq:f0e6dc15" "vernemq" "mqtt-vernemq" "1883" "" \
     "-e DOCKER_VERNEMQ_ALLOW_ANONYMOUS=on -e DOCKER_VERNEMQ_ACCEPT_EULA=yes" "180"
-  # 5. HiveMQ CE — Java broker (cold start ~90-120s, give 180s)
-  _launch_hetero_broker "hivemq/hivemq-ce:latest" "hivemq" "mqtt-hivemq" "1883" "" \
-    "-e HIVEMQ_ALLOW_ALL_CLIENTS=true" "180"
+  # 5. HiveMQ — MBFuzzer v4.24.0 Enterprise; wrapper around hivemq/hivemq4:4.24.0
+  _launch_hetero_broker "chatafl-hivemq:4.24.0" "hivemq" "mqtt-hivemq" "1883" "" "" "180"
   # (6th = Mosquitto itself, the SUT, already running as the primary target)
 
   if [[ ${#HETERO_CONTAINERS[@]} -gt 0 ]]; then
@@ -666,6 +668,7 @@ DIAG_PTRACE_FLAGS=""
 if [[ "${CHATAFL_ENABLE_DIAG_PTRACE:-1}" == "1" ]]; then
   DIAG_PTRACE_FLAGS=" --cap-add SYS_PTRACE --security-opt seccomp=unconfined"
 fi
+
 
 short_container_id() {
   local container_id="$1"
@@ -718,7 +721,9 @@ for i in $(seq 1 $RUNS); do
   # Enable Grammar Hypothesis system only for chatafl-opt
   if [[ "$FUZZER" == "chatafl-opt" ]]; then
     # Volume挂载本地代码并在容器内重新编译
-    id=$(docker run --cpus=1 \
+    # --memory=6g prevents OOM-kill (exit 137) under concurrent fuzzer + broker fleet load
+    # --init ensures proper signal handling and zombie reaping (tini)
+    id=$(docker run --cpus=1 --memory=6g \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
       -e CHATAFL_HYPOTHESIS=1 \
@@ -735,7 +740,7 @@ for i in $(seq 1 $RUNS); do
         echo '[DEV] Compilation complete, MD5: '\$(md5sum grammar-hypothesis.c | cut -d' ' -f1) && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   elif [[ "$FUZZER" == "chatafl" ]]; then
-    id=$(docker run --cpus=1 \
+    id=$(docker run --cpus=1 --memory=6g \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
       ${MQTT_FLAGS} \
@@ -748,7 +753,7 @@ for i in $(seq 1 $RUNS); do
         cd /home/ubuntu/chatafl && make clean && make -j\$(nproc) && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   elif [[ "$FUZZER" == "chatafl-cl1" ]]; then
-    id=$(docker run --cpus=1 \
+    id=$(docker run --cpus=1 --memory=6g \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
       ${MQTT_FLAGS} \
@@ -761,7 +766,7 @@ for i in $(seq 1 $RUNS); do
         cd /home/ubuntu/chatafl-cl1 && make clean && make -j\$(nproc) && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   elif [[ "$FUZZER" == "chatafl-cl2" ]]; then
-    id=$(docker run --cpus=1 \
+    id=$(docker run --cpus=1 --memory=6g \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
       ${MQTT_FLAGS} \
@@ -774,7 +779,7 @@ for i in $(seq 1 $RUNS); do
         cd /home/ubuntu/chatafl-cl2 && make clean && make -j\$(nproc) && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   else
-    id=$(docker run --cpus=1 ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
+    id=$(docker run --cpus=1 --memory=6g ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   fi
   require_container_id "$id" "fuzz container run #${i}"
   cids+=("$id")
@@ -786,6 +791,7 @@ for i in $(seq 1 $RUNS); do
     "reason=" \
     "started_at=$(date -Iseconds)"
   launch_watchdog "$id" "$archive_name"
+  sleep 5
 done
 
 dlist="" #docker list

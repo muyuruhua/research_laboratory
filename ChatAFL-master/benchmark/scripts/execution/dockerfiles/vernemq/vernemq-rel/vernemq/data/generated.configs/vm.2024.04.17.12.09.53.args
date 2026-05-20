@@ -1,0 +1,11 @@
++P 256000
++e 256000
+-env ERL_CRASH_DUMP ./log/erl_crash.dump
+-env ERL_FULLSWEEP_AFTER 0
++Q 262144
++A 64
+-setcookie vmq
+-name VerneMQ@127.0.0.1
++K true
++W w
+-smp enable

@@ -44,7 +44,7 @@ RUN groupadd ubuntu && \
 
 RUN chmod 777 /tmp
 
-RUN pip3 install gcovr==4.2
+RUN pip3 install gcovr==7.2
 
 # Use ubuntu as default username
 USER ubuntu
@@ -91,14 +91,17 @@ ENV AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
 
 RUN mkdir $WORKDIR
 
-# Set up environment variables for ASAN
-ENV ASAN_OPTIONS='abort_on_error=1:symbolize=0:detect_leaks=0:detect_stack_use_after_return=1:detect_container_overflow=0:poison_array_cookie=0:malloc_fill_byte=0:max_malloc_fill_size=16777216'
+# Set up environment variables for ASAN (P0 — aggressive bug detection)
+# Sync MBFuzzer: aggressive ASAN options match mosquitto-v2.0.18 profile
+ENV ASAN_OPTIONS='abort_on_error=1:symbolize=0:detect_leaks=0:detect_stack_use_after_return=1:detect_container_overflow=1:poison_array_cookie=1:malloc_fill_byte=0:max_malloc_fill_size=16777216:check_initialization_order=1:strict_init_order=1:alloc_dealloc_mismatch=1:strict_string_checks=1'
 
-# Download and compile Mosquitto for fuzzing (v1.6.8 - stable fuzzing target)
+# Sync MBFuzzer: Mosquitto v2.0.18 (was v1.6.8)
+# MBFuzzer uses: wget https://github.com/eclipse/mosquitto/archive/refs/tags/v2.0.18.tar.gz
+# We use git checkout v2.0.18 for consistency with toolchain
 RUN cd $WORKDIR && \
     git clone https://github.com/eclipse/mosquitto.git && \
     cd mosquitto && \
-    git checkout v1.6.8 && \
+    git checkout v2.0.18 && \
     CC=${AFLNET}/afl-clang-fast \
     cmake -DWITH_TLS=OFF -DWITH_PERSISTENCE=OFF \
           -DDOCUMENTATION=OFF -DWITH_WEBSOCKETS=OFF \
@@ -110,7 +113,7 @@ RUN cd $WORKDIR && \
 RUN cd $WORKDIR && \
     git clone https://github.com/eclipse/mosquitto.git mosquitto-gcov && \
     cd mosquitto-gcov && \
-    git checkout v1.6.8 && \
+    git checkout v2.0.18 && \
     cmake -DWITH_TLS=OFF -DWITH_PERSISTENCE=OFF \
           -DDOCUMENTATION=OFF -DWITH_WEBSOCKETS=OFF \
           -DCMAKE_C_FLAGS="-fprofile-arcs -ftest-coverage" \

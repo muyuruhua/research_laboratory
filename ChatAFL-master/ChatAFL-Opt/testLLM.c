@@ -19,7 +19,7 @@
 
 /*
 大模型调用示例
-导入大模型key：export KEY="sk-Ange3qwa3xwQnG9IqH8srU6tMZeXqIiDJxGjVpqPM7ahJgSS"
+导入大模型key：export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI"
 执行命令：gcc -I/opt/homebrew/include -L/opt/homebrew/lib -o testLLM testLLM.c -lcurl -ljson-c -Wall -g && ./testLLM
 执行命令：gcc -o testLLM testLLM.c -lcurl -ljson-c -Wall -g && ./testLLM
 */
@@ -58,13 +58,13 @@ char *chat_with_llm(const char *prompt, const char *model, int tries, float temp
     char *url = NULL;
     printf("[DEBUG] model: %s\n", model);
     printf("[DEBUG] prompt: %s\n", prompt);
-    if (strcmp(model, "gpt-4o") == 0)
+    if (strcmp(model, "gpt-5.4") == 0)
     {
-        url = "https://lingyunapi.com/v1/completions";
+        url = "https://code.b886.top/v1/completions";
     }
     else
     {
-        url = "https://lingyunapi.com/v1/chat/completions";
+        url = "https://code.b886.top/v1/chat/completions";
     }
     const char *api_key = getenv("KEY");
     if (!api_key) {
@@ -76,13 +76,13 @@ char *chat_with_llm(const char *prompt, const char *model, int tries, float temp
     char *content_header = "Content-Type: application/json";
     char *accept_header = "Accept: application/json";
     char *data = NULL;
-    if (strcmp(model, "gpt-4o") == 0)
+    if (strcmp(model, "gpt-5.4") == 0)
     {
-        asprintf(&data, "{\"model\": \"gpt-4o\", \"prompt\": \"%s\", \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
+        asprintf(&data, "{\"model\": \"gpt-5.4\", \"prompt\": \"%s\", \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
     }
     else
     {
-        asprintf(&data, "{\"model\": \"gpt-4o-mini\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
+        asprintf(&data, "{\"model\": \"gpt-5.4-mini\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
     }
     printf("[DEBUG] url: %s\n", url);
     printf("[DEBUG] data: %s\n", data);
@@ -179,7 +179,7 @@ char *chat_with_llm(const char *prompt, const char *model, int tries, float temp
 
 int main() {
     char* messages = "[{\"role\": \"user\", \"content\": \"You are an expert in networking protocols. For the RTSP protocol, the typical sequence is: DESCRIBE, SETUP, PLAY. Please explain where SET_PARAMETER and TEARDOWN should be placed in this sequence.\"}]";
-    char* model ="gpt-4o-mini";
+    char* model ="gpt-5.4-mini";
     printf("Sending request to LLM API...\n");
     char* response = chat_with_llm(messages, model, 3, 0.7);
     if (response) {

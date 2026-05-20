@@ -1,0 +1,63 @@
+%% Public types
+
+-type obfuscated() :: fun(() -> iodata()).
+-type reconnect_sleep() :: no_reconnect | integer().
+-type registered_name() :: {local, atom()} | {global, term()} | {via, atom(), term()}.
+
+-type option() :: {host, string() | {local, string()}} |
+                  {port, inet:port_number()} |
+                  {database, integer()} |
+                  {username, iodata() | obfuscated() | undefined} |
+                  {password, iodata() | obfuscated() | undefined} |
+                  {reconnect_sleep, reconnect_sleep()} |
+                  {connect_timeout, integer()} |
+                  {socket_options, list()} |
+                  {tls, [ssl:tls_client_option()]} |
+                  {name, registered_name()} |
+                  {sentinel, list()}.
+
+-type options() :: [option()].
+-type server_args() :: options().               % for backwards compatibility
+
+-type return_value() :: undefined | binary() | [binary() | nonempty_list()].
+
+-type pipeline() :: [iolist()].
+
+-type channel() :: binary().
+
+%% Continuation data is whatever data returned by any of the parse
+%% functions. This is used to continue where we left off the next time
+%% the user calls parse/2.
+-type continuation_data() ::
+        start |
+        {status_continue, Acc :: binary()} |
+        {error_continue, Acc :: binary()} |
+        {bulk_size, Acc :: binary()} |
+        {multibulk_size, Acc :: binary()} |
+        {bulk_continue, BytesLeft :: integer(), Acc :: binary()} |
+        {multibulk_continue, NumLeft :: integer(), Acc :: list()}.
+
+%% Internal types
+-ifdef(OTP_RELEASE). % OTP >= 21
+-type eredis_queue() :: queue:queue().
+-else.
+-ifdef(namespaced_types). % Macro defined in rebar.conf if OTP >= 17
+-type eredis_queue() :: queue:queue().
+-else.
+-type eredis_queue() :: queue().
+-endif.
+-endif.
+
+%% Internal parser state. Is returned from parse/2 and must be
+%% included on the next calls to parse/2.
+-record(pstate, {states = [] :: [continuation_data()]}).
+
+-define(NL, "\r\n").
+-define(NL_KEY, eredis_newline_pattern).
+-define(SOCKET_MODE, binary).
+-define(SOCKET_OPTS, [{packet, raw}, {reuseaddr, false},
+                      {keepalive, false}, {send_timeout, ?SEND_TIMEOUT}]).
+-define(SOCKET_ACTIVE, 10).
+
+-define(RECV_TIMEOUT, 5000).
+-define(SEND_TIMEOUT, 5000).

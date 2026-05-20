@@ -1,0 +1,10 @@
+{application,swc,
+             [{description,"An OTP library for Server Wide Clocks"},
+              {vsn,"1.0.0"},
+              {registered,[]},
+              {applications,[kernel,stdlib]},
+              {env,[]},
+              {modules,[swc_dotkeymap,swc_kv,swc_node,swc_vv,swc_watermark]},
+              {contributors,["Ricardo Goncalves <tome.wave@gmail.com>"]},
+              {licenses,[]},
+              {links,[]}]}.
