@@ -812,7 +812,7 @@ printf "\n${LOG_TAG}: Waiting for the following containers to stop:${short_dlist
 for id in ${cids[@]}; do
   printf "\n${LOG_TAG}: You can check logs by: docker logs -f %s" "$(short_container_id "$id")"
 done
-printf "\n"
+printf "\n${LOG_TAG}: You can stop all containers by: docker stop%s\n" "${short_dlist}"
 if [ -n "${dlist}" ]; then
   docker wait ${dlist} > /dev/null
 fi
