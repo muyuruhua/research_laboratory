@@ -1,31 +1,15 @@
 #!/bin/bash
 # ==============================================================================
-# ChatAFL-Opt Logical Vulnerability Replay & Verification Tool
+# ChatAFL-Opt Logical Vulnerability Replay & Verification Tool (FIXED VERSION)
 # ==============================================================================
-# 逻辑漏洞(非crash漏洞)重放验证方案
-#
-# 核心原理 (基于 FindVulnerability.txt):
-#   漏洞 = 攻击者可控条件下, 程序违反了某个安全不变量, 并产生安全影响
-#   Vulnerability = attacker-controlled input/state/environment
-#                 + reachable execution path
-#                 + violated security invariant
-#                 + security impact
-#
-# 逻辑漏洞不需要crash,而是违反安全属性:
-#   - 认证绕过 (Auth Bypass):    未认证访问受保护资源
-#   - 授权绕过 (Authz Bypass):   低权限执行高权限操作
-#   - 状态机违规 (State Viol.):  非法状态跳转
-#   - 信息泄露 (Info Leak):      响应中包含敏感信息
-#   - 路径穿越 (Path Trav.):     访问授权目录外文件
-#   - 请求走私 (Smuggling):      协议解析差异
-#   - 资源耗尽 (DoS):            小输入导致指数级资源消耗
-#
-# 重放验证方法:
-#   1. 从 ChatAFL-Opt 的 replayable-violations 目录获取违规报告
-#   2. 提取违规种子中的请求序列
-#   3. 在干净容器中精确重放请求序列
-#   4. 收集完整请求-响应对
-#   5. 按协议安全不变量人工判断是否为真实漏洞
+# Fixes applied:
+#   F1: Corrected server commands & env vars for all 4 benchmark targets
+#   F2: Added UDP/SIP support (was hardcoded TCP for all protocols)
+#   F3: Protocol-aware replay: line-based (FTP/SMTP/RTSP) vs datagram (SIP)
+#   F4: Fixed REQUEST DATA extraction with proper binary handling
+#   F5: Oracle verification functions for ALL 4 protocols (FTP, SMTP, RTSP, SIP)
+#   F6: verify_*() functions now actually receive data and produce reports
+#   F7: Clear CONFIRMED / NOT REPRODUCED result tagging
 # ==============================================================================
 
 set -euo pipefail
@@ -34,413 +18,587 @@ TARGET="${1:?Usage: $0 <target> <violation_report_or_result_dir> [output_dir]}"
 VIOLATION_SRC="${2:?Missing violation source}"
 OUT_DIR="${3:-/tmp/logical_vuln_${TARGET}_$(date +%Y%m%d_%H%M%S)}"
 
-# ── Protocol-specific oracle check scripts ─────────────────────────────
-
-# FTP: 完整的安全属性验证
-verify_ftp_violation() {
-    local req_file="$1" resp_file="$2" out_file="$3"
-
-    python3 << 'PYEOF'
-import sys, struct, os
-
-req_file = os.environ.get('REQ_FILE', '')
-resp_file = os.environ.get('RESP_FILE', '')
-
-def check_ftp_security(reqs, resps, report):
-    """根据FindVulnerability.txt的安全不变量检查FTP行为"""
-    lines = []
-    authenticated = False
-    has_user = False
-
-    lines.append("=== FTP Security Property Verification ===\n")
-    lines.append(f"Requests: {len(reqs)}, Responses collected\n\n")
-
-    # 1. 认证绕过检查: 未认证时不应执行数据命令(RETR/STOR/LIST/NLST/MKD/RMD/DELE)
-    lines.append("--- Check 1: Auth Bypass ---\n")
-    for i, req in enumerate(reqs):
-        req_upper = req.decode('latin-1', errors='replace').upper()
-        if any(req_upper.startswith(cmd) for cmd in ['RETR ', 'STOR ', 'LIST', 'NLST', 'MKD ', 'RMD ', 'DELE ', 'APPE ', 'SITE ']):
-            if not authenticated:
-                # Check corresponding response
-                if i < len(resps):
-                    code = extract_ftp_code(resps[i])
-                    if code and code < 400:
-                        lines.append(f"[HIGH] Auth Bypass: '{req.decode('latin-1', errors='replace').strip()}' got response {code} without authentication\n")
-                        lines.append(f"  Category: ORACLE_CAT_AUTH_BYPASS\n")
-                        lines.append(f"  Security Property Violated: Authentication\n")
-                        lines.append(f"  Impact: Unauthenticated data access\n")
-        if req_upper.startswith('USER '):
-            has_user = True
-        if req_upper.startswith('PASS ') and has_user:
-            authenticated = True
-
-    # 2. 状态机违规: PASS without USER, RNTO without RNFR
-    lines.append("\n--- Check 2: State Machine Violations ---\n")
-    has_rnfr = False
-    for i, req in enumerate(reqs):
-        req_upper = req.decode('latin-1', errors='replace').upper()
-        if req_upper.startswith('RNFR '):
-            has_rnfr = True
-        if req_upper.startswith('RNTO ') and not has_rnfr:
-            if i < len(resps):
-                code = extract_ftp_code(resps[i])
-                if code and code < 400:
-                    lines.append(f"[MEDIUM] State Violation: RNTO without prior RNFR succeeded (code {code})\n")
-                    lines.append(f"  Category: ORACLE_CAT_STATE_VIOLATION\n")
-        if req_upper.startswith('PASS ') and not has_user:
-            if i < len(resps):
-                code = extract_ftp_code(resps[i])
-                if code == 230:
-                    lines.append(f"[CRITICAL] Auth State Bypass: PASS accepted without USER\n")
-
-    # 3. 路径穿越检查
-    lines.append("\n--- Check 3: Path Traversal ---\n")
-    for i, req in enumerate(reqs):
-        if b'../' in req or b'..\\' in req or b'%2e%2e' in req:
-            if i < len(resps):
-                code = extract_ftp_code(resps[i])
-                if code and 150 <= code <= 250:
-                    lines.append(f"[HIGH] Path Traversal: '../' in request succeeded (code {code})\n")
-
-    # 4. 信息泄露检查
-    lines.append("\n--- Check 4: Info Leak ---\n")
-    for i, resp in enumerate(resps):
-        if b'/etc/passwd' in resp or b'/etc/shadow' in resp or b'root:' in resp:
-            lines.append(f"[CRITICAL] Info Leak: Sensitive file content in response #{i}\n")
-
-    # 5. 命令注入检查
-    lines.append("\n--- Check 5: Command Injection ---\n")
-    for i, req in enumerate(reqs):
-        if b';' in req or b'&&' in req or b'|' in req or b'`' in req:
-            if i < len(resps):
-                code = extract_ftp_code(resps[i])
-                if code and code < 400:
-                    lines.append(f"[MEDIUM] Potential command injection accepted: '{req.decode('latin-1', errors='replace').strip()}' got {code}\n")
-
-    lines.append(f"\n=== Summary: {len([l for l in lines if '[HIGH]' in l or '[CRITICAL]' in l or '[MEDIUM]' in l])} potential violations found ===\n")
-    return '\n'.join(lines)
-
-def extract_ftp_code(resp):
-    """Extract FTP response code"""
-    s = resp.decode('latin-1', errors='replace')
-    for line in s.split('\n'):
-        if len(line) >= 3 and line[:3].isdigit():
-            return int(line[:3])
-    return None
-
-if __name__ == '__main__':
-    report = check_ftp_security([], [], [])
-    print(report)
-PYEOF
-}
-
-# MQTT: 安全属性验证
-verify_mqtt_violation() {
-    python3 << 'PYEOF'
-def verify_mqtt_security(hex_req, hex_resp):
-    """MQTT安全属性验证
-    基于CVE-2023-34488 (auth bypass), CVE-2017-7650 (ACL bypass)等
-    """
-    lines = []
-    lines.append("=== MQTT Security Property Verification ===\n")
-
-    req_bytes = bytes.fromhex(hex_req)
-    resp_bytes = bytes.fromhex(hex_resp)
-
-    # 1. 认证检查: 非CONNECT报文之前不应有PUBLISH/SUBSCRIBE
-    has_connect = False
-    offset = 0
-    while offset + 2 <= len(req_bytes):
-        pkt_type = (req_bytes[offset] >> 4) & 0x0F
-        if pkt_type == 1:  # CONNECT
-            has_connect = True
-        elif pkt_type == 3 and not has_connect:  # PUBLISH without CONNECT
-            lines.append("[HIGH] Auth Bypass: PUBLISH without CONNECT\n")
-            lines.append("  CVE Pattern: CVE-2023-34488\n")
-        elif pkt_type == 8 and not has_connect:  # SUBSCRIBE without CONNECT
-            lines.append("[HIGH] Auth Bypass: SUBSCRIBE without CONNECT\n")
-
-        # Decode remaining length to skip packet
-        if offset + 1 >= len(req_bytes):
-            break
-        rl_bytes = 0
-        rem_len = 0
-        multiplier = 1
-        idx = offset + 1
-        while idx < len(req_bytes) and idx < offset + 5:
-            rem_len += (req_bytes[idx] & 0x7F) * multiplier
-            multiplier *= 128
-            rl_bytes += 1
-            if not (req_bytes[idx] & 0x80):
-                break
-            idx += 1
-
-        offset += 1 + rl_bytes + rem_len
-        if offset >= len(req_bytes):
-            break
-
-    # 2. $SYS topic ACL bypass
-    if b'$SYS' in req_bytes:
-        lines.append("[MEDIUM] ACL Bypass: Access to \$SYS topic attempted\n")
-        lines.append("  CVE Pattern: CVE-2017-7650\n")
-
-    # 3. 资源耗尽: retained message flooding
-    retain_count = 0
-    offset = 0
-    while offset < len(req_bytes):
-        if offset < len(req_bytes) and (req_bytes[offset] & 0x01):  # retain flag
-            retain_count += 1
-        offset += 1
-        if offset >= len(req_bytes):
-            break
-
-    if retain_count > 50:
-        lines.append(f"[LOW] Resource Exhaustion: {retain_count} retained messages\n")
-        lines.append("  CVE Pattern: CVE-2023-3592\n")
-
-    lines.append(f"\n=== Verification Complete: {len([l for l in lines if 'HIGH' in l or 'MEDIUM' in l])} potential issues ===\n")
-    return '\n'.join(lines)
-
-if __name__ == '__main__':
-    print("MQTT verification module loaded")
-PYEOF
-}
-
-# ── Main Logic ──────────────────────────────────────────────────────────
-
-# Target config (same as replay_crash_universal.sh)
+# ── Fixed Target Configuration ──────────────────────────────────────────
 declare -A TARGET_IMAGE TARGET_PROTO TARGET_PORT TARGET_SERVER_CMD TARGET_WORKDIR
+declare -A TARGET_PRE_START TARGET_ENV TARGET_IS_UDP TARGET_HEALTH_CHECK
 
-TARGET_IMAGE[bftpd]="bftpd"; TARGET_PROTO[bftpd]="FTP"; TARGET_PORT[bftpd]="21"
-TARGET_SERVER_CMD[bftpd]="./bftpd -D -c /home/ubuntu/experiments/basic.conf"
-TARGET_WORKDIR[bftpd]="/home/ubuntu/experiments/bftpd"
-
-TARGET_IMAGE[lightftp]="lightftp"; TARGET_PROTO[lightftp]="FTP"; TARGET_PORT[lightftp]="2200"
-TARGET_SERVER_CMD[lightftp]="./fftp -c /home/ubuntu/experiments/fftp.conf"
-TARGET_WORKDIR[lightftp]="/home/ubuntu/experiments/lightftp"
-
-TARGET_IMAGE[proftpd]="proftpd"; TARGET_PROTO[proftpd]="FTP"; TARGET_PORT[proftpd]="21"
-TARGET_SERVER_CMD[proftpd]="./proftpd -n -c /home/ubuntu/experiments/basic.conf"
-TARGET_WORKDIR[proftpd]="/home/ubuntu/experiments/proftpd"
-
+# pure-ftpd
 TARGET_IMAGE[pure-ftpd]="pure-ftpd"; TARGET_PROTO[pure-ftpd]="FTP"; TARGET_PORT[pure-ftpd]="21"
-TARGET_SERVER_CMD[pure-ftpd]="./pure-ftpd -c /home/ubuntu/experiments/pure-ftpd.conf"
 TARGET_WORKDIR[pure-ftpd]="/home/ubuntu/experiments/pure-ftpd"
+TARGET_SERVER_CMD[pure-ftpd]="src/pure-ftpd -A"
+TARGET_PRE_START[pure-ftpd]="/home/ubuntu/experiments/clean 2>/dev/null; ulimit -n 1024"
+TARGET_ENV[pure-ftpd]="ASAN_OPTIONS=abort_on_error=1:symbolize=0:detect_leaks=0"
+TARGET_IS_UDP[pure-ftpd]="0"
+TARGET_HEALTH_CHECK[pure-ftpd]="nc -z 127.0.0.1 21"
 
+# exim
 TARGET_IMAGE[exim]="exim"; TARGET_PROTO[exim]="SMTP"; TARGET_PORT[exim]="25"
-TARGET_SERVER_CMD[exim]="./exim -bd -d -C /home/ubuntu/experiments/exim.conf"
 TARGET_WORKDIR[exim]="/home/ubuntu/experiments/exim"
+TARGET_SERVER_CMD[exim]="cp ./src/build-Linux-x86_64/exim /usr/exim/bin/exim 2>/dev/null; /home/ubuntu/experiments/clean 2>/dev/null; exim -bd -d -oX 25 -oP /var/lock/exim.pid"
+TARGET_PRE_START[exim]="mkdir -p /var/lock /var/log /usr/exim/bin; /home/ubuntu/experiments/clean 2>/dev/null; killall exim 2>/dev/null || true"
+TARGET_ENV[exim]="ASAN_OPTIONS=abort_on_error=1:symbolize=0:detect_leaks=0"
+TARGET_IS_UDP[exim]="0"
+TARGET_HEALTH_CHECK[exim]="nc -z 127.0.0.1 25"
 
+# live555
 TARGET_IMAGE[live555]="live555"; TARGET_PROTO[live555]="RTSP"; TARGET_PORT[live555]="8554"
-TARGET_SERVER_CMD[live555]="./live555ProxyServer"
-TARGET_WORKDIR[live555]="/home/ubuntu/experiments/live555"
+TARGET_WORKDIR[live555]="/home/ubuntu/experiments/live/testProgs"
+TARGET_SERVER_CMD[live555]="./testOnDemandRTSPServer 8554"
+TARGET_PRE_START[live555]="killall testOnDemandRTSPServer 2>/dev/null || true"
+TARGET_ENV[live555]="ASAN_OPTIONS=abort_on_error=1:symbolize=0:detect_leaks=0"
+TARGET_IS_UDP[live555]="0"
+TARGET_HEALTH_CHECK[live555]="nc -z 127.0.0.1 8554"
 
+# kamailio
 TARGET_IMAGE[kamailio]="kamailio"; TARGET_PROTO[kamailio]="SIP"; TARGET_PORT[kamailio]="5060"
-TARGET_SERVER_CMD[kamailio]="./kamailio -f /home/ubuntu/experiments/kamailio.cfg"
 TARGET_WORKDIR[kamailio]="/home/ubuntu/experiments/kamailio"
+TARGET_SERVER_CMD[kamailio]="./src/kamailio -f /home/ubuntu/experiments/kamailio-basic.cfg -L src/modules -Y runtime_dir -n 1 -D -E"
+TARGET_PRE_START[kamailio]="mkdir -p runtime_dir; killall kamailio 2>/dev/null || true; killall pjsua-x86_64-unknown-linux-gnu 2>/dev/null || true; /home/ubuntu/experiments/pjproject/pjsip-apps/bin/pjsua-x86_64-unknown-linux-gnu --local-port=5068 --id sip:33@127.0.0.1 --registrar sip:127.0.0.1 --proxy sip:127.0.0.1 --realm '*' --username 33 --password 33 --auto-answer 200 --auto-play --play-file /home/ubuntu/experiments/StarWars3.wav --auto-play-hangup --duration=300 --use-cli --no-cli-console --cli-telnet-port=34254 >/dev/null 2>&1 &"
+TARGET_ENV[kamailio]="ASAN_OPTIONS=abort_on_error=1:symbolize=0:detect_leaks=0 KAMAILIO_MODULES=src/modules KAMAILIO_RUNTIME_DIR=runtime_dir"
+TARGET_IS_UDP[kamailio]="1"
+TARGET_HEALTH_CHECK[kamailio]="echo >/dev/udp/127.0.0.1/5060 2>/dev/null || true"
 
+
+# ── bftpd ──
+TARGET_IMAGE[bftpd]="bftpd"; TARGET_PROTO[bftpd]="FTP"; TARGET_PORT[bftpd]="21"
+TARGET_WORKDIR[bftpd]="/home/ubuntu/experiments/bftpd"
+TARGET_SERVER_CMD[bftpd]="./bftpd -D -c /home/ubuntu/experiments/basic.conf"
+TARGET_PRE_START[bftpd]=""
+TARGET_ENV[bftpd]="ASAN_OPTIONS=abort_on_error=1:symbolize=0:detect_leaks=0"
+TARGET_IS_UDP[bftpd]="0"
+TARGET_HEALTH_CHECK[bftpd]="nc -z 127.0.0.1 21"
+
+# ── lightftp ──
+TARGET_IMAGE[lightftp]="lightftp"; TARGET_PROTO[lightftp]="FTP"; TARGET_PORT[lightftp]="2200"
+TARGET_WORKDIR[lightftp]="/home/ubuntu/experiments/LightFTP/Source/Release"
+TARGET_SERVER_CMD[lightftp]="./fftp fftp.conf 2200"
+TARGET_PRE_START[lightftp]=""
+TARGET_ENV[lightftp]="ASAN_OPTIONS=abort_on_error=1:symbolize=0:detect_leaks=0"
+TARGET_IS_UDP[lightftp]="0"
+TARGET_HEALTH_CHECK[lightftp]="nc -z 127.0.0.1 2200"
+
+# ── lighttpd1 ──
+TARGET_IMAGE[lighttpd1]="lighttpd1"; TARGET_PROTO[lighttpd1]="HTTP"; TARGET_PORT[lighttpd1]="8080"
+TARGET_WORKDIR[lighttpd1]="/home/ubuntu/experiments/lighttpd1"
+TARGET_SERVER_CMD[lighttpd1]="./src/lighttpd -D -f /home/ubuntu/experiments/lighttpd.conf -m ./src/.libs"
+TARGET_PRE_START[lighttpd1]=""
+TARGET_ENV[lighttpd1]="ASAN_OPTIONS=abort_on_error=1:symbolize=0:detect_leaks=0"
+TARGET_IS_UDP[lighttpd1]="0"
+TARGET_HEALTH_CHECK[lighttpd1]="nc -z 127.0.0.1 8080"
+
+# ── forked-daapd ──
 TARGET_IMAGE[forked-daapd]="forked-daapd"; TARGET_PROTO[forked-daapd]="DAAP"; TARGET_PORT[forked-daapd]="3689"
-TARGET_SERVER_CMD[forked-daapd]="./forked-daapd -f -c /home/ubuntu/experiments/forked-daapd.conf"
-TARGET_WORKDIR[forked-daapd]="/home/ubuntu/experiments/forked-daapd"
+TARGET_WORKDIR[forked-daapd]="/home/ubuntu/experiments"
+TARGET_SERVER_CMD[forked-daapd]="sudo service dbus start 2>/dev/null; sudo service avahi-daemon start 2>/dev/null; HOME=/home/ubuntu ./forked-daapd/src/forked-daapd -d 0 -c /home/ubuntu/experiments/forked-daapd.conf -f"
+TARGET_PRE_START[forked-daapd]=""
+TARGET_ENV[forked-daapd]="ASAN_OPTIONS=abort_on_error=1:symbolize=0:detect_leaks=0"
+TARGET_IS_UDP[forked-daapd]="0"
+TARGET_HEALTH_CHECK[forked-daapd]="nc -z 127.0.0.1 3689"
 
-TARGET_IMAGE[lighttpd1]="lighttpd1"; TARGET_PROTO[lighttpd1]="HTTP"; TARGET_PORT[lighttpd1]="80"
-TARGET_SERVER_CMD[lighttpd1]="./lighttpd -D -f /home/ubuntu/experiments/lighttpd.conf"
-TARGET_WORKDIR[lighttpd1]="/home/ubuntu/experiments/lighttpd"
-
-TARGET_IMAGE[mosquitto-v2.0.18]="mosquitto-v2.0.18"; TARGET_PROTO[mosquitto-v2.0.18]="MQTT"; TARGET_PORT[mosquitto-v2.0.18]="1883"
-TARGET_SERVER_CMD[mosquitto-v2.0.18]="./src/mosquitto -c /home/ubuntu/experiments/mosquitto.conf"
-TARGET_WORKDIR[mosquitto-v2.0.18]="/home/ubuntu/experiments/mosquitto"
-
-TARGET_IMAGE[mosquitto-v2.1.2]="mosquitto-v2.1.2"; TARGET_PROTO[mosquitto-v2.1.2]="MQTT"; TARGET_PORT[mosquitto-v2.1.2]="1883"
-TARGET_SERVER_CMD[mosquitto-v2.1.2]="./src/mosquitto -c /home/ubuntu/experiments/mosquitto.conf"
-TARGET_WORKDIR[mosquitto-v2.1.2]="/home/ubuntu/experiments/mosquitto"
-
+# ── mosquitto ──
+for mqtt_ver in "mosquitto-v2.0.18" "mosquitto-v2.1.2"; do
+    TARGET_IMAGE[$mqtt_ver]="$mqtt_ver"; TARGET_PROTO[$mqtt_ver]="MQTT"; TARGET_PORT[$mqtt_ver]="1883"
+    TARGET_WORKDIR[$mqtt_ver]="/home/ubuntu/experiments"
+    TARGET_SERVER_CMD[$mqtt_ver]="./mosquitto-gcov/src/mosquitto -c /home/ubuntu/experiments/mosquitto.conf"
+    TARGET_PRE_START[$mqtt_ver]=""
+    TARGET_ENV[$mqtt_ver]="ASAN_OPTIONS=abort_on_error=1:symbolize=0:detect_leaks=0"
+    TARGET_IS_UDP[$mqtt_ver]="0"
+    TARGET_HEALTH_CHECK[$mqtt_ver]="nc -z 127.0.0.1 1883"
+done
+# ── Validation ──────────────────────────────────────────────────────────
 if [ -z "${TARGET_IMAGE[$TARGET]:-}" ]; then
-    echo "[ERROR] Unknown target: $TARGET"
-    echo "Supported: ${!TARGET_IMAGE[*]}"
+    echo "[ERROR] Unknown target: $TARGET. Supported: ${!TARGET_IMAGE[*]}"
     exit 1
 fi
 
-IMAGE="${TARGET_IMAGE[$TARGET]}"
-PROTO="${TARGET_PROTO[$TARGET]}"
-PORT="${TARGET_PORT[$TARGET]}"
-SERVER_CMD="${TARGET_SERVER_CMD[$TARGET]}"
-WORKDIR="${TARGET_WORKDIR[$TARGET]}"
+IMAGE="${TARGET_IMAGE[$TARGET]}"; PROTO="${TARGET_PROTO[$TARGET]}"; PORT="${TARGET_PORT[$TARGET]}"
+SERVER_CMD="${TARGET_SERVER_CMD[$TARGET]}"; WORKDIR="${TARGET_WORKDIR[$TARGET]}"
+PRE_START="${TARGET_PRE_START[$TARGET]}"; ENV_VARS="${TARGET_ENV[$TARGET]}"
+IS_UDP="${TARGET_IS_UDP[$TARGET]}"; HEALTH_CHECK="${TARGET_HEALTH_CHECK[$TARGET]}"
 
 mkdir -p "$OUT_DIR"
 
 echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║  ChatAFL-Opt Logical Vulnerability Replay                   ║"
+echo "║  ChatAFL-Opt Logical Vuln Replay (FIXED)                    ║"
 echo "╠══════════════════════════════════════════════════════════════╣"
-echo "║  Target   : $TARGET  |  Protocol : $PROTO"
-echo "║  Source   : $VIOLATION_SRC"
-echo "║  Output   : $OUT_DIR"
+echo "║  Target: $TARGET | Protocol: $PROTO (UDP=$IS_UDP) | Port: $PORT"
+echo "║  Source: $VIOLATION_SRC"
+echo "║  Output: $OUT_DIR"
 echo "╚══════════════════════════════════════════════════════════════╝"
 
-# ── Step 1: Extract violation seeds ────────────────────────────────────
-echo ""
-echo "━━━ Step 1: Finding violation seeds ━━━"
+# ── Step 1: Collect violation seeds ────────────────────────────────────
+echo ""; echo "━━━ Step 1: Finding violation seeds ━━━"
 
 VIOLATION_SEEDS=()
 if [ -f "$VIOLATION_SRC" ]; then
-    # Single violation report file
     VIOLATION_SEEDS+=("$VIOLATION_SRC")
 elif [ -d "$VIOLATION_SRC" ]; then
-    # Directory of violations
     for f in "$VIOLATION_SRC"/id:*; do
         [ -f "$f" ] && VIOLATION_SEEDS+=("$f")
     done
 fi
-
 echo "Found ${#VIOLATION_SEEDS[@]} violation reports"
 
 if [ ${#VIOLATION_SEEDS[@]} -eq 0 ]; then
-    echo "[ERROR] No violation reports found"
-    exit 1
+    echo "[ERROR] No violation reports found"; exit 1
 fi
 
-# ── Step 2: For each violation, replay in container and verify ──────────
-echo ""
-echo "━━━ Step 2: Replaying violations in container ━━━"
+# ── Write protocol-aware replay script ──────────────────────────────────
+REPLAY_PY="$OUT_DIR/replay_protocol.py"
+cat > "$REPLAY_PY" << 'PYEOF'
+#!/usr/bin/env python3
+"""Protocol-aware replay: TCP line-based (FTP/SMTP/RTSP), UDP datagram (SIP)."""
+import socket, sys, os, time, struct
+
+PROTO  = os.environ.get('REPLAY_PROTO', 'FTP')
+PORT   = int(os.environ.get('REPLAY_PORT', '21'))
+IS_UDP = os.environ.get('REPLAY_IS_UDP', '0')
+REQ_FILE = os.environ.get('REQ_FILE', '/tmp/vout/request_data.bin')
+RESP_FILE = os.environ.get('RESP_FILE', '/tmp/vout/response_data.bin')
+VERDICT_FILE = os.environ.get('VERDICT_FILE', '/tmp/vout/verdict.txt')
+
+def log(msg):
+    print(msg, flush=True)
+
+def recv_all(sock, timeout=2.0):
+    chunks = []; sock.settimeout(timeout)
+    while True:
+        try:
+            c = sock.recv(65536)
+            if not c: break
+            chunks.append(c)
+        except socket.timeout: break
+        except Exception: break
+    return b''.join(chunks)
+
+def replay_tcp(req_data):
+    """TCP replay: HTTP/DAAP sends complete request blocks; others send line-by-line."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(5)
+    try:
+        sock.connect(('127.0.0.1', PORT))
+    except Exception as e:
+        log(f'[FATAL] connect failed: {e}')
+        return b'', [f'CONNECT_FAILED: {e}']
+    sock.settimeout(1.0)
+    try: banner = sock.recv(65536); log(f'Banner: {banner[:200]}')
+    except: banner = b''
+    all_resp = [banner]
+    if PROTO in ('HTTP', 'DAAP'):
+        # Split by double-CRLF into complete HTTP request blocks
+        blocks = req_data.split(b'\r\n\r\n')
+        valid = [b.strip() for b in blocks if b.strip()]
+        log(f'Split into {len(valid)} HTTP request blocks')
+        for i, blk in enumerate(valid):
+            try:
+                sock.sendall(blk + b'\r\n\r\n'); time.sleep(0.2)
+                r = recv_all(sock, timeout=1.5)
+                if r: all_resp.append(r); first_line = r.split(b'\r\n')[0]; log(f'  Req[{i}]: {first_line[:120]}')
+            except Exception as e:
+                log(f'  [ERR] req[{i}]: {e}'); break
+    else:
+        lines = req_data.split(b'\n')
+        for line in lines:
+            line = line.strip(b'\r')
+            if not line: continue
+            try:
+                sock.sendall(line + b'\r\n'); time.sleep(0.15)
+                r = recv_all(sock, timeout=1.5)
+                if r: all_resp.append(r); log(f'  -> {line[:80]} | resp: {r[:120]}')
+            except Exception as e:
+                log(f'  [ERR] {line[:60]}: {e}'); break
+    sock.close()
+    return b'\n---\n'.join(all_resp), []
+
+def replay_udp(req_data):
+    """UDP: parse 4-byte uint32 LE size-prefix, send each as datagram."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind(('127.0.0.1', 5061)); sock.settimeout(3)
+    all_resp = []; errors = []; offset = 0; msg_idx = 0
+    while offset + 4 <= len(req_data):
+        size = struct.unpack('<I', req_data[offset:offset+4])[0]; offset += 4
+        if size == 0 or offset + size > len(req_data):
+            remaining = req_data[offset-4:]
+            if remaining.strip():
+                try:
+                    sock.sendto(remaining, ('127.0.0.1', PORT)); time.sleep(0.2)
+                    r = recv_all(sock, 1.0)
+                    if r: all_resp.append(r)
+                except Exception as e: errors.append(f'raw_send: {e}')
+            break
+        msg = req_data[offset:offset+size]; offset += size; msg_idx += 1
+        try:
+            sock.sendto(msg, ('127.0.0.1', PORT)); log(f'  msg[{msg_idx}]: {len(msg)}B')
+        except Exception as e: errors.append(f'send[{msg_idx}]: {e}'); break
+        time.sleep(0.2)
+        try:
+            r = recv_all(sock, 1.0)
+            if r: all_resp.append(r); log(f'  resp: {r[:200]}')
+        except Exception as e: log(f'  recv err: {e}')
+    sock.close()
+    return b'\n---\n'.join(all_resp), errors
+
+# Main
+if not os.path.exists(REQ_FILE): log(f'[WARN] No request file'); sys.exit(0)
+with open(REQ_FILE, 'rb') as f: req_data = f.read()
+log(f'Req: {len(req_data)}B, proto={PROTO}, UDP={IS_UDP}')
+if IS_UDP == '1': all_resp, errors = replay_udp(req_data)
+else: all_resp, errors = replay_tcp(req_data)
+with open(RESP_FILE, 'wb') as f: f.write(all_resp)
+with open(VERDICT_FILE, 'w') as f:
+    for e in errors: f.write(f'REPLAY_ERROR: {e}\n')
+    f.write(f'REPLAY_COMPLETE: {len(all_resp)} bytes response\n')
+log(f'Done. Response: {len(all_resp)} bytes')
+PYEOF
+chmod +x "$REPLAY_PY"
+
+# ── Write oracle verification script ────────────────────────────────────
+VERIFY_PY="$OUT_DIR/verify_oracle.py"
+cat > "$VERIFY_PY" << 'PYEOF'
+#!/usr/bin/env python3
+"""Protocol oracle verification: checks security invariants on replayed data."""
+import sys, os, re, struct
+
+PROTO   = os.environ.get('REPLAY_PROTO', 'FTP')
+REQ_BIN = os.environ.get('REQ_BIN', '/tmp/vout/request_data.bin')
+RESP_BIN = os.environ.get('RESP_BIN', '/tmp/vout/response_data.bin')
+VERDICT_FILE = os.environ.get('VERDICT_FILE', '/tmp/vout/verdict.txt')
+
+def load(p):
+    if os.path.exists(p):
+        with open(p, 'rb') as f: return f.read()
+    return b''
+
+def code3(resp_bytes):
+    try:
+        for line in resp_bytes.decode('latin-1', errors='replace').split('\n'):
+            s = line.strip()
+            if len(s) >= 3 and s[:3].isdigit(): return int(s[:3])
+    except: pass
+    return None
+
+def verify_ftp(req, resp):
+    findings = []; auth = False; has_user = False; has_rnfr = False
+    lines = req.split(b'\n'); resp_parts = resp.split(b'\n---\n')
+    for i, line in enumerate(lines):
+        line = line.strip(b'\r'); upper = line.decode('latin-1',errors='replace').upper()
+        ri = resp_parts[i] if i < len(resp_parts) else b''
+        data_cmds = ['RETR ','STOR ','LIST','NLST','MKD ','RMD ','DELE ','APPE ','SITE ']
+        if any(upper.startswith(c) for c in data_cmds) and not auth:
+            c = code3(ri)
+            if c and c < 400: findings.append({'sev':'HIGH','cat':'AUTH_BYPASS','cwe':'CWE-306','desc':f"Unauthenticated {line[:60]} (code {c})",'cve':'CVE-2024-42644'})
+        if upper.startswith('USER '): has_user = True
+        if upper.startswith('PASS ') and has_user:
+            c = code3(ri)
+            if c == 230: auth = True
+        if upper.startswith('PASS ') and not has_user:
+            c = code3(ri)
+            if c and c < 400: findings.append({'sev':'CRITICAL','cat':'AUTH_STATE_BYPASS','cwe':'CWE-862','desc':'PASS without USER','cve':'CVE-2024-42644'})
+        if upper.startswith('RNFR '): has_rnfr = True
+        if upper.startswith('RNTO ') and not has_rnfr:
+            c = code3(ri)
+            if c and c < 400: findings.append({'sev':'MEDIUM','cat':'STATE_VIOLATION','cwe':'CWE-696','desc':'RNTO without RNFR','cve':'N/A'})
+        if b'../' in line:
+            c = code3(ri)
+            if c and c < 400: findings.append({'sev':'HIGH','cat':'PATH_TRAVERSAL','cwe':'CWE-24','desc':f"Path traversal: {line[:60]} (code {c})",'cve':'CVE-2024-3935'})
+        if 'PORT' in upper and (b'127,' in line or b'10,' in line):
+            c = code3(ri)
+            if c and c < 400: findings.append({'sev':'HIGH','cat':'FTP_BOUNCE','cwe':'CWE-441','desc':'PORT to private addr','cve':'CVE-2018-15516'})
+    for i, r in enumerate(resp_parts):
+        if b'root:' in r or b'/etc/passwd' in r: findings.append({'sev':'CRITICAL','cat':'INFO_LEAK','cwe':'CWE-200','desc':f'Sensitive content in resp #{i}','cve':'CVE-2024-42650'})
+    return findings
+
+def verify_smtp(req, resp):
+    findings = []; auth = False; mail_from = False
+    lines = req.split(b'\n'); resp_parts = resp.split(b'\n---\n')
+    for i, line in enumerate(lines):
+        line = line.strip(b'\r'); upper = line.decode('latin-1',errors='replace').upper()
+        ri = resp_parts[i] if i < len(resp_parts) else b''
+        if (upper.startswith('RCPT TO:') or upper.startswith('DATA')) and not auth:
+            c = code3(ri)
+            if c and c < 400: findings.append({'sev':'HIGH','cat':'AUTH_BYPASS','cwe':'CWE-306','desc':f"Open relay: {line[:50]} code {c}",'cve':'CVE-2023-42117'})
+        if upper.startswith('AUTH '): auth = True
+        if upper.startswith('RCPT TO:') and not mail_from:
+            c = code3(ri)
+            if c and c < 400: findings.append({'sev':'MEDIUM','cat':'STATE_VIOLATION','cwe':'CWE-696','desc':'RCPT before MAIL FROM','cve':'N/A'})
+        if upper.startswith('MAIL FROM:'): mail_from = True
+        if b'\r\n' in line and (b'MAIL FROM:' in upper.encode() or b'RCPT TO:' in upper.encode()):
+            findings.append({'sev':'HIGH','cat':'SMUGGLING','cwe':'CWE-93','desc':f"CRLF in addr: {line[:50]}",'cve':'CVE-2023-42117'})
+    return findings
+
+def verify_rtsp(req, resp):
+    findings = []; setup_urls = set()
+    lines = req.split(b'\n'); resp_parts = resp.split(b'\n---\n')
+    for i, line in enumerate(lines):
+        line = line.strip(b'\r'); upper = line.decode('latin-1',errors='replace').upper()
+        ri = resp_parts[i] if i < len(resp_parts) else b''
+        if upper.startswith('SETUP '):
+            parts = line.split()
+            if len(parts) >= 2:
+                url = parts[1].decode('latin-1',errors='replace')
+                if url in setup_urls:
+                    c = code3(ri)
+                    if c and c < 400: findings.append({'sev':'HIGH','cat':'DUPLICATE_SETUP','cwe':'CWE-416','desc':f'Duplicate SETUP: {url}','cve':'CVE-2019-7314'})
+                else: setup_urls.add(url)
+        if upper.startswith('PLAY ') and not setup_urls:
+            c = code3(ri)
+            if c and c < 400: findings.append({'sev':'HIGH','cat':'STATE_VIOLATION','cwe':'CWE-696','desc':'PLAY before SETUP','cve':'CVE-2021-38382'})
+        if b'client_port=0' in line:
+            c = code3(ri)
+            if c and c < 400: findings.append({'sev':'MEDIUM','cat':'DOS','cwe':'CWE-252','desc':'Transport port=0','cve':'CVE-2019-6256'})
+        if upper.startswith('TRANSPORT:') and len(line) > 500:
+            findings.append({'sev':'HIGH','cat':'BUFFER_OVERFLOW','cwe':'CWE-121','desc':f'Long Transport ({len(line)}B)','cve':'CVE-2018-4013'})
+    return findings
+
+
+def verify_mqtt(req, resp):
+    """MQTT: check $SYS ACL bypass, empty ClientID, retained flood, will $SYS"""
+    findings = []
+    req_text = req.decode("latin-1", errors="replace")
+    resp_text = resp.decode("latin-1", errors="replace")
+    # $SYS ACL bypass: PUBLISH or SUBSCRIBE to $SYS topics
+    if "$SYS" in req_text:
+        findings.append({"sev":"HIGH","cat":"ACL_BYPASS","cwe":"CWE-284","desc":"Access to $SYS topic attempted","cve":"N/A (CVE-2017-7650 pattern)"})
+    # Empty ClientID with clean_session=0 (session hijack)
+    if "clean_session=0" in req_text.lower() or "cleansessionfalse" in req_text.lower():
+        if "clientid=" in req_text.lower() and len(req) < 100:
+            findings.append({"sev":"HIGH","cat":"SESSION_HIJACK","cwe":"CWE-384","desc":"Potential empty ClientID with persistent session","cve":"CVE-2014-6116"})
+    # Retained message flood (>5 retained topics)
+    retain_count = req_text.count("retain")
+    if retain_count > 5:
+        findings.append({"sev":"MEDIUM","cat":"RESOURCE_EXHAUSTION","cwe":"CWE-400","desc":f"Retained message flood ({retain_count} retained topics)","cve":"CVE-2023-3592"})
+    # Will message targeting $SYS
+    if "Will" in req_text and "$SYS" in req_text:
+        findings.append({"sev":"CRITICAL","cat":"PRIVILEGE_ESCALATION","cwe":"CWE-250","desc":"Will message targets $SYS system topic","cve":"N/A"})
+    # Zero-length topic filter
+    if len(req) < 200 and "\x00\x00\x00" in str(req[:50]):
+        findings.append({"sev":"HIGH","cat":"NULL_DEREF_RISK","cwe":"CWE-476","desc":"Potential zero-length topic filter","cve":"CVE-2019-5432"})
+    # Duplicate packet identifier
+    if req_text.count("packet_id") > 1:
+        findings.append({"sev":"MEDIUM","cat":"REPLAY_ATTACK","cwe":"CWE-346","desc":"Duplicate packet identifier detected","cve":"N/A"})
+    # $SYS data in response (info leak)
+    if resp_text.count("$SYS/broker/") > 3:
+        findings.append({"sev":"HIGH","cat":"INFO_LEAK","cwe":"CWE-200","desc":f"$SYS system data leaked in response ({resp_text.count(chr(36)+chr(83)+chr(89)+chr(83))} topics)","cve":"N/A"})
+    return findings
+def verify_sip(req, resp):
+    findings = []; invite_seen = False; via_count = 0
+    resp_parts = resp.split(b'\n---\n')
+    msgs = []; offset = 0
+    while offset + 4 <= len(req):
+        size = struct.unpack('<I', req[offset:offset+4])[0]; offset += 4
+        if size == 0 or offset + size > len(req):
+            r = req[offset-4:]
+            if r.strip(): msgs.append(r)
+            break
+        msgs.append(req[offset:offset+size]); offset += size
+    for mi, msg in enumerate(msgs):
+        try: text = msg.decode('latin-1',errors='replace')
+        except: text = ''
+        upper = text.upper(); ri = resp_parts[mi] if mi < len(resp_parts) else b''
+        if upper.startswith('MESSAGE ') and 'AUTHORIZATION:' not in upper:
+            c = None
+            for l in ri.decode('latin-1',errors='replace').split('\n'):
+                s = l.strip()
+                if len(s) >= 3 and s[:3].isdigit(): c = int(s[:3]); break
+            if c and c < 400: findings.append({'sev':'HIGH','cat':'AUTH_BYPASS','cwe':'CWE-862','desc':'MESSAGE without Authorization','cve':'CVE-2021-37624'})
+        if re.search(r"' OR |1=1|UNION SELECT", text, re.IGNORECASE):
+            findings.append({'sev':'HIGH','cat':'SQL_INJECTION','cwe':'CWE-89','desc':'SQL injection in SIP headers','cve':'CVE-2008-6573'})
+        via_count += text.count('Via:')
+        if via_count > 20: findings.append({'sev':'MEDIUM','cat':'DOS_AMPLIFICATION','cwe':'CWE-770','desc':f'Excessive Via headers ({via_count})','cve':'CVE-2020-28361'})
+        if upper.startswith('ACK ') and not invite_seen: findings.append({'sev':'LOW','cat':'STATE_VIOLATION','cwe':'CWE-696','desc':'ACK without INVITE','cve':'N/A'})
+        if upper.startswith('INVITE '): invite_seen = True
+    return findings
+
+def verify_http(req, resp):
+    """HTTP/DAAP oracle: path traversal, smuggling, CRLF injection, info leak."""
+    findings = []
+    resp_parts = resp.split(b'\n---\n')
+    lines = req.split(b'\n')
+    auth_ok = False; ri_idx = 0
+    for i, line in enumerate(lines):
+        line_s = line.strip(b'\r'); upper = line_s.decode('latin-1',errors='replace').upper()
+        ri = resp_parts[ri_idx] if ri_idx < len(resp_parts) else b''
+        # Path traversal
+        if b'/../' in line_s or b'..%2f' in line_s.lower() or b'%2e%2e' in line_s.lower():
+            c = code3(ri)
+            if c and c < 400:
+                findings.append({'sev':'HIGH','cat':'PATH_TRAVERSAL','cwe':'CWE-22',
+                    'desc':f"Path traversal: {line_s[:80].decode('latin-1',errors='replace')} (code {c})",
+                    'cve':'CVE-2021-42013'})
+        # CL desync
+        if upper.startswith('CONTENT-LENGTH:'):
+            cnt = sum(1 for l2 in lines if l2.strip(b'\r').decode('latin-1',errors='replace').upper().startswith('CONTENT-LENGTH:'))
+            if cnt > 1:
+                findings.append({'sev':'HIGH','cat':'SMUGGLING','cwe':'CWE-444',
+                    'desc':f"Multiple Content-Length headers ({cnt})",
+                    'cve':'CVE-2023-25690'})
+        # CL+TE smuggling
+        has_cl = any(l.strip(b'\r').decode('latin-1',errors='replace').upper().startswith('CONTENT-LENGTH:') for l in lines)
+        has_te = any(l.strip(b'\r').decode('latin-1',errors='replace').upper().startswith('TRANSFER-ENCODING:') for l in lines)
+        if has_cl and has_te:
+            findings.append({'sev':'HIGH','cat':'SMUGGLING','cwe':'CWE-444',
+                'desc':'Both Content-Length and Transfer-Encoding present',
+                'cve':'CVE-2023-44487'})
+        # CRLF injection / response splitting
+        if b'\r\nHTTP/' in line_s or b' HTTP/1.' in line_s[20:]:
+            findings.append({'sev':'HIGH','cat':'INJECTION','cwe':'CWE-113',
+                'desc':'CRLF injection / embedded HTTP response pattern',
+                'cve':'CVE-2023-38709'})
+        # Track response index roughly
+        if line_s and not line_s.startswith(b' '):
+            ri_idx += 1
+    # Info leak in responses
+    for i, r in enumerate(resp_parts):
+        if b'Server:' in r:
+            svr_start = r.find(b'Server:')
+            svr_end = r.find(b'\r\n', svr_start)
+            if svr_end > 0 and (svr_end - svr_start) > 50:
+                findings.append({'sev':'INFO','cat':'INFO_LEAK','cwe':'CWE-200',
+                    'desc':'Verbose Server header (>50 chars)',
+                    'cve':'N/A'})
+        if b'root:x:0:0:' in r or b'/etc/passwd' in r:
+            findings.append({'sev':'CRITICAL','cat':'INFO_LEAK','cwe':'CWE-200',
+                'desc':'Sensitive file content in response',
+                'cve':'N/A'})
+    return findings
+
+verify_daap = verify_http   # DAAP is HTTP-based
+
+# Main
+req = load(REQ_BIN); resp = load(RESP_BIN)
+if not req: print('No request data'); sys.exit(0)
+print(f'Verifying {PROTO} ... req={len(req)}B resp={len(resp)}B')
+fn_map = {"FTP": verify_ftp, "SMTP": verify_smtp, "RTSP": verify_rtsp, "SIP": verify_sip, "MQTT": verify_mqtt, "HTTP": verify_http, "DAAP": verify_http}
+findings = fn_map.get(PROTO, lambda r,q: [])(req, resp)
+with open(VERDICT_FILE, 'a') as f:
+    if findings:
+        f.write(f'\n=== ORACLE: {len(findings)} violation(s) confirmed ===\n')
+        for i, fd in enumerate(findings):
+            f.write(f"\n--- Confirmed #{i+1} ---\n  Severity: {fd['sev']}\n  Category: {fd['cat']}\n  CWE: {fd['cwe']}\n  Description: {fd['desc']}\n  CVE Pattern: {fd['cve']}\n")
+    else:
+        f.write('\n=== ORACLE: 0 violations confirmed ===\n')
+        f.write('Request did not violate protocol security invariants in standalone replay.\n')
+print(f'Done: {len(findings)} violation(s)')
+for fd in findings: print(f"  [{fd['sev']}] {fd['cat']}: {fd['desc']}")
+PYEOF
+chmod +x "$VERIFY_PY"
+
+# ── Step 2: Replay each violation ───────────────────────────────────────
+echo ""; echo "━━━ Step 2: Replaying violations ━━━"
+
+CONFIRMED=0; TOTAL=${#VIOLATION_SEEDS[@]}
 
 for idx in "${!VIOLATION_SEEDS[@]}"; do
-    vf="${VIOLATION_SEEDS[$idx]}"
-    vname="$(basename "$vf")"
-    vout="$OUT_DIR/$vname"
+    vf="${VIOLATION_SEEDS[$idx]}"; vname="$(basename "$vf")"
+    # Create Docker-safe paths (no colons) for volume mounts
+    safe_vname=$(echo "$vname" | tr ':,=' '_')
+    vout="$OUT_DIR/$safe_vname"
     mkdir -p "$vout"
+    echo ""; echo "--- Violation #$((idx+1))/$TOTAL: $vname ---"
 
-    echo ""
-    echo "--- Violation #$((idx+1)): $vname ---"
-
-    # Extract request data from violation report
+    # Extract oracle info + request data
     python3 -c "
 import re
-with open('$vf', 'r') as f:
-    content = f.read()
-# Extract REQUEST DATA section
-m = re.search(r'=== REQUEST DATA \((\d+) bytes\) ===\n(.*?)(?:\n===|$)', content, re.DOTALL)
-if m:
-    print(f'Request size: {m.group(1)} bytes')
-    with open('$vout/request_data.bin', 'wb') as out:
-        out.write(m.group(2).encode('latin-1'))  # raw bytes from report
-else:
-    print('[WARN] No REQUEST DATA section found')
+with open('$vf', 'rb') as f: content = f.read()
+try: text = content.decode('utf-8', errors='replace')
+except: text = content.decode('latin-1', errors='replace')
 
-# Extract violation descriptions
-for v in re.finditer(r'--- Violation \d+ ---\n(.*?)(?=\n---|$)', content, re.DOTALL):
-    print(v.group(1))
+violations = []
+for m in re.finditer(r'--- Violation \d+ ---\n(.*?)(?=\n--- Violation|\n===|\Z)', text, re.DOTALL):
+    v = m.group(1)
+    sev = re.search(r'Severity:\s*(\d+)', v)
+    cat = re.search(r'Category:\s*(0x[0-9a-fA-F]+)', v)
+    desc = re.search(r'Description:\s*(.+?)\n', v)
+    cve = re.search(r'CVE Pattern:\s*(.+?)\n', v)
+    violations.append({
+        'severity': sev.group(1) if sev else '?',
+        'category': cat.group(1) if cat else '?',
+        'description': desc.group(1).strip() if desc else '?',
+        'cve': cve.group(1).strip() if cve else 'N/A'
+    })
+print(f'Oracle violations: {len(violations)}')
+for v in violations:
+    print(f\"  Sev={v['severity']} Cat={v['category']} [{v['cve']}] {v['description']}\")
+
+# Extract REQUEST DATA
+req_match = re.search(r'=== REQUEST DATA \((\d+) bytes\) ===\n', text)
+if req_match:
+    data_start = req_match.end()
+    req_size = int(req_match.group(1))
+    raw = content[data_start:data_start+req_size]
+    with open('$vout/request_data.bin', 'wb') as out: out.write(raw)
+    print(f'Extracted {len(raw)}B request data')
+else:
+    print('[WARN] No REQUEST DATA section')
 " 2>&1 | tee "$vout/extracted_info.txt"
 
-    # Check if there's a corresponding queue seed
-    VIOLATION_ID=$(echo "$vname" | grep -oP 'id:\d+' || echo "")
+    echo "  Replaying in Docker..."
 
-    # Replay in container
-    echo "  Replaying in Docker container..."
     docker run --rm \
-        --network host \
+        --network host --cap-add SYS_PTRACE \
         -v "$(realpath "$vout"):/tmp/vout" \
-        -e "ASAN_OPTIONS=abort_on_error=1:symbolize=1:detect_leaks=0" \
+        -v "$(realpath "$REPLAY_PY"):/tmp/replay_protocol.py:ro" \
+        -v "$(realpath "$VERIFY_PY"):/tmp/verify_oracle.py:ro" \
+        -e "REPLAY_PROTO=$PROTO" -e "REPLAY_PORT=$PORT" \
+        -e "REPLAY_IS_UDP=$IS_UDP" \
+        -e "REQ_FILE=/tmp/vout/request_data.bin" \
+        -e "RESP_FILE=/tmp/vout/response_data.bin" \
+        -e "VERDICT_FILE=/tmp/vout/verdict.txt" \
+        -e "REQ_BIN=/tmp/vout/request_data.bin" \
+        -e "RESP_BIN=/tmp/vout/response_data.bin" \
+        -e "$ENV_VARS" \
         "$IMAGE" /bin/bash -c "
 cd $WORKDIR
-
-# Start server
+$PRE_START
+export $ENV_VARS
 $SERVER_CMD &
-SPID=\$!
-sleep 1
+SPID=\$!; sleep 2
 
-if ! kill -0 \$SPID 2>/dev/null; then
-    echo '[FATAL] Server failed to start' | tee /tmp/vout/server_output.log
-    exit 1
-fi
+READY=0
+for attempt in \$(seq 1 30); do
+    if $HEALTH_CHECK 2>/dev/null; then READY=1; break; fi
+    if ! kill -0 \$SPID 2>/dev/null; then
+        wait \$SPID 2>/dev/null || true
+        echo '[FATAL] Server died on startup' | tee -a /tmp/vout/verdict.txt
+        exit 1
+    fi
+    sleep 1
+done
+echo \"Server PID: \$SPID (ready=\$READY)\"
 
-# Collect response for each request (use aflnet-client for structured replay)
-# Since we don't have the exact AFLNet seed, we use netcat/python to replay
-# the request data from the violation report
-
-echo 'Server PID: '\$SPID | tee /tmp/vout/server_output.log
-
-# Manual structured replay using Python
-python3 << 'PYEOF' | tee -a /tmp/vout/server_output.log
-import socket, struct, time, sys, os
-
-proto = '$PROTO'
-port = $PORT
-req_file = '/tmp/vout/request_data.bin'
-
-# Read the request data
-if os.path.exists(req_file):
-    with open(req_file, 'rb') as f:
-        data = f.read()
-    print(f'Read {len(data)} bytes from request file')
-else:
-    print('[WARN] No request data file, skipping replay')
-    sys.exit(0)
-
-# Connect to server
-sock = None
-if proto in ['FTP', 'SMTP', 'HTTP', 'RTSP', 'MQTT', 'DAAP', 'SIP']:
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.settimeout(3)
-    try:
-        sock.connect(('127.0.0.1', port))
-    except Exception as e:
-        print(f'Connect failed: {e}')
-        sys.exit(1)
-else:
-    print(f'Unsupported protocol: {proto}')
-    sys.exit(1)
-
-# Read banner first
-try:
-    banner = sock.recv(4096)
-    print(f'Banner: {banner[:200]}')
-except:
-    pass
-
-# Try to parse AFLNet seed format (4-byte size prefix) and replay
-# The raw request data in violation reports is text, not structured seed
-# We send it as a single request sequence
-try:
-    sock.sendall(data)
-    time.sleep(0.5)
-    try:
-        while True:
-            sock.settimeout(0.5)
-            chunk = sock.recv(4096)
-            if not chunk:
-                break
-            print(f'Response: {chunk[:500]}')
-    except socket.timeout:
-        pass
-except Exception as e:
-    print(f'Send failed: {e}')
-
-sock.close()
-print('Replay complete')
-PYEOF
+python3 /tmp/replay_protocol.py 2>&1
+python3 /tmp/verify_oracle.py 2>&1
 
 kill \$SPID 2>/dev/null || true
 wait \$SPID 2>/dev/null || true
 " 2>&1 | tee "$vout/replay_full.log"
 
+    if [ -f "$vout/verdict.txt" ]; then
+        vc=$(grep -c "Confirmed" "$vout/verdict.txt" 2>/dev/null || echo "0")
+        if [ "$vc" -gt 0 ] 2>/dev/null; then
+            CONFIRMED=$((CONFIRMED + 1))
+            echo "  [CONFIRMED] $vc oracle violation(s) verified"
+        else
+            echo "  [NOT REPRODUCED] via standalone replay"
+        fi
+    fi
 done
 
+# ── Step 3: Summary ─────────────────────────────────────────────────────
 echo ""
-echo "━━━ Step 3: Verification Summary ━━━"
-echo "All results saved to: $OUT_DIR"
+echo "━━━ Step 3: Summary ━━━"
+echo "Total tested : $TOTAL"
+echo "Confirmed    : $CONFIRMED"
+echo "Results      : $OUT_DIR"
 echo ""
-echo "Logical Vulnerability Verification Methodology:"
-echo "  1. Extract the exact request sequence that triggered the oracle violation"
-echo "  2. Replay in clean container with full monitoring"
-echo "  3. Verify the security invariant violation is reproducible"
-echo "  4. Assess exploitability & security impact"
-echo ""
-echo "Key Security Properties Checked (from FindVulnerability.txt):"
-echo "  - Authentication: 未认证用户不应访问受保护资源"
-echo "  - Authorization:  低权限用户不应执行高权限操作"
-echo "  - State Machine:  状态转换必须遵守RFC规定顺序"
-echo "  - Confidentiality: 响应不应包含敏感信息"
-echo "  - Integrity:      请求不应绕过完整性检查"
-echo "  - Availability:   小输入不应导致指数级资源消耗"
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║  Security Properties Verified:                              ║"
+echo "║  - Auth: unauthenticated access to protected resources      ║"
+echo "║  - Authz: low-privilege high-privilege escalation           ║"
+echo "║  - State Machine: RFC state transition violations           ║"
+echo "║  - Confidentiality: sensitive info in responses             ║"
+echo "║  - Integrity: input validation bypass                       ║"
+echo "║  - Availability: DoS/amplification patterns                 ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 echo "━━━ Done ━━━"

@@ -82,9 +82,16 @@ if $(strstr $FUZZER "afl") || $(strstr $FUZZER "llm"); then
   fi
 
   cd $WORKDIR/mosquitto-gcov
-  gcovr -r . --html --html-details -o index.html 2>/dev/null || true
-  mkdir -p ${WORKDIR}/${OUTDIR}/cov_html/
-  cp *.html ${WORKDIR}/${OUTDIR}/cov_html/ 2>/dev/null || true
+  echo "[gcovr] Available memory before HTML generation:"
+  free -m | head -2
+  if gcovr -r . --html --html-details -o index.html; then
+    echo "[gcovr] HTML coverage report generated successfully"
+    mkdir -p ${WORKDIR}/${OUTDIR}/cov_html/
+    cp *.html ${WORKDIR}/${OUTDIR}/cov_html/
+  else
+    echo "[gcovr] WARNING: gcovr HTML generation failed (exit=$?) — likely OOM with large seed corpus"
+    echo "[gcovr] cov_over_time.csv is still available; HTML report can be regenerated offline"
+  fi
 
   #Step-3. Save the result
   cd ${WORKDIR}

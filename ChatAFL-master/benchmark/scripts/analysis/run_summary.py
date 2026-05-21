@@ -48,10 +48,50 @@ class RunMetrics:
     last_update: int | None = None
     status: str = "unknown"
     invalid_reason: str = ""
+    exit_code: int | None = None
     diagnostics_dir: str = ""
 
 
 INVALID_STATUSES = {"stalled", "invalid", "failed"}
+FATAL_EXIT_CODES = {
+    137: "oom_killed",       # SIGKILL (128+9) — default, refined by classify_status
+    139: "sigsegv",          # SIGSEGV (128+11)
+    134: "sigabrt",          # SIGABRT (128+6)
+    143: "sigterm",          # SIGTERM (128+15)
+    124: "timeout",          # timeout command's own exit code
+}
+
+
+def classify_status(
+    exit_code: int | None,
+    runtime_min: int | None,
+    reason: str,
+    status: str,
+    timeout_min: int | None = None,
+) -> str:
+    """Classify final status.
+
+    exit_code=137 is ambiguous:
+      - Real cgroup OOM: fuzzer killed by kernel, runtime << timeout
+      - Timeout shutdown race: ``timeout -k 2s`` sends SIGKILL when afl-fuzz
+        is slow to exit after SIGTERM at the timeout mark. Runtime ~ timeout.
+    """
+    if exit_code == 137:
+        if timeout_min is not None and runtime_min is not None:
+            if runtime_min >= timeout_min - 7:
+                return "timeout_kill"
+            return "oom_killed"
+        if runtime_min is not None and runtime_min >= 50:
+            return "exit_137_near_limit"
+        return "oom_killed"
+
+    if exit_code is not None and exit_code in FATAL_EXIT_CODES:
+        return FATAL_EXIT_CODES[exit_code]
+    if status in INVALID_STATUSES:
+        return status
+    if reason and reason not in ("", "completed"):
+        return reason
+    return "completed"
 
 
 def parse_run_name(name: str) -> Optional[tuple[str, str, int]]:
@@ -155,7 +195,7 @@ def iter_sources(results_dir: Path) -> Iterable[Path]:
             yield path
 
 
-def read_metrics(path: Path, status_map: dict[str, dict[str, str]]) -> Optional[RunMetrics]:
+def read_metrics(path: Path, status_map: dict[str, dict[str, str]], timeout_min: int | None = None) -> Optional[RunMetrics]:
     parsed = parse_run_name(path.name)
     if not parsed:
         return None
@@ -176,8 +216,15 @@ def read_metrics(path: Path, status_map: dict[str, dict[str, str]]) -> Optional[
     metrics.nodes, metrics.edges = parse_plot_text(plot_text)
     metrics.runtime_min, metrics.start_time, metrics.last_update = parse_fuzzer_stats(stats_text)
     status_meta = status_map.get(path.name, {})
-    metrics.status = status_meta.get("status", "completed" if status_meta else "unknown")
-    metrics.invalid_reason = status_meta.get("reason", "")
+    raw_exit = status_meta.get("exit_code", "")
+    try:
+        metrics.exit_code = int(raw_exit) if raw_exit else None
+    except (ValueError, TypeError):
+        metrics.exit_code = None
+    raw_status = status_meta.get("status", "completed" if status_meta else "unknown")
+    raw_reason = status_meta.get("reason", "")
+    metrics.status = classify_status(metrics.exit_code, metrics.runtime_min, raw_reason, raw_status, timeout_min)
+    metrics.invalid_reason = raw_reason
     metrics.diagnostics_dir = status_meta.get("diagnostics_dir", "")
     return metrics
 
@@ -187,8 +234,13 @@ def main() -> int:
     parser.add_argument("results_dir", help="Directory containing out-*.tar.gz files or extracted out-* folders")
     parser.add_argument("--output", "-o", help="Write CSV to this path instead of stdout")
     parser.add_argument("--include-invalid", action="store_true", help="Include stalled/invalid runs in the generated CSV")
+    parser.add_argument("--timeout-min", type=int, default=None,
+                        help="Expected campaign timeout in minutes. Used to distinguish "
+                             "real OOM (exit 137 early) from timeout shutdown race "
+                             "(exit 137 near timeout from 'timeout -k 2s').")
     args = parser.parse_args()
 
+    timeout_min = args.timeout_min
     results_dir = Path(args.results_dir).resolve()
     if not results_dir.is_dir():
         raise SystemExit(f"results directory not found: {results_dir}")
@@ -197,7 +249,7 @@ def main() -> int:
 
     rows = []
     for source in iter_sources(results_dir):
-        metrics = read_metrics(source, status_map)
+        metrics = read_metrics(source, status_map, timeout_min)
         if metrics is not None:
             if not args.include_invalid and metrics.status in INVALID_STATUSES:
                 continue
@@ -220,6 +272,7 @@ def main() -> int:
         "last_update",
         "status",
         "invalid_reason",
+        "exit_code",
         "diagnostics_dir",
     ]
 
@@ -243,6 +296,7 @@ def main() -> int:
                 "last_update": row.last_update if row.last_update is not None else "",
                 "status": row.status,
                 "invalid_reason": row.invalid_reason,
+                "exit_code": row.exit_code if row.exit_code is not None else "",
                 "diagnostics_dir": row.diagnostics_dir,
             })
     finally:

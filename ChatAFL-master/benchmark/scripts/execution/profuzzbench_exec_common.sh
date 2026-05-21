@@ -473,12 +473,15 @@ if [[ -z "${CHATAFL_MQTT_BROKERS:-}" ]] && is_mqtt_target "$DOCIMAGE"; then
   # ── P0: Launch heterogeneous broker fleet (sync MBFuzzer's 6 implementations) ──
   # MBFuzzer refs: NanoMQ=236c9c5, EMQX=v5.6.0, FlashMQ=d82cba5, VerneMQ=f0e6dc15, HiveMQ=v4.24.0
   # Build with: cd benchmark/scripts/execution/dockerfiles/ && ./build_broker_images.sh
+  # SKIP with: CHATAFL_NO_HETERO_BROKERS=1 (saves ~2 GB per group for parallel ablation)
+  if [[ "${CHATAFL_NO_HETERO_BROKERS:-0}" != "1" ]]; then
   _launch_hetero_broker "chatafl-nanomq:236c9c5" "nanomq" "mqtt-nanomq" "1883" "" "" "60"
   _launch_hetero_broker "chatafl-emqx:5.6.0" "emqx" "mqtt-emqx" "1883" "" "" "180"
   _launch_hetero_broker "chatafl-flashmq:d82cba5" "flashmq" "mqtt-flashmq" "1883" "" "" "60"
   _launch_hetero_broker "chatafl-vernemq:f0e6dc15" "vernemq" "mqtt-vernemq" "1883" "" \
     "-e DOCKER_VERNEMQ_ALLOW_ANONYMOUS=on -e DOCKER_VERNEMQ_ACCEPT_EULA=yes" "180"
   _launch_hetero_broker "chatafl-hivemq:4.24.0" "hivemq" "mqtt-hivemq" "1883" "" "" "180"
+  fi
   if [[ ${#HETERO_CONTAINERS[@]} -gt 0 ]]; then
     printf "${LOG_TAG}: [P0] Heterogeneous fleet: %d brokers launched\n" "${#HETERO_CONTAINERS[@]}"
   fi
@@ -537,9 +540,9 @@ for i in $(seq 1 $RUNS); do
 
   # Enable Grammar Hypothesis system only for chatafl-opt
   if [[ "$FUZZER" == "chatafl-opt" ]]; then
-    id=$(docker run --cpus=1 --memory=6g --memory-swap=6g ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" -e CHATAFL_HYPOTHESIS=1 ${ABLATION_FLAGS} ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} -d -it $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
+    id=$(docker run --cpus=1 --memory=8g --memory-swap=8g ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" -e CHATAFL_HYPOTHESIS=1 ${ABLATION_FLAGS} ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} -d --init $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   else
-    id=$(docker run --cpus=1 --memory=6g --memory-swap=6g ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} -d -it $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
+    id=$(docker run --cpus=1 --memory=8g --memory-swap=8g ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} -d --init $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   fi
   require_container_id "$id" "fuzz container run #${i}"
   cids+=("$id")
@@ -597,8 +600,9 @@ generate_run_summary() {
     return 0
   fi
 
-  printf "\n${LOG_TAG}: Generating run_summary.csv (%d tarballs)...\n" "$tarball_count"
-  if python3 "$summary_py" "$results_dir" -o "$output_file" 2>&1; then
+  local timeout_min=$(( TIMEOUT / 60 ))
+  printf "\n${LOG_TAG}: Generating run_summary.csv (%d tarballs, timeout=%d min)...\n" "$tarball_count" "$timeout_min"
+  if python3 "$summary_py" "$results_dir" -o "$output_file" --timeout-min "$timeout_min" 2>&1; then
     fix_result_permissions "$output_file"
     printf "${LOG_TAG}: ✓ run_summary.csv written to %s\n" "$output_file"
   else

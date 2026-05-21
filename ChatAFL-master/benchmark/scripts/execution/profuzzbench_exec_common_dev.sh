@@ -172,8 +172,9 @@ generate_run_summary() {
     return 0
   fi
 
-  printf "\n${LOG_TAG}: Generating run_summary.csv (%d tarballs)...\n" "$tarball_count"
-  if python3 "$summary_py" "$results_dir" -o "$output_file" 2>&1; then
+  local timeout_min=$(( TIMEOUT / 60 ))
+  printf "\n${LOG_TAG}: Generating run_summary.csv (%d tarballs, timeout=%d min)...\n" "$tarball_count" "$timeout_min"
+  if python3 "$summary_py" "$results_dir" -o "$output_file" --timeout-min "$timeout_min" 2>&1; then
     fix_result_permissions "$output_file"
     printf "${LOG_TAG}: ✓ run_summary.csv written to %s\n" "$output_file"
   else
@@ -636,6 +637,9 @@ if [[ -z "${CHATAFL_MQTT_BROKERS:-}" ]] && is_mqtt_target "$DOCIMAGE"; then
   # Build with:  for d in nanomq emqx flashmq vernemq hivemq; do
   #                docker build -t chatafl-${d}:<tag> benchmark/scripts/execution/dockerfiles/${d}/
   #              done
+  # ABLATION: set CHATAFL_NO_HETERO_BROKERS=1 to skip hetero fleet (saves ~2 GB/group).
+  # In parallel ablation runs, 6× hetero fleets cause kernel-level OOM from memory overcommit.
+  if [[ "${CHATAFL_NO_HETERO_BROKERS:-0}" != "1" ]]; then
   # 1. NanoMQ — MBFuzzer git:236c9c5; built from source at exact commit
   _launch_hetero_broker "chatafl-nanomq:236c9c5" "nanomq" "mqtt-nanomq" "1883" "" "" "60"
   # 2. EMQX — MBFuzzer v5.6.0; wrapper around emqx/emqx:5.6.0 with anonymous auth
@@ -647,6 +651,7 @@ if [[ -z "${CHATAFL_MQTT_BROKERS:-}" ]] && is_mqtt_target "$DOCIMAGE"; then
     "-e DOCKER_VERNEMQ_ALLOW_ANONYMOUS=on -e DOCKER_VERNEMQ_ACCEPT_EULA=yes" "180"
   # 5. HiveMQ — MBFuzzer v4.24.0 Enterprise; wrapper around hivemq/hivemq4:4.24.0
   _launch_hetero_broker "chatafl-hivemq:4.24.0" "hivemq" "mqtt-hivemq" "1883" "" "" "180"
+  fi
   # (6th = Mosquitto itself, the SUT, already running as the primary target)
 
   if [[ ${#HETERO_CONTAINERS[@]} -gt 0 ]]; then
@@ -721,9 +726,9 @@ for i in $(seq 1 $RUNS); do
   # Enable Grammar Hypothesis system only for chatafl-opt
   if [[ "$FUZZER" == "chatafl-opt" ]]; then
     # Volume挂载本地代码并在容器内重新编译
-    # --memory=6g prevents OOM-kill (exit 137) under concurrent fuzzer + broker fleet load
-    # --init ensures proper signal handling and zombie reaping (tini)
-    id=$(docker run --cpus=1 --memory=6g \
+    # --memory: 移除硬限制（与MBFuzzer对齐），批次执行3并行在62GB主机上安全
+    # NOTE: 消融并行运行时6组×hetero broker fleet会引发kernel OOM，
+    id=$(docker run --cpus=1 \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
       -e CHATAFL_HYPOTHESIS=1 \
@@ -740,7 +745,7 @@ for i in $(seq 1 $RUNS); do
         echo '[DEV] Compilation complete, MD5: '\$(md5sum grammar-hypothesis.c | cut -d' ' -f1) && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   elif [[ "$FUZZER" == "chatafl" ]]; then
-    id=$(docker run --cpus=1 --memory=6g \
+    id=$(docker run --cpus=1 \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
       ${MQTT_FLAGS} \
@@ -753,7 +758,7 @@ for i in $(seq 1 $RUNS); do
         cd /home/ubuntu/chatafl && make clean && make -j\$(nproc) && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   elif [[ "$FUZZER" == "chatafl-cl1" ]]; then
-    id=$(docker run --cpus=1 --memory=6g \
+    id=$(docker run --cpus=1 \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
       ${MQTT_FLAGS} \
@@ -766,7 +771,7 @@ for i in $(seq 1 $RUNS); do
         cd /home/ubuntu/chatafl-cl1 && make clean && make -j\$(nproc) && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   elif [[ "$FUZZER" == "chatafl-cl2" ]]; then
-    id=$(docker run --cpus=1 --memory=6g \
+    id=$(docker run --cpus=1 \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
       ${MQTT_FLAGS} \
@@ -779,7 +784,7 @@ for i in $(seq 1 $RUNS); do
         cd /home/ubuntu/chatafl-cl2 && make clean && make -j\$(nproc) && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   else
-    id=$(docker run --cpus=1 --memory=6g ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
+    id=$(docker run --cpus=1 ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   fi
   require_container_id "$id" "fuzz container run #${i}"
   cids+=("$id")
