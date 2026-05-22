@@ -660,11 +660,11 @@ print_table() {
         echo ""
     fi
 
-    # ─── 按 fuzzer 分组的汇总统计 ───────────────────────────────────
+    # ─── 按 fuzzer + ablation 分组的汇总统计 ──────────────────────────
     echo -e "${BOLD}  📈 Summary (mean across runs):${RST}"
-    printf "  ${DIM}%-14s %5s %10s %8s %7s %8s %5s %5s %6s %6s %6s${RST}\n" \
-        "FUZZER" "N" "AvgTime" "Bitmap" "Paths" "Execs" "Crash" "Hangs" "Nodes" "Edges" "Viola"
-    echo -e "  ${DIM}$(printf '─%.0s' {1..102})${RST}"
+    printf "  ${DIM}%-14s %5s %10s %8s %7s %8s %5s %5s %6s %6s %6s %-16s${RST}\n" \
+        "FUZZER" "N" "AvgTime" "Bitmap" "Paths" "Execs" "Crash" "Hangs" "Nodes" "Edges" "Viola" "Ablation"
+    echo -e "  ${DIM}$(printf '─%.0s' {1..120})${RST}"
 
     local -A sum_bitmap sum_paths sum_execs sum_crashes sum_hangs sum_nodes sum_edges sum_runtime count_by_fuzzer
     local -A sum_viol
@@ -674,7 +674,7 @@ print_table() {
                           chat_t llm_calls llm_ptok llm_ctok hyp_cnt hyp_fit \
                           plat_calls plat_thresh last_upd token_source \
                           ora_uviol viol_tot mqtt_dobs mqtt_dpos mqtt_davg mqtt_dlast ablation; do
-        local key="${target}::${fuzzer}"
+        local key="${target}::${fuzzer}::${ablation}"
         local bval
         bval=$(echo "$bitmap" | tr -d '%')
 
@@ -702,7 +702,9 @@ print_table() {
     for key in $(echo "${!count_by_fuzzer[@]}" | tr ' ' '\n' | sort); do
         local n=${count_by_fuzzer[$key]}
         local tgt="${key%%::*}"
-        local fzr="${key##*::}"
+        local rest="${key#*::}"
+        local fzr="${rest%%::*}"
+        local abl="${rest##*::}"
 
         local avg_bmp avg_paths avg_execs avg_crashes avg_hangs avg_nodes avg_edges avg_runtime avg_viol
         avg_bmp=$(awk "BEGIN{printf \"%.2f%%\", ${sum_bitmap[$key]} / $n}")
@@ -722,9 +724,9 @@ print_table() {
             AFLNET)      fc="$CYAN" ;;
         esac
 
-        printf "  ${fc}%-14s${RST} %5s %10s %8s %7s %8s %5s %5s %6s %6s %6s  ${DIM}[%s]${RST}\n" \
+        printf "  ${fc}%-14s${RST} %5s %10s %8s %7s %8s %5s %5s %6s %6s %6s %-16s  ${DIM}[%s]${RST}\n" \
             "$fzr" "$n" "$avg_runtime" "$avg_bmp" "$avg_paths" "$avg_execs" \
-            "$avg_crashes" "$avg_hangs" "$avg_nodes" "$avg_edges" "$avg_viol" "$tgt"
+            "$avg_crashes" "$avg_hangs" "$avg_nodes" "$avg_edges" "$avg_viol" "$abl" "$tgt"
     done
     echo ""
 }
