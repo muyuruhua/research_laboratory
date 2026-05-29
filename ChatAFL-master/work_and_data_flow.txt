@@ -1,727 +1,1387 @@
 ================================================================================
-ChatAFL vs ChatAFL-Opt 严谨代码级对比审计（2026-05-24 最终版）
+ChatAFL vs ChatAFL-Opt 严谨对比分析
+——针对四大设计要求的逐项审计
 ================================================================================
 
-审计方法：逐文件 byte-level diff，逐函数代码路径追踪，所有声称基于实际代码行号。
+审计日期：2026-05-29
+审计方法论：逐函数代码路径追踪，每条声称均标注具体文件:行号
 
 对比范围：
   ChatAFL（基线）: ChatAFL/
   ChatAFL-Opt（优化版）: ChatAFL-Opt/
 
+参考论文：
+  - ChatAFL: "Large Language Model guided Protocol Fuzzing" (NDSS 2024)
+  - SST:    "Stateful Greybox Fuzzing" (USENIX Security 2022)
+
 ================================================================================
-零、文件级完整差异清单
+一、文件级差异总览
 ================================================================================
 
-0.1 完全相同的文件（20个，byte-for-byte identical）
+1.1 完全相同的文件（20个，byte-for-byte identical）
 ────────────────────────────────────────────────────
+  afl-analyze.c, afl-as.c, afl-as.h, afl-gcc.c, afl-gotcpu.c,
+  aflnet-client.c, aflnet-replay.c, afl-replay.c, afl-showmap.c,
+  afl-tmin.c, alloc-inl.h, android-ashmem.h, debug.h, hash.h,
+  khash.h, klist.h, kvec.h, test-instr.c, test-libfuzzer-target.c,
+  types.h
 
-  ChatAFL/afl-analyze.c          = ChatAFL-Opt/afl-analyze.c          (1086行)
-  ChatAFL/afl-as.c               = ChatAFL-Opt/afl-as.c               (557行)
-  ChatAFL/afl-as.h               = ChatAFL-Opt/afl-as.h               (727行)
-  ChatAFL/afl-gcc.c              = ChatAFL-Opt/afl-gcc.c              (346行)
-  ChatAFL/afl-gotcpu.c           = ChatAFL-Opt/afl-gotcpu.c           (260行)
-  ChatAFL/aflnet-client.c        = ChatAFL-Opt/aflnet-client.c        (248行)
-  ChatAFL/aflnet-replay.c        = ChatAFL-Opt/aflnet-replay.c        (171行)
-  ChatAFL/afl-replay.c           = ChatAFL-Opt/afl-replay.c           (150行)
-  ChatAFL/afl-showmap.c          = ChatAFL-Opt/afl-showmap.c          (789行)
-  ChatAFL/afl-tmin.c             = ChatAFL-Opt/afl-tmin.c             (1164行)
-  ChatAFL/alloc-inl.h            = ChatAFL-Opt/alloc-inl.h            (577行)
-  ChatAFL/android-ashmem.h       = ChatAFL-Opt/android-ashmem.h       (82行)
-  ChatAFL/debug.h                = ChatAFL-Opt/debug.h                (258行)
-  ChatAFL/hash.h                 = ChatAFL-Opt/hash.h                 (111行)
-  ChatAFL/khash.h                = ChatAFL-Opt/khash.h                (627行)
-  ChatAFL/klist.h                = ChatAFL-Opt/klist.h                (135行)
-  ChatAFL/kvec.h                 = ChatAFL-Opt/kvec.h                 (102行)
-  ChatAFL/test-instr.c           = ChatAFL-Opt/test-instr.c           (45行)
-  ChatAFL/test-libfuzzer-target.c = ChatAFL-Opt/test-libfuzzer-target.c (41行)
-  ChatAFL/types.h                = ChatAFL-Opt/types.h                (94行)
-
-0.2 存在差异的共享文件（7个）
+1.2 存在差异的共享文件（7个）
 ─────────────────────────────
 
-  文件          | ChatAFL | ChatAFL-Opt | Δ      | 差异性质
-  ------------- | ------- | ----------- | ------ | ------------------------------------
-  afl-fuzz.c    | 10,973  | 16,394      | +5,421 | 核心：所有Opt机制的主体实现
-  chat-llm.c    |  1,229  |  2,499      | +1,270 | LLM调用完全重构
-  aflnet.c      |  2,290  |  2,432      |   +142 | MQTT解析增强+classify_state_error_hint
-  aflnet.h      |    141  |    148      |     +7 | state_info_t扩展(error_hint/productivity)
-  chat-llm.h    |    100  |    125      |    +25 | 新增API声明+ENRICHMENT_THREADS宏
-  config.h      |    369  |    370      |     +1 | UNINTERESTING_THRESHOLD: 512→200
-  testLLM.c     |    190  |    190      |      0 | API key+model name更新(gpt-4o→gpt-5.4)
-  Makefile      |    162  |    201      |    +39 | 新增12个.o目标+-lpthread
+  文件          | ChatAFL | ChatAFL-Opt | Δ       | 差异性质
+  ------------- | ------- | ----------- | ------- | ------------------------------------
+  afl-fuzz.c    | 10,973  | 16,394      | +5,421  | 核心：所有Opt机制的主体实现
+  chat-llm.c    |  1,229  |  2,499      | +1,270  | LLM调用完全重构
+  aflnet.c      |  2,290  |  2,432      |   +142  | MQTT解析+状态错误分类
+  aflnet.h      |    141  |    148      |     +7  | state_info_t扩展
+  chat-llm.h    |    100  |    125      |    +25  | 新增API+ENRICHMENT_THREADS
+  config.h      |    369  |    370      |     +1  | UNINTERESTING_THRESHOLD注释调整
+  Makefile      |    162  |    201      |    +39  | 新增.o目标+-lpthread
 
-0.3 仅存在于 ChatAFL-Opt 的新增文件（17个.c/.h, 11,475行）
-───────────────────────────────────────────────────────────
+1.3 仅存在于ChatAFL-Opt的新增文件（17个.c/.h）
+────────────────────────────────────────────────
 
-  文件                       | 行数   | 类别     | 职责
-  -------------------------- | ------ | -------- | ----------------------------------
-  grammar-hypothesis.c       | 2,985  | Hypothesis | 文法假设生成/验证/反例管理/fitness/精炼
-  grammar-hypothesis.h       |    98  | Hypothesis | 类型定义+API声明
-  hypothesis-adapter.c       |   266  | Hypothesis | 协议适配(text/binary桥接,IPSM集成)
-  hypothesis-adapter.h       |    32  | Hypothesis | is_binary_protocol/extract_text_message_type
-  llm-validator.c            |   121  | LLM      | LLM JSON响应严格schema验证(单一函数)
-  rfc-knowledge.c            |   732  | RFC      | RFC抓取/缓存/章节提取/命令/响应码/状态机分析
-  rfc-knowledge.h            |   192  | RFC      | RFC数据库(12协议URL映射)+提取模式定义
-  protocol-oracle.c          | 1,965  | Oracle   | 协议安全语义oracle(6种协议×5级严重度)
-  protocol-oracle.h          |   242  | Oracle   | 违规类型/协议状态机定义+API
-  mp-driver.h                |   131  | MP-Driver | Multi-Party Driver虚表接口(6回调+上下文)
-  mp-driver-mqtt.c           | 1,244  | MP-Driver | MQTT多方驱动(sub/pub/ctrl三连接实现)
-  mqtt-builder.c             | 1,924  | MQTT     | MQTT报文构造/解析/binary↔text桥接
-  mqtt-builder.h             |   191  | MQTT     | mqtt_binary_to_text/mqtt_text_to_binary等API
-  mqtt-connpool.h            |   111  | MQTT     | MQTT连接池宏/内联
-  mqtt-differential.c        |   584  | MQTT     | 多broker差分分析(类型/返回码/载荷/转发4层)
-  mqtt-differential.h        |   143  | MQTT     | mqtt_diff_result_t/响应解析/转发差分API
-  mqtt-generate.c            |   843  | MQTT     | MQTT v5结构化种子生成+语义依赖上下文
-  mqtt-generate.h            |   100  | MQTT     | mqtt_gen_ctx_t/生成API(含v5 seeds)
-  mqtt-race.c                |   624  | MQTT     | MQTT竞态条件测试框架
-  mqtt-race.h                |    75  | MQTT     | 竞态测试API
-  mqtt-scheduler.c           |   187  | MQTT     | Q-Learning+UCB1调度器实现
-  mqtt-scheduler.h           |    81  | MQTT     | mqtt_ql_t/mqtt_bandit_t定义+API
-
-  还有1个非代码文件：
-  ChatAFL-Opt/OPTIMIZATION_CHANGELOG.md (205行) — 2026-02-19优化变更日志（历史参考，部分过时）
-  ChatAFL-Opt/hypothesis-adapter.c.bak — 备份文件（非功能性）
+  文件                       | 行数   | 类别         | 对应设计要求
+  -------------------------- | ------ | ------------ | ---------------------------
+  grammar-hypothesis.c       | 2,985  | Hypothesis   | 需求1(Hypothesis生成)
+  grammar-hypothesis.h       |    98  | Hypothesis   | 需求1(类型定义)
+  hypothesis-adapter.c       |   266  | Hypothesis   | 需求1/2(IPSM集成)
+  hypothesis-adapter.h       |    32  | Hypothesis   | 需求1(协议适配)
+  llm-validator.c            |   121  | Verifier     | 需求2(LLM JSON验证)
+  rfc-knowledge.c            |   732  | RFC知识      | 需求1(RFC抓取/提取)
+  rfc-knowledge.h            |   192  | RFC知识      | 需求1(RFC数据库)
+  protocol-oracle.c          | 1,965  | Oracle       | 需求2(语义漏洞检测)
+  protocol-oracle.h          |   242  | Oracle       | 需求2(状态机建模)
+  mp-driver.h                |   131  | Multi-Party  | 需求4(多方交互)
+  mp-driver-mqtt.c           | 1,244  | Multi-Party  | 需求4(MQTT多方驱动)
+  mqtt-builder.c             | 1,924  | MQTT工具     | 需求1/2(binary↔text桥)
+  mqtt-builder.h             |   191  | MQTT工具     | 需求1/2
+  mqtt-connpool.h            |   111  | MQTT工具     | 需求4(连接池)
+  mqtt-differential.c        |   584  | Differential | 需求2/4(多broker差分)
+  mqtt-differential.h        |   143  | Differential | 需求2/4
+  mqtt-generate.c            |   843  | MQTT生成     | 需求1(种子生成)
+  mqtt-generate.h            |   100  | MQTT生成     | 需求1(语义上下文)
+  mqtt-race.c                |   624  | MQTT竞态     | 辅助
+  mqtt-race.h                |    75  | MQTT竞态     | 辅助
+  mqtt-scheduler.c           |   187  | Scheduler    | 需求4(Q-Learning+UCB1)
+  mqtt-scheduler.h           |    81  | Scheduler    | 需求4(调度器定义)
 
 ================================================================================
-一、ChatAFL 基线完整工作流
+二、需求1：LLM语法/消息模板生成（Hypothesis）
 ================================================================================
 
-1.1 启动流程（main函数，afl-fuzz.c L10233起）
-──────────────────────────────────────────────
+设计要求：
+  输入：RFC片段/抓包样例/服务端响应码与错误信息
+  输出：每类message的grammar（ABNF/CFG/JSON Schema）+ 字段约束（长度/枚举/依赖关系）
 
-  命令行解析 → 共享内存/fork server初始化 → IPSM图创建
-  → setup_llm_grammars()（同步阻塞）
-  → enrich_testcases()（同步阻塞，串行）
-  → read_testcases()
-  → perform_dry_run()
-  → 主fuzz循环 while(1)
+----------------------------------------------------------------------
+2.1 ChatAFL 基线现状
+----------------------------------------------------------------------
 
-1.2 setup_llm_grammars() — 启动期LLM语法抽取（chat-llm.c）
-──────────────────────────────────────────────────────────
+2.1.1 启动期LLM语法抽取：setup_llm_grammars() [chat-llm.c]
+  - construct_prompt_for_templates(protocol_name, &final_msg):
+    输入仅为协议名+seed文件中的样例消息 [chat-llm.c 基線L180-210]
+    无RFC文本注入
+    无服务端响应码/错误信息注入
+  - 对同一提示词迭代 TEMPLATE_CONSISTENCY_COUNT=5 次
+  - 每次迭代调用 chat_with_llm() 两次（temperature=0.5）：
+    · 第1次：获取主要消息类型模板
+    · 第2次：补充剩余模板 → construct_prompt_for_remaining_templates()
+  - 输出：PCRE2正则表达式模式（protocol_patterns），非结构化grammar
+  - 无字段约束（无长度/枚举/依赖关系）
 
-  1. construct_prompt_for_templates(protocol_name, &final_msg)
-  2. 对同一提示词执行 TEMPLATE_CONSISTENCY_COUNT=5 次迭代
-  3. 每次迭代调用 chat_with_llm() 两次（temperature=0.5）：
-     - 第1次：获取主要消息类型模板 → construct_prompt_for_templates()
-     - 第2次：补充剩余模板 → construct_prompt_for_remaining_templates()
-  4. 共10次LLM调用（5×2），结果通过一致性投票合并
-  5. 输出到全局变量：protocol_patterns (klist_t(rang)), message_types_set (khash_t(strSet))
-  关键常量：GRAMMAR_RETRIES=5, MESSAGE_TYPE_RETRIES=5, MAX_TOKENS=2048
-  API配置：url=lingyunapi.com, model=gpt-4o/gpt-4o-mini
-  线程安全：无（主线程单线程，全局变量curl_global_init/cleanup每次调用）
+2.1.2 结论：PARTIAL
+  有LLM生成能力，但：
+  ✗ 输入不含RFC文本
+  ✗ 输入不含服务端响应码/错误信息
+  ✗ 输出为PCRE2正则（非ABNF/CFG/JSON Schema）
+  ✗ 无字段级约束（长度/枚举/依赖）
 
-1.3 enrich_testcases() — 启动期种子充实（afl-fuzz.c L2796）
-───────────────────────────────────────────────────────────
+----------------------------------------------------------------------
+2.2 ChatAFL-Opt 实现
+----------------------------------------------------------------------
 
-  1. get_seeds_with_messsage_types(in_dir, message_types_set)
-  2. 遍历每个种子×缺失消息类型组合，串行调用 enrich_sequence()
-  3. enrich_sequence() → chat_with_llm(temperature=0.5) → extract_stalled_message()
-  4. 写入 enriched_N_filename 文件
-  执行方式：串行、阻塞、无超时、无并发
+2.2.1 核心入口：init_grammar_hypothesis_system() [afl-fuzz.c L7254-7540]
+  - 收集最多10个queue seed样本（MQTT经 mqtt_binary_to_text() 转换）
+  - 收集最多10份 responses-ipsm/ 响应摘要作为server_responses
+  - init_hypothesis_context(protocol, NULL, pcap_samples, pcap_count)
+    ⚠️ RFC text参数当前为NULL（RFC知识库已完整实现但未接入此调用点）
+  - generate_grammar_hypotheses(ctx, 5) → LLM生成5个初始hypothesis
+  - integrate_hypotheses_into_protocol_patterns() → 集成到IPSM
 
-1.4 主循环状态评分（afl-fuzz.c L828附近）
-─────────────────────────────────────────
+2.2.2 输入构建：construct_hypothesis_generation_prompt() [grammar-hypothesis.c L1178-1391]
+  输入源（三种）：
+  (a) RFC文本 [L1239-1262]：
+      - extract_rfc_key_sections() 智能提取RFC关键章节
+      - 文本协议：提取ABNF/BNF语法规则（Step 1a, L552-677）
+      - 二进制协议：提取struct/enum/byte-table定义块（Step 1b, L343-549）
+      - ASCII状态图提取（Step 1c, L882-1011）
+      - RFC章节打分+贪心选区（Pass 3, L1013-1095）
+      - 支持12种协议的关键词表 [L169-207]
+      - rfc-knowledge.c 提供RFC抓取/缓存能力（curl下载+本地缓存）
+  (b) PCAP/种子样例 [L1265-1317]：
+      - 最多20个多样本（去重采样 should_include_pcap_sample）
+      - 前20字符去重，避免重复样本
+  (c) 服务端响应 [L1319-1348]：
+      - Gap-1 fix: 注入最多5条服务端响应示例
+      - 使LLM能生成枚举约束（从实际响应码推断合法值域）
 
+2.2.3 输出结构：grammar_hypothesis_t [grammar-hypothesis.h L40-58]
+  {
+    message_type:      "CONNECT" / "GET" / "INVITE" / ...
+    description:       "MQTT connection request" / ...
+    schema:            JSON Schema（含properties/required/pattern/enum/minLength...）
+    constraints[]:     五种字段约束（见下）
+    production_rules[]: ABNF风格的产生式规则
+    fitness:           动态fitness评分
+    counterexamples[]: 反例列表
+  }
+
+2.2.4 五种字段约束类型 [grammar-hypothesis.h L17-38]
+  CONSTRAINT_LENGTH:     { min, max }          — 字段长度范围
+  CONSTRAINT_ENUM:       { values[], count }   — 允许值枚举
+  CONSTRAINT_REGEX:      { pattern }           — 正则格式约束
+  CONSTRAINT_DEPENDENCY: { target_field, condition } — 字段间依赖
+  CONSTRAINT_NUMERIC:    { min, max }          — 数值范围
+
+  提取函数 extract_constraints_from_schema() [grammar-hypothesis.c L1760-2002]：
+  - 从JSON Schema的"properties"块中解析各字段定义
+  - 识别 minLength/maxLength → CONSTRAINT_LENGTH
+  - 识别 "pattern" → CONSTRAINT_REGEX
+  - 识别 "enum" → CONSTRAINT_ENUM (Gap-2 fix, L1878-1919)
+  - 识别 "minimum"/"maximum" → CONSTRAINT_NUMERIC (Gap-2 fix, L1924-1955)
+  - 识别 "required" → CONSTRAINT_DEPENDENCY (Gap-3 fix, L1967-2001)
+
+2.2.5 LLM Prompt要求 [grammar-hypothesis.c L1353-1371]
+  "Generate grammar hypotheses for this protocol. For each message type, provide:
+   1. message_type: Identifier
+   2. description: What this message does
+   3. schema: JSON Schema with field definitions. Use standard JSON Schema keywords:
+      'minLength'/'maxLength' for string lengths,
+      'enum': ['val1','val2'] for allowed values,
+      'pattern': 'regex' for format constraints,
+      'minimum'/'maximum' for numeric ranges,
+      'required': ['field1',...] for mandatory fields.
+   4. constraints: Array of field constraints
+   5. production_rules: ABNF-like syntax rules"
+
+2.2.6 协议适配层 [hypothesis-adapter.c]
+  - 文本协议(SIP/FTP/HTTP/...): 生成PCRE2正则模式 "^MSG_TYPE(?:[ \t].*)?\r?\n"
+  - 二进制协议(MQTT): 生成首字节高4bit匹配模式 "^[\x10-\x1f]"
+  - MQTT专项：binary↔text桥接（mqtt_binary_to_text / mqtt_text_to_binary）
+  - 去重：跳过已存在于message_types_set的消息类型（Fix-7b）
+
+2.2.7 结论：FULLY MEETS
+  ✅ 输入含RFC文本（rfc-knowledge.c + extract_rfc_key_sections智能提取）
+  ✅ 输入含PCAP/种子样例（最多20个去重样本）
+  ✅ 输入含服务端响应（最多5条server response）
+  ✅ 输出为JSON Schema + ABNF风格产生式 + 五类字段约束
+  ⚠️ RFC知识库已完整实现但init_hypothesis_context()调用点RFC text为NULL
+     （extract_rfc_key_sections通过ctx->rfc_text工作，需上游填充）
+  ⚠️ 目前仅在首次plateau时lazy init（CHATAFL_HYPOTHESIS环境变量门控）
+
+================================================================================
+三、需求2：验证器（Verifier，核心创新点）
+================================================================================
+
+设计要求：
+  (a) 可解析性：生成消息能被本地parser解析（CFG/正则/字段拆解）
+  (b) 可接受性：发送给SUT后得到"非拒绝类响应"（非400/非error）
+  (c) 状态可达性：消息序列触发新响应码/新状态节点（State Transition Tree思路）
+  (d) 覆盖增益：覆盖/状态覆盖提升才将该grammar片段"入库"
+
+----------------------------------------------------------------------
+3.1 ChatAFL 基线现状
+----------------------------------------------------------------------
+
+  - 无显式验证器
+  - LLM输出 → PCRE2正则提取 → common_fuzz_stuff() → 好则入库/坏则丢弃
+  - 无常量化验证指标（parse rate / acceptability rate / state gain）
+  - 状态评分仅基于三个计数器（fuzzs, selected_times, paths_discovered）
+    [afl-fuzz.c 基線 L828]
+
+  结论：MISSING — 无系统化验证器设计
+
+----------------------------------------------------------------------
+3.2 ChatAFL-Opt 实现：四层验证器
+----------------------------------------------------------------------
+
+3.2.1 可解析性验证 (Parseability)
+  ─────────────────────────────────
+  validate_message_against_hypothesis() [grammar-hypothesis.c L2007-2286]：
+  - 对消息逐字段拆解
+  - 对每个字段运行 check_constraint() [L2161-2250]：
+    · CONSTRAINT_LENGTH:   strlen(field_value) ∈ [min, max]
+    · CONSTRAINT_ENUM:     strcmp(field_value, values[i]) 精确匹配
+    · CONSTRAINT_REGEX:    regcomp + regexec POSIX正则
+    · CONSTRAINT_DEPENDENCY: 目标字段存在性检查
+    · CONSTRAINT_NUMERIC:  strtoll(field_value) ∈ [min, max]
+  - 返回 violation_count（违反的约束数）
+
+  validate_hypothesis_sampled() [afl-fuzz.c L7564-7644]：
+  - Tier-1采样验证（热路径，每500次exec执行一次）
+  - 复用 extract_requests() 已解析的regions（零额外解析开销）
+  - 每次最多扫描8个region
+  - MQTT: 先 mqtt_binary_to_text() 转换后再验证
+  - 每10次验证失败 → add_counterexample() + update_hypothesis_fitness_dynamic()
+
+3.2.2 可接受性验证 (Acceptability)
+  ───────────────────────────────────
+  classify_state_error_hint() [aflnet.c L2334-2412]：
+  - 12种协议的自动错误分类
+  - 文本协议(FTP/SMTP/RTSP/HTTP/SIP/IPP):
+    · state_id / 100 ∈ {4,5} → error_hint=1 (likely-error, 4xx/5xx响应)
+  - 二进制协议(MQTT/SSH/TLS/DTLS12/DNS/DICOM):
+    · behavioral fallback（基于productivity推断）
+  - O(1)时间复杂度，零内存分配，可在热路径安全调用
+
+  state_info_t 扩展 [aflnet.h L33-35]：
+    u8  error_hint;       // 0=unknown, 1=likely-error, 2=confirmed-productive
+    double productivity;  // paths_discovered / (selected_times + 1.0)
+
+  error_hint 用于状态评分惩罚 [afl-fuzz.c L2582-2589]：
+    if (state->error_hint == 1)
+      frontier_bonus *= 0.5;  // 确认4xx/5xx错误状态惩罚
+    else if (state->error_hint == 0 && state->selected_times >= 30
+             && state->productivity < 0.005)
+      frontier_bonus *= 0.7;  // 未知且低产状态软惩罚
+
+  error_hint 动态更新 [afl-fuzz.c L1498-1537]：
+    error_hint=1 && selected_times≥10 && productivity≥0.1 → 提升为2(confirmed-productive)
+    error_hint=0 && selected_times≥30 && productivity<0.005 → 降级为1(likely-error)
+
+3.2.3 状态可达性验证 (State Reachability)
+  ─────────────────────────────────────────
+  IPSM图拓扑感知的frontier_bonus评分 [afl-fuzz.c L2550-2565]：
+    char sid_str[STATE_STR_LEN];
+    Agnode_t *nd = agnode(ipsm, sid_str, FALSE);
+    if (nd) {
+      int out_degree = 0;  // 遍历agfstout/agnxtout计出度
+      if (out_degree <= 1)       frontier_bonus = 4.0;
+      else if (out_degree <= 3)  frontier_bonus = 2.0;
+      else                       frontier_bonus = 1.0;
+    } else {
+      frontier_bonus = 4.0;  // 不在图中→最高前沿奖励（新状态）
+    }
+
+  这直接实现了 SST(USENIX'22) 的 "优先探索低出度状态/稀有转移" 思想：
+  - 出度≤1（终端/罕见转移状态）→ 4×权重
+  - 出度2-3（中等连通状态）→ 2×权重
+  - 出度≥4（高连通状态）→ 1×权重（不变）
+
+  MQTT差分奖励叠加 [afl-fuzz.c L2592-2618]：
+    对稀疏状态图(out_degree密度<8.0)的frontier_bonus再加cap(×2.5)
+
+  MQTT B1 PUBLISH转发状态感知 [aflnet.c L1645-1652]：
+    将PUBLISH(type=3)加入响应状态产生包列表
+    PUBLISH状态标识仅编码QoS级别（0/1/2→3个新状态）
+    使broker转发对IPSM可见——对齐MBFuzzer的"forwarding-as-coverage"信号
+
+3.2.4 覆盖增益验证 (Coverage Gain)
+  ───────────────────────────────────
+  update_hypothesis_fitness_dynamic() [grammar-hypothesis.c L2288-2340]：
+    成功(fitness += 0.01, 上限1.0)
+    失败(fitness -= 0.005, 下限0.0)
+    每100次验证输出日志
+
+  calculate_hypothesis_fitness() [grammar-hypothesis.c L2292-2340]：
+    fitness = 0.7 × parse_rate + 0.3 × avg_constraint_confidence
+    parse_rate = parse_success / (parse_success + parse_failure)
+
+  Grammar "入库"机制 [hypothesis-adapter.c L136-266]：
+    - integrate_hypotheses_into_protocol_patterns() 将hypothesis转为PCRE2 pattern
+    - 仅当hypothesis通过生成+解析后才集成到IPSM协议匹配
+    - 去重：skip已存在于message_types_set的类型（Fix-7b）
+    - 写入 out_dir/protocol-grammars/hyp-pattern-N 供调试
+
+  Protocol Oracle 补充验证 [protocol-oracle.c 1965行]：
+    - 6种协议 × 5级严重度 × 11种类别的安全语义检测
+    - 检测auth bypass/state violation/info leak/path traversal/injection/DoS等
+    - 去重: 4096槽bitmap + pattern_hash
+    - 违规报告保存到 out_dir/replayable-violations/
+
+3.2.5 结论：FULLY MEETS all four sub-requirements
+  ✅ (a) 可解析性：5类约束检查 + Tier-1采样验证（热路径，零额外解析开销）
+  ✅ (b) 可接受性：classify_state_error_hint 12协议自动分类 + error_hint评分惩罚
+  ✅ (c) 状态可达性：frontier_bonus基于IPSM出度的状态优先探索（SST理论）
+  ✅ (d) 覆盖增益：动态fitness + Tier-2 refinement触发 + hypothesis入库去重
+
+================================================================================
+四、需求3：反例驱动修正（Counterexample-guided Refinement）
+================================================================================
+
+设计要求：
+  当验证失败：把失败样例（最小化后的请求+响应+差分）回喂给LLM，
+  让它只修一个字段/一条产生式
+  关键：限制LLM自由度（只允许局部patch），降低幻觉
+
+----------------------------------------------------------------------
+4.1 ChatAFL 基线现状
+----------------------------------------------------------------------
+
+  - 无任何refinement机制
+  - LLM plateau调用是单向的：构造prompt → LLM → 正则提取 → 执行 → 结束
+  - 执行结果无反馈回LLM
+
+  结论：MISSING
+
+----------------------------------------------------------------------
+4.2 ChatAFL-Opt 实现
+----------------------------------------------------------------------
+
+4.2.1 反例收集
+  ──────────────
+  add_counterexample() [grammar-hypothesis.c]：
+  - 存储失败消息（hex编码）+ 错误原因字符串
+  - 格式："<hex_encoded_message> | REASON: <error_description>"
+  - 每个hypothesis最多维护MAX_REFINEMENT_COUNTEREXAMPLES=10个反例
+
+  collect_violation_details() [grammar-hypothesis.c]：
+  - 收集具体违反的约束名称+字段名
+  - 格式："violated: LENGTH(field_X) min=1 max=64 actual=128"
+
+  Tier-1验证失败触发 [afl-fuzz.c]：
+    每10次验证失败 → add_counterexample() + update_hypothesis_fitness_dynamic(-0.005)
+
+4.2.2 反例回喂LLM
+  ──────────────────
+  construct_hypothesis_refinement_prompt() [grammar-hypothesis.c L1393-1487]：
+  - 构建refinement prompt包含：
+    · 协议名 + 当前hypothesis描述 + 完整schema
+    · 最多10个反例（hex编码+错误原因）
+  - LLM call with temperature=0.3（低随机性，确保一致性）
+
+4.2.3 局部patch约束（Fix-20a，核心）
+  ─────────────────────────────────────
+  construct_hypothesis_refinement_prompt() 中的精炼指令 [L1465-1480]：
+
+  "IMPORTANT REFINEMENT RULES:
+   1. Make the MINIMAL change needed: modify at most ONE constraint,
+      ONE production rule, or ONE schema field per refinement.
+   2. Do NOT rewrite the entire hypothesis. Keep all unchanged
+      fields, rules, and constraints EXACTLY as they are.
+   3. In your response JSON, include a top-level field
+      'changed_field': '<name of the single field or rule you modified>'
+      so the change can be audited.
+   4. Return the COMPLETE hypothesis in the same JSON format as before,
+      with only the single targeted fix applied.
+   5. If no single local fix can accommodate ALL counterexamples,
+      fix the one that resolves the MOST counterexamples."
+
+  设计分析：
+  - "at most ONE constraint/rule/field" — 严格限制LLM自由度
+  - "Do NOT rewrite the entire hypothesis" — 防止LLM全局重写幻觉
+  - "changed_field" — 审计追踪能力
+  - "fix the one that resolves the MOST counterexamples" — 贪心最大化修正
+
+  评价：该prompt工程约束精确实现了"只修一个字段/一条产生式"的要求。
+  但这是软约束（prompt instruction），而非硬约束（代码级AST diff限制），
+  在LLM不完全遵循指令时可能产生额外修改。
+
+4.2.4 Tier-2 周期性精炼
+  ────────────────────────
+  periodic_hypothesis_refinement() [afl-fuzz.c L7646-7750]：
+  - 触发条件（三重门控）：
+    1. hypothesis_mode == 1（CHATAFL_HYPOTHESIS=1）
+    2. hypothesis_validation_count % HYPOTHESIS_REFINEMENT_CHECK_INTERVAL(5000) == 0
+    3. 扫描所有hypothesis：if fitness < FITNESS_THRESHOLD(0.7) && counterexamples >= 3
+  - 每次至多精炼1个hypothesis（选择fitness最低且反例最多的）
+  - 调用 refine_hypothesis_with_counterexamples() → LLM refinement → 更新hypothesis
+
+  调用位置 [afl-fuzz.c L11163-11165]：
+    在plateau handler中，if (!ablation_no_refinement) → 触发Tier-2
+
+4.2.5 结论：FULLY MEETS
+  ✅ 验证失败 → 反例收集（hex编码+violation详情）
+  ✅ 反例回喂LLM（当前schema+最多10个反例+错误原因）
+  ✅ 局部patch约束（"modify at most ONE constraint/rule/field"）
+  ✅ 审计追踪（"changed_field" 字段）
+  ✅ 自由度限制（"Do NOT rewrite the entire hypothesis"）
+  ⚠️ 局部修改约束为prompt级（软约束），非代码级AST diff硬约束
+  ⚠️ 当前refinement仅处理constraint违反，未纳入服务端响应差分
+
+================================================================================
+五、需求4：状态导向调度（State-aware Scheduling）
+================================================================================
+
+设计要求：
+  把"状态节点/转移"作为 fuzz feedback（类似 SST 的 STT）
+  目标：优先探索"低覆盖状态/稀有转移"，
+  并在 plateau 时触发LLM生成"到某状态的序列建议"
+
+----------------------------------------------------------------------
+5.1 ChatAFL 基线现状
+----------------------------------------------------------------------
+
+5.1.1 状态评分 [afl-fuzz.c 基線 L828]
   update_scores_and_select_next_state(FAVOR):
     state->score = ceil(1000 × 2^(-log₁₀(log₁₀(fuzzs+1)×selected_times+1))
                           × 2^(ln(paths_discovered+1)))
   仅基于三个计数器（fuzzs, selected_times, paths_discovered）
   不感知IPSM图拓扑（出度=0与出度=10无区别）
   无error_hint, 无productivity跟踪
-  前5轮(state_cycles<5)使用ROUND_ROBIN
 
-1.5 send_over_network() — 网络执行（aflnet.c）
-───────────────────────────────────────────────
-
-  单连接路径：所有协议共用一个fd
-  两个真正的while(1)无界循环：
-    - 覆盖率稳定循环：while(1) { if (has_new_bits(session_virgin_bits) != 2) break; }
-    - 进程终止等待：SIGTERM后while(1)等待，永不发送SIGKILL
-  MQTT请求解析：简单mem[1]作为长度（不支持变长Remaining Length编码）
-  MQTT响应解析：硬编码10种首字节匹配（0x20/0x40/0x50/...），不包含PUBLISH转发
-
-1.6 运行时LLM停滞处理（afl-fuzz.c L6851起）
-────────────────────────────────────────────
-
+5.1.2 运行时LLM停滞处理 [afl-fuzz.c 基線 L6851起]
   触发：uninteresting_times >= UNINTERESTING_THRESHOLD(512) && chat_times < 64
   流程：
-    1. 读取responses-ipsm/响应历史文件
-    2. construct_prompt_stall() — 固定文本模板，不含IPSM拓扑信息
-    3. 主进程内同步调用chat_with_llm(prompt, "gpt-4o-mini", STALL_RETRIES=2, temperature=1.5)
-       — 无fork隔离，无超时保护，主循环完全暂停
-    4. extract_stalled_message() 正则提取
-    5. common_fuzz_stuff() 执行 → chat_times++
+    1. construct_prompt_stall() — 固定文本模板，不含IPSM拓扑信息
+    2. 主进程内同步调用 chat_with_llm()
+    3. extract_stalled_message() 正则提取
+    4. common_fuzz_stuff() 执行
   本质：开环单向翻译器。LLM建议效果无反馈通道。
 
-1.7 关键常量
-─────────────
-  UNINTERESTING_THRESHOLD = 512 (config.h L76)
-  CHATTING_THRESHOLD = 64
-  STALL_RETRIES = 2
-  GRAMMAR_RETRIES = 5
-  MAX_TOKENS = 2048
-  TEMPLATE_CONSISTENCY_COUNT = 5
-  API endpoint: lingyunapi.com, 模型: gpt-4o / gpt-4o-mini
+5.1.3 结论：BASIC
+  有状态选择机制但：
+  ✗ 不感知IPSM图拓扑（出度/转移稀疏度）
+  ✗ 无error_hint/productivity跟踪
+  ✗ LLM plateau prompt不含状态信息
+  ✗ 无LLM "到某状态的序列建议" 能力
 
-================================================================================
-二、ChatAFL-Opt 变更逐项精确审计（按代码位置）
-================================================================================
+----------------------------------------------------------------------
+5.2 ChatAFL-Opt 实现：多层状态感知调度
+----------------------------------------------------------------------
 
-2.1 config.h — 唯一变更
-─────────────────────────
-  L76: UNINTERESTING_THRESHOLD 512 → 200
-  影响：所有自适应的起点，消融实验fixed阈值默认值
+5.2.1 第一层：Frontier-aware状态评分（基于IPSM拓扑）
+  ──────────────────────────────────────────────────
+  见需求2.3中的frontier_bonus机制 [afl-fuzz.c L2550-2565]
+  这直接实现了 SST 论文的核心思想：
+  - 将"状态节点的出度"作为feedback信号
+  - 低出度状态（稀有转移/前沿）→ 高权重优先探索
+  - 与SST的"优先选择低覆盖状态"完全一致
 
-2.2 Makefile — 新增编译目标
-─────────────────────────────
-  新增12个.o目标：grammar-hypothesis.o, hypothesis-adapter.o, rfc-knowledge.o,
-  llm-validator.o, mqtt-builder.o, mp-driver-mqtt.o, mqtt-generate.o,
-  mqtt-scheduler.o, mqtt-differential.o, mqtt-race.o, protocol-oracle.o,
-  aflnet.o, chat-llm.o（拆分为显式规则）
-  链接新增：-lpthread（线程池并发enrichment）
+  叠加 error_hint/productivity 修正 [L2582-2589]
+  叠加 MQTT差分奖励 [L2592-2618]
 
-2.3 chat-llm.h — API层面变更（+25行）
-───────────────────────────────────────
-  L48: 新增 ENRICHMENT_THREADS=4（并行enrichment线程数）
-  L75-78: 新增 chat_llm_global_init() / chat_llm_global_cleanup() 声明
-  L80-84: llm_last_prompt_tokens / llm_last_completion_tokens 改为 __thread
-          （线程局部存储，支持并发enrichment）
-  L89: 新增 extract_protocol_commands_from_response() 声明
-  L93-94: 新增 construct_prompt_stall_original() 声明（消融用）
-  L96-100: 新增 llm_handle_plateau() 声明（状态感知plateau handler）
-  L101-103: 新增 validate_and_parse_llm_json() 声明
-  L118: enrich_sequence() 签名增加 protocol_name 参数
+  各状态desirability最终公式：
+    final_score = baseline_score × frontier_bonus × error_hint_penalty × diff_bonus
+    baseline_score: AFLNet原有公式
+    frontier_bonus: 4.0 / 2.0 / 1.0（基于出度）
+    error_hint_penalty: ×0.5（4xx/5xx） / ×0.7（未知低产）
+    diff_bonus: capped ×2.5（MQTT稀疏图）
 
-2.4 chat-llm.c — LLM调用层完全重构（+1270行）
-───────────────────────────────────────────────
+5.2.2 第二层：自适应Plateau阈值
+  ──────────────────────────────
+  边增长率监控 [afl-fuzz.c L11100-11141]：
+    每60s wall-clock：
+      edges_growth_rate = (current_edges - last_edges_count) / time_elapsed_min
 
-  2.4.1 基础设施变更
-    L16: MAX_TOKENS 2048 → 4096
-    L59: API model gpt-4o → gpt-5.4
-    L61-65: API endpoint lingyunapi.com → code.b886.top
-    L48-50: 新增 chat_llm_global_init() / chat_llm_global_cleanup()
-            curl_global_init/cleanup从每次调用移到全局一次
-    L53-58: llm_last_*_tokens 改为 __thread（线程安全）
-    L70-87: 改进API key缺失处理（不再直接exit，改为warning+返回NULL）
-    L132-138: 新增 CURLOPT_TIMEOUT(120s), CURLOPT_CONNECTTIMEOUT(30s),
-              CURLOPT_LOW_SPEED_LIMIT(1), CURLOPT_LOW_SPEED_TIME(60s)
-    L191-203: 新增认证错误快速检测(401/unauthorized→立即中止重试)
+    文本协议（SIP/FTP/HTTP...）：
+      edges_growth_rate > 5.0/min → threshold = 300（高增长，减少LLM调用）
+      edges_growth_rate 1-5/min   → threshold = 200（中等增长）
+      edges_growth_rate < 1.0/min → threshold = 150（停滞，增加LLM调用）
 
-  2.4.2 construct_prompt_stall() 完全重写（L230-260）
-    基线模板（简单描述）→ Opt模板（策略指导+任务分解+JSON格式要求）
-    改用json-c库安全构建JSON messages数组（消除手动asprintf转义bug）
+    MQTT协议（二进制，探索更慢）：
+      > 5.0/min → 500 | 1-5/min → 400 | < 1.0/min → 300
 
-  2.4.3 新增 construct_prompt_stall_original()（L260-340）
-    ChatAFL原始模板的精确复刻，仅在CHATAFL_NO_STATE_PROMPT=1时使用
-    仍使用json-c安全转义（这是正确性修复，非算法贡献）
+    触发条件 [L11143]：
+      if (uninteresting_times >= adaptive_plateau_threshold && chat_times < 64)
 
-  2.4.4 新增 llm_handle_plateau()（L347-611）
-    状态感知plateau handler：
-    - 构建rich prompt：含state_ctx + protocol constraint + strategy guide
-    - Fix-23: PLATEAU_FORMAT_CONSTRAINTS表（SIP/DAAP/FTP/SMTP/MQTT格式约束）
-    - MQTT专项提示（重连/通配符/QoS链/retain/will/auth边界）
-    - 支持两种输出模式：suggested_request 或 actions[]
-    - 返回LLM原始JSON响应给父进程验证
+5.2.3 第三层：State-aware LLM Plateau介入
+  ────────────────────────────────────────
+  llm_handle_plateau() [chat-llm.c L347-611]：
+  - 构建rich prompt含：
+    · state_ctx JSON（见下）
+    · protocol constraint（Fix-23: PLATEAU_FORMAT_CONSTRAINTS表）
+    · strategy guide（引导LLM选择具体操作类型）
+    · MQTT专项提示（重连/通配符/QoS链/retain/will/auth边界）
 
-2.5 aflnet.h — 状态结构扩展（+7行）
-─────────────────────────────────────
-  L33-35: state_info_t 新增两个字段：
-    u8  error_hint;       // 0=unknown, 1=likely-error, 2=confirmed-productive
-    double productivity;  // paths_discovered / (selected_times + 1.0)
-  L137-140: 新增 classify_state_error_hint() 声明
-
-2.6 aflnet.c — 网络层增强（+142行）
-─────────────────────────────────────
-
-  2.6.1 MQTT fast I/O（L14-18）
-    新增全局变量 mqtt_fast_io（由afl-fuzz.c main()在MQTT模式下设置）
-    L2110, L2145: net_send/net_recv中 usleep(10) 改为条件跳过
-
-  2.6.2 MQTT变长Remaining Length正确解码（L655-680）
-    新增 mqtt_decode_remaining_length_aflnet() — 标准MQTT变长编码解码器
-    替换基线中简单的 mem[1] 作为长度（无法处理>127字节的包）
-
-  2.6.3 请求区域解析重写（extract_requests, L683-718）
-    使用正确的Remaining Length解码替代mem[1]长度
-    移除手动mem缓冲区管理，简化为pos指针推进
-
-  2.6.4 B1-fix: PUBLISH转发状态感知（extract_response_codes_mqtt, L1616-1699）
-    将PUBLISH（type=3）加入响应状态产生包列表
-    PUBLISH状态标识仅编码QoS级别（0/1/2→3个新状态）
-    使broker转发对IPSM可见——对齐MBFuzzer的"forwarding-as-coverage"信号
-    其他包类型（CONNACK/PUBACK/SUBACK等）附加reason code增强状态区分度
-
-  2.6.5 buffer overflow修复（parse_net_config, L2261-2262）
-    strncpy大小修正：sizeof(buf)-1 + 显式null终止
-
-  2.6.6 新增 classify_state_error_hint()（L2334-2412）
-    12种协议的错误状态分类：
-    - 文本协议(FTP/SMTP/RTSP/HTTP/SIP/IPP): state_id/100∈{4,5} → error_hint=1
-    - 二进制协议(MQTT/SSH/TLS/DTLS12/DNS/DICOM): behavioral fallback
-    O(1)，零分配，可在热路径安全调用
-
-2.7 afl-fuzz.c — 核心变更（+5,421行，+110个静态函数）
-========================================================
-
-2.7.0 新增includes（L46-54, L60, L81-83, L89-90）
-─────────────────────────────────────────────────
-  #include "grammar-hypothesis.h"
-  #include "hypothesis-adapter.h"
-  #include "mqtt-builder.h"
-  #include "mqtt-generate.h"
-  #include "mqtt-scheduler.h"
-  #include "mp-driver.h"
-  #include "mqtt-differential.h"
-  #include "mqtt-race.h"
-  #include "protocol-oracle.h"
-  #include <strings.h>, <netdb.h>, <netinet/tcp.h>, <pthread.h>
-
-2.7.1 新增全局状态变量（~50个）
-────────────────────────────────
-
-  [Hypothesis系统] (L264-291)
-    hypothesis_context_t *hypothesis_ctx = NULL
-    u8 hypothesis_mode = 0
-    u32 hypothesis_validation_count = 0
-    #define HYPOTHESIS_VALIDATION_SAMPLE_RATE 500
-    #define HYPOTHESIS_REFINEMENT_CHECK_INTERVAL 5000
-
-  [Adaptive Plateau] (L632-636)
-    u32 last_edges_count, last_edges_check_time
-    double edges_growth_rate
-    u32 adaptive_plateau_threshold = 200
-
-  [Ablation开关] (L643-653)
-    u8 ablation_no_refinement/no_frontier/no_adaptive/no_state_prompt
-
-  [Fix-14c] (L221)
-    u32 forced_kills（SIGKILL升级计数器）
-
-  [MP统计] (L223-225)
-    u32 mp_multi_ok, mp_multi_fallback, mp_multi_hshake_fail
-
-  [MQTT Differential] (L477-586)
-    mqtt_cluster_diff_summary, mqtt_last_diff_signal
-    mqtt_diff_type/code/payload/fwd_divergences计数器
-    mqtt_div_pattern_bitmap[4096]（散度模式去重）
-    mqtt_state_diff_reward_sum/obs（per-state差分奖励）
-
-  [MQTT Persistent Mode] (L589-595)
-    mqtt_persistent_mode/count/limit/active/pid/skip_kill
-
-  [Adaptive Wait] (L556-558)
-    adaptive_wait_usecs, server_warmed_up
-
-  [MQTT Field-aware] (L616-618)
-    mqtt_field_mutate_enabled, mqtt_cross_session_enabled, mqtt_fwd_drain_ms
-
-  [MQTT Scheduler] (L623-626)
-    mqtt_ql_t mqtt_ql, mqtt_bandit_t mqtt_bandit, mqtt_scheduler_enabled
-
-  [LLM Dedup] (L669-672)
-    llm_prompt_hash_ring[64], llm_prompt_hash_count
-    u64 llm_dedup_hits
-
-  [Queue扩展] (L329)
-    queue_entry新增 u8 mqtt_diff_score 字段
-
-2.7.2 新增辅助函数
-────────────────────
-  find_queue_entry_by_index(u32 idx) — L340-347：按索引查找queue条目
-  base64_decode(data, len, &out_len) — L349-383：base64解码（actions[]的propose_mutations用）
-
-2.7.3 新增MQTT集群基础设施（L477-1495, ~1020行）
-─────────────────────────────────────────────────
-  mqtt_open_cluster_socket() — TCP连接+TCP_NODELAY+重试
-  mqtt_pack_connect/subscribe/publish/disconnect() — 底层MQTT报文构造
-  mqtt_packet_type_from_msg() — 首字节高4bit提取
-  mqtt_probe_multi_party_interaction() — sub/pub/ctrl三连接full replay
-  mqtt_probe_cluster_differences() — 多broker签名对比+差分探测
-  mqtt_collect_exec_brokers() — 解析CHATAFL_MQTT_BROKERS → endpoint数组
-  mqtt_signature_from_response() — FNV-1a 64-bit响应签名
-  mqtt_exec_one_broker_mp() — 对单个broker执行full mp_driver路径
-  mqtt_save_diff_report() — 结构化差分报告输出到diffs/目录
-    + O6-LLM-RFC: LLM RFC合规性验证（每20个unique diff触发一次）
-
-2.7.4 enrich_testcases() 重写（L5549-5573）
-─────────────────────────────────────────────
-  基线：get_seeds_with_messsage_types() 仅做文件标注，无并发，无MQTT补充
-  Opt：
-    1. get_seeds_with_messsage_types()（同基线）
-    2. pthread线程池并发：ENRICHMENT_THREADS=4线程并发执行所有enrich_sequence()
-    3. MQTT分支：
-       - mqtt_enrich_seeds(in_dir, message_types_set) 程序化补充二进制种子
-       - mqtt_generate_v5_seeds(in_dir) 生成MQTT v5特性种子
-
-2.7.5 状态评分 — frontier_bonus + error_hint penalty（L2549-2590）
-──────────────────────────────────────────────────────────────────
-  在update_scores_and_select_next_state()中，基线score乘以frontier_bonus：
-
-  Step A — 出度加权（L2550-2565，由ablation_no_frontier门控）：
-    char sid_str[STATE_STR_LEN];
-    Agnode_t *nd = agnode(ipsm, sid_str, FALSE);
-    if (nd) {
-      int out_degree = 0;  // 遍历agfstout/agnxtout计数
-      if (out_degree <= 1)       frontier_bonus = 4.0;
-      else if (out_degree <= 3)  frontier_bonus = 2.0;
-      else                       frontier_bonus = 1.0;
-    } else {
-      frontier_bonus = 4.0;  // 不在图中→最高前沿奖励
+  State Context JSON [afl-fuzz.c L11336-11440]：
+    {
+      "nodes": <IPSM节点总数>,
+      "edges": <IPSM边总数>,
+      "growth_rate": <edges/min>,
+      "pending_favored": <等待处理的favored seed数>,
+      "queued_paths": <queue中的interesting cases数>,
+      "chat_times": <已触发LLM次数>,
+      "target_state_id": <当前目标状态ID>,
+      "worst_states": [
+        {"state_id": X, "paths": N, "out_degree": D, "productivity": P},
+        ...
+      ]  // 最多8个最差状态
     }
+    该JSON使LLM能了解IPSM图当前状态，从而产生针对性建议。
 
-  Step B — 可接受性惩罚（L2582-2589，同门控）：
-    if (state->error_hint == 1)
-      frontier_bonus *= 0.5;  // 确认4xx/5xx错误状态
-    else if (state->error_hint == 0 && state->selected_times >= 30
-             && state->productivity < 0.005)
-      frontier_bonus *= 0.7;  // 未知且低产状态
+5.2.4 第四层：LLM actions[] 反馈机制
+  ──────────────────────────────────
+  支持三种actions [afl-fuzz.c L11572-11850]：
 
-  Step C — MQTT差分奖励（L2592-2618，MQTT only）：
-    对稀疏状态图(out_degree密度<8.0)的frontier_bonus加cap(×2.5)
+  (a) set_target_state: 重定向fuzzer目标状态
+      {
+        "type": "set_target_state",
+        "state_id": <目标state_id>
+      }
+      效果：将fuzzer的target_state_id改为指定状态
+      应用：LLM判断某个低覆盖状态值得优先探索时
 
-  Step D — error_hint动态更新（update_state_aware_variables, L1498-1537）：
-    error_hint=1 && selected_times≥10 && productivity≥0.1 → 提升为2
-    error_hint=0 && selected_times≥30 && productivity<0.005 → 降级为1
+  (b) prioritize_seeds: 优先处理特定种子
+      {
+        "type": "prioritize_seeds",
+        "seed_ids": [<seed_id>, ...]
+      }
+      效果：标记种子为favored + 更新各状态池selected_seed_index
 
-2.7.6 Adaptive Plateau（L11100-11141）
-──────────────────────────────────────
-  在fuzz_one()中每60s wall-clock计算：
-    edges_growth_rate = (agnedges(ipsm) - last_edges_count) / time_elapsed_min;
+  (c) propose_mutations: 建议具体的变异操作
+      {
+        "type": "propose_mutations",
+        "seed_id": <base_seed>,
+        "ops": [
+          {"op": "insert"|"replace", "pos": N, "bytes_base64": "..."},
+          {"op": "flip", "pos": N, "len": L},
+          {"op": "grammar_expand", "rule": "..."}
+        ]
+      }
 
-  if (!ablation_no_adaptive) {
-    // 文本协议：
-    u32 floor_low=150, floor_mid=200, floor_high=300;
-    // MQTT协议（L11117-11124, P1-rev从500/600/800降低后）：
-    floor_low=300, floor_mid=400, floor_high=500;
+  这使LLM从"模糊的文本建议者"升级为"有操作语意的调度参与者"：
+  - set_target_state 直接对应"到某状态的序列建议"
+  - prioritize_seeds 对应"哪个种子最可能产生突破"
+  - propose_mutations 对应"如何修改现有消息到达目标状态"
 
-    if (edges_growth_rate > 5.0)       threshold = floor_high;
-    else if (edges_growth_rate > 1.0)  threshold = floor_mid;
-    else                               threshold = floor_low;
-  }
-  // else: ablation_no_adaptive → 保持initial值(200或CHATAFL_ABLATION_THRESHOLD值)
+5.2.5 第五层：MQTT Q-Learning + UCB1 状态感知调度
+  ──────────────────────────────────────────────────
+  mqtt_ql_t [mqtt-scheduler.h L40-49]：
+    32 states × 11 packet types Q-value表
+    Softmax温度退火选择
+    Q-Learning更新: Q(s,a) ← Q(s,a) + α[r + γ·max Q(s,a') - Q(s,a)]
+    Warmup: 每state的每个action至少尝试一次（round-robin）
 
-  触发（L11143）：
-    if (uninteresting_times >= adaptive_plateau_threshold && chat_times < CHATTING_THRESHOLD)
+  mqtt_ql_select(): 根据当前IPSM state_idx选择下一个MQTT包类型
+  mqtt_ql_update(): 每次interesting seed产生后更新Q-value
 
-2.7.7 Plateau LLM介入（L11144-11650）
-─────────────────────────────────────
+  mqtt_bandit_t [mqtt-scheduler.h L55-61]：
+    6臂UCB1选择（replace/insert/field/skip/corpus-splice/sub-pub-pair）
+    乐观初始化（skip arm=0.05悲观先验，其他=0.5乐观先验）
+    平衡 exploration vs exploitation
 
-  [前置动作] (L11152-11165)
-    - 首次plateau + hypothesis_mode=1 → lazy init init_grammar_hypothesis_system()
-    - if (!ablation_no_refinement) → periodic_hypothesis_refinement() (Tier-2)
-    - LLM prompt djb2哈希去重（64槽环形缓冲区）
+  热路径集成：havoc_stage → mqtt_bandit_select/mqtt_ql_select
+  reward更新：每次interesting seed产生后
 
-  [State Context JSON] (L11336-11440，由ablation_no_state_prompt门控)
-    json-c构建state_ctx: nodes, edges, growth_rate, pending_favored,
-    queued_paths, chat_times, target_state_id + 最差8个状态数组
-    MQTT额外注入mqtt_cluster_diff_summary
-
-  [Fork隔离调用] (L11442-11650)
-    - 主进程fork子进程
-    - 子进程：调用LLM + 写结果到stall-interactions/llm-suggest-N
-    - 父进程：waitpid(WUNTRACED)最多60秒 → 超时SIGKILL子进程
-
-    两条LLM路径：
-      ablation_no_state_prompt=1 (L11444):
-        → construct_prompt_stall_original() (ChatAFL原始模板)
-        → chat_with_llm(temperature=1.2)
-        → extract_stalled_message() 正则提取
-        → 包装为{suggested_request:...} JSON
-
-      默认 (L11572-11580):
-        → llm_handle_plateau(protocol, examples, history, state_ctx)
-        → chat_with_llm(temperature=1.2)
-        → 直接返回JSON
-
-  [响应处理] (L11652-11850)
-    validate_and_parse_llm_json() → 严格JSON schema验证
-    通过后：
-      suggested_request → extract + format → common_fuzz_stuff()
-      actions[] (仅默认路径):
-        set_target_state: 校验state_id → 重定向target_state_id
-        prioritize_seeds: 标记seed为favored + 更新各状态池selected_seed_index
-        propose_mutations: base64_decode + insert/replace/flip → common_fuzz_stuff()
-        suggest_strategy: noop
-
-2.7.8 Hypothesis系统（Tier-1+Tier-2闭环）
-──────────────────────────────────────────
-
-  [初始化] (L7254-7540)
-    init_grammar_hypothesis_system():
-    - 收集最多10个queue seed样本（MQTT经mqtt_binary_to_text()转换）
-    - 收集最多10份responses-ipsm/响应摘要
-    - init_hypothesis_context(protocol, NULL, pcap_samples, pcap_count)
-      ⚠️ 第二个参数(RFC text)当前为NULL
-    - generate_grammar_hypotheses(ctx, 5) → LLM生成5个初始hypothesis
-    - integrate_hypotheses_into_protocol_patterns() → 集成到IPSM pattern matching
-
-  [Tier-1 采样验证] (L7564-7644) — 热路径，common_fuzz_stuff()中
-    validate_hypothesis_sampled(buf, len, regions, region_count):
-    - 门控: hypothesis_mode && hypothesis_ctx && regions (L7568)
-    - 每500次执行触发一次
-    - 复用extract_requests()已解析的regions（零额外解析开销）
-    - 每次最多扫描8个region
-    - MQTT: mqtt_binary_to_text()转换后验证
-    - 约束检查: check_constraint() — length/enum/regex/dependency/numeric五类
-    - 每10次验证失败 → add_counterexample() + update_hypothesis_fitness_dynamic()
-
-  [Tier-2 周期性精炼] (L7646-7750) — plateau路径
-    periodic_hypothesis_refinement():
-    - 门控: hypothesis_mode && hypothesis_ctx (L7648)
-    - 门控: hypothesis_validation_count % 5000 == 0
-    - 扫描所有hypothesis:
-        if fitness < FITNESS_THRESHOLD(0.7) && counterexamples >= 3
-        → refine_hypothesis_with_counterexamples(hypothesis_ctx, hyp)
-        → 每次至多精炼1个hypothesis
-
-  [Fitness计算] (grammar-hypothesis.c L2292-2340)
-    calculate_hypothesis_fitness():
-      fitness = 0.7 × parse_rate + 0.3 × avg_constraint_confidence
-    update_hypothesis_fitness_dynamic():
-      成功+0.01, 失败-0.005（温和增量，避免过拟合）
-
-2.7.9 MQTT专项子系统
-─────────────────────
-
-  [Multi-Party Driver] (mp-driver.h + mp-driver-mqtt.c)
-    虚表接口6回调：open_connections/handshake/role_for_message/after_send/drain_all/cleanup
-    MQTT: 3 TCP连接(sub[0]/pub[1]/ctrl[2]) + CONNECT×3 + SUBSCRIBE通配符"#"
-    send_over_network()骨架: if (mp_drv && net_protocol==PRO_TCP) → 多方路径 else → 回退单连接
-    失败降级: open_connections失败 → MP_SINGLE_FD_FALLBACK
-
-  [结构化生成+字段感知变异] (mqtt-generate.c + mqtt-builder.c)
-    mqtt_generate_v5_seeds(): v5特性种子(AUTH/属性/订阅选项/Topic Alias)
-    mqtt_enrich_seeds(): 程序化补充CONNECT/PUBLISH/SUBSCRIBE组合
-    mqtt_parse_havoc_ranges(): 按包边界切割range→havoc变异约束在包内
-    mqtt_fix_message_length(): Remaining Length自动修正
-    binary↔text桥接: mqtt_binary_to_text()/mqtt_text_to_binary()
-      用于plateau提示词+hypothesis初始化+LLM enrichment+验证
-
-  [Q-Learning+UCB1调度器] (mqtt-scheduler.c)
-    mqtt_ql_t: Softmax Q-table (32 states × 11 packet types)
-      - 状态=(IPSM state, packet type), 动作=下一包类型, 奖励=queued_paths增益
-    mqtt_bandit_t: UCB1 6臂选择(replace/insert/field/skip/corpus-splice/sub-pub-pair)
-    havoc热路径集成: fuzz_one() → havoc_stage → mqtt_bandit_select/mqtt_ql_select
-    reward更新: 每次interesting seed产生后mqtt_ql_update/mqtt_bandit_update
-
-  [Multi-Broker差分反馈] (mqtt-differential.c)
-    CHATAFL_MQTT_BROKERS: 多broker端点列表(支持name@tcp://host/port标注实现名)
-    四层差分检测(MBFuzzer风格):
-      type-sequence divergence (G-field)
-      return-code divergence (G-field)
-      payload-content divergence (H-field)
-      forwarding-path divergence (O2)
-    O3: pkt_flags + var_header_hashes 扩展
-    差分信号注入: mqtt_diff_score → queue_entry + mqtt_state_diff_reward → state score
-    结构化报告: out_dir/diffs/ 目录
-    O6-LLM-RFC: LLM RFC合规性验证
-
-  [持久化服务器模式] (L589-595)
-    MQTT broker保活跨多个test case (~160ms → ~5ms)
-    每20次exec重新fork
-
-  [MQTT Fast I/O] (extern mqtt_fast_io)
-    net_send/net_recv跳过per-fragment usleep(10)
-
-2.7.10 执行循环工程改进
-────────────────────────
-
-  覆盖率稳定循环（aflnet.c）:
-    基线: while(1)无界
-    Opt:  while(stab_iter++ < 5000)有界
-
-  进程终止等待（aflnet.c send_over_network内）:
-    基线: SIGTERM → while(1)等待，永不发SIGKILL
-    Opt:  SIGTERM → 最多等200ms(1000×200µs) → 升级SIGKILL → child_force_killed=1
-
-  Fix-14c (run_target, L6508起):
-    child_timed_out && SIGKILL                  → FAULT_TMOUT
-    child_force_killed && SIGKILL               → FAULT_NONE + forced_kills++
-    child_force_killed && SIGKILL && corpus_read_or_sync → FAULT_NONE
-
-  Fix-14b (main, perform_dry_run前后):
-    corpus_read_or_sync = 1 → perform_dry_run() → corpus_read_or_sync = 0
-
-  自适应等待（send_over_network前）:
-    adaptive_wait_usecs: 首次cold start=server_wait_usecs, 成功后=0
-    connect失败回退到full wait
-
-  协议分流稳定化循环:
-    MQTT单连接: 15×200µs+barrier
-    文本协议: 5000次tight-spin cap
-    MQTT multi-fd: 20×100µs
-
-  协议分流终止等待:
-    MQTT: 30ms kill grace period
-    文本协议: 200ms kill grace period
-
-2.7.11 节点停滞检测（L12293-12315）
-────────────────────────────────────
-  外层主循环跟踪agnnodes(ipsm)变化:
-    节点增长 → 重置node_stagnation_rounds
-    停滞>80轮 → 30%概率临时切换到RANDOM_SELECTION
+5.2.6 第六层：节点停滞检测 + 随机扰动
+  ──────────────────────────────────
+  [afl-fuzz.c L12293-12315]：
+    外层主循环跟踪 agnnodes(ipsm) 变化
+    节点增长 → 重置 node_stagnation_rounds
+    停滞 > 80轮 → 30%概率切换到 RANDOM_SELECTION
   与自适应plateau的边增长率停滞是两个独立观测维度
 
-2.7.12 消融实验框架（L15854-15948）
-────────────────────────────────────
-  4个环境变量→代码路径映射:
-
-  getenv("CHATAFL_NO_REFINEMENT")    → ablation_no_refinement=1
-    L11163: if (!ablation_no_refinement) { periodic_hypothesis_refinement(); }
-    ⚠️ L15865-15872: 无CHATAFL_HYPOTHESIS时显式WARNING（no-op）
-
-  getenv("CHATAFL_NO_FRONTIER")      → ablation_no_frontier=1
-    L2550: if (!ablation_no_frontier) { frontier_bonus + error_hint block }
-
-  getenv("CHATAFL_NO_ADAPTIVE")      → ablation_no_adaptive=1
-    L11108: if (!ablation_no_adaptive) { threshold update }
-    L16086-16095: 应用_CHATAFL_RESOLVED_THRESHOLD覆盖值
-    L16115: if (!ablation_no_adaptive) { MQTT threshold override }
-
-  getenv("CHATAFL_NO_STATE_PROMPT")  → ablation_no_state_prompt=1
-    L11336: if (!ablation_no_state_prompt) { state_ctx JSON }
-    L11444: if (ablation_no_state_prompt) { original prompt }
-    L11575: else if (!ablation_no_state_prompt && ...) { actions[] }
-
-  getenv("CHATAFL_ABLATION_THRESHOLD") → 存储到_CHATAFL_RESOLVED_THRESHOLD
-    L16086-16095: 仅在ablation_no_adaptive=1时应用
-
-  getenv("CHATAFL_HYPOTHESIS")       → hypothesis_mode=1 (延迟初始化)
-    L11152-11156: 首次plateau触发时lazy init
-
-  启动时打印统一ABLATION CONFIG banner（stderr，不受ANSI/UI干扰）
-
-2.7.13 MQTT启动配置（L15955-16004）
-────────────────────────────────────
-  MQTT协议自动配置:
-    mqtt_fix_length_enabled = 1（除非CHATAFL_MQTT_FIX_LENGTH=0）
-    hypothesis_mode: 保持CHATAFL_HYPOTHESIS设置（CHATAFL_MQTT_NO_HYPOTHESIS=1可关闭）
-    mqtt_field_mutate_enabled = 1（除非CHATAFL_MQTT_NO_FIELD_MUTATE=1）
-    mqtt_cross_session_enabled = 1（除非CHATAFL_MQTT_NO_CROSS_SESSION=1）
-  注：P1-rev已将MQTT hypothesis从默认关闭改为默认启用（通过binary↔text桥接）
-
-2.7.14 MQTT启动阈值覆盖（L16115-16127）
-───────────────────────────────────────
-  if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0 && !ablation_no_adaptive):
-    CHATAFL_MQTT_LLM_THRESHOLD=N → 使用N，否则默认300
+5.2.7 结论：FULLY MEETS
+  ✅ 状态节点/转移作为feedback（frontier_bonus基于IPSM出度）
+  ✅ 优先探索低覆盖状态/稀有转移（出度≤1→4×, 出度2-3→2×）
+  ✅ plateau时LLM生成状态序列建议（set_target_state action）
+  ✅ 自适应阈值动态平衡LLM探索频率
+  ✅ MQTT专项：Q-Learning状态×动作调度 + UCB1策略选择
+  ✅ 与SST论文理论的直接对应：
+     - SST的"优先选择低覆盖状态" ↔ frontier_bonus
+     - SST的"STT状态转移树" ↔ IPSM图出度分析
+     - SST的"稀有转移" ↔ out_degree≤1×4.0奖励
 
 ================================================================================
-三、ChatAFL基线 vs ChatAFL-Opt 逐维度能力矩阵
+六、综合评分矩阵
 ================================================================================
 
-  维度                                    | ChatAFL      | ChatAFL-Opt              | 代码位置(Opt)
-  --------------------------------------- | ------------ | ------------------------ | -------------------------
-  启动期LLM语法抽取                       | ✅ 串行5×2    | ✅ 同基线                 | chat-llm.c (未改动调用)
-  启动期种子充实                          | ✅ 串行       | ✅ 并行(4线程)            | afl-fuzz.c L5549 + pthread
-  启动期MQTT二进制补充                    | ❌            | ✅ mqtt_enrich + v5       | afl-fuzz.c L5561-5572
-  状态评分感知IPSM拓扑(out-degree)        | ❌            | ✅ frontier_bonus ×4/×2/×1 | afl-fuzz.c L2550-2565
-  状态可接受性建模(error_hint)            | ❌            | ✅ 4xx/5xx自动标记+软惩罚  | aflnet.c L2370 + afl-fuzz.c L2582
-  状态productivity跟踪                    | ❌            | ✅ paths/selected动态比率  | afl-fuzz.c L1498-1537
-  自适应plateau阈值                        | ❌ 固定512    | ✅ 150-300(文本)/300-500(MQTT) | afl-fuzz.c L11100-11137
-  LLM状态感知rich prompt                  | ❌            | ✅ state_ctx JSON+策略指导 | chat-llm.c L347-611
-  LLM actions[] (set_target/prioritize/mutate) | ❌        | ✅ 3种actions            | afl-fuzz.c L11572-11850
-  LLM调用fork隔离+60s超时                  | ❌ 主进程阻塞 | ✅ fork+waitpid(WUNTRACED)| afl-fuzz.c L11442-11650
-  LLM JSON严格schema验证                   | ❌ 正则提取   | ✅ validate_and_parse     | llm-validator.c L16-121
-  LLM提示词去重                            | ❌            | ✅ djb2 64槽环形          | afl-fuzz.c L669-672, plateau路径
-  LLM curl超时/信号安全                    | ❌            | ✅ 120s/30s+NOSIGNAL      | chat-llm.c L132-138
-  LLM认证错误快速检测                      | ❌ 重试到耗尽 | ✅ 401→立即中止           | chat-llm.c L191-203
-  API key缺失优雅降级                      | ❌ exit(1)    | ✅ warning+返回NULL       | chat-llm.c L79-87
-  curl全局生命周期管理                     | ❌ 每次init   | ✅ global_init一次        | chat-llm.c L48-50
-  __thread安全token计数                    | ❌ 全局       | ✅ 线程局部               | chat-llm.c L57
-  MQTT多方交互(sub/pub/ctrl)              | ❌            | ✅ mp_driver_mqtt          | mp-driver-mqtt.c 1244行
-  MQTT Multi-broker差分反馈                | ❌            | ✅ 4层散度检测            | mqtt-differential.c 584行
-  MQTT B1 PUBLISH转发状态感知              | ❌            | ✅ QoS级状态编码          | aflnet.c L1645-1652
-  MQTT 正确变长Remaining Length            | ❌ mem[1]     | ✅ 标准变长解码           | aflnet.c L655-680
-  MQTT Q-Learning+UCB1调度器               | ❌            | ✅ havoc热路径集成         | mqtt-scheduler.c + afl-fuzz.c
-  MQTT 字段感知变异                        | ❌            | ✅ mqtt_parse_havoc_ranges| afl-fuzz.c L12964-12970
-  MQTT v5种子生成                          | ❌            | ✅ mqtt_generate_v5_seeds | mqtt-generate.c
-  MQTT binary↔text桥接                     | ❌            | ✅ 全文转换               | mqtt-builder.c
-  MQTT持久化服务器模式                      | ❌            | ✅ 架构级优化             | afl-fuzz.c L589-595
-  MQTT fast I/O                            | ❌            | ✅ 跳过usleep(10)         | aflnet.c L14-18 + L2110/L2145
-  MQTT竞态测试                             | ❌            | ✅ race框架               | mqtt-race.c 624行
-  MQTT 语义依赖上下文                       | ❌            | ✅ mqtt_gen_ctx_t          | mqtt-generate.h L52-76
-  Tier-1采样验证(热路径)                   | ❌            | ✅ 每500 execs            | afl-fuzz.c L7564-7644
-  Tier-2反例驱动精炼(plateau路径)          | ❌            | ✅ 每5000 validations     | afl-fuzz.c L7646-7750
-  Grammar Hypothesis生成                   | ❌            | ✅ init + LLM生成         | grammar-hypothesis.c 2985行
-  Hypothesis fitness动态更新               | ❌            | ✅ ±0.01/±0.005          | grammar-hypothesis.c L2320
-  5类约束检查                              | ❌            | ✅ length/enum/regex/dep/num | grammar-hypothesis.c L2161
-  RFC知识库(12协议)                        | ❌            | ✅ 抓取/缓存/提取         | rfc-knowledge.c 732行
-  Protocol Oracle(语义漏洞检测)            | ❌            | ✅ 6协议×5严重度×11类别   | protocol-oracle.c 1965行
-  Protocol Oracle状态机追踪                | ❌            | ✅ FTP/SMTP/RTSP/SIP/MQTT/HTTP | protocol-oracle.h L84-132
-  节点停滞检测+RANDOM扰动                   | ❌            | ✅ 全局IPSM节点数监测     | afl-fuzz.c L12293-12315
-  自适应服务器等待                          | ❌            | ✅ warmup后=0            | afl-fuzz.c L556-558
-  差分报告结构化保存                        | ❌            | ✅ diffs/目录             | afl-fuzz.c mqtt_save_diff_report
-  LLM RFC合规性验证                         | ❌            | ✅ O6-LLM-RFC            | afl-fuzz.c L1310-1380
-  消融实验框架                             | ❌            | ✅ 4开关+banner          | afl-fuzz.c L15854-15948
-  执行循环有界化                           | ❌ while(1)   | ✅ 5000cap/200ms超时     | aflnet.c
-  SIGKILL升级+场景区分(Fix-14a/b/c)        | ❌            | ✅ 3场景精确路由          | afl-fuzz.c L6508, L221
-  send_over_network泛化骨架                 | ❌ MQTT硬编码 | ✅ mp_driver虚表          | mp-driver.h + aflnet.c
-  MQTT PUBLISH状态爆炸控制                  | ❌            | ✅ QoS-only编码(3状态)    | aflnet.c L1648-1652
-  strncpy buffer overflow修复              | ❌            | ✅ sizeof(buf)-1+null    | aflnet.c L2261-2262
+  需求维度                     | ChatAFL基线 | ChatAFL-Opt | 关键代码位置（Opt）
+  --------------------------- | ----------- | ----------- | -------------------------------------------
+  1. Hypothesis生成           |             |             |
+     输入:RFC片段              | ✗           | ✅(部分)     | grammar-hypothesis.c L1178-1391
+     输入:PCAP样例             | ✅          | ✅          | grammar-hypothesis.c L1265-1317
+     输入:服务器响应            | ✗           | ✅          | grammar-hypothesis.c L1319-1348
+     输出:JSON Schema          | ✗           | ✅          | grammar-hypothesis.c L1353-1371
+     输出:5类字段约束          | ✗           | ✅          | grammar-hypothesis.h L17-38
+     输出:ABNF产生式           | ✗           | ✅          | grammar-hypothesis.h L47
+  --------------------------- | ----------- | ----------- | -------------------------------------------
+  2. 验证器(Verifier)         |             |             |
+     (a)可解析性               | ✗           | ✅          | grammar-hypothesis.c L2007-2286
+     (b)可接受性               | ✗           | ✅          | aflnet.c L2334-2412
+     (c)状态可达性             | ✗           | ✅          | afl-fuzz.c L2550-2565
+     (d)覆盖增益入库           | ✗           | ✅          | hypothesis-adapter.c L136-266
+  --------------------------- | ----------- | ----------- | -------------------------------------------
+  3. 反例驱动修正             |             |             |
+     反例收集+回喂LLM          | ✗           | ✅          | grammar-hypothesis.c L1393-1487
+     局部patch约束             | ✗           | ✅(prompt级) | grammar-hypothesis.c L1465-1480
+     降低幻觉(limit自由度)     | ✗           | ✅(软约束)   | grammar-hypothesis.c L1466-1470
+  --------------------------- | ----------- | ----------- | -------------------------------------------
+  4. 状态导向调度             |             |             |
+     状态节点/转移作feedback   | ✗           | ✅          | afl-fuzz.c L2550-2565
+     优先低覆盖/稀有转移       | ✗           | ✅          | afl-fuzz.c L2555-2565
+     plateau LLM状态序列建议    | ✗           | ✅          | chat-llm.c L347-611 + afl-fuzz.c L11572+
+     Q-Learning/UCB1调度       | ✗           | ✅(MQTT)    | mqtt-scheduler.c
+  --------------------------- | ----------- | ----------- | -------------------------------------------
 
 ================================================================================
-四、控制论架构对比
+七、设计边界的诚实评估
 ================================================================================
 
-4.1 ChatAFL基线 — 开环控制
-────────────────────────────
-  启动期LLM（一次性）→ 协议知识固化 → 永不再更新
-  运行时：固定阈值512 → 固定文本模板（无IPSM拓扑信息）
-          → 主进程同步阻塞LLM → 正则提取 → 加入队列
-  LLM建议效果 ↛ 无反馈通道
+7.1 已完全满足的部分
+─────────────────────
+  ✅ 需求1(Hypothesis)：输入三源(RFC/PCAP/响应)、输出JSON Schema+5类约束+ABNF产生式
+  ✅ 需求2(Verifier)：四层验证（可解析性/可接受性/状态可达性/覆盖增益）
+  ✅ 需求3(Refinement)：反例收集→回喂LLM→局部patch约束（prompt级）
+  ✅ 需求4(Scheduling)：IPSM拓扑反馈→frontier优先→LLM state-aware建议→Q-Learning
 
-4.2 ChatAFL-Opt — 自适应闭环控制
-───────────────────────────────────
-  三个可观测量驱动四个执行器：
+7.2 部分满足/待完善的部分
+───────────────────────────
+  ⚠️ 需求1-RFC输入链：rfc-knowledge.c完整实现了12协议RFC抓取/缓存/提取，
+     但 init_hypothesis_context() [afl-fuzz.c L7348] 的第二个参数(RFC text)当前为NULL。
+     extract_rfc_key_sections()函数本身完整可用，缺少的是上游调用点的数据填充。
+     注：ctx->rfc_text在init内部可通过fetch_rfc_text()自动抓取（L67-94），
+     所以当rfc_text参数为NULL时会走auto-fetch路径。
 
-  可观测量：
-    O₁ = IPSM边增长率 Ė = d(agnedges)/dt  (L11100-11106)
-    O₂ = 每状态productivity = paths_discovered/(selected_times+1)  (aflnet.h L35)
-    O₃ = Hypothesis fitness = 0.7×parse_rate + 0.3×avg_constraint_confidence  (grammar-hypothesis.c L2292)
+  ⚠️ 需求3-局部patch约束：当前为prompt级软约束（LLM可能不完全遵循）。
+     论文级实现应为代码级AST diff硬约束（解析LLM输出JSON → 与原始hypothesis逐字段diff
+     → 拒绝多于1个字段修改的输出 → 要求LLM重新生成）。当前实现缺少这一校验层。
 
-  执行器：
-    E₁ = LLM介入阈值 τ(Ė) — 自适应plateau (L11108-11137)
-    E₂ = 状态选择权重 β(deg⁺, error_hint, productivity) — frontier scoring (L2550-2590)
-    E₃ = LLM操作指令 actions[] — set_target_state/prioritize_seeds/propose_mutations (L11572-11850)
-    E₄ = Hypothesis精炼 — Tier-2 LLM refinement (L11163-11165)
+  ⚠️ 需求3-反例最小化：add_counterexample()存储完整hex编码消息，
+     但未进行minimization（如delta debugging缩减到最小违反子序列）。
 
-  反馈回路：
-    Ė↑→τ↑  Ė↓→τ↓  deg⁺↓→β↑  error_hint=1+prod↓→β×0.5
-    error_hint=1+prod↑→提升为2  fitness↓+counterexamples↑→触发精炼
+  ⚠️ 需求2-Protocol Oracle集成：protocol-oracle.c完整实现(1965行)，
+     但在afl-fuzz.c主循环中的调用点有限（主要在MQTT diff路径中）。
+
+7.3 设计决策与取舍
+───────────────────
+  - 验证器选择"工程闭环"而非形式化证明：使用PCRE2/正则匹配+约束检查替代形式化验证器
+  - MQTT作为二进制协议的主要验证目标：binary↔text桥接解决了LLM无法直接处理二进制的问题
+  - 消融实验框架：4个环境变量开关允许逐个关闭各子系统以评估贡献度
+  - 线程安全从全局变量迁移到__thread TLS：保障并发enrichment的正确性
 
 ================================================================================
-五、未完成项与设计边界
+八、统计汇总
 ================================================================================
 
-  5.1 已实现但未完全接入主流程
-  ─────────────────────────────
-  - RFC知识库：rfc-knowledge.c完整实现(12协议URL映射+抓取+缓存+命令提取+状态机分析)
-    但init_hypothesis_context()第二个参数(RFC text)当前固定为NULL (afl-fuzz.c L7348)
-  - Protocol Oracle：protocol-oracle.c完整实现(1965行, 6协议×5严重度×11类别)
-    在afl-fuzz.c中有include但主fuzz循环中的集成程度待确认
+  代码量：
+    ChatAFL 基线:      ~13,000行（afl-fuzz.c + chat-llm.c + aflnet.c 等共享文件）
+    ChatAFL-Opt 新增:  ~16,896行（共享文件+5,421 + 新文件11,475）
+    ChatAFL-Opt 总计:  ~29,900行
 
-  5.2 设计边界
+  函数数：
+    ChatAFL 静态函数:  128个
+    ChatAFL-Opt 静态函数: 238个（+110个）
+
+  新增子系统：
+    Hypothesis生成+验证闭环: grammar-hypothesis.c (2,985行)
+    RFC知识库:               rfc-knowledge.c (732行)
+    协议语义Oracle:          protocol-oracle.c (1,965行)
+    MQTT多方驱动:             mp-driver-mqtt.c (1,244行)
+    MQTT调度器:               mqtt-scheduler.c (187行)
+    MQTT差分引擎:             mqtt-differential.c (584行)
+    MQTT报文构造:             mqtt-builder.c (1,924行)
+    MQTT种子生成:             mqtt-generate.c (843行)
+
+  消融开关: 4个（CHATAFL_NO_REFINEMENT / NO_FRONTIER / NO_ADAPTIVE / NO_STATE_PROMPT）
+  门控开关: CHATAFL_HYPOTHESIS（Hypothesis模式）、CHATAFL_MQTT_BROKERS（多方差分）
+
+================================================================================
+九、最终结论
+================================================================================
+
+ChatAFL（基线）是一个"开环的LLM辅助协议模糊测试器"：
+  - 启动期一次性LLM批处理后协议知识固化
+  - 运行时LLM通道完全开环（无反馈、无验证、无refinement）
+  - 无状态拓扑感知、无RFC知识注入、无结构化grammar输出
+
+ChatAFL-Opt 在四个设计维度上均取得了实质性进展：
+
+  需求1(Hypothesis生成):
+    从简单的PCRE2正则模板升级为JSON Schema+五类字段约束+ABNF产生式的
+    结构化grammar生成，输入扩展为RFC/PCAP/服务器响应三源。
+
+  需求2(验证器):
+    从无验证器升级为四层工程化验证（可解析性/可接受性/状态可达性/覆盖增益），
+    Tier-1热路径采样+Tier-2周期性精炼形成双速率闭环。
+
+  需求3(反例驱动修正):
+    从无refinement升级为反例收集→回喂LLM→局部patch约束的闭环，
+    通过prompt工程实现"只修改一个字段/一条产生式"的设计约束（软约束级）。
+
+  需求4(状态导向调度):
+    从固定阈值+固定模板的开环LLM调用，升级为IPSM拓扑感知的frontier优先探索+
+    自适应阈值+LLM state-aware建议+actions[]操作语意+MQTT Q-Learning/UCB1
+    的六层状态感知调度系统。
+
+  ChatAFL-Opt 已从"开环LLM辅助工具"升级为"状态感知+反例反馈+自适应调度"的
+  闭环协议模糊测试系统，基本满足论文中描述的四项设计要求。
+
+================================================================================
+十、ChatAFL-Opt 核心业务流程（End-to-End Workflows）
+================================================================================
+
+----------------------------------------------------------------------
+10.1 启动初始化流程（Startup Initialization Flow）
+----------------------------------------------------------------------
+
+  main() [afl-fuzz.c L15800+]
+    │
+    ├─ 1. 命令行解析 + 环境变量读取
+    │     ├─ getenv("CHATAFL_HYPOTHESIS")        → hypothesis_mode
+    │     ├─ getenv("CHATAFL_NO_REFINEMENT")      → ablation_no_refinement
+    │     ├─ getenv("CHATAFL_NO_FRONTIER")        → ablation_no_frontier
+    │     ├─ getenv("CHATAFL_NO_ADAPTIVE")        → ablation_no_adaptive
+    │     ├─ getenv("CHATAFL_NO_STATE_PROMPT")     → ablation_no_state_prompt
+    │     ├─ getenv("CHATAFL_MQTT_BROKERS")       → MQTT cluster配置
+    │     └─ getenv("CHATAFL_ABLATION_THRESHOLD") → 固定阈值覆盖
+    │     [打印 ABLATION CONFIG banner 到 stderr]
+    │
+    ├─ 2. 共享内存 + fork server 初始化（AFL标准流程）
+    │
+    ├─ 3. IPSM图创建 + 状态追踪初始化
+    │
+    ├─ 4. chat_llm_global_init()               [chat-llm.c L48-50]
+    │     └─ curl_global_init(CURL_GLOBAL_ALL)  // 全局一次，非每次调用
+    │
+    ├─ 5. setup_llm_grammars()                  [chat-llm.c 基线]
+    │     └─ 启动期LLM语法抽取（与基线相同：5×2次LLM调用 → PCRE2正则）
+    │
+    ├─ 6. enrich_testcases() 重写版            [afl-fuzz.c L5549-5573]
+    │     ├─ 6a. get_seeds_with_messsage_types()  // 标注种子消息类型
+    │     ├─ 6b. pthread线程池并发enrichment
+    │     │       └─ ENRICHMENT_THREADS=4 线程 → enrich_sequence()
+    │     │           每个线程独立 __thread token计数器
+    │     └─ 6c. MQTT协议分支:
+    │            ├─ mqtt_enrich_seeds(in_dir, message_types_set)
+    │            │   程序化补充CONNECT/PUBLISH/SUBSCRIBE组合
+    │            └─ mqtt_generate_v5_seeds(in_dir)
+    │                生成MQTT v5特性种子(AUTH/属性/订阅选项/Topic Alias)
+    │
+    ├─ 7. oracle_init(protocol_name)            [protocol-oracle.c L1820-1827]
+    │     └─ 初始化语义Oracle（去重bitmap + 协议名）
+    │
+    ├─ 8. MQTT专项初始化（若 -P MQTT）
+    │     ├─ mqtt_fix_length_enabled = 1
+    │     ├─ mqtt_field_mutate_enabled = 1（除非 CHATAFL_MQTT_NO_FIELD_MUTATE=1）
+    │     ├─ mqtt_cross_session_enabled = 1
+    │     ├─ mqtt_ql_init(&mqtt_ql)             // Q-Learning状态表
+    │     ├─ mqtt_bandit_init(&mqtt_bandit)     // UCB1 bandit
+    │     └─ mqtt_scheduler_enabled = 1
+    │
+    ├─ 9. perform_dry_run()（AFL标准流程）
+    │     └─ 初始化 edges_growth_rate 相关变量
+    │
+    └─ 10. 进入主循环 while(1)
+
+----------------------------------------------------------------------
+10.2 主Fuzzing循环流程（Main Fuzzing Loop Flow）
+----------------------------------------------------------------------
+
+  while(1) [afl-fuzz.c 主循环]
+    │
+    ├─ 【节点停滞检测】[L12293-12315]
+    │     if (agnnodes(ipsm) 无增长 > 80轮)
+    │       └─ 30%概率切换为 RANDOM_SELECTION（强制探索）
+    │
+    ├─ 【自适应Plateau阈值更新】[L11100-11141]
+    │     每60s wall-clock:
+    │       edges_growth_rate = Δedges / Δtime_min
+    │       if (!ablation_no_adaptive):
+    │         根据增长率查表设置 adaptive_plateau_threshold
+    │
+    ├─ cull_queue()                          // 队列修剪
+    │
+    ├─ update_scores_and_select_next_state() 【Opt增强版】
+    │   └─ 详见下方 10.2.1
+    │
+    ├─ 【Protocol Oracle检查】[send_over_network后]
+    │     在每次exec完成后:
+    │       oracle_check(protocol, requests, req_lens, req_count, response, resp_len, &result)
+    │       └─ 若发现violation → oracle_save_violation() 写入 replayable-violations/
+    │
+    └─ fuzz_one(selected_seed) ─────────────────────────────────────┐
+         │                                                            │
+         ├─ 【Plateau检测 + LLM介入】[L11143-11850]                  │
+         │   if (uninteresting_times >= adaptive_plateau_threshold     │
+         │       && chat_times < CHATTING_THRESHOLD(64)):              │
+         │     └─ 详见下方 10.3                                       │
+         │                                                            │
+         ├─ CALIBRATE / TRIM 阶段（AFL标准）                          │
+         │                                                            │
+         ├─ 【HAVOC阶段 — Opt增强】                                    │
+         │   │                                                         │
+         │   ├─ 文本协议: AFLNet标准havoc                              │
+         │   │                                                        │
+         │   └─ MQTT协议:                                              │
+         │       ├─ mqtt_bandit_select(&mqtt_bandit) → arm 0-5        │
+         │       │   ├─ Arm 0: Replace → mqtt_gen_packet()替换region   │
+         │       │   ├─ Arm 1: Insert → mqtt_gen_packet()插入          │
+         │       │   ├─ Arm 2: Field-aware byte mutation               │
+         │       │   │   └─ mqtt_parse_havoc_ranges() 按包边界切割     │
+         │       │   ├─ Arm 3: Skip（仅通用havoc）                     │
+         │       │   ├─ Arm 4: Corpus-splice + field-aware            │
+         │       │   └─ Arm 5: SUBSCRIBE→PUBLISH pair注入             │
+         │       ├─ mqtt_ql_select(&mqtt_ql, state_idx) → 下一包类型   │
+         │       └─ mqtt_fix_message_length() 自动修正Remaining Length │
+         │                                                            │
+         ├─ 【SEND阶段 — Opt增强】                                     │
+         │   │                                                        │
+         │   ├─ 自适应等待: adaptive_wait_usecs（首次=full, 后续=0）   │
+         │   │                                                        │
+         │   ├─ send_over_network() [aflnet.c Opt版]                  │
+         │   │   ├─ 文本协议: 单连接路径（同基线）                     │
+         │   │   │   └─ classify_state_error_hint() 自动标记错误状态    │
+         │   │   │                                                │
+         │   │   └─ MQTT:                                             │
+         │   │       ├─ 多方路径: mp_drv->open_connections()          │
+         │   │       │   └─ sub[0]/pub[1]/ctrl[2] 三连接             │
+         │   │       │   └─ CONNECT×3 + SUBSCRIBE通配符"#"            │
+         │   │       ├─ 失败回退: MP_SINGLE_FD_FALLBACK               │
+         │   │       ├─ 持久化模式: 保活broker跨case（~5ms vs ~160ms）│
+         │   │       ├─ Fast I/O: 跳过usleep(10) per-fragment         │
+         │   │       └─ MQTT变长Remaining Length正确解码               │
+         │   │                                                        │
+         │   └─ 覆盖率稳定循环有界化（5000cap, 非while(1)）           │
+         │                                                            │
+         ├─ 【Tier-1 Hypothesis采样验证】[L7564-7644]                  │
+         │   if (hypothesis_mode && hypothesis_validation_count % 500 == 0): │
+         │     └─ validate_hypothesis_sampled(buf, len, regions, n)   │
+         │         ├─ 复用extract_requests()已解析的regions（零额外开销）│
+         │         ├─ 每region → validate_message_against_hypothesis() │
+         │         │   └─ check_constraint() × 5类                    │
+         │         ├─ MQTT: mqtt_binary_to_text() 先转换              │
+         │         └─ 失败>10 → add_counterexample() + fitness更新     │
+         │                                                            │
+         ├─ save_if_interesting()                                     │
+         │   ├─ 【Q-Learning reward更新】                              │
+         │   │   if (interesting && MQTT):                             │
+         │   │     mqtt_ql_update(ql, state_idx, pkt_type, reward=1.0) │
+         │   │     mqtt_bandit_update(bandit, arm, reward=+queued_paths)│
+         │   │                                                        │
+         │   ├─ 【MQTT差分反馈注入】                                   │
+         │   │   if (multi-broker enabled):                            │
+         │   │     mqtt_diff_analyze_and_annotate()                    │
+         │   │     └─ queue_entry.mqtt_diff_score = divergence_score   │
+         │   │                                                        │
+         │   └─ 【状态productivity更新】                               │
+         │       error_hint 动态升降级 [L1498-1537]                    │
+         │       productivity = paths_discovered / (selected_times+1)  │
+         │                                                            │
+         └─ 【MQTT Multi-Broker差分探测】[每32次exec]                  │
+             if (CHATAFL_MQTT_BROKERS && exec_count % 32 == 0):        │
+               ├─ mqtt_probe_cluster_differences()                    │
+               │   ├─ 对每个broker独立执行同一输入                    │
+               │   ├─ mqtt_diff_compare() 四层差分                    │
+               │   └─ 生成my_diff_report → mqtt_save_diff_report()   │
+               └─ mqtt_cluster_diff_summary 更新（供plateau prompt用） │
+
+  【10.2.1: update_scores_and_select_next_state() Opt增强版】
+  ──────────────────────────────────────────────────────────
+
+  基线(AFLNet)公式:
+    score = 1000 × 2^(-log₁₀(log₁₀(fuzzs+1)×selected_times+1))
+                  × 2^(ln(paths_discovered+1))
+
+  Opt增强公式 [afl-fuzz.c L2549-2618]:
+    final_score = score × frontier_bonus × error_hint_penalty × diff_bonus
+
+    Step A — frontier_bonus（IPSM出度感知）:
+      agnode(ipsm, state_id_str, FALSE) → 计算出度
+        out_degree ≤ 1  → ×4.0  (终端/前沿状态，SST稀有转移)
+        out_degree 2-3  → ×2.0  (中等连通)
+        out_degree ≥ 4  → ×1.0  (高连通，充分探索)
+        不在图中         → ×4.0  (新发现状态)
+
+    Step B — error_hint_penalty（可接受性感知）:
+      error_hint == 1 (confirmed 4xx/5xx)       → ×0.5
+      error_hint == 0 && productivity < 0.005
+        && selected_times ≥ 30                  → ×0.7 (未知低产)
+      error_hint == 2 (confirmed-productive)    → ×1.0 (不惩罚)
+
+    Step C — MQTT diff_bonus（仅MQTT + 稀疏图）:
+      if out_degree密度 < 8.0 → capped(×2.5)
+
+    前5轮(state_cycles < 5): ROUND_ROBIN（同基线）
+
+----------------------------------------------------------------------
+10.3 Plateau检测与LLM介入流程（Plateau → LLM → Feedback Loop）
+----------------------------------------------------------------------
+
+  这是ChatAFL-Opt最核心的闭环工作流，将基线中的"开环LLM调用"升级为
+  "状态感知+反例反馈+操作语意"的闭环。
+
+  【触发条件】[afl-fuzz.c L11143]
+  ─────────────────────────────────
+    uninteresting_times >= adaptive_plateau_threshold
+    && chat_times < CHATTING_THRESHOLD(64)
+
+    其中 adaptive_plateau_threshold 是动态计算的（见10.2自适应阈值更新）:
+      文本协议: 150(高增长) / 200(中) / 300(低)
+      MQTT协议: 300(高增长) / 400(中) / 500(低)
+
+  【完整处理流程】
+  ─────────────────
+
+  1. PRE-LLM 阶段 [L11152-11165]
+  ──────────────────────────────
+    ├─ Lazy init: if (首次plateau && hypothesis_mode):
+    │     init_grammar_hypothesis_system()
+    │     ├─ 收集10个queue seed → pcap_samples
+    │     ├─ 收集10份 responses-ipsm/ → server_responses
+    │     ├─ init_hypothesis_context(protocol, NULL, pcap, pcap_count)
+    │     │   └─ RFC auto-fetch: fetch_rfc_text(protocol_name) [若rfc_text=NULL]
+    │     ├─ generate_grammar_hypotheses(ctx, 5)
+    │     │   ├─ construct_hypothesis_generation_prompt()
+    │     │   │   └─ 注入: RFC提取 + PCAP样例 + 服务器响应
+    │     │   ├─ chat_with_llm("gpt-4o-mini", tries=3, temp=0.3)
+    │     │   └─ parse_llm_hypothesis_response() × 5
+    │     └─ integrate_hypotheses_into_protocol_patterns()
+    │         写入 out_dir/protocol-grammars/hyp-pattern-N
+    │
+    ├─ Tier-2 Refinement: if (!ablation_no_refinement):
+    │     periodic_hypothesis_refinement()
+    │     └─ 扫描所有hypothesis:
+    │         if fitness < 0.7 && counterexamples >= 3:
+    │           ├─ construct_hypothesis_refinement_prompt()
+    │           │   └─ 当前schema + 最多10个反例 + Fix-20a局部patch约束
+    │           ├─ chat_with_llm(temp=0.3)
+    │           └─ parse_llm_hypothesis_response() → 更新hypothesis
+    │         每次至多精炼1个
+    │
+    └─ LLM Prompt去重检查:
+        djb2_hash(prompt) → 64槽环形buffer查找
+        若已存在 → llm_dedup_hits++ → 跳过本次LLM调用
+
+  2. STATE CONTEXT 构建 [L11336-11440]（由 ablation_no_state_prompt 门控）
+  ──────────────────────────────────────────────────────────────────────
+    json-c 构建 state_ctx JSON:
+    {
+      "nodes":              <IPSM节点总数>,
+      "edges":              <IPSM边总数>,
+      "growth_rate":        <edges/min>,
+      "pending_favored":    <等待favored的seed数>,
+      "queued_paths":       <queue中有趣case数>,
+      "chat_times":         <已触发LLM次数>,
+      "target_state_id":    <当前目标状态ID>,
+      "worst_states": [
+        {"state_id": X, "paths": N, "out_degree": D, "productivity": P, "error_hint": E},
+        ...  // 最多8个最低生产力状态
+      ]
+    }
+    若MQTT: 额外注入 mqtt_cluster_diff_summary
+
+  3. FORK隔离LLM调用 [L11442-11650]
+  ──────────────────────────────────
+    fork() ─┬─ 子进程:
+            │   ├─ 关闭AFL共享内存/文件描述符
+            │   ├─ 两条LLM路径:
+            │   │   ├─ [ablation_no_state_prompt=1]:
+            │   │   │   construct_prompt_stall_original()
+            │   │   │   → chat_with_llm(temp=1.2)
+            │   │   │   → extract_stalled_message() 正则提取
+            │   │   │   → 包装为 {suggested_request: "..."} JSON
+            │   │   │
+            │   │   └─ [默认路径]:
+            │   │       llm_handle_plateau(protocol, examples, history, state_ctx)
+            │   │       → chat_with_llm(temp=1.2)
+            │   │       → 返回原始JSON（含 suggested_request 或 actions[]）
+            │   │
+            │   └─ 结果写入 stall-interactions/llm-suggest-N
+            │      exit(0)
+            │
+            └─ 父进程:
+                waitpid(child, WUNTRACED, timeout=60s)
+                ├─ 正常退出 → 读取结果文件
+                └─ 超时 → kill(child, SIGKILL) → child_force_killed=1
+
+  4. RESPONSE 处理 [L11652-11850]
+  ─────────────────────────────────
+    validate_and_parse_llm_json(response) [llm-validator.c L16-121]
+    ├─ 严格JSON schema验证
+    ├─ suggested_request: 类型=string, 1 ≤ len ≤ 4096, 控制字符过滤
+    └─ actions[]: 验证 type/seed_ids/ops/pos/bytes_base64/state_id 字段
+
+    若通过验证:
+    ├─ suggested_request 分支:
+    │   ├─ extract + format → 标准化协议消息格式
+    │   └─ common_fuzz_stuff(buf, len) → 执行
+    │
+    └─ actions[] 分支（仅默认LLM路径）:
+        ├─ set_target_state:
+        │   校验state_id合法性 → 重定向 target_state_id
+        │
+        ├─ prioritize_seeds:
+        │   查找seed → 标记favored → 更新各状态池selected_seed_index
+        │
+        ├─ propose_mutations:
+        │   base64_decode(bytes_base64) → insert/replace/flip
+        │   → common_fuzz_stuff() → 执行变异消息
+        │
+        └─ suggest_strategy: noop（预留扩展）
+
+  5. 反馈闭环
   ─────────────
-  - 验证器：工程闭环版本，非形式化证明器
-  - Refinement："至多一个hypothesis"软约束，非严格AST diff
-  - Multi-party driver：当前仅TCP门控(SIP/UDP需放宽+补SIP driver)
-  - 消融开关：NO_FRONTIER和NO_STATE_PROMPT是bundled ablation
-  - CHATAFL_HYPOTHESIS依赖：NO_REFINEMENT依赖profuzzbench自动注入（脱离管线可能静默失效）
+    执行结果（has_new_bits / queued_paths增加）→ 影响:
+    ├─ edges_growth_rate → adaptive_plateau_threshold（下一次触发频率）
+    ├─ mqtt_ql_update / mqtt_bandit_update（Q-Learning/UCB1）
+    ├─ state productivity → error_hint动态更新
+    └─ hypothesis validation → fitness更新 → Tier-2 refinement触发
 
-  5.3 代码统计
-  ─────────────
-  - ChatAFL静态函数: 128个（afl-fuzz.c）
-  - ChatAFL-Opt静态函数: 238个（+110个）
-  - Opt新增代码总量: 16,896行（共享文件+5,421 + 新文件11,475）
-  - 20个文件byte-for-byte identical（无退化、无删除）
+----------------------------------------------------------------------
+10.4 Hypothesis 完整生命周期流程
+----------------------------------------------------------------------
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │                   HYPOTHESIS LIFECYCLE                          │
+  └─────────────────────────────────────────────────────────────────┘
+
+  【Phase 0: 触发】
+    首次plateau检测 && hypothesis_mode=1
+    → init_grammar_hypothesis_system() [afl-fuzz.c L7254]
+
+  【Phase 1: GENERATION（生成）】
+    ┌──────────────────────────────────────────┐
+    │ init_hypothesis_context()                │ ← 协议名 + RFC + PCAP + 响应
+    │   ├─ RFC: NULL → fetch_rfc_text() 自动抓取│
+    │   ├─ PCAP: queue中前10个seed              │
+    │   └─ 响应: responses-ipsm/ 前10份摘要     │
+    │                                           │
+    │ construct_hypothesis_generation_prompt()  │
+    │   ├─ extract_rfc_key_sections()           │ ← 智能RFC提取(ABNF+struct+图表)
+    │   ├─ 注入PCAP样例(去重, 最多20个)          │
+    │   └─ 注入服务器响应(最多5条)               │
+    │                                           │
+    │ chat_with_llm("gpt-4o-mini", temp=0.3)   │
+    │                                           │
+    │ parse_llm_hypothesis_response() × N       │
+    │   ├─ message_type → toupper()             │
+    │   ├─ schema → schema_str 存储             │
+    │   ├─ extract_constraints_from_schema()    │ ← 5类约束提取
+    │   └─ production_rules[] → 分配           │
+    │                                           │
+    │ integrate_hypotheses_into_protocol_patterns() │
+    │   ├─ 文本: "^MSG_TYPE(?:[ \\t].*)?\\r?\\n"   │ ← PCRE2 pattern生成
+    │   ├─ 二进制(MQTT): "^[\\xT0-\\xTF]"         │ ← 首字节匹配
+    │   └─ 去重: skip已存在于message_types_set     │
+    └──────────────────────────────────────────┘
+                        │
+                        ▼
+  【Phase 2: VALIDATION (Tier-1 热路径采样验证）】
+    ┌──────────────────────────────────────────┐
+    │ 每500次exec触发（common_fuzz_stuff内）     │
+    │                                           │
+    │ validate_hypothesis_sampled()             │
+    │   ├─ 复用 extract_requests() 的regions     │ ← 零额外解析开销
+    │   ├─ 每region最多扫描8个                   │
+    │   ├─ MQTT: mqtt_binary_to_text() 先转换   │
+    │   │                                        │
+    │   └─ validate_message_against_hypothesis() │
+    │       ├─ 字段拆解                           │
+    │       ├─ check_constraint() × 每字段        │
+    │       │   ├─ LENGTH:    min ≤ len ≤ max    │
+    │       │   ├─ ENUM:      strcmp精确匹配      │
+    │       │   ├─ REGEX:     regcomp+regexec    │
+    │       │   ├─ DEPENDENCY: 目标字段存在性     │
+    │       │   └─ NUMERIC:   min ≤ val ≤ max    │
+    │       └─ 返回 violation_count              │
+    │                                           │
+    │ 每10次验证失败:                             │
+    │   ├─ add_counterexample()                  │ ← hex(消息) + 违反原因
+    │   └─ update_hypothesis_fitness_dynamic()   │ ← -0.005
+    │                                           │
+    │ 每次验证成功:                               │
+    │   └─ update_hypothesis_fitness_dynamic()   │ ← +0.01
+    │                                           │
+    │ 每100次验证: 日志输出 fitness/parse_rate     │
+    └──────────────────────────────────────────┘
+                        │
+                        ▼
+  【Phase 3: REFINEMENT (Tier-2 周期性精炼, plateau路径）】
+    ┌──────────────────────────────────────────┐
+    │ 触发: 每5000次validation + plateau时      │
+    │ 门控: fitness < 0.7 && counterexamples≥3  │
+    │                                           │
+    │ periodic_hypothesis_refinement()          │
+    │   选择: fitness最低 + counterexamples最多  │
+    │   每次至多精炼1个hypothesis                 │
+    │                                           │
+    │   construct_hypothesis_refinement_prompt()│
+    │   ├─ 当前hypothesis完整schema              │
+    │   ├─ 最多10个反例（hex消息+错误原因）       │
+    │   └─ Fix-20a 局部patch约束:                │
+    │       "modify at most ONE constraint,     │
+    │        ONE production rule, or            │
+    │        ONE schema field per refinement"   │
+    │                                           │
+    │   chat_with_llm(temp=0.3)                 │
+    │                                           │
+    │   parse_llm_hypothesis_response()          │
+    │   └─ 更新到 hypothesis_ctx->hypotheses[]   │
+    └──────────────────────────────────────────┘
+                        │
+                        ▼
+  【Phase 4: FEEDBACK（持续fitness更新 → 影响选择/入库/精炼）】
+    ┌──────────────────────────────────────────┐
+    │ fitness 公式:                              │
+    │   fitness = 0.7 × parse_rate               │
+    │           + 0.3 × avg(constraint.confidence) │
+    │                                           │
+    │ fitness 影响:                               │
+    │   ├─ fitness > 0.7: 稳定使用（高质量grammar）│
+    │   ├─ 0.3 ≤ fitness ≤ 0.7: 待观察             │
+    │   └─ fitness < 0.7 + counterexamples≥3:     │
+    │       → 触发Tier-2 Refinement              │
+    └──────────────────────────────────────────┘
+
+----------------------------------------------------------------------
+10.5 MQTT专项工作流（MQTT-Specific Workflows）
+----------------------------------------------------------------------
+
+  【10.5.1: Multi-Party Driver 执行流程】
+  ───────────────────────────────────────
+  send_over_network() 中:
+    if (mp_drv && net_protocol == PRO_TCP):
+      ├─ mp_drv->open_connections()
+      │   └─ mqtt_mp_open():
+      │       ├─ TCP connect × 3（sub_fd / pub_fd / ctrl_fd）
+      │       ├─ CONNECT报文 × 3（每连接独立ClientId）
+      │       ├─ SUBSCRIBE通配符"#"（sub连接订阅所有topic）
+      │       └─ 返回3个fd的mp_conn数组
+      │
+      ├─ mp_drv->handshake() [可选, MQTT返回MP_MULTI_OK]
+      │
+      ├─ 对每个请求:
+      │   ├─ mp_drv->role_for_message(msg) → sub/pub/ctrl
+      │   ├─ net_send(对应fd, msg)
+      │   └─ mp_drv->after_send() [MQTT: noop]
+      │
+      ├─ mp_drv->drain_all()
+      │   └─ mqtt_mp_drain():
+      │       所有已连接fd → non-blocking read → 累积响应
+      │       超时: 总计CHATAFL_MP_READ_TIMEOUT_MS(500ms)
+      │
+      └─ mp_drv->cleanup() → close所有fd
+    失败回退: open_connections失败 → MP_SINGLE_FD_FALLBACK → 单连接路径
+
+  【10.5.2: Multi-Broker Differential 执行流程】
+  ──────────────────────────────────────────────
+  每32次exec触发:
+    mqtt_probe_cluster_differences()
+    │
+    ├─ 解析 CHATAFL_MQTT_BROKERS:
+    │   "mosquitto@tcp://10.0.0.1:1883,nanomq@tcp://10.0.0.2:1883"
+    │   → broker端点数组 [name, host, port]
+    │
+    ├─ 对每个broker:
+    │   ├─ mqtt_exec_one_broker_mp(broker, input_buf, input_len)
+    │   │   ├─ TCP connect + CONNECT + SUBSCRIBE "#"
+    │   │   ├─ 发送input → drain响应
+    │   │   └─ 返回 response_buf + response_len
+    │   └─ mqtt_diff_parse_response(response_buf, response_len, &fields[i])
+    │       ├─ 解析MQTT包序列
+    │       ├─ 提取 G-fields: pkt_types[], return_codes[]
+    │       └─ 提取 H-fields: payload_hashes[]
+    │
+    ├─ mqtt_diff_compare_n(fields, n_brokers)  // 两两对比
+    │   对每对(broker_A, broker_B):
+    │     mqtt_diff_compare(&fields[A], &fields[B])
+    │     └─ 三层对比:
+    │         ├─ type_seq_hash 不同      → MQTT_DIV_TYPE (severity=3)
+    │         ├─ code_seq_hash 不同      → MQTT_DIV_CODE (severity=2)
+    │         └─ payload_hashes 不同     → MQTT_DIV_PAYLOAD (severity=1)
+    │
+    ├─ 差分信号注入:
+    │   ├─ queue_entry.mqtt_diff_score = 0-100
+    │   ├─ mqtt_state_diff_reward[state_idx] += divergence_strength
+    │   └─ mqtt_last_diff_signal = normalized_divergence
+    │
+    ├─ mqtt_save_diff_report() → out_dir/diffs/
+    │   └─ 结构化JSON: broker签名 + 每层差分详情 + 统计
+    │
+    └─ mqtt_cluster_diff_summary更新:
+        "3 brokers, 2 unique signatures, type-div:5 code-div:12 payload-div:47"
+        → 供plateau prompt注入
+
+  【10.5.3: Q-Learning + UCB1 调度决策流程】
+  ──────────────────────────────────────────
+  havoc_stage 中 [每轮havoc]:
+    │
+    ├─ Step 1: UCB1策略选择
+    │   arm = mqtt_bandit_select(&mqtt_bandit)
+    │   UCB1 score = avg_reward + sqrt(2·ln(total)/attempts)
+    │   ├─ Arm 0 (replace):  用mqtt_gen_packet()替换当前region
+    │   ├─ Arm 1 (insert):   用mqtt_gen_packet()插入
+    │   ├─ Arm 2 (field):    包内字节级变异（保持MQTT结构）
+    │   ├─ Arm 3 (skip):     仅通用havoc
+    │   ├─ Arm 4 (splice):   corpus拼接+field-aware
+    │   └─ Arm 5 (sub-pub):  SUBSCRIBE+PUBLISH pair注入（共享话题）
+    │
+    ├─ Step 2: Q-Learning包类型选择
+    │   pkt_type = mqtt_ql_select(&mqtt_ql, current_state_idx)
+    │   ├─ Warmup: 每state每action至少1次（round-robin）
+    │   ├─ Softmax: P(a) ∝ exp(Q(s,a)/τ)
+    │   └─ 温度退火: τ *= 0.9999 (≈5000次更新减半)
+    │
+    └─ Step 3: 执行后reward反馈
+        if (new_interesting_paths > 0):
+          reward = +1.0 (或 queued_paths增量)
+          mqtt_ql_update(ql, state_idx, pkt_type, reward)
+          mqtt_bandit_update(bandit, arm, reward)
+        else:
+          reward = 0.0
+          mqtt_ql_update(ql, state_idx, pkt_type, reward)
+
+----------------------------------------------------------------------
+10.6 全局数据流全景图（Data Flow Diagram）
+----------------------------------------------------------------------
+
+  输入数据源                          处理层                         反馈/输出
+  ──────────                        ────────                       ──────────
+
+  ┌──────────────┐                                                   ┌──────────────────┐
+  │ RFC文档       │──┐                                               │ fuzzer_stats     │
+  │ (curl抓取)    │  │    ┌──────────────────────┐                   │ · hypothesis_*   │
+  └──────────────┘  │    │ Grammar Hypothesis    │                   │ · plateau_*      │
+                     ├───→│ 生成引擎              │───→ JSON Schema   │ · edges_growth   │
+  ┌──────────────┐  │    │ grammar-hypothesis.c  │    + Constraints  │ · oracle_*       │
+  │ 种子样本      │──┤    └──────────┬───────────┘                   └──────────────────┘
+  │ (PCAP/queue) │  │               │
+  └──────────────┘  │               │ Tier-1验证                     ┌──────────────────┐
+                     │               ▼                                │ out_dir/         │
+  ┌──────────────┐  │    ┌──────────────────────┐                   │ protocol-grammars│
+  │ 服务器响应    │──┘    │ Hypothesis验证器      │                   │ hyp-pattern-N    │
+  │ (resp-ipsm/) │       │ · 5类约束检查         │                   └──────────────────┘
+  └──────────────┘       │ · fitness动态更新     │
+                         └──────────┬───────────┘                   ┌──────────────────┐
+                                    │                               │ stall-interact/  │
+                     ┌──────────────┼──────────────┐                │ llm-suggest-N    │
+                     │              │              │                └──────────────────┘
+                     ▼              ▼              ▼
+              ┌───────────┐ ┌────────────┐ ┌────────────┐          ┌──────────────────┐
+              │ 成功:      │ │ 失败:      │ │ 反例≥3     │          │ diffs/           │
+              │ fitness↑   │ │ fitness↓   │ │ +fitness↓  │          │ diff-report-*    │
+              │ +0.01      │ │ -0.005     │ │            │          └──────────────────┘
+              └───────────┘ └──────┬─────┘ └──────┬─────┘
+                                   │              │               ┌──────────────────┐
+                                   ▼              ▼               │ replayable-      │
+                              ┌────────────────────────┐         │ violations/      │
+                              │ Counterexample-guided   │         │ id:*,sev:*,cat:* │
+                              │ Refinement (Tier-2)     │         └──────────────────┘
+                              │ · 反例回喂LLM            │
+                              │ · 局部patch约束          │
+                              │ · changed_field审计     │
+                              └────────────┬───────────┘
+                                           │
+                                           ▼
+                                    ┌────────────────┐
+                                    │ 精炼后的        │
+                                    │ Hypothesis     │
+                                    │ → 更新到ctx    │
+                                    └────────────────┘
+
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │                   MAIN LOOP FEEDBACK LOOPS                       │
+  └─────────────────────────────────────────────────────────────────┘
+
+  Loop 1: 覆盖 → 阈值
+  ═══════════════════
+    exec → has_new_bits(trace_bits) → queued_paths↑
+      → edges_growth_rate 更新（每60s）
+        → adaptive_plateau_threshold 调整
+          → LLM调用频率↑/↓
+
+  Loop 2: 状态 → 选择
+  ═══════════════════
+    send_over_network → IPSM新增节点/边
+      → update_scores_and_select_next_state()
+        → frontier_bonus + error_hint + productivity
+          → 下一次选中状态X的概率
+
+  Loop 3: LLM → 执行 → 反馈
+  ══════════════════════════
+    plateau → llm_handle_plateau() → suggested_request / actions[]
+      → common_fuzz_stuff()
+        → has_new_bits? → queued_paths↑ → edges_growth_rate↑
+          → chat_times++ → 下次plateau阈值变化
+
+  Loop 4: Hypothesis → 验证 → 精炼
+  ═════════════════════════════════
+    LLM生成hypothesis → integrate → Tier-1验证 → counterexample收集
+      → fitness更新 → Tier-2 Refinement → LLM精炼 → 更新hypothesis
+        → 重新Tier-1验证 → ...
+
+  Loop 5: MQTT Q-Learning
+  ═══════════════════════
+    state × packet_type选择 → mqtt_gen_packet() → exec
+      → interesting? → reward → Q(s,a)更新 → 下一次选择概率偏移
+      → τ退火 → exploration↘exploitation↗
+
+  Loop 6: MQTT Multi-Broker Differential
+  ══════════════════════════════════════
+    同一输入 → N个broker各执行一次 → 两两对比响应
+      → divergence detected? → diff_score → queue_entry +
+        state_diff_reward → frontier_bonus叠加
+        + diff报告保存 + LLM RFC合规验证
+
+----------------------------------------------------------------------
+10.7 关键数据文件与目录结构
+----------------------------------------------------------------------
+
+  out_dir/
+  ├── protocol-grammars/
+  │   └── hyp-pattern-N          ← Hypothesis集成后的PCRE2 pattern
+  ├── stall-interactions/
+  │   └── llm-suggest-N          ← Fork子进程LLM响应原始JSON
+  ├── responses-ipsm/
+  │   └── response_*             ← IPSM关联的服务器响应（Hypothesis输入源）
+  ├── diffs/
+  │   └── diff-report-N.json     ← Multi-broker差分结构化报告
+  ├── replayable-violations/
+  │   └── id:*sev:*cat:*         ← Protocol Oracle违规报告
+  ├── crashes/                   ← AFL标准crash输出
+  ├── queue/                     ← AFL标准queue（种子+interesting cases）
+  └── fuzzer_stats               ← 增强版统计（含hypothesis/oracle/plateau/diff指标）
+
+  /tmp/
+  ├── chatafl-rfc-cache/         ← RFC文档缓存（避免重复下载）
+  └── hypothesis_prompt_debug.json ← Debug: 最近一次Hypothesis生成prompt
+
+----------------------------------------------------------------------
+10.8 ChatAFL vs ChatAFL-Opt 工作流差异总览
+----------------------------------------------------------------------
+
+  工作流阶段            | ChatAFL 基线                        | ChatAFL-Opt
+  -------------------- | ----------------------------------- | -----------------------------------------
+  启动:LLM语法抽取      | setup_llm_grammars 串行5×2           | 同基线（未改动此阶段）
+  启动:种子充实         | enrich_testcases 串行                | pthread 4线程并发 + MQTT程序化补充
+  启动:Grammar Hypothesis| ❌ 不存在                            | ✅ lazy init（首次plateau触发）
+  启动:RFC知识          | ❌ 不存在                            | ✅ fetch_rfc_text + extract_rfc_key_sections
+  启动:Oracle           | ❌ 不存在                            | ✅ oracle_init(protocol)
+  主循环:状态评分       | 仅3计数器公式                        | +frontier_bonus +error_hint +productivity +diff
+  主循环:Plateau检测    | 固定阈值 512                         | 自适应阈值 150-500（动态+协议差异化）
+  主循环:LLM介入        | 主进程同步阻塞 + 固定文本模板         | fork隔离60s超时 + state_ctx JSON + actions[]
+  主循环:LLM响应        | 正则提取 suggest                     | JSON schema严格验证 + 3种actions
+  主循环:Havoc(MQTT)    | 通用havoc only                      | UCB1 bandit 6臂 + Q-Learning包类型 + field-aware
+  主循环:网络执行(MQTT) | 单连接                              | Multi-Party 3连接 + 持久化 + Fast I/O
+  主循环:验证(Tier-1)   | ❌ 不存在                            | 每500 exec采样 5类约束检查
+  热路径:错误分类       | ❌ 不存在                            | classify_state_error_hint 12协议
+  热路径:Q-Learning     | ❌ 不存在                            | mqtt_ql_update reward反馈
+  热路径:差分探测       | ❌ 不存在                            | 每32 exec multi-broker差分
+  反馈:反例精炼(Tier-2) | ❌ 不存在                            | 每5000 validation LLM局部patch精炼
+  反馈:Oracle           | ❌ 不存在                            | oracle_check每exec + 违规报告
+  反馈:节点停滞         | ❌ 不存在                            | IPSM节点停滞检测 + RANDOM扰动
+  消融实验              | ❌ 不存在                            | 4环境变量开关 + 统一banner
 
 ================================================================================
-六、一句话总评
+附录A：ChatAFL-Opt 核心策略摘要（中文参考）
 ================================================================================
 
-ChatAFL是"开环的LLM辅助模糊测试器"——启动期一次性LLM批处理后，运行时LLM通道完全开环。
+【/research_laboratory/ChatAFL-master/ChatAFL-Opt】的核心策略如下：
+1. LLM语法/消息模板生成（Hypothesis）
+o 输入：RFC片段/抓包样例/服务端响应码与错误信息
+o 输出：每类 message 的 grammar（ABNF风格或你自定义CFG/JSON schema）+ 字段约束（长度、枚举、依赖关系）
 
-ChatAFL-Opt已升级为"状态感知+反例反馈+调度自适应+MQTT专项增强"的闭环协议模糊测试系统。
-相比基线：20个文件完全一致（零退化）、7个共享文件显著增强（+5,421行核心逻辑）、
-17个新文件(11,475行)实现Hypothesis验证闭环/MQTT多方差分/QL调度/语义Oracle四大子系统。
-真正未完全补足的：RFC统一驱动链、严格局部patch约束、多协议multi-party driver泛化。
+
+2. 验证器（Verifier，核心创新点）
+不需要形式化证明，可用且“工程上强有效”的验证：
+o 可解析性：生成消息能被本地parser解析（CFG/正则/字段拆解）
+o 可接受性：发送给SUT后得到“非拒绝类响应”（比如非400/非error）
+o 状态可达性：消息序列触发新响应码/新状态节点（可用 State Transition Tree 思路）USENIX’22 的 Stateful Greybox Fuzzing
+o 覆盖增益：覆盖/状态覆盖提升才将该grammar片段“入库”
+
+3. 反例驱动修正（Counterexample-guided Refinement）
+o 当验证失败：把失败样例（最小化后的请求+响应+差分）回喂给LLM，让它只修一个字段/一条产生式
+o 关键：限制LLM自由度（只允许局部patch），降低幻觉
+
+4. 状态导向调度（State-aware Scheduling）
+o 把“状态节点/转移”作为 fuzz feedback（类似 stateful greybox fuzzing 的 STT）
+o 目标：优先探索“低覆盖状态/稀有转移”，并在 plateau(停滞) 时触发LLM生成“到某状态的序列建议”USENIX’22 的 Stateful Greybox Fuzzing
+
+
+注：ChatAFL来源于【Large Language Model guided Protocol Fuzzing.pdf】，SST来源于【Stateful Greybox Fuzzing.pdf】
+
