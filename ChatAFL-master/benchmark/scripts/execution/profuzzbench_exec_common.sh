@@ -518,7 +518,13 @@ for i in $(seq 1 $RUNS); do
   fi
 
   # Build ablation env-var flags for chatafl-opt containers.
+  # If the host exports CHATAFL_NO_REFINEMENT / NO_FRONTIER / NO_ADAPTIVE
+  # / NO_STATE_PROMPT / ABLATION_THRESHOLD / CHATAFL_HYPOTHESIS,
+  # they are forwarded into the container via -e.
+  # Docker's -e follows last-value-wins: if CHATAFL_HYPOTHESIS is passed
+  # here, it overrides the hardcoded -e CHATAFL_HYPOTHESIS=1 below.
   ABLATION_FLAGS=""
+  [[ -n "${CHATAFL_HYPOTHESIS:-}" ]]       && ABLATION_FLAGS+=" -e CHATAFL_HYPOTHESIS=${CHATAFL_HYPOTHESIS}"
   [[ -n "${CHATAFL_NO_REFINEMENT}" ]]      && ABLATION_FLAGS+=" -e CHATAFL_NO_REFINEMENT=1"
   [[ -n "${CHATAFL_NO_FRONTIER}" ]]        && ABLATION_FLAGS+=" -e CHATAFL_NO_FRONTIER=1"
   [[ -n "${CHATAFL_NO_ADAPTIVE}" ]]        && ABLATION_FLAGS+=" -e CHATAFL_NO_ADAPTIVE=1"

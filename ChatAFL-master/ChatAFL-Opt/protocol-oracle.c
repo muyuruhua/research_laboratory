@@ -130,7 +130,7 @@ static const unsigned char* ci_memmem(const unsigned char *hay, size_t hlen,
 }
 
 /* Extract first numeric response code from text response (FTP/SMTP/HTTP/RTSP/SIP) */
-static int extract_response_code(const unsigned char *resp, unsigned int len) {
+static int __attribute__((unused)) extract_response_code(const unsigned char *resp, unsigned int len) {
     for (unsigned int i = 0; i + 2 < len; i++) {
         if (resp[i] >= '1' && resp[i] <= '5' &&
             resp[i+1] >= '0' && resp[i+1] <= '9' &&
@@ -323,7 +323,7 @@ int oracle_check_ftp(
     const int resp_offset = 1;  /* skip banner */
 
     /* Parse requests to build state, then check response */
-    int has_user = 0, has_pass = 0, has_data_cmd = 0;
+    int has_user = 0, has_data_cmd = 0;
     int has_path_traversal = 0, has_rnfr = 0;
     int data_cmd_index = -1;
     int authenticated = 0;
@@ -345,7 +345,6 @@ int oracle_check_ftp(
         if (request_starts_with(req, rlen, "PASS ") ||
             request_starts_with(req, rlen, "PASS\r\n") ||
             (rlen == 4 && memcmp(req, "PASS", 4) == 0)) {
-            has_pass = 1;
             if (has_user) {
                 int pass_code = extract_nth_response_code(response, resp_len, i + resp_offset);
                 if (pass_code >= 200 && pass_code < 300) {
@@ -631,16 +630,13 @@ int oracle_check_smtp(
      * response to request[0]. */
     const int resp_offset = 1;  /* skip banner */
 
-    int has_ehlo = 0, has_auth = 0, has_mail = 0, has_rcpt = 0;
-    int has_data_before_rcpt = 0;
+    int has_auth = 0, has_mail = 0, has_rcpt = 0;
     int has_vrfy = 0, has_expn = 0;
 
     for (int i = 0; i < req_count; i++) {
         const unsigned char *req = requests[i];
         unsigned int rlen = req_lens[i];
 
-        if (request_starts_with(req, rlen, "EHLO ") ||
-            request_starts_with(req, rlen, "HELO ")) has_ehlo = 1;
         if (request_starts_with(req, rlen, "AUTH ")) has_auth = 1;
         if (request_starts_with(req, rlen, "MAIL FROM:")) has_mail = 1;
         if (request_starts_with(req, rlen, "RCPT TO:")) has_rcpt = 1;
@@ -649,7 +645,6 @@ int oracle_check_smtp(
 
         /* State violation: DATA before RCPT — only flag if server accepted */
         if (request_starts_with(req, rlen, "DATA") && !has_rcpt) {
-            has_data_before_rcpt = 1;
             int code = extract_nth_response_code(response, resp_len, i + resp_offset);
             if (code >= 200 && code < 400) {
                 oracle_add_violation(result, ORACLE_SEV_MEDIUM,
@@ -731,13 +726,11 @@ int oracle_check_smtp(
      * If STARTTLS is offered (220) but followed by cleartext mail commands,
      * the session may be vulnerable to STRIPTLS attack. */
     {
-        int starttls_offered = 0;
         int starttls_accepted = 0;
         for (int i = 0; i < req_count; i++) {
             if (request_starts_with(requests[i], req_lens[i], "STARTTLS")) {
                 int code = extract_nth_response_code(response, resp_len, i + resp_offset);
                 if (code == 220) {
-                    starttls_offered = 1;
                     starttls_accepted = 1;
                 }
             }
@@ -835,13 +828,12 @@ int oracle_check_rtsp(
 
     reset_proto_state();
 
-    int has_describe = 0, has_setup = 0;
+    int has_setup = 0;
 
     for (int i = 0; i < req_count; i++) {
         const unsigned char *req = requests[i];
         unsigned int rlen = req_lens[i];
 
-        if (request_starts_with(req, rlen, "DESCRIBE ")) has_describe = 1;
         if (request_starts_with(req, rlen, "SETUP ")) has_setup = 1;
 
         /* State machine: PLAY before SETUP — only flag if server accepted */
@@ -971,13 +963,12 @@ int oracle_check_sip(
 
     reset_proto_state();
 
-    int has_register = 0, has_invite = 0, has_auth_header = 0;
+    int has_invite = 0, has_auth_header = 0;
 
     for (int i = 0; i < req_count; i++) {
         const unsigned char *req = requests[i];
         unsigned int rlen = req_lens[i];
 
-        if (request_starts_with(req, rlen, "REGISTER ")) has_register = 1;
         if (request_starts_with(req, rlen, "INVITE ")) has_invite = 1;
         if (ci_memmem(req, rlen, "Authorization:", 14) ||
             ci_memmem(req, rlen, "Proxy-Authorization:", 20)) {
@@ -1907,7 +1898,7 @@ void oracle_save_violation(
     /* Generate filename */
     char fn[1024];
     snprintf(fn, sizeof(fn), "%s/id:%06llu,sev:%d,cat:%04x",
-             dir_path, oracle_unique_violations,
+             dir_path, (unsigned long long)oracle_unique_violations,
              result->max_severity, result->categories_hit);
 
     FILE *fp = fopen(fn, "w");

@@ -633,7 +633,7 @@ static u8 mqtt_scheduler_enabled = 0;      /* Set to 1 after init for MQTT */
 static u32 last_edges_count = 0;           /* Edges count at last check */
 static u64 last_edges_check_time = 0;      /* Time of last edges check (ms) */
 static double edges_growth_rate = 0.0;     /* Edges/minute growth rate */
-static u32 adaptive_plateau_threshold = 200; /* Dynamic plateau threshold (starts at UNINTERESTING_THRESHOLD) */
+static u32 adaptive_plateau_threshold = 512; /* Dynamic plateau threshold (starts at UNINTERESTING_THRESHOLD=512) */
 
 /* ============================================
  * Ablation Control Flags (env-var toggled)
@@ -1510,9 +1510,13 @@ static u8 mqtt_collect_exec_brokers(mqtt_broker_endpoint_t **out_endpoints,
       /* D2: Extract broker implementation label.
        * Priority: 1) name@tcp:// prefix, 2) CHATAFL_MQTT_BROKER_LABELS env,
        * 3) fallback "broker<N>". */
-      memset(endpoints[endpoint_count].impl_name, 0, 32);
+      memset(endpoints[endpoint_count].impl_name, 0, sizeof(endpoints[endpoint_count].impl_name));
       if (impl_label[0]) {
-        snprintf(endpoints[endpoint_count].impl_name, 31, "%s", impl_label);
+        size_t _len = strlen(impl_label);
+        if (_len >= sizeof(endpoints[endpoint_count].impl_name))
+          _len = sizeof(endpoints[endpoint_count].impl_name) - 1;
+        memcpy(endpoints[endpoint_count].impl_name, impl_label, _len);
+        endpoints[endpoint_count].impl_name[_len] = '\0';
       } else {
         const char *labels_env = getenv("CHATAFL_MQTT_BROKER_LABELS");
         if (labels_env && *labels_env) {
@@ -1526,12 +1530,12 @@ static u8 mqtt_collect_exec_brokers(mqtt_broker_endpoint_t **out_endpoints,
           }
           if (ltok) {
             while (*ltok && isspace((unsigned char)*ltok)) ltok++;
-            snprintf(endpoints[endpoint_count].impl_name, 31, "%s", ltok);
+            snprintf(endpoints[endpoint_count].impl_name, sizeof(endpoints[endpoint_count].impl_name), "%s", ltok);
           }
           free(lcopy);
         }
         if (!endpoints[endpoint_count].impl_name[0]) {
-          snprintf(endpoints[endpoint_count].impl_name, 31, "broker%u", endpoint_count);
+          snprintf(endpoints[endpoint_count].impl_name, sizeof(endpoints[endpoint_count].impl_name), "broker%u", endpoint_count);
         }
       }
       endpoint_count++;
@@ -11106,21 +11110,15 @@ AFLNET_REGIONS_SELECTION:;
       edges_growth_rate = edges_gained / time_elapsed_min;  // edges per minute
       
       if (!ablation_no_adaptive) {
-        // Adaptive threshold adjustment (revised: raised floor to 150):
-        // High growth (>5 edges/min): threshold=300 (let fuzzer work undisturbed)
-        // Medium growth (1-5 edges/min): threshold=200 (moderate LLM frequency)
-        // Low growth (<1 edge/min): threshold=150 (more LLM calls, but bounded)
-        //
-        // P1-MQTT: For MQTT binary protocol, use higher thresholds to
-        // reduce wasteful LLM calls (hypothesis has <10% parse success).
-        u32 floor_low  = 150, floor_mid = 200, floor_high = 300;
+        // Adaptive threshold adjustment (aligned with UNINTERESTING_THRESHOLD=512):
+        // High growth (>5 edges/min): threshold=700 (let fuzzer work undisturbed)
+        // Medium growth (1-5 edges/min): threshold=600 (moderate LLM frequency)
+        // Low growth (<1 edge/min): threshold=512 (ChatAFL baseline frequency)
+        u32 floor_low  = 512, floor_mid = 600, floor_high = 700;
         if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0) {
-          /* P1-rev: Lowered from 500/600/800.  The old thresholds delayed
-           * LLM intervention too long on larger targets (e.g. mosquitto
-           * v2.1.2, branch_total +46% vs v2.0.18), causing the fuzzer to
-           * plateau without semantic guidance.  300/400/500 still provides
-           * 2× spacing vs text protocols while allowing timely LLM calls. */
-          floor_low = 300; floor_mid = 400; floor_high = 500;
+          /* MQTT uses same adaptive range as text protocols (512/600/700),
+           * aligned with UNINTERESTING_THRESHOLD=512. */
+          floor_low = 512; floor_mid = 600; floor_high = 700;
         }
         if (edges_growth_rate > 5.0) {
           adaptive_plateau_threshold = floor_high;
@@ -15837,7 +15835,7 @@ int main(int argc, char **argv)
   fprintf(stderr, "[DEBUG] Checking CHATAFL_HYPOTHESIS env var...\n");
   fflush(stderr);
   char *hyp_env = getenv("CHATAFL_HYPOTHESIS");
-  if (hyp_env)
+  if (hyp_env && strcmp(hyp_env, "0") != 0)
   {
     fprintf(stderr, "[DEBUG] CHATAFL_HYPOTHESIS=%s, hypothesis mode DEFERRED (lazy init on first plateau)\n", hyp_env);
     fflush(stderr);
@@ -15847,7 +15845,7 @@ int main(int argc, char **argv)
   }
   else
   {
-    fprintf(stderr, "[DEBUG] CHATAFL_HYPOTHESIS not set, hypothesis mode disabled\n");
+    fprintf(stderr, "[DEBUG] CHATAFL_HYPOTHESIS=%s, hypothesis mode disabled\n", hyp_env ? hyp_env : "not set");
     fflush(stderr);
   }
 
@@ -15930,6 +15928,9 @@ int main(int argc, char **argv)
       ablation_no_state_prompt ? "ON (disabled)" : "off",
       any_ablation ? "ABLATION RUN" : "FULL (no ablation)",
       getenv("CHATAFL_HYPOTHESIS") ? "enabled" : "disabled",
+      /* AFL_ENABLE_CHATAFL_OPT is set in Dockerfiles but is DISPLAY-ONLY —
+       * it does NOT gate any runtime behavior.  Actual feature selection
+       * is controlled by the CHATAFL_NO_* ablation switches above. */
       getenv("AFL_ENABLE_CHATAFL_OPT") ? "enabled" : "disabled");
     /* Warn in banner if NO_REFINEMENT is active but HYPOTHESIS is not set */
     if (ablation_no_refinement && !getenv("CHATAFL_HYPOTHESIS")) {
@@ -16120,8 +16121,8 @@ int main(int argc, char **argv)
       OKF("MQTT mode: Plateau threshold=%u (from CHATAFL_MQTT_LLM_THRESHOLD)",
           adaptive_plateau_threshold);
     } else {
-      adaptive_plateau_threshold = 300;
-      OKF("MQTT mode: Plateau threshold raised to 300 "
+      adaptive_plateau_threshold = 512;
+      OKF("MQTT mode: Plateau threshold set to 512 "
           "(set CHATAFL_MQTT_LLM_THRESHOLD=N to override)");
     }
   }

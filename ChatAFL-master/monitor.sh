@@ -438,32 +438,66 @@ collect_one() {
     local viol_total="$oracle_unique_viol"
     viol_total=${viol_total:-0}
 
-    # ── 消融开关检测 (从容器 /proc/1/environ 读取 CHATAFL_NO_* / CHATAFL_ABLATION_*) ──
+    # ── 消融开关检测 → 标签与 run_ablation.sh 组名完全等价 ──────────
+    # core 预设 7 组标签: wo_all | full | wo_hypothesis | wo_refinement |
+    #                      wo_frontier | wo_adaptive | wo_state_prompt
+    # threshold 预设标签:  fixed150 | fixed200 | fixed300 | fixed512
+    # legacy / 混合消融:    wo_refinement+wo_frontier+... (多个 wo_ 拼接)
     local ablation_label
     ablation_label=$(docker exec "$cid" bash -c '
         env_vars=$(cat /proc/1/environ 2>/dev/null | tr "\0" "\n" | grep "^CHATAFL_")
-        no_refine=0; no_frontier=0; no_adaptive=0; no_sp=0; threshold=""
+        if [[ -z "$env_vars" ]]; then
+            echo "-"             # ChatAFL / AFLNet 不具备消融能力
+            exit 0
+        fi
+        no_hyp=0; no_refine=0; no_frontier=0; no_adaptive=0; no_sp=0; threshold=""
         while IFS="=" read -r k v; do
             case "$k" in
-                CHATAFL_NO_REFINEMENT)   [[ "$v" == "1" ]] && no_refine=1 ;;
-                CHATAFL_NO_FRONTIER)     [[ "$v" == "1" ]] && no_frontier=1 ;;
-                CHATAFL_NO_ADAPTIVE)     [[ "$v" == "1" ]] && no_adaptive=1 ;;
-                CHATAFL_NO_STATE_PROMPT) [[ "$v" == "1" ]] && no_sp=1 ;;
+                CHATAFL_HYPOTHESIS)        [[ "$v" == "0" ]] && no_hyp=1 ;;
+                CHATAFL_NO_REFINEMENT)     [[ "$v" == "1" ]] && no_refine=1 ;;
+                CHATAFL_NO_FRONTIER)       [[ "$v" == "1" ]] && no_frontier=1 ;;
+                CHATAFL_NO_ADAPTIVE)       [[ "$v" == "1" ]] && no_adaptive=1 ;;
+                CHATAFL_NO_STATE_PROMPT)   [[ "$v" == "1" ]] && no_sp=1 ;;
                 CHATAFL_ABLATION_THRESHOLD) threshold="$v" ;;
             esac
         done <<< "$env_vars"
+
+        # ── wo_all: 全部策略 OFF（含 Hypothesis）────────────────────
+        if [[ $no_hyp -eq 1 && $no_refine -eq 1 && $no_frontier -eq 1 && $no_adaptive -eq 1 && $no_sp -eq 1 ]]; then
+            echo "wo_all"
+            exit 0
+        fi
+
+        # ── wo_hypothesis: 仅 Hypothesis OFF，需求4 全 ON ──────────
+        if [[ $no_hyp -eq 1 && $no_refine -eq 0 && $no_frontier -eq 0 && $no_adaptive -eq 0 && $no_sp -eq 0 ]]; then
+            echo "wo_hypothesis"
+            exit 0
+        fi
+
+        # ── full: 全部策略 ON + 自适应阈值 ON ────────────────────────
         if [[ $no_refine -eq 0 && $no_frontier -eq 0 && $no_adaptive -eq 0 && $no_sp -eq 0 ]]; then
             echo "full"
-        else
-            parts=""
-            [[ $no_refine -eq 1 ]]   && parts+="-refine"
-            [[ $no_frontier -eq 1 ]] && parts+="-frontier"
-            [[ $no_sp -eq 1 ]]       && parts+="-sp"
-            if [[ $no_adaptive -eq 1 ]]; then
-                [[ -n "$threshold" ]] && parts+=" fixed=$threshold" || parts+=" fixed"
-            fi
-            echo "${parts# }"
+            exit 0
         fi
+
+        # ── 阈值子实验：全部策略 ON + 自适应 OFF + 固定阈值 ──────────
+        # 阈值=512 时等价于 wo_adaptive（core 预设单变量消融），统一标签
+        if [[ $no_refine -eq 0 && $no_frontier -eq 0 && $no_adaptive -eq 1 && $no_sp -eq 0 ]]; then
+            if [[ "$threshold" == "512" || -z "$threshold" ]]; then
+                echo "wo_adaptive"
+            else
+                echo "fixed${threshold}"
+            fi
+            exit 0
+        fi
+
+        # ── 单/多开关消融：拼接 wo_xxx ──────────────────────────────
+        parts=""
+        [[ $no_refine -eq 1 ]]   && parts+="+wo_refinement"
+        [[ $no_frontier -eq 1 ]] && parts+="+wo_frontier"
+        [[ $no_adaptive -eq 1 ]] && parts+="+wo_adaptive"
+        [[ $no_sp -eq 1 ]]       && parts+="+wo_state_prompt"
+        echo "${parts#+}"
     ' 2>/dev/null || echo "?")
     ablation_label=${ablation_label:-"?"}
 
@@ -699,7 +733,12 @@ print_table() {
         count_by_fuzzer[$key]=$(( ${count_by_fuzzer[$key]:-0} + 1 ))
     done <<< "$sorted"
 
-    for key in $(echo "${!count_by_fuzzer[@]}" | tr ' ' '\n' | sort); do
+    # Iterate keys safely: associative-array keys may contain spaces
+    # (e.g. "-refine -frontier -sp" from multi-switch ablation groups).
+    # "${!arr[@]}" inside a for loop preserves each key as a single word.
+    local _sorted_keys
+    _sorted_keys=$(for _k in "${!count_by_fuzzer[@]}"; do printf '%s\n' "$_k"; done | sort)
+    while IFS= read -r key; do
         local n=${count_by_fuzzer[$key]}
         local tgt="${key%%::*}"
         local rest="${key#*::}"
@@ -727,7 +766,7 @@ print_table() {
         printf "  ${fc}%-14s${RST} %5s %10s %8s %7s %8s %5s %5s %6s %6s %6s %-16s  ${DIM}[%s]${RST}\n" \
             "$fzr" "$n" "$avg_runtime" "$avg_bmp" "$avg_paths" "$avg_execs" \
             "$avg_crashes" "$avg_hangs" "$avg_nodes" "$avg_edges" "$avg_viol" "$abl" "$tgt"
-    done
+    done <<< "$_sorted_keys"
     echo ""
 }
 

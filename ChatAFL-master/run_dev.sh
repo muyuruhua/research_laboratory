@@ -54,7 +54,29 @@ else
     echo "[✓] KEY 已设置 (长度=${#KEY}, 前缀=${KEY:0:8}...)"
 fi
 
+# ── 全效果模式默认值 ──────────────────────────────────────────────────
+# run_dev.sh 独立运行时（非从 run_ablation.sh 调用），默认启用全部策略：
+#   Hypothesis 语法生成 ON，自适应阈值 ON（初始=512），CEGAR ON，
+#   Frontier bonus ON，State-aware prompt ON。
+# 这四个 CHATAFL_NO_* 开关仅在消融实验中被 run_ablation.sh 显式设置。
+# run_ablation.sh 在调用前 export CHATAFL_FROM_ABLATION=1，
+# 此时 run_dev.sh 完全透传调用者已设置的变量，不做任何覆盖。
+if [ "${CHATAFL_FROM_ABLATION:-0}" != "1" ]; then
+    # 独立运行 = 全效果：不设置任何 NO_* 标志，全部策略生效
+    # 自适应 plateau 阈值默认从 512 开始（与 ChatAFL 基线对齐）
+    :
+fi
+
 # 使用开发版本的执行脚本（带Volume挂载）
+# 透传全部消融变量到 profuzzbench，确保 run_ablation.sh 设置的
+# NO_REFINEMENT / NO_FRONTIER / NO_ADAPTIVE / NO_STATE_PROMPT / ABLATION_THRESHOLD
+# 以及 CHATAFL_HYPOTHESIS（wo_all 消融组设为 0）无一遗漏地进入 Docker 容器。
 PFBENCH=$PFBENCH PATH=$PATH NUM_CONTAINERS=$NUM_CONTAINERS TIMEOUT=$TIMEOUT \
   SKIPCOUNT=$SKIPCOUNT TEST_TIMEOUT=$TEST_TIMEOUT KEY="$KEY" PROJECT_ROOT="$PROJECT_ROOT" \
+  CHATAFL_HYPOTHESIS="${CHATAFL_HYPOTHESIS:-}" \
+  CHATAFL_NO_REFINEMENT="${CHATAFL_NO_REFINEMENT:-}" \
+  CHATAFL_NO_FRONTIER="${CHATAFL_NO_FRONTIER:-}" \
+  CHATAFL_NO_ADAPTIVE="${CHATAFL_NO_ADAPTIVE:-}" \
+  CHATAFL_NO_STATE_PROMPT="${CHATAFL_NO_STATE_PROMPT:-}" \
+  CHATAFL_ABLATION_THRESHOLD="${CHATAFL_ABLATION_THRESHOLD:-}" \
   scripts/execution/profuzzbench_exec_all_dev.sh ${TARGET_LIST} ${FUZZER_LIST}

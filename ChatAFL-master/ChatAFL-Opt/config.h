@@ -73,8 +73,8 @@
 
 /* The threshold to select the mutation based on grammars */
 #define EPSILON_CHOICE      0.5
-#define UNINTERESTING_THRESHOLD  200  // Balanced: 2.5x more responsive than baseline-512, but
-                                       // not so low as to cause LLM interrupt storms
+#define UNINTERESTING_THRESHOLD  512  // Aligned with ChatAFL baseline trigger frequency;
+                                       // adaptive controller adjusts from this floor
 #define CHATTING_THRESHOLD  64
 
 /* Number of calibration cycles per every new test case (and for test

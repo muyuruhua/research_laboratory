@@ -246,31 +246,34 @@ git commit -m "refine monitor.sh,ablation,and add some paper about fuzz and code
 git pull origin dev8_with_testLLM
 
 全量测试：
-cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 3 1480 exim,live555,kamailio,lighttpd1,pure-ftpd,mosquitto,forked-daapd,lightftp,bftpd,proftpd chatafl-opt,chatafl,aflnet
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI" && export  SKIPCOUNT=100 && sudo  -E ./run_dev.sh 6 1480 exim,live555,kamailio,lighttpd1,pure-ftpd,mosquitto-2.0.18,forked-daapd,lightftp,bftpd,proftpd chatafl
 
 cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI" && export  SKIPCOUNT=40 && sudo  -E ./run_dev.sh 3 30 mosquitto chatafl-opt
 
 run_ablation 参数顺序：./run_ablation.sh <target> <runs> <timeout_min> [preset]
 
-cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI" && export SKIPCOUNT=100 && sudo -E ./run_ablation.sh bftpd 1 1480
+sudo -E ./run_ablation.sh bftpd 1 240 -g full,wo_hypothesis,wo_refinement,wo_frontier,wo_adaptive
 
-cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI" && export SKIPCOUNT=100 && sudo -E ./run_ablation.sh proftpd 1 1480
 
-cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI" && export SKIPCOUNT=100 && sudo -E ./run_ablation.sh pure-ftpd 1 1480
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI" && export SKIPCOUNT=100 && sudo -E ./run_ablation.sh bftpd 1 1480 -g full,wo_hypothesis,wo_refinement,wo_frontier,wo_adaptive
 
-cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI" && export SKIPCOUNT=100 && sudo -E ./run_ablation.sh lightftp 1 1480
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI" && export SKIPCOUNT=100 && sudo -E ./run_ablation.sh proftpd 1 1480 -g full,wo_hypothesis,wo_refinement,wo_frontier,wo_adaptive
 
-cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI" && export SKIPCOUNT=100 && sudo -E ./run_ablation.sh lighttpd1 1 1480
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI" && export SKIPCOUNT=100 && sudo -E ./run_ablation.sh pure-ftpd 1 1480 -g full,wo_hypothesis,wo_refinement,wo_frontier,wo_adaptive
 
-cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI" && export SKIPCOUNT=100 && sudo -E ./run_ablation.sh exim 1 1480
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI" && export SKIPCOUNT=100 && sudo -E ./run_ablation.sh lightftp 1 1480 -g full,wo_hypothesis,wo_refinement,wo_frontier,wo_adaptive
 
-cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI" && export SKIPCOUNT=100 && sudo -E ./run_ablation.sh mosquitto-v2.0.18 1 1480
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI" && export SKIPCOUNT=100 && sudo -E ./run_ablation.sh lighttpd1 1 1480 -g full,wo_hypothesis,wo_refinement,wo_frontier,wo_adaptive
 
-cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI" && export SKIPCOUNT=100 && sudo -E ./run_ablation.sh kamailio 1 1480
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI" && export SKIPCOUNT=100 && sudo -E ./run_ablation.sh exim 1 1480 -g full,wo_hypothesis,wo_refinement,wo_frontier,wo_adaptive
 
-cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI" && export SKIPCOUNT=100 && sudo -E ./run_ablation.sh live555 1 1480
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI" && export SKIPCOUNT=100 && sudo -E ./run_ablation.sh mosquitto-v2.0.18 1 1480 -g full,wo_hypothesis,wo_refinement,wo_frontier,wo_adaptive
 
-cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI" && export SKIPCOUNT=100 && sudo -E ./run_ablation.sh forked-daapd 1 1480
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI" && export SKIPCOUNT=100 && sudo -E ./run_ablation.sh kamailio 1 1480 -g full,wo_hypothesis,wo_refinement,wo_frontier,wo_adaptive
+
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI" && export SKIPCOUNT=100 && sudo -E ./run_ablation.sh live555 1 1480 -g full,wo_hypothesis,wo_refinement,wo_frontier,wo_adaptive
+
+cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI" && export SKIPCOUNT=100 && sudo -E ./run_ablation.sh forked-daapd 1 1480 -g full,wo_hypothesis,wo_refinement,wo_frontier,wo_adaptive
 
 cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master && export KEY="sk-vjJeCI9TNGvDkwPkQYdW0pT2SuWgEPFYUK7qXVcHyUV0QmYI" && export SKIPCOUNT=100 && sudo -E ./run_dev.sh 2 1470 kamailio,mosquitto,exim,live555,forked-daapd,pure-ftpd,proftpd chatafl,chatafl-opt
 

@@ -67,13 +67,13 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
     llm_last_prompt_tokens = 0;
     llm_last_completion_tokens = 0;
     char *url = NULL;
-    if (strcmp(model, "gpt-5.4") == 0) //https://code.b886.top/v1
+    if (strcmp(model, "gpt-5.4") == 0) //https://www.cctq.ai/v1
     {
-        url = "https://code.b886.top/v1/completions";
+        url = "https://www.cctq.ai/v1/completions";
     }
     else
     {
-        url = "https://code.b886.top/v1/chat/completions";
+        url = "https://www.cctq.ai/v1/chat/completions";
     }
     const char *api_key = getenv("KEY");
     if (!api_key || api_key[0] == '\0') {
