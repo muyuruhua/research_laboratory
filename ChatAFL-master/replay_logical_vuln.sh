@@ -552,21 +552,26 @@ cd $WORKDIR
 $PRE_START
 export $ENV_VARS
 $SERVER_CMD &
-SPID=\$!; sleep 2
+SPID=\$!
 
-READY=0
-for attempt in \$(seq 1 30); do
-    if $HEALTH_CHECK 2>/dev/null; then READY=1; break; fi
+# Wait for server to bind port (poll /proc/net/tcp, non-intrusive)
+LISTEN=0
+for attempt in \$(seq 1 50); do
+    sleep 0.1
+    if grep -q ':0015 .*0A' /proc/net/tcp 2>/dev/null; then
+        LISTEN=1; break
+    fi
     if ! kill -0 \$SPID 2>/dev/null; then
         wait \$SPID 2>/dev/null || true
         echo '[FATAL] Server died on startup' | tee -a /tmp/vout/verdict.txt
         exit 1
     fi
-    sleep 1
 done
-echo \"Server PID: \$SPID (ready=\$READY)\"
+[ \$LISTEN -eq 0 ] && { echo '[FATAL] Server failed to listen'; kill \$SPID 2>/dev/null; exit 1; }
+echo \"Server PID: \$SPID (listening on $PORT)\"
 
 python3 /tmp/replay_protocol.py 2>&1
+RC=\$?
 python3 /tmp/verify_oracle.py 2>&1
 
 kill \$SPID 2>/dev/null || true

@@ -40,6 +40,27 @@ PRE[pure-ftpd]="/home/ubuntu/experiments/clean 2>/dev/null; ulimit -n 1024"
 ENV[pure-ftpd]="ASAN_OPTIONS=abort_on_error=1:symbolize=0:detect_leaks=0:detect_stack_use_after_return=1"
 UDP[pure-ftpd]="0";              HC[pure-ftpd]="nc -z 127.0.0.1 21"
 
+IMG[bftpd]="bftpd";              PROTO[bftpd]="FTP";  PORT[bftpd]="21"
+WD[bftpd]="/home/ubuntu/experiments/bftpd"
+CMD[bftpd]="./bftpd -D -c /home/ubuntu/experiments/basic.conf"
+PRE[bftpd]=""
+ENV[bftpd]="ASAN_OPTIONS=abort_on_error=1:symbolize=0:detect_leaks=0"
+UDP[bftpd]="0";                  HC[bftpd]="nc -z 127.0.0.1 21"
+
+IMG[proftpd]="proftpd";          PROTO[proftpd]="FTP";  PORT[proftpd]="21"
+WD[proftpd]="/home/ubuntu/experiments/proftpd"
+CMD[proftpd]="./proftpd -n -c /home/ubuntu/experiments/basic.conf"
+PRE[proftpd]=""
+ENV[proftpd]="ASAN_OPTIONS=abort_on_error=1:symbolize=0:detect_leaks=0"
+UDP[proftpd]="0";                HC[proftpd]="nc -z 127.0.0.1 21"
+
+IMG[lightftp]="lightftp";        PROTO[lightftp]="FTP";  PORT[lightftp]="2200"
+WD[lightftp]="/home/ubuntu/experiments/LightFTP/Source/Release"
+CMD[lightftp]="./fftp fftp.conf 2200"
+PRE[lightftp]=""
+ENV[lightftp]="ASAN_OPTIONS=abort_on_error=1:symbolize=0:detect_leaks=0"
+UDP[lightftp]="0";               HC[lightftp]="nc -z 127.0.0.1 2200"
+
 # ── Validation ──────────────────────────────────────────────────────────
 [ ! -f "$CRASH_SEED" ] && { echo "[ERROR] Seed not found: $CRASH_SEED"; exit 1; }
 [ -z "${IMG[$TARGET]:-}" ] && { echo "[ERROR] Unknown target: $TARGET. Supported: ${!IMG[*]}"; exit 1; }
