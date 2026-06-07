@@ -554,11 +554,11 @@ export $ENV_VARS
 $SERVER_CMD &
 SPID=\$!
 
-# Wait for server to bind port (poll /proc/net/tcp, non-intrusive)
+# Wait for server to bind port (poll with nc, port-aware)
 LISTEN=0
 for attempt in \$(seq 1 50); do
     sleep 0.1
-    if grep -q ':0015 .*0A' /proc/net/tcp 2>/dev/null; then
+    if nc -z 127.0.0.1 $PORT 2>/dev/null; then
         LISTEN=1; break
     fi
     if ! kill -0 \$SPID 2>/dev/null; then

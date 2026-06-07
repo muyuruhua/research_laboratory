@@ -61,6 +61,34 @@ PRE[lightftp]=""
 ENV[lightftp]="ASAN_OPTIONS=abort_on_error=1:symbolize=0:detect_leaks=0"
 UDP[lightftp]="0";               HC[lightftp]="nc -z 127.0.0.1 2200"
 
+IMG[lighttpd1]="lighttpd1";      PROTO[lighttpd1]="HTTP"; PORT[lighttpd1]="8080"
+WD[lighttpd1]="/home/ubuntu/experiments/lighttpd1"
+CMD[lighttpd1]="./src/lighttpd -D -f /home/ubuntu/experiments/lighttpd.conf -m ./src/.libs"
+PRE[lighttpd1]=""
+ENV[lighttpd1]="ASAN_OPTIONS=abort_on_error=1:symbolize=0:detect_leaks=0"
+UDP[lighttpd1]="0";              HC[lighttpd1]="nc -z 127.0.0.1 8080"
+
+IMG[forked-daapd]="forked-daapd"; PROTO[forked-daapd]="HTTP"; PORT[forked-daapd]="3689"
+WD[forked-daapd]="/home/ubuntu/experiments"
+CMD[forked-daapd]="sudo service dbus start 2>/dev/null; sudo service avahi-daemon start 2>/dev/null; HOME=/home/ubuntu ./forked-daapd/src/forked-daapd -d 0 -c /home/ubuntu/experiments/forked-daapd.conf -f"
+PRE[forked-daapd]=""
+ENV[forked-daapd]="ASAN_OPTIONS=abort_on_error=1:symbolize=0:detect_leaks=0"
+UDP[forked-daapd]="0";           HC[forked-daapd]="nc -z 127.0.0.1 3689"
+
+IMG[mosquitto-v2.0.18]="mosquitto-v2.0.18"; PROTO[mosquitto-v2.0.18]="MQTT"; PORT[mosquitto-v2.0.18]="1883"
+WD[mosquitto-v2.0.18]="/home/ubuntu/experiments"
+CMD[mosquitto-v2.0.18]="./mosquitto-gcov/src/mosquitto -c /home/ubuntu/experiments/mosquitto.conf"
+PRE[mosquitto-v2.0.18]=""
+ENV[mosquitto-v2.0.18]="ASAN_OPTIONS=abort_on_error=1:symbolize=0:detect_leaks=0"
+UDP[mosquitto-v2.0.18]="0";      HC[mosquitto-v2.0.18]="nc -z 127.0.0.1 1883"
+
+IMG[mosquitto-v2.1.2]="mosquitto-v2.1.2"; PROTO[mosquitto-v2.1.2]="MQTT"; PORT[mosquitto-v2.1.2]="1883"
+WD[mosquitto-v2.1.2]="/home/ubuntu/experiments"
+CMD[mosquitto-v2.1.2]="./mosquitto-gcov/src/mosquitto -c /home/ubuntu/experiments/mosquitto.conf"
+PRE[mosquitto-v2.1.2]=""
+ENV[mosquitto-v2.1.2]="ASAN_OPTIONS=abort_on_error=1:symbolize=0:detect_leaks=0"
+UDP[mosquitto-v2.1.2]="0";      HC[mosquitto-v2.1.2]="nc -z 127.0.0.1 1883"
+
 # ── Validation ──────────────────────────────────────────────────────────
 [ ! -f "$CRASH_SEED" ] && { echo "[ERROR] Seed not found: $CRASH_SEED"; exit 1; }
 [ -z "${IMG[$TARGET]:-}" ] && { echo "[ERROR] Unknown target: $TARGET. Supported: ${!IMG[*]}"; exit 1; }
