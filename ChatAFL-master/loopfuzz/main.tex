@@ -1,5 +1,5 @@
 \pdfminorversion=7
-\documentclass[preprint,review,12pt,authoryear]{elsarticle}
+\documentclass[preprint,number]{elsarticle}
 
 \usepackage{amsmath,amssymb,amsfonts}
 \usepackage[ruled,vlined,linesnumbered]{algorithm2e}
@@ -10,12 +10,11 @@
 \usepackage{url}
 \usepackage{multirow}
 \usepackage{tabularx}
-\usepackage{lineno}
 \usepackage{lmodern}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning,fit,calc}
 
-\biboptions{authoryear,round}
+\biboptions{sort&compress}
 
 \journal{Computers \& Security}
 
@@ -23,7 +22,7 @@
 
 \begin{frontmatter}
 
-\title{LoopFuzz: Closed-Loop Runtime Admission Control for\\ LLM-Guided Stateful Protocol Fuzzing}
+\title{LoopFuzz: Closed-Loop Runtime Admission Control for LLM-Guided Stateful Protocol Fuzzing}
 
 \author[inst1]{Ketang Chen}
 \ead{3250006913@student.must.edu.mo}
@@ -32,28 +31,19 @@
 \cortext[cor1]{Corresponding author: Xiaolei Ren. Email address: xlren@must.edu.mo}
 
 \affiliation[inst1]{organization={Macau University of Science and Technology},
+            addressline={Avenida Wai Long, Taipa},
             city={Macau},
             country={China}}
 
 \begin{abstract}
-Stateful protocol fuzzing is difficult because syntactically valid messages may still violate the live session state. This problem is amplified when large language models (LLMs) are inserted directly into fuzzing campaigns. We present LoopFuzz, a closed-loop runtime admission-control design for LLM-guided stateful protocol fuzzing. LoopFuzz treats model outputs as bounded hypotheses. It derives message hypotheses from RFC fragments, seed traces, and observed responses, validates candidate interventions through parseability, response-grounded acceptability, state reachability, and downstream gain, and uses counterexamples for local refinement. It also couples admission control with state-aware scheduling so that model assistance is invoked under adaptive plateau conditions and directed toward underexplored IPSM frontier states. We re-audit the archived summaries using the terminal \texttt{b\_abs} and \texttt{edges} fields. On nine off-the-shelf targets, the LoopFuzz configuration (\texttt{chatafl\_opt}) obtains the highest mean \texttt{b\_abs} on six targets and the highest mean \texttt{edges} on all nine targets against AFLNet and ChatAFL. Significant \texttt{b\_abs} wins versus both primary baselines appear on Pure-FTPd, Live555, and Lighttpd1; significant \texttt{edges} wins appear on bftpd, ProFTPD, Pure-FTPd, and Live555. Auxiliary comparisons remain mixed: among eight NSFuzz targets, NSFuzz has the highest \texttt{b\_abs} on five, while \texttt{chatafl\_opt} has the highest reported \texttt{edges} on seven. The MQTT comparison against MBFuzzer is reported separately because the available \texttt{chatafl\_opt} MQTT runs are much shorter and MBFuzzer reports \texttt{branch\_covered} rather than \texttt{b\_abs}.
+Stateful protocol fuzzing is difficult because a syntactically valid message can still violate the current session state. This failure mode is amplified when a large language model (LLM) can inject protocol messages into a long-running campaign. We present LoopFuzz, a closed-loop runtime admission-control design for LLM-guided stateful protocol fuzzing. LoopFuzz treats model outputs as bounded hypotheses rather than queue entries. It derives message constraints from RFC fragments, seed traces, and observed responses. It admits an intervention only when runtime evidence supports parseability, response-grounded acceptability, state reachability, and downstream gain. Failed executions become counterexamples for local refinement, and state-aware scheduling triggers model assistance only under adaptive plateau conditions. Re-audited run summaries show that LoopFuzz achieves the highest mean absolute branch coverage on eight of nine off-the-shelf targets and the highest mean IPSM edge count on all nine against AFLNet and ChatAFL. Auxiliary comparisons are mixed: NSFuzz leads absolute branch coverage on five of eight targets, and MQTT remains separately qualified.
 \end{abstract}
-
-\begin{highlights}
-\item LoopFuzz validates LLM-generated protocol-fuzzing interventions at runtime.
-\item Runtime admission checks parseability, acceptability, reachability, and gain.
-\item Counterexamples guide local repair of failed protocol-message hypotheses.
-\item State-aware scheduling targets underexplored inferred protocol states.
-\item Archived summaries compare LoopFuzz with AFLNet, ChatAFL, NSFuzz, and MBFuzzer.
-\end{highlights}
 
 \begin{keyword}
 Protocol fuzzing \sep Large language models \sep Runtime admission control \sep Stateful testing \sep Counterexample-guided refinement
 \end{keyword}
 
 \end{frontmatter}
-
-\linenumbers
 
 \section{Introduction}
 Network protocol implementations remain difficult security targets because correctness depends on interaction history rather than isolated inputs~\cite{aflnet,stateafl,sgf_usenix22,formatted_stateful_greybox_fuzzing_2024,resolverfuzz_query_response_2024}. An FTP server, for example, rejects a well-formed \texttt{PASS} command if no valid \texttt{USER} command has established the login state. Unlike file fuzzing, protocol fuzzing must preserve message syntax, temporal order, and request-response progress across a multi-step session~\cite{resolverfuzz_query_response_2024,mbfuzzer_mqtt_2025,bleem_packet_sequence_2023,logos_log_guided_fuzzing_2024,diane_identifying_fuzzing_triggers_2021,corecrisis_context_aware_2025}.
@@ -70,7 +60,7 @@ The contributions of this paper are as follows:
     \item \textbf{A Closed-Loop Runtime Admission Boundary.} LoopFuzz inserts a runtime admission controller between the LLM and the queue. The controller checks parseability, response-grounded acceptability, state reachability, and downstream gain before admission.
     \item \textbf{Counterexample-Guided Local Refinement.} LoopFuzz preserves failed request-response traces as counterexamples and uses them to patch one field constraint or production at a time, which constrains model freedom and stabilizes refinement.
     \item \textbf{State-Aware Scheduling.} LoopFuzz leverages IPSM topology, state productivity, and adaptive plateau detection to prioritize underexplored frontier states and to request model assistance only when mutation alone stalls.
-    \item \textbf{An Empirical Study of Runtime-Validated Assistance.} We evaluate LoopFuzz on a repeated-run benchmark archive. The study includes nine off-the-shelf primary comparisons against AFLNet and ChatAFL using \texttt{b\_abs} and \texttt{edges}, auxiliary four-way NSFuzz comparisons on eight targets, a separately qualified MBFuzzer/\texttt{chatafl\_opt} Mosquitto comparison, and policy ablations of the evaluated controller.
+    \item \textbf{An Empirical Study of Runtime-Validated Assistance.} We evaluate LoopFuzz on a repeated-run benchmark archive. The study includes nine off-the-shelf primary comparisons against AFLNet and ChatAFL using final \texttt{b\_abs} and \texttt{edges}, auxiliary four-way NSFuzz comparisons on eight targets, a separately qualified MBFuzzer/LoopFuzz Mosquitto comparison, and policy ablations of the evaluated controller.
 \end{itemize}
 
 Accordingly, the paper evaluates LoopFuzz as a campaign-control policy, not as a standalone message generator. In stateful protocol fuzzing, generation matters only when it survives runtime evidence and improves downstream queue quality.
@@ -79,10 +69,10 @@ Accordingly, the paper evaluates LoopFuzz as a campaign-control policy, not as a
 
 \begin{table*}[ht]
 \centering
-\caption{LoopFuzz is the only listed system that combines LLM hypotheses with runtime admission and online refinement; representative prior fuzzers differ in input prior, state signal, and admission boundary.}
+\caption{Among the listed systems, LoopFuzz combines LLM hypotheses with runtime admission and online refinement; representative prior fuzzers differ in input prior, state signal, and admission boundary.}
 \label{tab:taxonomy}
 \renewcommand{\arraystretch}{1.3}
-\scriptsize
+\footnotesize
 \setlength{\tabcolsep}{3pt}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{l l c c l}
@@ -155,13 +145,13 @@ Large language models make it easier to propose structure-aware protocol message
 \draw[arrow, green!50!black] (gate) -- (cex);
 \draw[arrow, green!50!black] (cex) -- (repair);
 \end{tikzpicture}
-\caption{Semantic drift occurs when the model proposes \texttt{RETR} before the session opens a data channel; open-loop fuzzing admits the rejected branch, whereas LoopFuzz rejects the candidate, records the \texttt{425} counterexample, and repairs the missing \texttt{PASV}/\texttt{PORT} precondition.}
+\caption{Semantic drift in an FTP session. The model proposes \texttt{RETR} before the session opens a data channel. Open-loop fuzzing admits the rejected branch. LoopFuzz rejects the candidate, records the \texttt{425} counterexample, and repairs the missing \texttt{PASV}/\texttt{PORT} precondition.}
 \label{fig:motivation}
 \end{figure}
 
-Consider an FTP fuzzing campaign against ProFTPD, as illustrated in Fig.~\ref{fig:motivation}. The fuzzer executes \texttt{USER} and \texttt{PASS}. It then queries the LLM for the next request, and the model returns \texttt{RETR example\_file.txt}. The request is syntactically fluent but semantically premature. The client lacks an active data channel via \texttt{PASV} or \texttt{PORT}. The server rejects it with \texttt{425 Use PORT or PASV first}.
+Consider an FTP fuzzing campaign against ProFTPD, as illustrated in Fig.~\ref{fig:motivation}. The fuzzer executes \texttt{USER} and \texttt{PASS}. It then queries the LLM for the next request. The model returns \texttt{RETR example\_file.txt}. The request is syntactically fluent but semantically premature. The client lacks an active data channel via \texttt{PASV} or \texttt{PORT}. The server rejects it with \texttt{425 Use PORT or PASV first}.
 
-An open-loop LLM fuzzer admits this \texttt{RETR} request because it looks fluent. This is \emph{semantic drift}. The request is locally plausible, but it violates the protocol precondition for the current session state. The fuzzer then mutates a rejected branch instead of crossing the missing state transition. LoopFuzz blocks this drift. The runtime admission controller treats the \texttt{425} reply as negative evidence. It rejects the candidate and records the failed trace as a counterexample. CEGR then repairs the missing state precondition instead of regenerating the full continuation. This example captures the paper's central claim: in stateful protocol fuzzing, the value of LLM assistance depends on closed-loop runtime admission, not on surface fluency. We use semantic drift as an operational motivation for rejection and CEGR repair, not as a separately estimated global rate.
+We call this failure \emph{semantic drift}. The request is locally plausible, but it violates the precondition of the current session state. An open-loop LLM fuzzer admits the request because it looks fluent. It then mutates a rejected branch instead of crossing the missing state transition. LoopFuzz blocks this drift at the admission boundary. The controller treats the \texttt{425} reply as negative evidence. It rejects the candidate and records the failed trace as a counterexample. CEGR then repairs the missing \texttt{PASV}/\texttt{PORT} precondition instead of regenerating the full continuation. This example captures the paper's central claim: the value of LLM assistance depends on runtime admission, not on surface fluency. We use semantic drift as an operational motivation for rejection and CEGR repair, not as a separately estimated global rate.
 
 \section{Related Work}
 We position LoopFuzz against the prior lines that are closest in mechanism and evaluation.
@@ -188,56 +178,71 @@ Fig.~\ref{fig:arch} summarizes the three coupled loops in LoopFuzz: the Grammar 
 
 \begin{figure*}[t!]
 \centering
+\definecolor{lfblue}{RGB}{55,95,130}
+\definecolor{lforange}{RGB}{178,108,35}
+\definecolor{lfpurple}{RGB}{112,79,145}
+\definecolor{lfgreen}{RGB}{67,128,93}
+\definecolor{lfred}{RGB}{168,82,73}
 \resizebox{\textwidth}{!}{%
 \begin{tikzpicture}[
-    font=\scriptsize,
+    font=\footnotesize,
     >=Latex,
-    proc/.style={draw, rounded corners=1.5pt, align=center, minimum height=8.5mm, text width=29mm, fill=white, inner sep=3pt},
-    grammar/.style={proc, draw=blue!60!black, fill=blue!5},
-    fuzz/.style={proc, draw=orange!70!black, fill=orange!8},
-    llm/.style={proc, draw=purple!65!black, fill=purple!6},
-    gate/.style={proc, draw=green!45!black, fill=green!8, text width=30mm},
-    fail/.style={proc, draw=red!65!black, fill=red!6},
-    arrow/.style={->, thick},
-    iface/.style={->, thick, dashed}
+    block/.style={draw, rounded corners=2pt, align=center, minimum height=9.2mm, text width=33mm, fill=white, inner xsep=3.5pt, inner ysep=3pt, line width=0.55pt},
+    grammar/.style={block, draw=lfblue, fill=lfblue!7},
+    fuzz/.style={block, draw=lforange, fill=lforange!8},
+    llm/.style={block, draw=lfpurple, fill=lfpurple!7},
+    gate/.style={block, draw=lfgreen, fill=lfgreen!9, text width=36mm, minimum height=10.5mm, line width=0.7pt},
+    fail/.style={block, draw=lfred, fill=lfred!8},
+    panel/.style={draw, rounded corners=4pt, line width=0.45pt},
+    arrow/.style={->, line width=0.7pt, draw=black!68},
+    feedback/.style={->, line width=0.7pt, dashed, draw=black!58},
+    reject/.style={->, line width=0.7pt, draw=lfred!85!black},
+    label/.style={font=\bfseries\footnotesize, align=center}
 ]
-\node[font=\bfseries\scriptsize, text=blue!60!black] at (0,5.75) {Grammar Hypothesis Loop};
-\node[font=\bfseries\scriptsize, text=orange!70!black] at (4.3,5.75) {Fuzz Execution Loop};
-\node[font=\bfseries\scriptsize, text=purple!65!black] at (8.6,5.75) {LLM Intervention Loop};
+\draw[panel, draw=lfblue!45, fill=lfblue!3] (-5.80,-1.72) rectangle (-1.00,5.24);
+\draw[panel, draw=lforange!50, fill=lforange!4] (-0.72,-1.72) rectangle (4.38,5.24);
+\draw[panel, draw=lfpurple!45, fill=lfpurple!4] (4.88,-1.72) rectangle (9.48,5.24);
 
-\node[grammar] (evidence) at (0,4.35) {RFC fragments\\seed traces\\observed responses};
-\node[grammar] (hyp) at (0,2.75) {Grammar hypotheses\\$h_m=(G_m,\Phi_m)$};
-\node[grammar] (tier1) at (0,1.15) {Tier-1 sampling\\parsed-region check};
-\node[fail] (cegr) at (0,-0.45) {Tier-2 CEGR\\local patch};
+\node[label, text=lfblue] at (-3.40,4.86) {Grammar Hypothesis Loop};
+\node[label, text=lforange] at (1.66,4.86) {Fuzz Execution Loop};
+\node[label, text=lfpurple] at (7.24,4.86) {LLM Intervention Loop};
+\draw[draw=lfblue!20, line width=0.45pt] (-5.44,4.42) -- (-1.36,4.42);
+\draw[draw=lforange!22, line width=0.45pt] (-0.36,4.42) -- (4.02,4.42);
+\draw[draw=lfpurple!20, line width=0.45pt] (5.24,4.42) -- (9.12,4.42);
 
-\node[fuzz] (select) at (4.3,4.35) {State-aware\\seed selection\\frontier + productivity};
-\node[fuzz] (exec) at (4.3,2.75) {Mutation and\\bounded execution};
-\node[fuzz] (feedback) at (4.3,1.15) {Coverage and\\IPSM update\\novelty check};
+\node[grammar] (evidence) at (-3.40,3.60) {RFC fragments\\seed traces\\observed responses};
+\node[grammar] (hyp) at (-3.40,2.08) {Message hypotheses\\grammar and\\constraints};
+\node[grammar] (tier1) at (-3.40,0.56) {Tier-1 sampling\\parsed-region check};
+\node[fail] (cegr) at (-3.40,-0.96) {Tier-2 refinement\\counterexample patch};
 
-\node[llm] (plateau) at (8.6,4.35) {Adaptive plateau\\budget check};
-\node[llm] (prompt) at (8.6,2.75) {State prompt\\dedup\\fork isolation};
-\node[llm] (reply) at (8.6,1.15) {Structured reply\\JSON validation};
-\node[gate] (admit) at (8.6,-0.45) {Runtime admission\\$P \land U \land R \land G$};
-\node[llm] (dispatch) at (8.6,-2.05) {Action dispatch\\mutation, priority, redirection};
+\node[fuzz] (select) at (1.66,3.58) {State-aware\\seed selection\\frontier and productivity};
+\node[fuzz] (exec) at (1.66,2.06) {Mutation and\\bounded execution};
+\node[fuzz] (update) at (1.66,0.54) {Coverage and IPSM\\update};
+\node[gate] (admit) at (1.66,-0.98) {Runtime admission\\parse, accept,\\reach, gain};
 
-\draw[arrow, blue!60!black] (evidence) -- (hyp);
-\draw[arrow, blue!60!black] (hyp) -- (tier1);
-\draw[arrow, red!65!black] (tier1) -- (cegr);
-\draw[arrow, red!65!black] (cegr.west) to[out=180,in=180,looseness=1.15] (hyp.west);
+\node[llm] (plateau) at (7.24,3.58) {Adaptive plateau\\budget check};
+\node[llm] (prompt) at (7.24,2.06) {State prompt\\reuse filter and\\query isolation};
+\node[llm] (reply) at (7.24,0.54) {Structured reply\\schema validation};
+\node[llm] (dispatch) at (7.24,-0.98) {Bounded action\\mutation, priority, redirection};
 
-\draw[arrow, orange!70!black] (select) -- (exec);
-\draw[arrow, orange!70!black] (exec) -- (feedback);
-\draw[arrow, orange!70!black] (feedback.west) to[out=180,in=180,looseness=1.15] (select.west);
+\draw[arrow, draw=lfblue!85!black] (evidence) -- (hyp);
+\draw[arrow, draw=lfblue!85!black] (hyp) -- (tier1);
+\draw[reject] (tier1) -- node[right, font=\scriptsize, text=lfred!85!black] {counterexample} (cegr);
+\draw[reject] (cegr.west) to[out=180,in=180,looseness=1.15] (hyp.west);
 
-\draw[arrow, purple!65!black] (plateau) -- (prompt);
-\draw[arrow, purple!65!black] (prompt) -- (reply);
-\draw[arrow, purple!65!black] (reply) -- (admit);
-\draw[arrow, green!45!black] (admit) -- (dispatch);
+\draw[arrow, draw=lforange!85!black] (select) -- (exec);
+\draw[arrow, draw=lforange!85!black] (exec) -- (update);
+\draw[feedback, draw=lforange!85!black] (update.west) to[out=180,in=180,looseness=1.10] (select.west);
 
-\draw[iface, orange!70!black] (feedback.east) to[out=20,in=200] (plateau.west);
-\draw[iface, red!65!black] (admit.west) to[out=190,in=-10] (cegr.east);
-\coordinate (returnbus) at (2.35,-2.95);
-\draw[iface, green!45!black] (dispatch.south) |- (returnbus) |- (select.west);
+\draw[arrow, draw=lfpurple!85!black] (plateau) -- (prompt);
+\draw[arrow, draw=lfpurple!85!black] (prompt) -- (reply);
+\draw[arrow, draw=lfpurple!85!black] (reply) -- (dispatch);
+\draw[feedback, draw=lfpurple!85!black] (update.east) to[out=20,in=200] node[above, font=\scriptsize, text=black!65] {growth rate} (plateau.west);
+
+\draw[arrow, draw=lfgreen!80!black] (dispatch.west) -- (admit.east);
+\draw[arrow, draw=lfgreen!80!black] (admit.north) -- (update.south);
+\draw[feedback, draw=lfgreen!80!black] (admit.south) -- ++(0,-0.54) -| (select.south);
+\draw[reject] (admit.west) -- node[above, font=\scriptsize, text=lfred!85!black, fill=white, inner sep=1pt] {reject} (cegr.east);
 \end{tikzpicture}}
 \caption{LoopFuzz changes the LLM from a queue producer into a bounded policy proposer. The Grammar Hypothesis Loop maintains message hypotheses, the Fuzz Execution Loop updates coverage and IPSM feedback, and the LLM Intervention Loop proposes bounded interventions; runtime admission checks mediate each proposal before it can affect the queue.}
 \label{fig:arch}
@@ -249,12 +254,14 @@ This control boundary is the core idea of the paper. ChatAFL is open-loop: it us
 
 The three loops in Fig.~\ref{fig:arch} define the analytical roles of the method. The Grammar Hypothesis Loop constructs and repairs message hypotheses from RFC knowledge, seed traces, and observed responses. The Fuzz Execution Loop performs state selection, mutation, bounded execution, IPSM update, and novelty checking. The LLM Intervention Loop is activated only under plateau conditions and returns either a validated continuation or a bounded control action.
 
-The remaining labels in Fig.~\ref{fig:arch} denote control interfaces rather than independent claims. \emph{Tier-1 Sampling} is the cheap online check over parsed execution regions. \emph{Tier-2 Refinement} is the counterexample-triggered repair path. \emph{JSON Validation} checks the schema of a model reply before action dispatch. \emph{Action Dispatch} maps an admitted action to one of three bounded campaign controls: mutation proposal, seed prioritization, or target-state redirection. \emph{Dedup} prevents repeated prompts over the same state summary. Fork-based query isolation bounds failures in the model-query path.
+The remaining labels in Fig.~\ref{fig:arch} denote control interfaces rather than independent claims. \emph{Tier-1 Sampling} is the cheap online check over parsed execution regions. \emph{Tier-2 Refinement} is the counterexample-triggered repair path. \emph{Schema validation} checks the structure of a model reply before bounded action dispatch. \emph{Bounded action dispatch} maps an admitted action to one of three campaign controls: mutation proposal, seed prioritization, or target-state redirection. The \emph{prompt reuse filter} prevents repeated prompts over the same state summary. Query isolation bounds failures in the model-query path.
 
 \subsection{Grammar Hypothesis Loop}
 Let $\mathcal{L}(c, s, \Sigma)$ denote the LLM generation function under prompt context $c$, state summary $s$, and protocol knowledge $\Sigma$. LoopFuzz uses $\mathcal{L}$ in two stages. During initialization, it preserves ChatAFL's template extraction and seed enrichment path. Initial enrichment is scheduled as a bounded phase so that corpus diversification does not dominate early campaign time. During fuzzing, LoopFuzz adds a lazily initialized hypothesis layer. This layer is activated at the first plateau event and updated through sampled validation and refinement. The separation is important. The initialization phase broadens the initial seed set. Runtime hypotheses support runtime-validated control during long campaigns.
 
 The Grammar Hypothesis Loop draws on three evidence sources when they are available: RFC fragments, queued seed traces or packet examples, and observed server responses, including response codes and error texts. For each message type $m$, the loop maintains a hypothesis $h_m=(G_m,\Phi_m)$. Here, $G_m$ is an ABNF-style or template-style production, and $\Phi_m$ is a set of field constraints. In LoopFuzz, $\Phi_m$ captures length bounds, enumerated values, token dependencies, and simple cross-field relations. This representation is more constrained than free-form text and lighter than a full formal protocol specification. We choose it because sampled online validation must remain cheap.
+
+The evidence sources are not assumed to be complete. RFC extraction supplies useful protocol structure when a relevant fragment is available. Seed traces provide executable examples of message order and framing. Observed responses provide target-specific evidence about rejection, progress, and state change. This division is important for the claim. LoopFuzz does not require a full protocol specification. It requires enough evidence to form testable hypotheses and then lets runtime admission decide whether those hypotheses should affect the campaign.
 
 \subsection{Runtime Admission Controller}
 The runtime admission controller is the central mechanism in our design. It does not formally prove correctness. Instead, it enforces four runtime checks before an LLM contribution can affect the campaign: parseability, acceptability, state reachability, and coverage gain. A candidate intervention $x$ is admitted only if
@@ -290,13 +297,15 @@ To address this, LoopFuzz augments state selection with a frontier bonus $\beta$
 1.0 & \text{otherwise}
 \end{cases}
 \]
-States absent from the IPSM receive the maximum bonus $\beta{=}4$. LoopFuzz then modulates this bonus with a three-level error-productivity hint: unknown, likely error, or confirmed productive. The reported implementation encodes these levels as 0, 1, and 2. This hint downweights frontier states that repeatedly behave like rejection sinks, but it does not discard them outright. In the reported policy, hint level 1 applies a $\beta{\times}0.5$ penalty. Hint level 0 is reduced to $\beta{\times}0.7$ only after repeated low-productivity selections ($\mathit{selected\_times}{\ge}30$ and $\mathit{productivity}{<}0.005$). Hint level 2 receives no penalty. The hint is initialized from response-code classification and updated online. As a result, states can be promoted or demoted as evidence accumulates rather than being fixed by an early response pattern. This policy approximates a rare-transition preference without requiring an exact model of the full protocol state space.
+States absent from the IPSM receive the maximum bonus $\beta{=}4$. LoopFuzz then modulates this bonus with a three-level error-productivity hint: unknown, likely error, or confirmed productive. The reported implementation encodes these levels as 0, 1, and 2. This hint downweights frontier states that repeatedly behave like rejection sinks, but it does not discard them outright.
 
-These constants should be read as the reported control policy, not as a claim of global optimality. The three frontier-bonus levels $\{4.0,2.0,1.0\}$ separate unseen or low-out-degree frontier states from denser regions by coarse preference rather than by fine-grained tuning. The error-productivity penalties and the $(30,0.005)$ gate reduce repeated investment in response-derived rejection sinks while still allowing those states to recover if later executions become productive. Likewise, the $(80,30\%)$ node-stagnation safeguard and the 64-call intervention budget are bounded control parameters. They prevent persistent hot-spot lock-in and unbounded LLM overhead. We report them to make the policy auditable; this study does not claim a full sensitivity analysis over the entire hyperparameter surface.
+In the reported policy, hint level 1 applies a $\beta{\times}0.5$ penalty. Hint level 0 is reduced to $\beta{\times}0.7$ only after repeated low-productivity selections ($\mathit{selected\_times}{\ge}30$ and $\mathit{productivity}{<}0.005$). Hint level 2 receives no penalty. The hint is initialized from response-code classification and updated online. As a result, states can be promoted or demoted as evidence accumulates. They are not fixed by an early response pattern. This policy approximates a rare-transition preference without requiring an exact model of the full protocol state space.
+
+These constants should be read as the reported control policy, not as a claim of global optimality. The three frontier-bonus levels $\{4.0,2.0,1.0\}$ separate unseen or low-out-degree frontier states from denser regions by coarse preference rather than by fine-grained tuning. The error-productivity penalties and the $(30,0.005)$ gate reduce repeated investment in response-derived rejection sinks. They still allow those states to recover if later executions become productive. Likewise, the $(80,30\%)$ node-stagnation safeguard and the 64-call intervention budget are bounded control parameters. They prevent persistent hot-spot lock-in and unbounded LLM overhead. We report them to make the policy auditable. This study does not claim a full sensitivity analysis over the entire hyperparameter surface.
 
 A complementary graph stagnation check tracks whether IPSM growth has collapsed at the graph level rather than only at the local state level. When no new nodes appear for an extended interval, the scheduler intermittently injects random selection to avoid persistent hot-spot lock-in. In the reported configuration, that safeguard activates after 80 consecutive rounds without node growth and uses a 30\% random-selection probability.
 
-Plateau detection uses the IPSM edge growth rate $\dot{E}$ (edges gained per minute), recalculated every 60 seconds of wall-clock time, to set an adaptive threshold:
+Plateau detection uses the IPSM edge growth rate $\dot{E}$, measured as edges gained per minute. LoopFuzz recalculates this rate every 60 seconds of wall-clock time and uses it to set an adaptive threshold:
 \[
 \tau(\dot{E}) = \begin{cases}
 300 & \text{if } \dot{E} > 5 \\
@@ -304,48 +313,49 @@ Plateau detection uses the IPSM edge growth rate $\dot{E}$ (edges gained per min
 150 & \text{if } \dot{E} \le 1
 \end{cases}
 \]
-The initial value is $\tau{=}200$ for textual protocols. MQTT uses the higher thresholds $\{500,400,300\}$ under the same edge-growth bins because binary framing and broker-mediated behavior expose state progress more sparsely. More generally, LoopFuzz treats plateau triggering as a rate-sensitive control decision, not as a fixed-frequency query rule. Assistance is invoked only when edge growth remains weak and the model-intervention budget is not exhausted. In the reported configuration, the plateau path opens when the unproductive streak reaches $\tau$ and prior model interventions remain below 64. Once inside that path, hypotheses are initialized lazily on first use. Refinement remains gated by validation count and accumulated counterexamples. Prompts are deduplicated over the most recent 64 LLM invocations. This prevents assistance from reacting to the same state summary again and again.
+The initial value is $\tau{=}200$ for textual protocols. MQTT uses the higher thresholds $\{500,400,300\}$ under the same edge-growth bins because binary framing and broker-mediated behavior expose state progress more sparsely. More generally, LoopFuzz treats plateau triggering as a rate-sensitive control decision, not as a fixed-frequency query rule.
+
+Assistance is invoked only when edge growth remains weak and the model-intervention budget is not exhausted. In the reported configuration, the plateau path opens when the unproductive streak reaches $\tau$ and prior model interventions remain below 64. Once inside that path, hypotheses are initialized lazily on first use. Refinement remains gated by validation count and accumulated counterexamples. The prompt reuse filter covers the most recent 64 LLM invocations. This prevents assistance from reacting to the same state summary again and again.
 
 The plateau prompt exposes a compact state summary rather than a raw execution log. It includes IPSM node and edge counts, the current edge-growth rate, pending favored seeds, queued paths, the current target state, and the least productive states. The admissible action space is also bounded. A model can redirect the target state, reprioritize a small set of seeds, or propose bounded mutations over an existing seed. These actions are not admitted because they are fluent. They must still pass the same runtime admission boundary. This design keeps the LLM in the role of a state-directed policy proposer.
 
 MQTT-specific scheduling is treated as a protocol adaptor, not as the general mechanism of LoopFuzz. For MQTT campaigns, packet-type selection uses a state-indexed action policy, and mutation-family selection uses a bandit-style controller. These signals help expose broker forwarding behavior to the IPSM, but the paper reports Mosquitto separately because this adaptor is protocol-specific and because MBFuzzer is a specialized MQTT baseline. In short, assistance is conditional, budgeted, state-directed, and scoped by protocol evidence.
 
-\begin{algorithm}[p]
+LoopFuzz also supports protocol-adaptor signals that are not used as headline evidence in the primary table. For MQTT, the adaptor translates between binary packets and textual hypotheses, drives multi-party broker interactions, and records differential behavior across broker-facing roles. A lightweight protocol oracle can log semantic violations such as authentication bypass, state-order violations, information leaks, traversal patterns, injection patterns, or denial-of-service indicators. These signals are useful for auditing and for later bug triage. They are not treated as confirmed vulnerabilities in this paper because crash deduplication, root-cause analysis, exploitability review, and cross-target oracle calibration are not normalized across the archive.
+
+Algorithm~\ref{alg:fuzz} specifies the plateau path and the hypothesis-refinement gate. It formalizes how state-aware triggering, runtime admission checks, and CEGR interact within one campaign loop.
+
+\begin{algorithm}[!tbp]
 \caption{Runtime-Validated Plateau Recovery in LoopFuzz}
 \label{alg:fuzz}
 \SetAlgoLined
+\SetAlgoNlRelativeSize{0}
 \footnotesize
-\KwIn{Target $T$, LLM function $\mathcal{L}$, Corpus $C$, Target edge growth $\dot{E}$}
-\KwOut{Coverage bitmap $\mathcal{B}_{global}$, IPSM $\mathcal{M}$}
-Initialize global bitmap $\mathcal{B}_{global} \leftarrow \emptyset$\;
-Initialize IPSM $\mathcal{M} \leftarrow \emptyset$\;
-\While{Campaign Time $<$ 24 hours}{
-    $s \leftarrow \text{SelectSeed}(C, \mathcal{M})$\;
-    $trace_{exec}, Q_{path} \leftarrow \text{MutateAndExecute}(T, s)$\;
-    $\text{UpdateIPSM}(\mathcal{M}, Q_{path})$\;
-    $\text{UpdateFrontierScores}(\mathcal{M})$\;
-    \If{$\text{ShouldSampleValidate}()$}{
-        $\text{ValidateHypothesesOnParsedRegions}(Q_{path})$\;
+\DontPrintSemicolon
+\KwIn{Target $T$, LLM interface $\mathcal{L}$, corpus $C$, edge-growth signal $\dot{E}$}
+\KwOut{Coverage bitmap $\mathcal{B}_{global}$ and IPSM $\mathcal{M}$}
+Initialize $\mathcal{B}_{global}$ and $\mathcal{M}$\;
+\While{the campaign budget remains}{
+    $s \leftarrow \textsc{SelectSeed}(C,\mathcal{M})$\;
+    $(trace,Q) \leftarrow \textsc{MutateExecute}(T,s)$\;
+    Update $\mathcal{B}_{global}$, $\mathcal{M}$, and frontier scores from $(trace,Q)$\;
+    \If{sampled validation is due}{
+        Validate active hypotheses on parsed regions of $Q$\;
     }
-    \If{$\text{PlateauDetected}(\tau(\dot{E}))$}{
-        \If{$\text{HypCtxMissing}()$}{
-            $\text{InitHypLazily}(C, Q_{path})$\;
+    \If{the adaptive plateau gate opens}{
+        Initialize hypotheses on first use, if needed\;
+        \If{counterexample evidence opens the refinement gate}{
+            Patch the lowest-fitness hypothesis locally\;
         }
-        \If{$\text{RefineGateOpen}()$}{
-            $\text{CEGR\_RefineLowFitnessHyp}()$\;
-        }
-        $c_{state} \leftarrow \text{BuildStatePrompt}(\mathcal{M}, C, Q_{path})$\;
-        \If{$\neg \text{PromptSeen\_Dedup}(c_{state})$}{
-            $r \leftarrow \text{ForkQueryLLM}(\mathcal{L}, c_{state})$\;
-            \If{$A(r) \equiv P(r) \land U(r) \land R(r) \land G(r)$}{
-                $\text{ActionDispatch}(r, C)$\;
-            }
+        $c \leftarrow \textsc{BuildPrompt}(\mathcal{M},C,Q,\dot{E})$\;
+        \If{$c$ is not in the recent prompt cache}{
+            $r \leftarrow \mathcal{L}(c)$ under process isolation\;
+            Admit $r$ only if parseability, acceptability, reachability, and gain all hold\;
+            Apply the admitted bounded action to $C$\;
         }
     }
 }
 \end{algorithm}
-
-Algorithm~\ref{alg:fuzz} specifies the plateau path and the hypothesis-refinement gate. It formalizes how state-aware triggering, runtime admission checks, and CEGR interact within one campaign loop.
 
 This integration also imposes a bounded operating model. The initial enrichment phase is separated from long-running admission control so that seed completion does not dominate early wall-clock time. Hypothesis construction is deferred until the first plateau event. This avoids paying the full refinement cost before the campaign exposes evidence of stagnation. Model queries use process isolation, and network cleanup is bounded to limit persistent stalls on forking daemons. These mechanisms are not separate novelty claims. They define the operating conditions under which runtime admission remains compatible with long-running stateful fuzzing.
 
@@ -355,7 +365,7 @@ We organize the evaluation around three research questions that match the paper'
 \begin{itemize}
     \item \textbf{RQ1 (Whole-Campaign Effect):} Does runtime-validated LLM assistance prevent the coverage regressions that can arise from direct open-loop generation?
     \item \textbf{RQ2 (IPSM Escape Dynamics):} Does the evaluated state-aware policy, with frontier scheduling and plateau-triggered intervention, sustain IPSM growth after the baselines stall?
-    \item \textbf{RQ3 (End-of-Campaign Outcome):} Under equal 24-hour budgets, how does LoopFuzz affect final \texttt{b\_abs} coverage and final \texttt{edges} relative to prior stateful greybox baselines?
+    \item \textbf{RQ3 (End-of-Campaign Outcome):} Under equal 24-hour budgets, how does LoopFuzz affect final \texttt{b\_abs} and final \texttt{edges} relative to prior stateful greybox baselines?
 \end{itemize}
 
 \subsection{Experimental Setup}
@@ -370,53 +380,53 @@ We ran all experiments on a dedicated Ubuntu 20.04 server with 32 CPU cores and 
     \item \textbf{MQTT:} Mosquitto.
 \end{enumerate}
 
-The benchmark suite contains 10 targets, but the provided run-summary archive supports different comparisons on different subsets. The primary AFLNet/ChatAFL/\texttt{chatafl\_opt} comparison uses the nine off-the-shelf non-MQTT targets with all three primary fuzzers: LightFTP, bftpd, ProFTPD, Pure-FTPd, Exim, Live555, Kamailio, Forked-daapd, and Lighttpd1. We retain only completed runs with at least 1400 archived minutes; if a fuzzer-target pair contains more than 10 valid runs, we keep the lowest 10 run IDs. This rule removes one short LightFTP ChatAFL run and trims the extra \texttt{chatafl\_opt} runs for Kamailio and Forked-daapd.
+The benchmark suite contains 10 targets, but the provided run-summary archive supports different comparisons on different subsets. The primary comparison uses AFLNet, ChatAFL, and LoopFuzz on the nine off-the-shelf non-MQTT targets: LightFTP, bftpd, ProFTPD, Pure-FTPd, Exim, Live555, Kamailio, Forked-daapd, and Lighttpd1. We retain only completed runs with at least 1400 archived minutes. If a fuzzer-target pair contains more than 10 valid runs, we keep the lowest 10 run IDs. This rule leaves six eligible LightFTP ChatAFL runs and trims extra LoopFuzz rows for targets with more than 10 valid runs. The audit is based on the updated primary, ablation, NSFuzz, and MBFuzzer result archives.
 
-Mosquitto needs separate treatment. In the provided archive, the Mosquitto rows do not form the same 24-hour three-way comparison as the nine primary targets. AFLNet has 10 completed 24-hour rows. The available \texttt{chatafl\_opt} Mosquitto rows report \texttt{b\_abs} and \texttt{edges}, but their archived runtimes range from 31 to 444 minutes, with a mean of 137.4 minutes. The MBFuzzer directory contains a Mosquitto summary file rather than a standard run-summary file and reports \texttt{branch\_covered}. We therefore report Mosquitto as a separately qualified MQTT auxiliary comparison rather than pooling it with the primary 24-hour table.
+Mosquitto needs separate treatment. In the provided archive, the Mosquitto rows do not form the same 24-hour three-way comparison as the nine primary targets. AFLNet has 10 completed 24-hour rows. The available LoopFuzz Mosquitto rows report \texttt{b\_abs} and \texttt{edges}, but their runtimes range from 31 to 444 minutes, with a mean of 137.4 minutes. MBFuzzer provides a Mosquitto summary under its own \texttt{branch\_covered} counter rather than the AFLNet-lineage run-summary format. We therefore report Mosquitto as a separately qualified MQTT auxiliary comparison rather than pooling it with the primary 24-hour table.
 
-All evaluated subjects are textual or semi-textual request/response protocols. We restrict our claims to this regime. The method has not been validated on opaque binary or encrypted protocols such as DNS, TLS, SSH, DTLS, or DICOM.
+The equal-budget primary subjects are textual request/response protocols. Mosquitto is treated separately through an MQTT-specific adaptor. We restrict our claims to this regime. The method has not been validated on opaque binary or encrypted protocols such as DNS, TLS, SSH, DTLS, or DICOM.
 
-Both ChatAFL and LoopFuzz used the same pinned \texttt{GPT-4o-mini} endpoint. Prompts remained protocol-agnostic beyond protocol name, observed state, and runtime summary. We did not hand-specialize prompt text per target. Each campaign ran for 24 hours. The primary table used archived repeated runs from a declared per-target result archive, with no per-system cherry-picking of directories or best runs.
+Both ChatAFL and LoopFuzz used the same pinned \texttt{GPT-4o-mini} endpoint. Prompts remained protocol-agnostic beyond protocol name, observed state, and runtime summary. We did not hand-specialize prompt text per target. The primary table uses approximately 24-hour archived repeated runs under the deterministic selection rule above, with no per-system cherry-picking of directories or best runs. MQTT is excluded from that equal-budget primary table because the available rows do not provide a comparable three-way 24-hour archive.
 
 \subsection{Baselines, Metrics, and Statistical Protocol}
-We used two baseline layers. The \emph{primary} baselines were AFLNet as the stateful greybox baseline and ChatAFL as the direct LLM-assisted baseline. LoopFuzz corresponds to the archived \texttt{chatafl\_opt} rows. The \emph{auxiliary} reproduced baselines were NSFuzz~\cite{nsfuzz} on eight non-HTTP/non-MQTT targets and MBFuzzer~\cite{mbfuzzer_mqtt_2025} on Mosquitto. For NSFuzz, we compare AFLNet, ChatAFL, \texttt{chatafl\_opt}, and NSFuzz side by side using \texttt{b\_abs} and the archived \texttt{edges} field. For MBFuzzer, we compare only coverage-like endpoints because MBFuzzer's summary does not expose \texttt{b\_abs} or \texttt{edges}.
+We used two baseline layers. The \emph{primary} baselines were AFLNet as the stateful greybox baseline and ChatAFL as the direct LLM-assisted baseline. The \emph{auxiliary} reproduced baselines were NSFuzz~\cite{nsfuzz} on eight non-HTTP/non-MQTT targets and MBFuzzer~\cite{mbfuzzer_mqtt_2025} on Mosquitto. For NSFuzz, we compare AFLNet, ChatAFL, LoopFuzz, and NSFuzz side by side using the archived \texttt{b\_abs} and \texttt{edges} fields. For MBFuzzer, we compare only a coverage-like endpoint because MBFuzzer's summary does not expose the AFLNet-lineage \texttt{b\_abs} or \texttt{edges} fields.
 
-The main dependent variables are the terminal \texttt{b\_abs} and \texttt{edges} fields in each \texttt{run\_summary.csv}. We treat \texttt{b\_abs} as the primary coverage endpoint because it is the least system-specific measure in the available summaries. We treat \texttt{edges} as a state-exploration diagnostic. For NSFuzz, we report its archived \texttt{edges} field as a same-name artifact metric, but we do not treat it as semantically identical to the response-derived IPSM edges maintained by the primary AFLNet-lineage fuzzers.
+The main dependent variables are final \texttt{b\_abs} and final \texttt{edges}. The \texttt{b\_abs} field is the absolute branch-coverage count in the run-summary archive. The \texttt{edges} field is the archived IPSM edge count and is used as a state-exploration diagnostic. For NSFuzz, \texttt{edges} is an artifact-level field. We do not treat it as semantically identical to the response-derived IPSM transition abstraction maintained by the primary AFLNet-lineage fuzzers.
 
-For each primary target and metric, we summarized selected terminal values with mean and sample SD. We then applied a two-sided exact Mann-Whitney U test to the per-run terminal values. We use the time-series plots to show campaign dynamics, not to claim significance at every timestamp. We also preserved crash artifacts, but this study does not claim novel vulnerabilities because crash triage and root-cause validation are not normalized across the suite.
+For each primary target and metric, we summarized selected terminal values with mean and sample SD. We then applied a two-sided exact Mann-Whitney U test to the per-run terminal values. The tables report terminal aggregates only, not significance at every timestamp. We also preserved crash artifacts, but this study does not claim novel vulnerabilities because crash triage and root-cause validation are not normalized across the suite.
 
 \subsection{Policy-Ablation Design}
-The ablation design follows the switches present in the provided ablation archive. The archived matrix compares the evaluated \texttt{full} controller against four policy perturbations: \texttt{wo\_refinement}, \texttt{wo\_frontier}, \texttt{wo\_hypothesis}, and \texttt{wo\_adaptive}. This organization reflects the actual archive rather than an idealized orthogonal factorization. We apply the same deterministic run-selection rule as the primary comparison: keep completed runs with at least 1400 minutes, and if more than 10 valid runs remain, keep the lowest 10 run IDs.
+The ablation design follows the switches present in the provided ablation archive. The archived matrix compares the evaluated full controller against four policy perturbations: disabling CEGR, disabling frontier scheduling, disabling hypothesis validation, and disabling adaptive triggering. This organization reflects the actual archive rather than an idealized orthogonal factorization. We apply the same deterministic run-selection rule as the primary comparison: keep completed runs with at least 1400 minutes, and if more than 10 valid runs remain, keep the lowest 10 run IDs.
 
 \subsection{Trace Accounting and Cost Reporting}
-Because LoopFuzz is a closed-loop LLM-in-the-loop system, the evaluation must report more than coverage alone. We therefore logged each plateau event with its prompt, raw model reply, and token use. We also logged each refinement event with the affected hypothesis and its counterexamples. The ProFTPD semantic-drift example in Fig.~\ref{fig:motivation} is a concrete instance of this evidence pattern: candidate request, target response, admission decision, and refinement target. These logs are sufficient to recover target-level admission statistics such as parseability pass rate, response-grounded acceptance rate, and CEGR repair outcomes. Those summaries are not normalized across the full archive, so we report them as audit artifacts and as a limitation rather than as aggregate evidence. As a result, semantic drift remains a motivating failure mode and an auditable trace category here, not a quantified cross-target headline metric.
+Because LoopFuzz is a closed-loop LLM-in-the-loop system, coverage alone is not enough for accounting. We therefore logged each plateau event with its prompt, raw model reply, and token use. We also logged each refinement event with the affected hypothesis and its counterexamples. The ProFTPD semantic-drift example in Fig.~\ref{fig:motivation} is a concrete instance of this evidence pattern: candidate request, target response, admission decision, and refinement target. These logs are sufficient to recover target-level admission statistics such as parseability pass rate, response-grounded acceptance rate, and CEGR repair outcomes. Those summaries are not normalized across the full archive. We therefore report them as audit artifacts and as a limitation rather than as aggregate evidence. As a result, semantic drift remains a motivating failure mode and an auditable trace category here, not a quantified cross-target headline metric.
 
 The four data directories audited here do not contain a normalized cross-target LLM-cost summary. We therefore do not make a cost-efficiency claim in this re-audited experimental section.
 
 \section{Results}
 
-Table~\ref{tab:24h_results} summarizes the terminal aggregates, and the endpoint figures visualize the same selected-run comparison.
+Table~\ref{tab:24h_results} summarizes the terminal aggregates used for the primary comparison.
 
 \begin{table*}[!t]
 \centering
-\caption{Primary end-of-campaign results from \texttt{run\_summary.csv} (mean $\pm$ sample SD over selected completed runs). Bold marks the highest mean among AFLNet, ChatAFL, and LoopFuzz. $^*$ marks LoopFuzz \texttt{b\_abs} wins significant versus both primary baselines under a two-sided exact Mann-Whitney U test at $p < 0.05$; $^\dagger$ marks LoopFuzz \texttt{edges} wins significant versus both primary baselines. All rows use 10 runs per fuzzer except LightFTP ChatAFL, where one short run is excluded and $n=9$.}
+\caption{Primary end-of-campaign results for \texttt{b\_abs} and \texttt{edges} (mean $\pm$ sample SD over selected completed runs). Bold marks the highest mean among AFLNet, ChatAFL, and LoopFuzz. $^*$ marks LoopFuzz \texttt{b\_abs} wins significant versus both primary baselines under a two-sided exact Mann-Whitney U test at $p < 0.05$; $^\dagger$ marks LoopFuzz \texttt{edges} wins significant versus both primary baselines. All rows use 10 runs per fuzzer except LightFTP ChatAFL, where the updated archive contains six eligible completed runs.}
 {\scriptsize
 \setlength{\tabcolsep}{3.2pt}
 \renewcommand{\arraystretch}{0.96}
 \resizebox{\textwidth}{!}{%
-\begin{tabular}{l l|ccc|ccc}
+\begin{tabular}{l l ccc ccc}
 \toprule
-\multirow{2}{*}{Proto.} & \multirow{2}{*}{Target} & \multicolumn{3}{c|}{Final \texttt{b\_abs}} & \multicolumn{3}{c}{Final \texttt{edges}} \\
+\multirow{2}{*}{Proto.} & \multirow{2}{*}{Target} & \multicolumn{3}{c}{Final \texttt{b\_abs}} & \multicolumn{3}{c}{Final \texttt{edges}} \\
 & & AFLNet & ChatAFL & LoopFuzz & AFLNet & ChatAFL & LoopFuzz \\
 \midrule
-FTP & LightFTP & $\mathbf{72.8 {\pm} 4.7}$ & $71.3 {\pm} 1.0$ & $71.1 {\pm} 0.3$ & $182.7 {\pm} 11.9$ & $199.4 {\pm} 14.1$ & $\mathbf{206.6 {\pm} 13.0}$ \\
+FTP & LightFTP & $71.0 {\pm} 0.0$ & $71.0 {\pm} 0.0$ & $\mathbf{71.6 {\pm} 1.6}$ & $182.8 {\pm} 10.2$ & $200.0 {\pm} 6.2$ & $\mathbf{213.9 {\pm} 9.4}^{\dagger}$ \\
 FTP & bftpd & $488.6 {\pm} 13.9$ & $492.3 {\pm} 15.1$ & $\mathbf{501.5 {\pm} 7.4}$ & $166.9 {\pm} 9.4$ & $205.2 {\pm} 9.7$ & $\mathbf{221.7 {\pm} 16.9}^{\dagger}$ \\
 FTP & ProFTPD & $4919.9 {\pm} 97.8$ & $5317.3 {\pm} 101.7$ & $\mathbf{5358.8 {\pm} 136.1}$ & $180.5 {\pm} 23.1$ & $250.5 {\pm} 9.1$ & $\mathbf{271.7 {\pm} 18.8}^{\dagger}$ \\
-FTP & Pure-FTPd & $1054.3 {\pm} 76.4$ & $1179.2 {\pm} 31.0$ & $\mathbf{1202.0 {\pm} 96.2}^{*}$ & $213.9 {\pm} 11.9$ & $266.2 {\pm} 14.3$ & $\mathbf{287.6 {\pm} 29.5}^{\dagger}$ \\
-SMTP & Exim & $3794.5 {\pm} 42.4$ & $3746.2 {\pm} 47.7$ & $\mathbf{3866.6 {\pm} 86.0}$ & $88.3 {\pm} 5.3$ & $116.4 {\pm} 10.2$ & $\mathbf{125.5 {\pm} 8.5}$ \\
+FTP & Pure-FTPd & $1054.3 {\pm} 76.4$ & $1179.2 {\pm} 31.0$ & $\mathbf{1242.6 {\pm} 30.6}^{*}$ & $213.9 {\pm} 11.9$ & $266.2 {\pm} 14.3$ & $\mathbf{291.0 {\pm} 23.6}^{\dagger}$ \\
+SMTP & Exim & $3794.5 {\pm} 42.4$ & $3746.2 {\pm} 47.7$ & $\mathbf{3908.5 {\pm} 43.2}^{*}$ & $88.3 {\pm} 5.3$ & $116.4 {\pm} 10.2$ & $\mathbf{128.5 {\pm} 7.8}^{\dagger}$ \\
 RTSP & Live555 & $2894.1 {\pm} 23.3$ & $2911.1 {\pm} 10.9$ & $\mathbf{3088.7 {\pm} 22.4}^{*}$ & $103.9 {\pm} 10.1$ & $151.2 {\pm} 3.9$ & $\mathbf{158.7 {\pm} 8.5}^{\dagger}$ \\
-SIP & Kamailio & $10244.0 {\pm} 118.1$ & $\mathbf{10414.7 {\pm} 143.4}$ & $10246.8 {\pm} 274.5$ & $101.1 {\pm} 7.7$ & $122.4 {\pm} 12.1$ & $\mathbf{130.6 {\pm} 8.5}$ \\
-DAAP/DACP & Forked-daapd & $\mathbf{2326.3 {\pm} 77.3}$ & $2315.3 {\pm} 50.1$ & $2086.1 {\pm} 204.7$ & $21.1 {\pm} 1.3$ & $20.5 {\pm} 2.1$ & $\mathbf{22.3 {\pm} 4.3}$ \\
+SIP & Kamailio & $10244.0 {\pm} 118.1$ & $10314.7 {\pm} 98.4$ & $\mathbf{10402.7 {\pm} 141.3}$ & $101.1 {\pm} 7.7$ & $115.7 {\pm} 13.9$ & $\mathbf{127.6 {\pm} 9.6}$ \\
+DAAP/DACP & Forked-daapd & $\mathbf{2326.3 {\pm} 77.3}$ & $2315.3 {\pm} 50.1$ & $2171.9 {\pm} 226.0$ & $21.1 {\pm} 1.3$ & $20.5 {\pm} 2.1$ & $\mathbf{22.1 {\pm} 1.5}$ \\
 HTTP & Lighttpd1 & $1930.4 {\pm} 18.7$ & $1987.5 {\pm} 38.3$ & $\mathbf{2156.5 {\pm} 111.8}^{*}$ & $14.9 {\pm} 3.8$ & $29.7 {\pm} 4.7$ & $\mathbf{32.5 {\pm} 10.8}$ \\
 \bottomrule
 \end{tabular}}
@@ -426,25 +436,25 @@ HTTP & Lighttpd1 & $1930.4 {\pm} 18.7$ & $1987.5 {\pm} 38.3$ & $\mathbf{2156.5 {
 
 \begin{table*}[!t]
 \centering
-\caption{Auxiliary four-way NSFuzz comparison from \texttt{run\_summary.csv}. Bold marks the highest mean within each row and metric. NSFuzz \texttt{edges} are reported as an archived same-name artifact field, not as a guaranteed semantically identical IPSM abstraction. All rows use the selected-run rule; LightFTP ChatAFL has $n=9$, and the other cells have $n=10$.}
+\caption{Auxiliary four-way NSFuzz comparison using \texttt{b\_abs} and \texttt{edges}. Bold marks the highest mean within each row and metric. NSFuzz \texttt{edges} is reported as an archived artifact field, not as a guaranteed semantically identical IPSM abstraction. All rows use the selected-run rule; LightFTP ChatAFL has six eligible runs, and the other cells have 10 selected runs.}
 \label{tab:aux_results}
 {\scriptsize
 \setlength{\tabcolsep}{2.8pt}
 \renewcommand{\arraystretch}{0.95}
 \resizebox{\textwidth}{!}{%
-\begin{tabular}{l|cccc|cccc}
+\begin{tabular}{l cccc cccc}
 \toprule
-\multirow{2}{*}{Target} & \multicolumn{4}{c|}{Final \texttt{b\_abs}} & \multicolumn{4}{c}{Final \texttt{edges}} \\
+\multirow{2}{*}{Target} & \multicolumn{4}{c}{Final \texttt{b\_abs}} & \multicolumn{4}{c}{Final \texttt{edges}} \\
 & AFLNet & ChatAFL & LoopFuzz & NSFuzz & AFLNet & ChatAFL & LoopFuzz & NSFuzz \\
 \midrule
-LightFTP & $72.8 {\pm} 4.7$ & $71.3 {\pm} 1.0$ & $71.1 {\pm} 0.3$ & $\mathbf{414.3 {\pm} 9.8}$ & $182.7 {\pm} 11.9$ & $199.4 {\pm} 14.1$ & $\mathbf{206.6 {\pm} 13.0}$ & $11.0 {\pm} 0.0$ \\
+LightFTP & $71.0 {\pm} 0.0$ & $71.0 {\pm} 0.0$ & $71.6 {\pm} 1.6$ & $\mathbf{414.3 {\pm} 9.8}$ & $182.8 {\pm} 10.2$ & $200.0 {\pm} 6.2$ & $\mathbf{213.9 {\pm} 9.4}$ & $11.0 {\pm} 0.0$ \\
 bftpd & $488.6 {\pm} 13.9$ & $492.3 {\pm} 15.1$ & $\mathbf{501.5 {\pm} 7.4}$ & $477.6 {\pm} 3.9$ & $166.9 {\pm} 9.4$ & $205.2 {\pm} 9.7$ & $\mathbf{221.7 {\pm} 16.9}$ & $48.7 {\pm} 4.8$ \\
 ProFTPD & $4919.9 {\pm} 97.8$ & $5317.3 {\pm} 101.7$ & $\mathbf{5358.8 {\pm} 136.1}$ & $5335.0 {\pm} 86.9$ & $180.5 {\pm} 23.1$ & $250.5 {\pm} 9.1$ & $\mathbf{271.7 {\pm} 18.8}$ & $186.0 {\pm} 11.5$ \\
-Pure-FTPd & $1054.3 {\pm} 76.4$ & $1179.2 {\pm} 31.0$ & $1202.0 {\pm} 96.2$ & $\mathbf{1332.2 {\pm} 8.8}$ & $213.9 {\pm} 11.9$ & $266.2 {\pm} 14.3$ & $\mathbf{287.6 {\pm} 29.5}$ & $17.6 {\pm} 0.5$ \\
-Exim & $3794.5 {\pm} 42.4$ & $3746.2 {\pm} 47.7$ & $3866.6 {\pm} 86.0$ & $\mathbf{4191.5 {\pm} 62.0}$ & $88.3 {\pm} 5.3$ & $116.4 {\pm} 10.2$ & $\mathbf{125.5 {\pm} 8.5}$ & $13.9 {\pm} 1.2$ \\
+Pure-FTPd & $1054.3 {\pm} 76.4$ & $1179.2 {\pm} 31.0$ & $1242.6 {\pm} 30.6$ & $\mathbf{1332.2 {\pm} 8.8}$ & $213.9 {\pm} 11.9$ & $266.2 {\pm} 14.3$ & $\mathbf{291.0 {\pm} 23.6}$ & $17.6 {\pm} 0.5$ \\
+Exim & $3794.5 {\pm} 42.4$ & $3746.2 {\pm} 47.7$ & $3908.5 {\pm} 43.2$ & $\mathbf{4191.5 {\pm} 62.0}$ & $88.3 {\pm} 5.3$ & $116.4 {\pm} 10.2$ & $\mathbf{128.5 {\pm} 7.8}$ & $13.9 {\pm} 1.2$ \\
 Live555 & $2894.1 {\pm} 23.3$ & $2911.1 {\pm} 10.9$ & $\mathbf{3088.7 {\pm} 22.4}$ & $3021.5 {\pm} 42.1$ & $103.9 {\pm} 10.1$ & $151.2 {\pm} 3.9$ & $\mathbf{158.7 {\pm} 8.5}$ & $49.8 {\pm} 2.0$ \\
-Kamailio & $10244.0 {\pm} 118.1$ & $10414.7 {\pm} 143.4$ & $10246.8 {\pm} 274.5$ & $\mathbf{10635.3 {\pm} 123.8}$ & $101.1 {\pm} 7.7$ & $122.4 {\pm} 12.1$ & $\mathbf{130.6 {\pm} 8.5}$ & $14.3 {\pm} 0.7$ \\
-Forked-daapd & $2326.3 {\pm} 77.3$ & $2315.3 {\pm} 50.1$ & $2086.1 {\pm} 204.7$ & $\mathbf{2722.8 {\pm} 44.6}$ & $21.1 {\pm} 1.3$ & $20.5 {\pm} 2.1$ & $22.3 {\pm} 4.3$ & $\mathbf{27.0 {\pm} 6.1}$ \\
+Kamailio & $10244.0 {\pm} 118.1$ & $10314.7 {\pm} 98.4$ & $10402.7 {\pm} 141.3$ & $\mathbf{10635.3 {\pm} 123.8}$ & $101.1 {\pm} 7.7$ & $115.7 {\pm} 13.9$ & $\mathbf{127.6 {\pm} 9.6}$ & $14.3 {\pm} 0.7$ \\
+Forked-daapd & $2326.3 {\pm} 77.3$ & $2315.3 {\pm} 50.1$ & $2171.9 {\pm} 226.0$ & $\mathbf{2722.8 {\pm} 44.6}$ & $21.1 {\pm} 1.3$ & $20.5 {\pm} 2.1$ & $22.1 {\pm} 1.5$ & $\mathbf{27.0 {\pm} 6.1}$ \\
 \bottomrule
 \end{tabular}}
 }
@@ -452,17 +462,17 @@ Forked-daapd & $2326.3 {\pm} 77.3$ & $2315.3 {\pm} 50.1$ & $2086.1 {\pm} 204.7$ 
 
 \begin{table*}[!t]
 \centering
-\caption{MQTT auxiliary comparison. AFLNet and \texttt{chatafl\_opt} are taken from the provided Mosquitto \texttt{run\_summary.csv}; MBFuzzer is taken from its Mosquitto \texttt{summary.csv}. This is not a same-budget or same-metric comparison: \texttt{chatafl\_opt} runs are much shorter, and MBFuzzer reports \texttt{branch\_covered} rather than \texttt{b\_abs}.}
+\caption{MQTT auxiliary comparison. AFLNet and LoopFuzz are taken from the provided Mosquitto run summaries; MBFuzzer is taken from its Mosquitto summary. This is not a same-budget or same-metric comparison: LoopFuzz runs are much shorter, and MBFuzzer reports \texttt{branch\_covered} under its own artifact format rather than \texttt{b\_abs} and \texttt{edges}.}
 \label{tab:mqtt_aux}
 {\scriptsize
 \setlength{\tabcolsep}{4pt}
 \renewcommand{\arraystretch}{0.98}
-\begin{tabular}{l|c|c|c|c}
+\begin{tabular}{l c c c c}
 \toprule
-System & Runs & Runtime (min) & Coverage-like endpoint & State endpoint \\
+System & Runs & Runtime (min) & Branch endpoint & Edge endpoint \\
 \midrule
 AFLNet & 10 & $1479.0 {\pm} 0.0$ & \texttt{b\_abs}: $1814.3 {\pm} 147.3$ & \texttt{edges}: $36.0 {\pm} 4.5$ \\
-LoopFuzz (\texttt{chatafl\_opt}) & 10 & $137.4 {\pm} 134.7$ & \texttt{b\_abs}: $2518.5 {\pm} 269.9$ & \texttt{edges}: $107.7 {\pm} 18.1$ \\
+LoopFuzz & 10 & $137.4 {\pm} 134.7$ & \texttt{b\_abs}: $2518.5 {\pm} 269.9$ & \texttt{edges}: $107.7 {\pm} 18.1$ \\
 MBFuzzer & 10 & $1480.0 {\pm} 0.0$ & \texttt{branch\_covered}: $2827.0 {\pm} 58.9$ & not reported \\
 \bottomrule
 \end{tabular}
@@ -470,64 +480,46 @@ MBFuzzer & 10 & $1480.0 {\pm} 0.0$ & \texttt{branch\_covered}: $2827.0 {\pm} 58.
 \end{table*}
 
 \subsection{RQ1: Whole-Campaign Effect}
-LoopFuzz is evaluated here as an integrated control policy, not as an isolated rejection heuristic. Table~\ref{tab:24h_results} shows that direct open-loop assistance is not uniformly robust under the selected archived runs. ChatAFL finishes below AFLNet on LightFTP and Exim in \texttt{b\_abs}, is close to AFLNet on Forked-daapd, and improves several other targets. Under these conditions, improved generation alone does not consistently translate into stronger end-of-campaign coverage.
+LoopFuzz is evaluated here as an integrated control policy, not as an isolated rejection heuristic. Table~\ref{tab:24h_results} shows that direct open-loop assistance is not uniformly robust under the selected archived runs. ChatAFL ties AFLNet on LightFTP, finishes below AFLNet on Exim in \texttt{b\_abs}, is close to AFLNet on Forked-daapd, and improves several other targets. Under these conditions, improved generation alone does not consistently translate into stronger end-of-campaign coverage.
 
-Across the nine primary targets, LoopFuzz reaches the highest mean final \texttt{b\_abs} on six targets: bftpd, ProFTPD, Pure-FTPd, Exim, Live555, and Lighttpd1. AFLNet remains highest on LightFTP and Forked-daapd, while ChatAFL remains highest on Kamailio. Exact Mann-Whitney testing narrows the strongest \texttt{b\_abs} evidence to Pure-FTPd, Live555, and Lighttpd1. The robust coverage claim supported by the audited summaries is therefore bounded: LoopFuzz improves the closest AFLNet/ChatAFL lineage on most, but not all, primary targets.
+Across the nine primary targets, LoopFuzz reaches the highest mean final \texttt{b\_abs} on eight targets: LightFTP, bftpd, ProFTPD, Pure-FTPd, Exim, Live555, Kamailio, and Lighttpd1. AFLNet remains highest on Forked-daapd. Exact Mann-Whitney testing narrows the strongest \texttt{b\_abs} evidence to Pure-FTPd, Exim, Live555, and Lighttpd1. The robust coverage claim supported by the audited summaries is therefore bounded: LoopFuzz improves the closest AFLNet/ChatAFL lineage on most, but not all, primary targets.
 
-Table~\ref{tab:aux_results} shows that the broader NSFuzz baseline picture is mixed. Across the eight NSFuzz targets, NSFuzz has the highest \texttt{b\_abs} on LightFTP, Pure-FTPd, Exim, Kamailio, and Forked-daapd. LoopFuzz has the highest \texttt{b\_abs} on bftpd, ProFTPD, and Live555. For reported \texttt{edges}, LoopFuzz is highest on seven targets, while NSFuzz is highest on Forked-daapd. Table~\ref{tab:mqtt_aux} separately reports MQTT: the available \texttt{chatafl\_opt} Mosquitto rows have higher \texttt{b\_abs} and \texttt{edges} than the available AFLNet rows, but they are much shorter; MBFuzzer reports higher coverage than both in its own \texttt{branch\_covered} field under 24-hour runs.
+Table~\ref{tab:aux_results} shows that the broader NSFuzz baseline picture is mixed. Across the eight NSFuzz targets, NSFuzz has the highest \texttt{b\_abs} on LightFTP, Pure-FTPd, Exim, Kamailio, and Forked-daapd. LoopFuzz has the highest \texttt{b\_abs} on bftpd, ProFTPD, and Live555. For reported \texttt{edges}, LoopFuzz is highest on seven targets, while NSFuzz is highest on Forked-daapd. Table~\ref{tab:mqtt_aux} separately reports MQTT. The available LoopFuzz Mosquitto rows have higher archived \texttt{b\_abs} and \texttt{edges} than the available AFLNet rows, but they are much shorter. MBFuzzer reports \texttt{branch\_covered} under its own 24-hour summary, which is not directly comparable to the AFLNet-lineage \texttt{b\_abs} field.
 
 \subsection{RQ2: IPSM Escape Dynamics}
 
-Fig.~\ref{fig:states} reports the final \texttt{edges} comparison for the protocol groups in the main quantitative view.
-
-\begin{figure*}[htbp]
-\centering
-\includegraphics[width=\textwidth]{state_coverage.pdf}
-\caption{Final \texttt{edges} comparison for the nine primary targets, recomputed from \texttt{run\_summary.csv} using the selected-run rule.}
-\label{fig:states}
-\end{figure*}
-
-On terminal \texttt{edges}, LoopFuzz attains the highest mean on all nine primary targets. The strongest same-target evidence appears on bftpd, ProFTPD, Pure-FTPd, and Live555, where the LoopFuzz \texttt{edges} win is significant versus both AFLNet and ChatAFL. LightFTP, Exim, Kamailio, Forked-daapd, and Lighttpd1 remain positive but descriptive against at least one primary baseline. The NSFuzz auxiliary rows point in the opposite direction on Forked-daapd, where NSFuzz reports higher \texttt{edges}; on the other seven NSFuzz targets, LoopFuzz has higher reported \texttt{edges}.
+On terminal \texttt{edges}, LoopFuzz attains the highest mean on all nine primary targets. The strongest same-target evidence appears on LightFTP, bftpd, ProFTPD, Pure-FTPd, Exim, and Live555, where the LoopFuzz \texttt{edges} win is significant versus both AFLNet and ChatAFL under the two-sided exact Mann-Whitney test. Kamailio, Forked-daapd, and Lighttpd1 remain positive but descriptive against at least one primary baseline. The NSFuzz auxiliary rows point in the opposite direction on Forked-daapd, where NSFuzz reports higher \texttt{edges}; on the other seven NSFuzz targets, LoopFuzz has higher reported \texttt{edges}.
 
 \subsection{RQ3: End-of-Campaign Outcome}
 
-Fig.~\ref{fig:coverage} reports the corresponding final \texttt{b\_abs} comparison for the same quantitative-view layout.
-
-\begin{figure*}[htbp]
-\centering
-\includegraphics[width=\textwidth]{edge_coverage.pdf}
-\caption{Final \texttt{b\_abs} comparison for the nine primary targets, recomputed from \texttt{run\_summary.csv} using the selected-run rule.}
-\label{fig:coverage}
-\end{figure*}
-
-The \texttt{b\_abs} comparison is less uniform than the \texttt{edges} comparison. LoopFuzz is clearly strongest on Live555 and Lighttpd1, remains ahead on bftpd, ProFTPD, Pure-FTPd, and Exim, but does not lead LightFTP, Kamailio, or Forked-daapd. This distinction matters for interpretation: the audited archive supports a strong state-exploration result and a more selective coverage result, not a blanket dominance claim.
+The \texttt{b\_abs} comparison is less uniform than the \texttt{edges} comparison once NSFuzz is included. In the primary three-way comparison, LoopFuzz is strongest by mean on eight of nine targets and does not lead Forked-daapd. In the auxiliary NSFuzz comparison, NSFuzz is strongest in \texttt{b\_abs} on five of eight targets. This distinction matters for interpretation: the audited archive supports a strong primary-lineage state-exploration result and a broad but still selective absolute-branch-coverage result, not a blanket dominance claim over all specialized fuzzers.
 
 \subsection{Ablation: Policy Perturbations}
 
-Table~\ref{tab:ablation_results} reports the archived policy ablations as deltas relative to the evaluated \texttt{full} controller. Each cell shows $\Delta$\texttt{b\_abs} / $\Delta$\texttt{edges}. The pattern is mixed rather than monotone. Removing refinement improves \texttt{b\_abs} on several targets, including ProFTPD (+100.8), Kamailio (+97.6), and Forked-daapd (+90.2), but reduces \texttt{edges} on bftpd, ProFTPD, Live555, Forked-daapd, and Lighttpd1. Removing frontier control helps \texttt{b\_abs} on ProFTPD (+122.0), Pure-FTPd (+55.0), Kamailio (+87.0), and several others, while reducing \texttt{edges} on bftpd, Live555, and Forked-daapd. The audited ablations therefore do not support a claim that every exposed sub-control is individually necessary across all targets.
+Table~\ref{tab:ablation_results} reports the archived policy ablations as deltas relative to the evaluated full controller. Each cell shows $\Delta$ \texttt{b\_abs} / $\Delta$ \texttt{edges}. The updated archive shows a mixed rather than monotone pattern. Removing CEGR improves mean \texttt{b\_abs} only on ProFTPD (+100.8) and Live555 (+1.2), while reducing it on the other seven primary targets. Removing frontier control reduces mean \texttt{b\_abs} on all nine targets, but its effect on \texttt{edges} is not uniformly negative. Removing adaptive triggering improves some endpoints on Pure-FTPd, Live555, Kamailio, and Lighttpd1, while degrading others. The audited ablations therefore do not support a claim that every exposed sub-control is individually necessary across all targets.
 
-The strongest lesson from the ablation archive is that controller switches interact with target behavior. \texttt{wo\_hypothesis} and \texttt{wo\_adaptive} can improve \texttt{b\_abs} on some targets but degrade \texttt{edges} on others. This reinforces an integrated-policy interpretation rather than a clean per-module causal decomposition.
+The strongest lesson from the ablation archive is that controller switches interact with target behavior. Disabling hypothesis validation or disabling adaptive triggering can improve \texttt{b\_abs} on some targets but degrade \texttt{edges} on others. This reinforces an integrated-policy interpretation rather than a clean per-module causal decomposition.
 
 \begin{table*}[!t]
 \centering
-\caption{Policy-ablation results from \texttt{ten\_groups\_ablation\_ten} relative to the evaluated \texttt{full} controller. The first number in each cell is final \texttt{b\_abs}; the second is final \texttt{edges}. The \texttt{Full} column reports mean final \texttt{b\_abs} / \texttt{edges}; other cells report deltas relative to that mean. Runs with archived runtime below 1400 minutes are excluded; when more than 10 valid runs remain, we keep the lowest 10 run IDs.}
+\caption{Policy-ablation results relative to the evaluated full controller. The first number in each cell is final \texttt{b\_abs}; the second is final \texttt{edges}. The Full column reports mean final \texttt{b\_abs} / \texttt{edges}; other cells report deltas relative to that mean. Runs with archived runtime below 1400 minutes are excluded; when more than 10 valid runs remain, we keep the lowest 10 run IDs. Some ablated target-policy cells contain seven to nine eligible runs after this filter.}
 \label{tab:ablation_results}
 {\scriptsize
 \setlength{\tabcolsep}{2.8pt}
 \renewcommand{\arraystretch}{0.95}
 \resizebox{\textwidth}{!}{%
-\begin{tabular}{l|c|c|c|c|c}
+\begin{tabular}{l c c c c c}
 \toprule
-Target & Full & \texttt{wo\_refinement} & \texttt{wo\_frontier} & \texttt{wo\_hypothesis} & \texttt{wo\_adaptive} \\
+Target & Full & No CEGR & No frontier & No hypothesis & No adaptive trigger \\
 \midrule
-LightFTP & 71.1 / 206.6 & +7.9 / +0.2 & +0.1 / +1.6 & +3.9 / -1.0 & +0.8 / +5.8 \\
+LightFTP & 71.6 / 213.9 & -0.2 / -13.5 & -0.6 / -14.5 & -0.5 / -11.0 & -0.6 / +1.8 \\
 bftpd & 501.5 / 221.7 & -3.1 / -7.5 & -3.0 / -8.4 & -5.2 / -5.0 & -7.0 / -12.1 \\
-ProFTPD & 5358.8 / 271.7 & +100.8 / -4.1 & +122.0 / +6.6 & -17.5 / -1.3 & -12.4 / +1.0 \\
-Pure-FTPd & 1202.0 / 287.6 & +25.6 / +0.6 & +55.0 / +27.4 & +62.1 / +24.5 & +46.9 / +14.1 \\
-Exim & 3866.6 / 125.5 & +37.4 / +3.9 & +22.3 / +3.3 & +19.1 / +6.7 & +26.9 / +3.4 \\
-Live555 & 3088.7 / 158.7 & +1.2 / -1.5 & +13.7 / -6.2 & -12.2 / -4.4 & +5.0 / -3.6 \\
-Kamailio & 10246.8 / 130.6 & +97.6 / +6.3 & +87.0 / +3.2 & +62.3 / +5.5 & +223.2 / +11.6 \\
-Forked-daapd & 2086.1 / 22.3 & +90.2 / -1.5 & +20.1 / -0.6 & +95.7 / +0.3 & +26.9 / -2.1 \\
+ProFTPD & 5358.8 / 271.7 & +100.8 / -4.1 & -123.2 / -48.1 & -17.5 / -1.3 & -12.4 / +1.0 \\
+Pure-FTPd & 1242.6 / 291.0 & -19.2 / +1.1 & -18.9 / -1.4 & -0.6 / +15.9 & +6.3 / +10.7 \\
+Exim & 3908.5 / 128.5 & -29.0 / -2.8 & -40.7 / -2.8 & -43.0 / -3.3 & -40.6 / -8.9 \\
+Live555 & 3088.7 / 158.7 & +1.2 / -1.5 & -21.0 / -9.6 & -12.2 / -4.4 & +5.0 / -3.6 \\
+Kamailio & 10402.7 / 127.6 & -96.7 / +2.5 & -121.4 / -5.0 & -100.6 / +1.9 & +26.9 / +5.2 \\
+Forked-daapd & 2171.9 / 22.1 & -104.4 / -0.9 & -145.0 / +0.1 & -129.9 / +0.7 & -91.8 / -1.7 \\
 Lighttpd1 & 2156.5 / 32.5 & -62.4 / -3.3 & -15.9 / +1.9 & -33.9 / -2.4 & -27.1 / +4.1 \\
 \bottomrule
 \end{tabular}}
@@ -540,7 +532,7 @@ The paper makes one central claim. In stateful protocol fuzzing, LLM generation 
 
 The admission controller and the scheduler solve different parts of the same problem. Admission control filters low-value suggestions. It does not decide where to spend the recovered budget. State-aware scheduling decides where to search. Without closed-loop intervention, however, it still depends on ordinary mutation to cross semantic bottlenecks. LoopFuzz combines the two because admission control and state-directed search reinforce each other.
 
-The results also show why response-derived state counts must be read carefully. A campaign can accumulate superficially different rejection paths without moving toward high-value logic. LoopFuzz therefore reads state exploration together with \texttt{b\_abs} coverage and demotes states that remain unproductive over repeated selections. In this setting, productive states matter more than raw state counts. For that reason, \texttt{edges} is best interpreted as a companion diagnostic for campaign behavior, not as a substitute for \texttt{b\_abs}.
+The results also show why response-derived state counts must be read carefully. A campaign can accumulate superficially different rejection paths without moving toward high-value logic. LoopFuzz therefore reads state exploration together with \texttt{b\_abs} and demotes states that remain unproductive over repeated selections. In this setting, productive states matter more than raw state counts. For that reason, \texttt{edges} is best interpreted as a companion diagnostic for campaign behavior, not as a substitute for absolute branch coverage.
 
 The present method is evaluated on textual or semi-textual protocols whose message regions can be parsed cheaply and whose responses provide useful progress signals. That scope covers the benchmark suite used here and many request-response protocols of practical interest. Opaque binary or encrypted protocols require stronger parsers, auxiliary instrumentation, or richer response abstractions. Response codes alone may not expose state reachability in those settings. That extension matters, but it lies beyond the current empirical scope.
 
@@ -552,23 +544,24 @@ Counterexample-guided local refinement is also a deliberate design choice. Repea
 
 \textbf{Internal validity:} LLM-assisted fuzzing remains sensitive to generation variance, target nondeterminism, and campaign-level timing effects. We mitigate these threats by fixing the execution environment, pinning the model endpoint, using low temperatures for grammar extraction and refinement, and designing the campaign matrix around repeated 24-hour runs. Even so, plateau triggering and hypothesis refinement are history-dependent. Early differences can propagate into late-campaign variance. The study also cannot cleanly separate model variance from control-policy variance because both act within the same long-running campaigns.
 
-\textbf{External validity:} The benchmark suite spans 10 implementations across seven protocol families, but the audited primary three-way comparison covers the nine off-the-shelf non-MQTT targets that contain comparable AFLNet, ChatAFL, and \texttt{chatafl\_opt} rows. The evidence is therefore strongest for textual or semi-textual protocols whose progress is visible in responses. We do not claim unchanged transfer to opaque binary or encrypted protocols without stronger format-specific adaptors. We include auxiliary NSFuzz comparisons on eight targets and an MQTT comparison involving AFLNet, \texttt{chatafl\_opt}, and MBFuzzer, but those rows are target- and artifact-specific rather than a unified cross-system state-machine comparison.
+\textbf{External validity:} The benchmark suite spans 10 implementations across seven protocol families, but the audited primary three-way comparison covers the nine off-the-shelf non-MQTT targets that contain comparable AFLNet, ChatAFL, and LoopFuzz rows. The evidence is therefore strongest for textual or semi-textual protocols whose progress is visible in responses. We do not claim unchanged transfer to opaque binary or encrypted protocols without stronger format-specific adaptors. We include auxiliary NSFuzz comparisons on eight targets and an MQTT comparison involving AFLNet, LoopFuzz, and MBFuzzer, but those rows are target- and artifact-specific rather than a unified cross-system state-machine comparison.
 
-\textbf{Construct validity:} We use final \texttt{b\_abs} and final \texttt{edges} as the main proxies for fuzzing effectiveness in the audited summaries. These are standard archive-level measurements, but neither fully captures semantic protocol progress. Our closed-loop runtime admission boundary refers to structured output checks, sampled hypothesis checks, response-grounded acceptability, state-reachability signals, and counterexample-guided refinement. It does not mean formal verification or a perfect pre-execution oracle. We also do not currently report cross-target admission summaries such as parseability pass rate, response-grounded acceptance rate, or CEGR repair success rate. The motivating semantic-drift narrative is therefore operationalized through logs rather than reduced to one global prevalence number.
+\textbf{Construct validity:} We use final \texttt{b\_abs} and final \texttt{edges} as the main proxies for fuzzing effectiveness in the audited summaries. These are archive-level measurements, but neither fully captures semantic protocol progress. The MBFuzzer \texttt{branch\_covered} field is reported separately because it is not the same artifact field as AFLNet-lineage \texttt{b\_abs}. Our closed-loop runtime admission boundary refers to structured output checks, sampled hypothesis checks, response-grounded acceptability, state-reachability signals, and counterexample-guided refinement. It does not mean formal verification or a perfect pre-execution oracle. We also do not currently report cross-target admission summaries such as parseability pass rate, response-grounded acceptance rate, or CEGR repair success rate. The motivating semantic-drift narrative is therefore operationalized through logs rather than reduced to one global prevalence number.
 
-\textbf{Reproducibility validity:} We reduce fairness ambiguity where possible. ChatAFL and LoopFuzz share the same pinned model endpoint. Each primary target is drawn from one declared result archive, and the paper now states the deterministic run-selection rule used to handle short or extra rows. The provided Mosquitto rows do not support the same 24-hour three-way comparison because ChatAFL is absent and the available \texttt{chatafl\_opt} runs are substantially shorter than AFLNet and MBFuzzer. The ablation table is likewise an archive-level reconstruction under the same deterministic selection rule rather than a hand-picked replacement set.
+\textbf{Reproducibility validity:} We reduce fairness ambiguity where possible. ChatAFL and LoopFuzz share the same pinned model endpoint. Each primary target is drawn from one declared result archive, and the paper states the deterministic run-selection rule used to handle short or extra rows. The provided Mosquitto rows do not support the same 24-hour three-way comparison because ChatAFL is absent and the available LoopFuzz rows are substantially shorter than AFLNet and MBFuzzer. The ablation table is likewise an archive-level reconstruction under the same deterministic selection rule rather than a hand-picked replacement set.
 
 \section{Conclusion}
 We have shown that fluent protocol text is insufficient for a stateful campaign. What matters is a closed-loop runtime admission boundary that can reject semantically premature generations and refine them when they fail.
 
-Under the audited primary comparison against AFLNet and ChatAFL, LoopFuzz demonstrates a stronger \texttt{edges} profile and a selective \texttt{b\_abs} advantage. On the nine off-the-shelf targets, it achieves the highest mean final \texttt{edges} on all nine targets and the highest mean final \texttt{b\_abs} on six. The strongest same-target \texttt{b\_abs} evidence appears on Pure-FTPd, Live555, and Lighttpd1; the strongest \texttt{edges} evidence appears on bftpd, ProFTPD, Pure-FTPd, and Live555.
+Under the audited primary comparison against AFLNet and ChatAFL, LoopFuzz demonstrates a stronger \texttt{edges} profile and a selective \texttt{b\_abs} advantage. On the nine off-the-shelf targets, it achieves the highest mean final \texttt{edges} on all nine targets and the highest mean final \texttt{b\_abs} on eight. The strongest same-target \texttt{b\_abs} evidence appears on Pure-FTPd, Exim, Live555, and Lighttpd1; the strongest \texttt{edges} evidence appears on LightFTP, bftpd, ProFTPD, Pure-FTPd, Exim, and Live555.
 
-The broader baseline picture is mixed. NSFuzz remains strongest on final \texttt{b\_abs} for five of the eight reproduced NSFuzz targets, while LoopFuzz has the highest reported \texttt{edges} on seven of those eight. On MQTT, the available \texttt{chatafl\_opt} rows exceed AFLNet in \texttt{b\_abs} and \texttt{edges}, but those rows are much shorter; MBFuzzer reports the highest coverage-like endpoint through \texttt{branch\_covered} under 24-hour runs. The archived ablations also do not support a claim that every exposed LoopFuzz sub-control is individually necessary across all targets. The evidence therefore supports a precise conclusion: closed-loop runtime admission control improves state-exploration behavior within the closest AFLNet/ChatAFL lineage and improves \texttt{b\_abs} on most primary targets, but this study does not establish dominance over specialized external fuzzers.
+The broader baseline picture is mixed. NSFuzz remains strongest on final \texttt{b\_abs} for five of the eight reproduced NSFuzz targets, while LoopFuzz has the highest reported \texttt{edges} on seven of those eight. On MQTT, the available LoopFuzz rows exceed AFLNet in archived \texttt{b\_abs} and \texttt{edges}, but those rows are much shorter. MBFuzzer reports \texttt{branch\_covered} under 24-hour runs in its own artifact format, which is not a direct comparison with the AFLNet-lineage \texttt{b\_abs} field. The archived ablations also do not support a claim that every exposed LoopFuzz sub-control is individually necessary across all targets. The evidence therefore supports a precise conclusion: closed-loop runtime admission control improves state-exploration behavior within the closest AFLNet/ChatAFL lineage and improves absolute branch coverage on most primary targets, but this study does not establish dominance over specialized external fuzzers.
 
 \section*{Declaration of Generative AI and AI-assisted technologies in the writing process}
 During the preparation of this work, the authors used OpenAI Codex for language editing, LaTeX formatting, and submission-compliance checking. After using this tool, the authors reviewed and edited the content as needed and take full responsibility for the content of the publication.
 
-\bibliographystyle{elsarticle-harv}
+\setlength{\bibsep}{0pt}
+\bibliographystyle{elsarticle-num-names}
 \bibliography{references}
 
 \end{document}

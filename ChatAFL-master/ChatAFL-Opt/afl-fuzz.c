@@ -3990,14 +3990,14 @@ MP_MULTI_DONE:
    * teardown, not in a crash-reportable state.  For non-forking servers
    * the process is already gone by the first check, so this is a no-op. */
   {
-    /* H2-fix: MQTT — mosquitto exits in <5 ms after SIGTERM, but
-     * ASAN abort handlers with detect_stack_use_after_return=1 can
-     * need up to 50–80 ms on deep stacks.  100 ms (500 × 200 µs)
-     * gives ASAN enough room while still being 2× faster than text
-     * protocols.  Text protocols keep 200 ms. */
+    /* P0-fix: MQTT kill-wait timeout now matches text protocols (200 ms).
+     * ASAN quarantine with detect_stack_use_after_return=1 can take up to
+     * 100-500 ms on deep stacks.  Previous 100 ms timeout caused premature
+     * SIGKILL during ASAN teardown → leaked resources → progressive stall.
+     * 200 ms is the proven safe threshold from FTP/SIP/SMTP/HTTP targets. */
     int kill_limit = (protocol_name
                       && strcasecmp(protocol_name, "MQTT") == 0)
-                     ? 500     /* 500 × 200 µs = 100 ms */
+                     ? 1000    /* 1000 × 200 µs = 200 ms */
                      : 1000;   /* 1000 × 200 µs = 200 ms */
     int kill_wait = 0;
     while (1)
@@ -6316,11 +6316,26 @@ EXP_ST void init_forkserver(char **argv)
 
     /* Set sane defaults for ASAN if nothing else specified. */
 
-    setenv("ASAN_OPTIONS", "abort_on_error=1:"
-                           "detect_leaks=0:"
-                           "symbolize=0:"
-                           "allocator_may_return_null=1",
-           0);
+    /* P0-fix: MQTT (mosquitto) — force safe ASAN defaults matching
+     * all other protocols.  Aggressive C++-specific checks add 100-500ms
+     * teardown overhead and cause progressive fuzzer stall.  Non-MQTT
+     * protocols use the original overwrite=0 path. */
+    if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0) {
+      setenv("ASAN_OPTIONS", "abort_on_error=1:"
+                             "detect_leaks=0:"
+                             "symbolize=0:"
+                             "detect_stack_use_after_return=1:"
+                             "detect_container_overflow=0:"
+                             "poison_array_cookie=0:"
+                             "allocator_may_return_null=1",
+             1);   /* overwrite=1: force safe defaults for MQTT */
+    } else {
+      setenv("ASAN_OPTIONS", "abort_on_error=1:"
+                             "detect_leaks=0:"
+                             "symbolize=0:"
+                             "allocator_may_return_null=1",
+             0);   /* overwrite=0: keep original behavior for non-MQTT */
+    }
 
     /* MSAN is tricky, because it doesn't support abort_on_error=1 at this
        point. So, we do this in a very hacky way. */
@@ -6623,8 +6638,24 @@ static u8 run_target(char **argv, u32 timeout)
       /* Time to re-fork?  Kill the child, read status, reset. */
       if (mqtt_persistent_count >= mqtt_persistent_limit) {
         kill(mqtt_persistent_pid, SIGTERM);
-        usleep(5000);                        /* 5 ms graceful shutdown  */
-        kill(mqtt_persistent_pid, SIGKILL);  /* ensure it's dead        */
+        /* P0-fix: Bounded wait with graceful escalation (200 ms).
+         * Previous usleep(5000)+SIGKILL was too short for ASAN teardown.
+         * Now matches the kill-wait in send_over_network(). */
+        {
+          int rekill_wait = 0;
+          int rekill_limit = 1000;   /* 1000 x 200 us = 200 ms */
+          while (1) {
+            int kstat = kill(mqtt_persistent_pid, 0);
+            if ((kstat != 0) && (errno == ESRCH))
+              break;
+            if (++rekill_wait >= rekill_limit) {
+              kill(mqtt_persistent_pid, SIGKILL);
+              usleep(1000);      /* 1 ms for kernel cleanup */
+              break;
+            }
+            usleep(200);
+          }
+        }
         s32 res;
         if ((res = read(fsrv_st_fd, &status, 4)) != 4) {
           if (stop_soon) return 0;

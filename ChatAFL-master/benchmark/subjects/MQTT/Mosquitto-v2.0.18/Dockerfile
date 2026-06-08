@@ -99,7 +99,14 @@ RUN mkdir $WORKDIR
 #   strict_init_order=1          (new)   — stricter init-order checking
 #   alloc_dealloc_mismatch=1     (new)   — catch malloc/free vs new/delete
 #   strict_string_checks=1       (new)   — catch sloppy string ops
-ENV ASAN_OPTIONS='abort_on_error=1:symbolize=0:detect_leaks=0:detect_stack_use_after_return=1:detect_container_overflow=1:poison_array_cookie=1:malloc_fill_byte=0:max_malloc_fill_size=16777216:check_initialization_order=1:strict_init_order=1:alloc_dealloc_mismatch=1:strict_string_checks=1'
+# P0-fix: Align ASAN options with all other protocol targets (FTP/SIP/SMTP/HTTP).
+# Mosquitto is a C codebase — C++-specific checks (detect_container_overflow,
+# poison_array_cookie, alloc_dealloc_mismatch, strict_string_checks,
+# check_initialization_order, strict_init_order) add 100-500ms ASAN quarantine
+# overhead during teardown without catching C bugs. Combined with the short
+# kill-limit (30ms), premature SIGKILL leaks resources and causes progressive
+# fuzzer stall. Matching the proven config from 6 other protocols fixes this.
+ENV ASAN_OPTIONS='abort_on_error=1:symbolize=0:detect_leaks=0:detect_stack_use_after_return=1:detect_container_overflow=0:poison_array_cookie=0:malloc_fill_byte=0:max_malloc_fill_size=16777216'
 
 # ── Only change vs Mosquitto (v1.6.8): git checkout v2.0.18 ──
 # Download and compile Mosquitto for fuzzing (v2.0.18)

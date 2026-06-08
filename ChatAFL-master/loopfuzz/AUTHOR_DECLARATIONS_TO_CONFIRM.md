@@ -89,9 +89,9 @@ the CRediT statement according to the actual contribution.
 
 The manuscript currently contains this statement:
 
-> During the preparation of this work, the author used OpenAI Codex for language
+> During the preparation of this work, the authors used OpenAI Codex for language
 > editing, LaTeX formatting, and submission-compliance checking. After using
-> this tool, the author reviewed and edited the content as needed and takes full
+> this tool, the authors reviewed and edited the content as needed and take full
 > responsibility for the content of the publication.
 
 Confirm that this accurately describes the manuscript-preparation process.

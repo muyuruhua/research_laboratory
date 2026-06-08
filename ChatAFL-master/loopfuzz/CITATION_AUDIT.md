@@ -1,6 +1,6 @@
 # LoopFuzz Citation Audit
 
-Audit date: 2026-06-04
+Audit date: 2026-06-08
 
 Scope:
 - `main.tex`
@@ -35,6 +35,8 @@ Scope:
 - Added verified DOI metadata for two core references:
   - AFLNet: DOI `10.1109/ICST46399.2020.00062`
   - StateAFL: DOI `10.1007/s10664-022-10233-3`
+- Normalized BibTeX author spelling for `B{\"o}hme` entries so the source uses
+  ASCII-safe LaTeX accents consistently.
 
 ## Relevance Verdict
 
@@ -73,11 +75,5 @@ The most submission-critical references were spot-checked against external schol
 
 ## Remaining Risks
 
-- BibTeX still reports four missing-page warnings:
-  - `no_grammar_no_problem_2023`
-  - `pgfuzz_policy_guided_fuzzing_2021`
-  - `when_analysis_2025`
-  - `chatafl`
-- These warnings do not indicate fake or unresolved references. They indicate missing page metadata in the BibTeX entries.
-- Do not fabricate page ranges to silence these warnings. Fill them only if verified publisher or proceedings metadata are available.
-- A complete publisher-by-publisher verification of all 56 entries would require a separate DOI/proceedings audit. The present audit verifies the active bibliography mechanically, removes non-paper material, fixes the missing NSFuzz citation, and externally spot-checks the most critical baseline and positioning papers.
+- BibTeX now reports no unresolved citation, no missing entry, and no missing-page warning.
+- A complete publisher-by-publisher verification of all 56 entries would require a separate DOI/proceedings audit. The present audit verifies the active bibliography mechanically, removes non-paper material, fixes the missing NSFuzz citation, normalizes core author formatting, and externally spot-checks the most critical baseline and positioning papers.

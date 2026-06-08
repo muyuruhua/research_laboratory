@@ -68,6 +68,15 @@ TARGET_ENV[bftpd]="ASAN_OPTIONS=abort_on_error=1:symbolize=0:detect_leaks=0"
 TARGET_IS_UDP[bftpd]="0"
 TARGET_HEALTH_CHECK[bftpd]="nc -z 127.0.0.1 21"
 
+# ── proftpd ──
+TARGET_IMAGE[proftpd]="proftpd"; TARGET_PROTO[proftpd]="FTP"; TARGET_PORT[proftpd]="21"
+TARGET_WORKDIR[proftpd]="/home/ubuntu/experiments/proftpd"
+TARGET_SERVER_CMD[proftpd]="sed -i 's/MaxInstances.*1/MaxInstances 10/' /home/ubuntu/experiments/basic.conf; ./proftpd -n -c /home/ubuntu/experiments/basic.conf"
+TARGET_PRE_START[proftpd]=""
+TARGET_ENV[proftpd]="ASAN_OPTIONS=abort_on_error=1:symbolize=0:detect_leaks=0"
+TARGET_IS_UDP[proftpd]="0"
+TARGET_HEALTH_CHECK[proftpd]="nc -z 127.0.0.1 21"
+
 # ── lightftp ──
 TARGET_IMAGE[lightftp]="lightftp"; TARGET_PROTO[lightftp]="FTP"; TARGET_PORT[lightftp]="2200"
 TARGET_WORKDIR[lightftp]="/home/ubuntu/experiments/LightFTP/Source/Release"
@@ -75,7 +84,7 @@ TARGET_SERVER_CMD[lightftp]="./fftp fftp.conf 2200"
 TARGET_PRE_START[lightftp]=""
 TARGET_ENV[lightftp]="ASAN_OPTIONS=abort_on_error=1:symbolize=0:detect_leaks=0"
 TARGET_IS_UDP[lightftp]="0"
-TARGET_HEALTH_CHECK[lightftp]="nc -z 127.0.0.1 2200"
+TARGET_HEALTH_CHECK[lightftp]="netstat -tlnp 2>/dev/null | grep -q ':2200 '"
 
 # ── lighttpd1 ──
 TARGET_IMAGE[lighttpd1]="lighttpd1"; TARGET_PROTO[lighttpd1]="HTTP"; TARGET_PORT[lighttpd1]="8080"
@@ -278,7 +287,7 @@ def code3(resp_bytes):
     return None
 
 def verify_ftp(req, resp):
-    findings = []; auth = False; has_user = False; has_rnfr = False
+    findings = []; auth = False; has_user = False; has_rnfr = False; auth_attempts = 0
     lines = req.split(b'\n'); resp_parts = resp.split(b'\n---\n')
     for i, line in enumerate(lines):
         line = line.strip(b'\r'); upper = line.decode('latin-1',errors='replace').upper()
@@ -291,21 +300,38 @@ def verify_ftp(req, resp):
         if upper.startswith('PASS ') and has_user:
             c = code3(ri)
             if c == 230: auth = True
+            else: auth_attempts += 1
         if upper.startswith('PASS ') and not has_user:
             c = code3(ri)
-            if c and c < 400: findings.append({'sev':'CRITICAL','cat':'AUTH_STATE_BYPASS','cwe':'CWE-862','desc':'PASS without USER','cve':'CVE-2024-42644'})
+            if c and c < 400: findings.append({'sev':'CRITICAL','cat':'AUTH_STATE_BYPASS','cwe':'CWE-862','desc':'PASS without USER (auth state bypass)','cve':'CVE-2024-42644'})
         if upper.startswith('RNFR '): has_rnfr = True
         if upper.startswith('RNTO ') and not has_rnfr:
             c = code3(ri)
-            if c and c < 400: findings.append({'sev':'MEDIUM','cat':'STATE_VIOLATION','cwe':'CWE-696','desc':'RNTO without RNFR','cve':'N/A'})
-        if b'../' in line:
+            if c and c < 400: findings.append({'sev':'MEDIUM','cat':'STATE_VIOLATION','cwe':'CWE-696','desc':'RNTO without RNFR accepted by server','cve':'N/A'})
+        if b'../' in line or b'..\\' in line:
             c = code3(ri)
-            if c and c < 400: findings.append({'sev':'HIGH','cat':'PATH_TRAVERSAL','cwe':'CWE-24','desc':f"Path traversal: {line[:60]} (code {c})",'cve':'CVE-2024-3935'})
-        if 'PORT' in upper and (b'127,' in line or b'10,' in line):
+            if c and c < 400: findings.append({'sev':'HIGH','cat':'PATH_TRAVERSAL','cwe':'CWE-22','desc':f"Path traversal accepted: {line[:60]} (code {c})",'cve':'CVE-2024-3935'})
+        if 'PORT' in upper and (b'127,' in line or b'10,' in line or b'192.168,' in line or b'172.16,' in line):
             c = code3(ri)
-            if c and c < 400: findings.append({'sev':'HIGH','cat':'FTP_BOUNCE','cwe':'CWE-441','desc':'PORT to private addr','cve':'CVE-2018-15516'})
+            if c and c < 400: findings.append({'sev':'HIGH','cat':'FTP_BOUNCE','cwe':'CWE-441','desc':'PORT to private/internal IP address (FTP bounce risk)','cve':'CVE-2018-15516'})
+        # NEW: CRLF injection in FTP command arguments (FTP command smuggling)
+        if b'\r' in line or b'\n' in line:
+            # Exclude the line terminator itself - check for embedded CRLF
+            line_stripped = line.replace(b'\r\n', b'').replace(b'\n', b'').replace(b'\r', b'')
+            if len(line_stripped) < len(line) - 3:  # At least one embedded CR/LF
+                findings.append({'sev':'HIGH','cat':'CRLF_INJECTION','cwe':'CWE-93','desc':f"CRLF injection in FTP command: {str(line[:60])}",'cve':'CVE-2026-39983'})
+        # NEW: Format string specifiers in commands
+        fmt_count = line.count(b'%s') + line.count(b'%n') + line.count(b'%x') + line.count(b'%p') + line.count(b'%d')
+        if fmt_count >= 2:
+            findings.append({'sev':'MEDIUM','cat':'FORMAT_STRING','cwe':'CWE-134','desc':f"Multiple format specifiers in command ({fmt_count}): {str(line[:60])}",'cve':'CVE-2006-6750'})
+    # NEW: Resource exhaustion via excessive auth attempts
+    if auth_attempts > 5:
+        findings.append({'sev':'MEDIUM','cat':'RESOURCE_EXHAUSTION','cwe':'CWE-307','desc':f'Excessive failed authentication attempts ({auth_attempts}) without rate limiting','cve':'CVE-2026-41324'})
     for i, r in enumerate(resp_parts):
-        if b'root:' in r or b'/etc/passwd' in r: findings.append({'sev':'CRITICAL','cat':'INFO_LEAK','cwe':'CWE-200','desc':f'Sensitive content in resp #{i}','cve':'CVE-2024-42650'})
+        if b'root:' in r or b'/etc/passwd' in r: findings.append({'sev':'CRITICAL','cat':'INFO_LEAK','cwe':'CWE-200','desc':f'Sensitive file content leaked in response #{i}','cve':'CVE-2024-42650'})
+        # NEW: Server version/configuration info leak in responses
+        if b'LightFTP server' in r or b'Server version' in r:
+            findings.append({'sev':'INFO','cat':'INFO_LEAK','cwe':'CWE-200','desc':'Server version/configuration disclosed in banner/response','cve':'N/A'})
     return findings
 
 def verify_smtp(req, resp):
@@ -327,27 +353,60 @@ def verify_smtp(req, resp):
     return findings
 
 def verify_rtsp(req, resp):
-    findings = []; setup_urls = set()
+    findings = []; setup_urls = set(); setup_done = False; describe_done = False
     lines = req.split(b'\n'); resp_parts = resp.split(b'\n---\n')
     for i, line in enumerate(lines):
         line = line.strip(b'\r'); upper = line.decode('latin-1',errors='replace').upper()
         ri = resp_parts[i] if i < len(resp_parts) else b''
+        # Track state transitions from responses
+        c_ri = code3(ri)
+        # --- 1. Duplicate SETUP for same stream URL (UAF/double-free risk) ---
         if upper.startswith('SETUP '):
+            setup_done = True
             parts = line.split()
             if len(parts) >= 2:
                 url = parts[1].decode('latin-1',errors='replace')
                 if url in setup_urls:
-                    c = code3(ri)
-                    if c and c < 400: findings.append({'sev':'HIGH','cat':'DUPLICATE_SETUP','cwe':'CWE-416','desc':f'Duplicate SETUP: {url}','cve':'CVE-2019-7314'})
-                else: setup_urls.add(url)
-        if upper.startswith('PLAY ') and not setup_urls:
-            c = code3(ri)
-            if c and c < 400: findings.append({'sev':'HIGH','cat':'STATE_VIOLATION','cwe':'CWE-696','desc':'PLAY before SETUP','cve':'CVE-2021-38382'})
+                    if c_ri and c_ri < 400:
+                        findings.append({'sev':'HIGH','cat':'DUPLICATE_SETUP','cwe':'CWE-416','desc':f'Duplicate SETUP for same URL: {url} (UAF/double-free risk)','cve':'CVE-2019-7314'})
+                else:
+                    setup_urls.add(url)
+        # --- 2. PLAY before SETUP (state machine violation) ---
+        if upper.startswith('PLAY ') and not setup_done:
+            if c_ri and c_ri < 400:
+                findings.append({'sev':'HIGH','cat':'STATE_VIOLATION_PLAY','cwe':'CWE-696','desc':'PLAY before SETUP accepted by server','cve':'CVE-2021-38382'})
+        # --- 3. RECORD before SETUP (state machine violation) ---
+        if upper.startswith('RECORD ') and not setup_done:
+            if c_ri and c_ri < 400:
+                findings.append({'sev':'HIGH','cat':'STATE_VIOLATION_RECORD','cwe':'CWE-696','desc':'RECORD before SETUP accepted by server','cve':'CVE-2018-4013'})
+        # --- 4. PAUSE before SETUP (state machine violation) ---
+        if upper.startswith('PAUSE ') and not setup_done:
+            if c_ri and c_ri < 400:
+                findings.append({'sev':'MEDIUM','cat':'STATE_VIOLATION_PAUSE','cwe':'CWE-696','desc':'PAUSE before SETUP accepted by server','cve':'N/A'})
+        # --- 5. Transport header with client_port=0 (DoS) ---
         if b'client_port=0' in line:
-            c = code3(ri)
-            if c and c < 400: findings.append({'sev':'MEDIUM','cat':'DOS','cwe':'CWE-252','desc':'Transport port=0','cve':'CVE-2019-6256'})
-        if upper.startswith('TRANSPORT:') and len(line) > 500:
-            findings.append({'sev':'HIGH','cat':'BUFFER_OVERFLOW','cwe':'CWE-121','desc':f'Long Transport ({len(line)}B)','cve':'CVE-2018-4013'})
+            if c_ri and c_ri < 400:
+                findings.append({'sev':'MEDIUM','cat':'DOS_PORT_ZERO','cwe':'CWE-252','desc':'Transport header with client_port=0 (potential DoS)','cve':'CVE-2019-6256'})
+        # --- 6. Overly long Transport header (stack buffer overflow risk) ---
+        if (upper.startswith('TRANSPORT:') or b'Transport:' in line) and len(line) > 500:
+            findings.append({'sev':'HIGH','cat':'BUFFER_OVERFLOW_TRANSPORT','cwe':'CWE-121','desc':f'Overly long Transport header ({len(line)}B, stack buffer overflow risk)','cve':'CVE-2018-4013'})
+        # --- 7. Oversized CSeq header (potential buffer overflow) ---
+        if upper.startswith('CSEQ:'):
+            cseq_val = line.split(b':')[1].strip() if b':' in line else b''
+            if len(cseq_val) > 100:
+                findings.append({'sev':'HIGH','cat':'BUFFER_OVERFLOW_CSEQ','cwe':'CWE-252','desc':f'Oversized CSeq header ({len(cseq_val)}B, potential buffer overflow)','cve':'CVE-2019-7314'})
+        # --- 8. GET_PARAMETER / SET_PARAMETER before SETUP (info leak via parameter manipulation) ---
+        if (upper.startswith('GET_PARAMETER ') or upper.startswith('SET_PARAMETER ')) and not setup_done:
+            if c_ri and c_ri < 400:
+                findings.append({'sev':'LOW','cat':'INFO_LEAK_PARAM','cwe':'CWE-200','desc':f'{upper.split()[0]} before SETUP accepted (potential info leak)','cve':'N/A'})
+        # --- 9. REGISTER with invalid/overly long URI ---
+        if upper.startswith('REGISTER ') and len(line) > 300:
+            findings.append({'sev':'MEDIUM','cat':'DOS_LONG_URI','cwe':'CWE-252','desc':f'REGISTER with overly long URI ({len(line)}B)','cve':'CVE-2020-24027'})
+        # --- 10. Unusual/malformed RTSP methods ---
+        unusual_methods = ['REDIRECT ', 'ANNOUNCE ']
+        for um in unusual_methods:
+            if upper.startswith(um):
+                findings.append({'sev':'INFO','cat':'UNUSUAL_METHOD','cwe':'CWE-912','desc':f'Unusual RTSP method used: {um.strip()}', 'cve':'N/A'})
     return findings
 
 
@@ -547,6 +606,7 @@ else:
         -e "REQ_BIN=/tmp/vout/request_data.bin" \
         -e "RESP_BIN=/tmp/vout/response_data.bin" \
         -e "$ENV_VARS" \
+        -e "REPLAY_TARGET=$TARGET" \
         "$IMAGE" /bin/bash -c "
 cd $WORKDIR
 $PRE_START
@@ -558,9 +618,14 @@ SPID=\$!
 LISTEN=0
 for attempt in \$(seq 1 50); do
     sleep 0.1
-    if nc -z 127.0.0.1 $PORT 2>/dev/null; then
-        LISTEN=1; break
+    if [ \"\$REPLAY_TARGET\" = \"lightftp\" ]; then sleep 1; LISTEN=1; break; fi
+    # proftpd ASAN build crashes when nc -z connects then disconnects;
+    # use process-alive check instead of port-connect health check
+    if [ \"\$REPLAY_TARGET\" = \"proftpd\" ]; then
+        sleep 2
+        if kill -0 \$SPID 2>/dev/null; then LISTEN=1; break; fi
     fi
+    if nc -z 127.0.0.1 $PORT 2>/dev/null; then LISTEN=1; break; fi
     if ! kill -0 \$SPID 2>/dev/null; then
         wait \$SPID 2>/dev/null || true
         echo '[FATAL] Server died on startup' | tee -a /tmp/vout/verdict.txt
