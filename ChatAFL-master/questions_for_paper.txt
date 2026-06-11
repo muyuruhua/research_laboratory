@@ -1,110 +1,191 @@
-1 Ablation 结果自我推翻了核心论点，这是最严重的问题，足以直接导致拒稿。
+以下是领域专家针对【/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master/loopfuzz/main.tex】内容给出的最严谨专业的修改建议，必须严谨结合修改建议进行修改，要求修改后main.tex编译成main.pdf后不超过30页。
 
-论文的核心主张是，Verified Control 的每个组件Runtime Verifier、CEGR、Frontier Scheduling、State Prompt对性能提升至关重要。然而Table 3 (Ablation Snapshot) 中的数据貌似直接反驳了这一主张，你需要确认？五个ablated变体全部在 code-edge coverage 上超过Full VeriSPFuzz，甚至关掉所有控制机制（All Controls Off）反而更好。论文用variance 变宽来辩解，但这无法合理化如此系统性的反转。一个有经验的审稿人会立即质疑：这些精心设计的控制机制究竟是否真的有效？
+1. 结果叙事与数据可信度有点冲突：考虑先降调摘要,结论和主张
+需要修改的位置：摘要，贡献列表，结果总述，结论。
+本质问题：摘要强调九个目标中八个绝对分支覆盖最高，九个状态边数最高，但同一摘要又承认 NSFuzz 在八个目标中五个绝对分支覆盖领先，感觉有点晕，MQTT 也只能单独限定。这个组合会让审稿人觉得主结论在选择性强调有利结果。
+修改方案：摘要和结论改成克制表述：
+LoopFuzz在AFLNet/ChatAFL 谱系比较中改善状态探索，并在多数主目标上提升绝对分支覆盖；与专用状态感知基线相比，覆盖结果是混合的。
+不要再把 八个最高，九个最高 作为摘要末句的最大卖点。
 
-2 实验结果严重不完整，论文在 10 个 Target 上只报告了 6 个
+ 
 
+2. MQTT 表格考虑重做
 
-3 缺乏统计显著性检验
-我看到你注释了计划使用 Mann-Whitney U检验（$p < 0.05$），但在实际报告的Table 2 中完全没有执行任何统计检验，这个可能是必须的。
-还有，我看了几个实验结果，好像不是很好[苦涩]
-ProFTPD 的 code-edge coverage 增益仅为+0.2% vs ChatAFL（5286 vs 5276），SD 分别为 202 和 107，差异极大可能不显著
-Exim 的 code-edge 增益仅为 +1.0% vs AFLNet和 +2.8% vs ChatAFL
-Kamailio 的 code-edge 甚至 低于ChatAFL（-0.7%）
-你引用了SoK方法论论文，强调统计严谨性，却未将其应用于自己的结果，是就容易被审稿人质疑自相矛盾
+位置：第5.1节，第6节表4，摘要末句，结论。
+问题：LoopFuzz 在 Mosquitto 上平均只运行 137.4 分钟，AFLNet 和 MBFuzzer 接近 1480 分钟；这不是同预算比较，却并列表格展示，并在正文说 LoopFuzz 超过 AFLNet。
+修改方案：我在现在考虑的最聪明做法是从主结果中移除表4，只在“威胁有效性”中一句话说明 MQTT 归档不满足同预算条件，因此不用于性能结论。
+若保留，改成“数据完整性说明表”，不加粗，不比较优劣，不写超过 AFLNet。更好但成本更高的方案是补齐 24 小时同预算 Mosquitto 实验，你考虑下。
 
+ 
 
-4 主要指标Code-Edge Coverage的绝对提升幅度极小且不一致
-在 Fuzzing研究中code-edge coverage 是衡量 fuzzer 有效性的核心指标，但 VeriSPFuzz 的实际提升令审稿人失望，比如
-ProFTPD vs ChatAFL：仅 +0.2%（差异在 SD 范围内）
-Exim vs AFLNet：仅 +1.0%
-Kamailio：VeriSPFuzz 不如 ChatAFL
-IPSM-edge count 的提升更显著，但IPSM是由VeriSPFuzz 自身维护的内部数据结构，存在循环论证的嫌疑，VeriSPFuzz更擅长维护IPSM，自然会在基于 IPSM 的指标上表现更好[苦涩]
+3. NSFuzz 对比必须重排，否则很容易会被审稿人认为误导
 
-5 没有发现任何新的？真实漏洞
-残酷的现实就是任何ASE fuzzing论文如果完全不报告发现的bug或CVE，会被审稿人质疑实用价值。VeriSPFuzz通篇讨论coverage和IPSM探索，没有任何一处提到找到了实际的安全漏洞或崩溃。这会让审稿人认为该工作停留在理论层面，尚未证明实际的漏洞挖掘能力[裂开]
+位置：第5.2节，表3，第6.1节，第6.3节，结论。
+问题：论文承认 NSFuzz 的 edges 与 AFLNet 谱系的状态边语义不同，但表3仍把它们放在同一列比较；同时 NSFuzz 在 LightFTP 的 b_abs 为 414.3，而 LoopFuzz 只有 71.6，差距接近六倍，正文没有解释。
+修改方案：建议把表3拆成两张表：
+一张只比较 b_abs；另一张不再横向比较 NSFuzz 的 edges，或把 NSFuzz 的 edges 改成单独列名“NSFuzz artifact edge count”。正文必须专门解释 LightFTP 和 Forked-daapd 失败案例：可能是覆盖插桩，目标构建，输入模型，状态抽象或 NSFuzz 专用策略导致差异。不能只说mixed。
 
-6 我发现，有一些论文引用BibTeX 作者格式有问题
+4. 主基线显得偏弱，必须解释为什么 AFLNet/ChatAFL 是主线
 
-看到有论文中所有相关作者姓名显示错误。BibTeX 要求多词姓名必须写为 First Last and First Last（正序）或 Last, First and Last, First（逗号分隔），不能将姓和名当作两个独立作者用 and 连接。
+位置：第3节相关工作，第5.2节基线设计，第6节结果。
+本质问题：论文中现在承认 NSFuzz，Bleem，Logos，MBFuzzer 是重要外部比较点，但主实验只把 AFLNet 和 ChatAFL 作为主基线，强基线被降为辅助。
+修改方案：不要声称“相对 stateful fuzzers 的总体优势”。建议重写基线定位：主实验回答的是“在 AFLNet/ChatAFL 谱系中，加入闭环准入是否有用”；NSFuzz 是外部强基线，用于展示边界。若时间允许，至少要补 StateAFL 作为主表基线；若不能补，就在贡献和结论中明确收缩主张。
 
-比如 sgf_usenix22/aflnet
-错误写法 Pham and Van-Thuan and B{"o}hme, Marcel
-正确写法 Van-Thuan Pham and Marcel B{"o}hme
+ 
 
-你确认下
-Meng and Ruijie and Mirchev and Martin
+5. 核心准入机制没有被整体消融
 
-正确是不是这个：Ruijie Meng and Martin Mirchev
+位置：贡献列表，第4.2节，第5.3节，第6.4节表5。
+问题：论文最核心贡献是闭环准入边界，但消融只关掉 CEGR，前沿调度，假设验证、自适应触发，没有“关闭整个准入边界、模型输出直接入队”的条件。
+修改方案：增加一个最关键消融：LoopFuzz-no-admission。它保留同样的模型调用，提示，调度预算，但跳过 P/U/R/G 准入检查，直接采用模型建议。若无法补实验，至少承认当前消融不能单独证明准入公式整体贡献，并把“准入边界有效性”改成“集成控制策略有效性”。
 
-Postel and Jon and Reynolds and Joyce
-是不是？Jon Postel and Joyce Reynolds
+ 
 
+6. 准入公式存在“执行前过滤”与“执行后接受”的概念混淆，很晕
 
-sulley 和 libfuzzer 使用了双花括号 {{OpenRCE}} / {{LLVM Project}} 表示机构作者，这是正确的 BibTeX 用法，无需修改。
+位置：第2.4节动机图、第4.2节准入公式、第4.2.2节、第4.2.3节。
+问题：U，R，G 需要实际执行候选消息才能观测，因此 LoopFuzz 不是完全在执行前阻止坏输入，而是在执行后决定是否入队、是否形成反例、是否修复假设。现在“blocks this drift at the admission boundary”的叙事容易被审稿人认为夸大。
+修改方案：把“执行前阻止”改成 运行时验证后选择性入队。公式旁边明确两阶段：第一阶段做结构和本地解析检查，第二阶段用短执行结果评估响应、状态和覆盖收益。这样不会削弱贡献，反而看起来更准确。
 
-docter_documentation_guided_fuzzing_2022 的 BibTeX key 写成了 docter 而工具名为 DocTer，不影响编译但建议统一为 docter → docter 或改为 docTer，保持一致性即可
+ 
 
+7. P/U/R/G 四个条件缺少可复现定义
 
-7 Table 2 与 Table 3 数据好像有矛盾
-Target	主结果表 (Table 2) Full VeriSPFuzz	Ablation 表 (Table 3) Full VeriSPFuzz
-Pure-FTPd Code-Edge	1253 ± 33	                  1225 ± 39.1
-Exim Code-Edge	3818 ± 65	                  3893.8 ± 43.9
+位置：第4.2节及三个子小节。
+问题：parseability，acceptability，reachability，gain 现在是概念词，没有足够具体的判定规则、阈值、失败类别和实现流程。
+修改方案：增加一个表格：每个条件对应输入、判定规则、通过/失败例子、日志字段、是否需要执行、是否影响队列。尤其说明哪些响应码算拒绝、哪些覆盖变化算 gain、R 和 G 如何区分。
 
-两张表中 "Full VeriSPFuzz" 理应是同一配置的同一批实验，但数据、均值和标准差均不一致。这说明两张表来自不同批次的实验运行。审稿人会立即质疑：哪张表的数据是真实的？整个评估体系是否存在选择性报告？
+ 
 
+8. 机制级日志统计必须补上
 
-8 我其实之前看过类似的工作 不止有 AFLNet + ChatAFL
+位置：第5.4节、第6节结果、第8节威胁有效性。
+问题：论文说记录了模型提示、原始回复、令牌使用、反例和修复事件，但没有给跨目标统计；第5.4节还承认没有归一化成本统计。
+修改方案：新增一张“准入控制行为表”：每个目标报告模型调用次数、候选数量、解析通过率、响应接受率、状态/覆盖收益通过率、拒绝原因分布、反例修复次数、平均调用耗时和令牌成本。审稿人会好奇所有模型输出，必须看到机制确实在工作。
 
-你可以考虑除了和他们对比，还有这几个
-a) SGF (USENIX Security 2022) — 与 VeriSPFuzz 核心机制最相关的直接前驱，且作者列表几乎相同（Pham, Böhme, Roychoudhury），不比较极为可疑
-b) Bleem (USENIX Security 2023) — Packet Sequence Fuzzing
-c) Logos (ISSTA 2024) — Log-Guided 状态感知 Fuzzing
-d) MBFuzzer (USENIX Security 2025) — MQTT 专项 Fuzzer，与 Mosquitto 实验直接重叠
+ 
 
-审稿人会认为我们可能刻意回避了最具竞争力的对手，厉害的方法，选择最容易胜出的旧基线，找软柿子捏[机智]
+9. 消融结果反常，不能只用一句话带过，容易被拒稿
 
+位置：第6.4节表5，讨论。
+问题：去掉 CEGR 后 ProFTPD 和 Live555 的 b_abs 反而上升；去掉自适应触发后多个目标部分指标上升。论文现在说“开关与目标行为相互作用”，解释太弱。
+修改方案：把消融段改成“边界条件分析”。逐个解释：哪些目标上 CEGR 可能过度收缩搜索空间，哪些目标上自适应触发可能过晚或过保守。结论改为“完整策略总体稳健，但个别组件存在目标依赖”，不要说每个模块都单独必要。
 
-你检查一下，是不是将AFLNet的作者Van-Thuan Pham错误地写入了SGF的BibTeX，同时页码也错了10页
-@inproceedings{sgf_usenix22,
-  author    = {Jinsheng Ba and Marcel B{\"o}hme and 
-               Zahra Mirzamomen and Abhik Roychoudhury},
-  title     = {Stateful Greybox Fuzzing},
-  booktitle = {31st USENIX Security Symposium (USENIX Security 2022)},
-  pages     = {3255--3272},
-  year      = {2022}
-}
+ 
 
-9 Neither AFLNet nor ChatAFL originally shipped with MQTT support. We therefore implemented the MQTT response-code dissector and seed infrastructure for all three compared systems
+10. Forked-daapd 失败案例必须正面分析
 
-Mosquitto 实验的公平性存在重大疑点, 可能你要修改一下写法
+位置：表2，表3，第6.1节，第6.3节，讨论。
+现在的问题：Forked-daapd 上 LoopFuzz 的 b_abs 低于 AFLNet，且标准差显著更大；NSFuzz 也明显更高。正文几乎没有解释，会被认为选择性报告。
+修改方案：新增一个“失败目标分析”小节。说明 DAAP/DACP 是否响应信号稀疏、状态抽象噪声高、准入过严、模型建议无效或目标初始化不稳定。给出一到两个运行轨迹证据，而不是只在威胁有效性里承认。
 
-你琢磨一下，想想，你修改了对手系统AFLNet、ChatAFL以支持 MQTT，修改质量和深度完全由作者控制，无法独立核实
-任何实现上的不对等（无论有意与否）都会系统性地偏向 VeriSPFuzz，这一设置完全无法被其他研究者复现验证，Mosquitto恰好是VeriSPFuzz在code-edge coverage上提升最大的target+17.5% vs ChatAFL，这种巧合会引起怀疑[机智][奸笑]
+ 
 
-10 你是不是有提到将 semantic drift定义为核心问题，并以此作为设计的动机。
-然而通篇论文没有任何一处数字回答，ChatAFL中有多少百分比的 LLM 提案因语义漂移而被拒绝？VeriSPFuzz 的 Runtime Verifier 的实际拒绝率是多少？被 CEGR 修复的提案中，有多少最终被成功接受？admission rate（$P \land U \land R \land G$ 全部通过）在各 target 上是多少？没有量化semantic drift的发生率和VeriSPFuzz的修复率，semantic drift是核心问题的论断就是无法验证的叙事，会被直接抓住小鞭子拒稿[撇嘴]
+11. LightFTP 的数据异常必须解释清楚
 
-11 关键超参数缺乏任何依据
-我看到有
-β∈{4.0,2.0,1.0}，80 rounds,30%, 64次？×0.25 还是 0.5？selected_times ≥ 20 且 productivity < 0.01
-很多参数被直接使用，既没有敏感性分析，也没有理论推导或经验说明来源，如果把80改成40或160，结果会怎样？" 如果我们无法回答，意味着整个系统是针对特定实验精心调参的产物，而非具有普适性的设计原则，这就麻烦了
+位置：表2，表3，第6.1节。
+问题是：主表中三种 AFL 谱系方法在 LightFTP 上 b_abs 几乎都是 71，但 NSFuzz 是 414.3。这个差异太大，审稿人会怀疑目标构建、覆盖插桩或指标来源不一致。
+修改建议：核查 LightFTP 的构建配置，插桩方式，版本、覆盖统计脚本和 NSFuzz 数据来源。若指标不可同质比较，就不要把它们放在同一 b_abs 表里；若可同质比较，必须解释 NSFuzz 为什么能打开额外路径。
 
-12 Veri前缀在软件工程领域普遍指Formal Verification缩写，有点误导
-建议你考虑：
-GateFuzz: Admission-Controlled LLM Guidance for Stateful Protocol Fuzzing
-LoopFuzz: Closing the Loop on LLM-Guided Stateful Protocol Fuzzing
-GuardedFuzz: Runtime-Guarded LLM Proposals for Stateful Protocol Fuzzing
-BoundedLLMFuzz: Runtime-Bounded LLM Integration for Stateful Protocol Fuzzing
-你自己决定,最推荐选择【LoopFuzz: Closed-Loop Runtime Admission Control for LLM-Guided Stateful Protocol Fuzzing】，closed-loop是论文Design节反复出现的核心框架词，与ChatAFLopen-loop baseline的对比也最为直接，审稿人一眼可以识别技术定位
+12. 统计检验需要补多重比较控制和效应量
 
+位置：第5.2节，表2说明，结果段。
+本质问题：九个目标、两个指标、多次 Mann-Whitney 检验，没有多重检验校正，也没有效应量。
+修改建议：报告未校正 p 值、校正后 p 值和效应量。表中不要只用星号；增加 Cliff’s delta 或中位数差异。若校正后部分显著性消失，正文改成“趋势一致但显著性有限”。
 
+ 
 
+13. 运行选择规则和缺失运行需要解释
 
+位置：第5.1节，第5.3节，表2表注。
+问题：LightFTP 的 ChatAFL 只有六次有效运行，其他通常十次；论文说保留超过 1400 分钟的完成运行、超过十个取最低十个运行编号，但没有解释缺失原因，也没有说明这个规则是否会引入偏差。
+修改建议：新增“运行筛选与缺失数据处理”段：列出每个工具/目标的原始运行数、剔除数、剔除原因。对 LightFTP ChatAFL 单独说明是否崩溃、日志缺失、提前终止或归档不完整。
 
+ 
 
+14. 实验资源隔离和并发策略必须补清楚
 
+位置：第5.1节实验设置。
+问题：只写 32 核、64GB 内存，但没有说明 270 个左右的长期运行如何调度，是否并发、是否绑定核心、是否容器隔离、端口如何避免冲突。
+修改：补实验协议：每次运行占用核心数、同时运行实例数、容器或虚拟环境、端口分配、服务重启策略、超时策略、网络清理、随机种子。尤其说明增长率按真实墙钟时间计算时如何避免资源竞争影响。要写清楚呀~
 
+ 
 
+15. 可复现材料必须至少给出提交计划
 
+位置：第5节末尾，数据可用性声明，投稿系统附件
+问题：当前稿件依赖 run-summary archive，但没有代码，数据，脚本或匿名仓库链接；
+修改：投稿前准备匿名工件包：核心代码、运行脚本、目标版本、配置文件、统计脚本、原始汇总数据、表格生成脚本、提示模板、关键日志样例。
+上传到Github仓库，再做成使用匿名anonymous.4open.science，你搜下怎么做，这个很常用。
 
+ 
+
+16. “re-audited”措辞应全部删除或解释
+
+位置：摘要，第5.1节，第5.4节，结论
+问题：“re-audited run summaries”暗示原始数据曾经出错或经过二次修正，但正文没有解释第一次审计、修正内容和版本差异。
+修改建议：重新核查数据，删掉 re-audited，改成“repeated-run summaries”或“archived run summaries”。如果确实有数据修正，必须增加“data audit protocol”，说明修正了哪些数据，避免学术和数据诚信风险。
+
+ 
+
+17. CEGR 术语需要降级并补引用
+
+位置：摘要，贡献列表，第4.3节，相关工作
+问题：CEGR 明显接近经典 CEGAR 传统，但论文没有引用和区分；同时你们的机制只是失败执行驱动的局部规则修补，不具备形式化抽象精化保证。
+修改方案：把表述改成“counterexample-guided local repair”，不要让读者以为是形式验证意义上的 CEGAR。相关工作补一句：本文借用反例驱动思想，但不声称形式化完备性或最小反例。
+
+ 
+
+18. IPSM 的形式化应改成近似模型
+
+位置：第2.2节
+问题：当前把 IPSM 写成确定性 Mealy 机，但协议服务可能有异步、竞态、超时和环境依赖；AFLNet 谱系的状态机也是响应派生的近似模型。
+修改：改成“we use a Mealy-style abstraction”或“approximate response-derived state machine”。说明它是调度信号，不是协议语义的确定性模型。
+
+ 
+
+19. 前沿奖励公式需要避免死胡同奖励过高
+
+位置：第4.4节公式
+问题：deg≤1 都给最高奖励，出度为 0 的死胡同和出度为 1 的窄桥被同等鼓励，可能导致调度反复选拒绝/终止状态。
+修改建议：改成更清楚的策略：未探索状态和低出度但有生产力证据的状态给高奖励；出度为 0 且低生产力的状态由错误生产力惩罚压低。公式中显式加入 productivity 或 rejection penalty，避免审稿人抓住死胡同问题。
+
+ 
+
+20. 模型参数和提示复用逻辑必须写清楚
+
+位置：第5.1节，第8节。
+问题：只写 pinned model endpoint 和 low temperature，没有具体温度，随机种子、采样参数，重试策略。提示复用过滤器的意义也取决于温度是否为零。
+修改：补模型调用配置：温度，最大输出长度，超时、重试，失败处理，是否固定系统提示。若温度为零，说明复用过滤器用于避免重复确定性调用；若温度大于零，说明如何记录原始回复并缓解不可复现性。
+
+ 
+
+21. 表1 对 ChatAFL 的描述要更公平
+
+位置：表1，第3节相关工作，第4节开头。
+问题：表1把 ChatAFL 写成 History text 和 Direct admission，容易被认为把对手简化成无过滤生成器。
+修改：改成“context-guided LLM generation; no runtime admission boundary”。这样保留差异点，但不会显得刻意贬低。你琢磨一下
+
+ 
+
+22. 贡献列表要删掉“经验研究”作为独立贡献
+
+位置：引言贡献列表。
+问题：“做了实验”不是独立学术贡献；现在第五条像评估说明，不像贡献。
+修改建议：第五条改成具体发现，例如“揭示了闭环准入在 AFLNet/ChatAFL 谱系中主要改善状态探索，但与专用状态感知基线的覆盖优势并不一致”。这会显得诚实且成熟。
+
+ 
+
+23. 图1 和图2 需要避免误导
+
+位置：图1、图2。
+问题：图1暗示坏候选被阻止执行，但实际上 U/R/G 需执行后判断；图2的反馈箭头和 growth rate 标签容易暗示每次执行都触发一次增长率判断。
+修改：图1改成execute-then-admit-to-queue，图2标出periodic monitor。把 reject 箭头明确为not queued; recorded as counterexample，避免被抓逻辑漏洞。所有的图和表格都要详细检查，不能发生这种问题，不然就很容易被拒稿，等几个月得到结果被拒了，要非常认真检查每一项，确保不会有歧义
+
+ 
+
+24. 防御性表述过多，应集中到威胁有效性
+
+位置：摘要，结果，讨论，结论。
+本质问题：全文多次重复not claim，limitation，separately qualified，会让论文显得像在提前自我否定。
+修改：正文结果段直接报告事实；限制统一放到威胁有效性和结论最后一段。主文采用“精确主张”，而不是反复防御。
