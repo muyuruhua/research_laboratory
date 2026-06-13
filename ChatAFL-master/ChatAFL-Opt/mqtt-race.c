@@ -300,8 +300,17 @@ static void *race_session_resume_sub(void *arg) {
 
   /* Phase 1: Establish persistent session */
   int fd1 = race_open_tcp(ctx->ip, ctx->port);
-  if (fd1 < 0) return NULL;
-  if (race_mqtt_connect(fd1, "race_sub_persist", 0) < 0) { close(fd1); return NULL; }
+  if (fd1 < 0) {
+    /* P1-fix: unblock paired publisher at the barrier */
+    pthread_barrier_wait(ctx->barrier);
+    return NULL;
+  }
+  if (race_mqtt_connect(fd1, "race_sub_persist", 0) < 0) {
+    close(fd1);
+    /* P1-fix: unblock paired publisher at the barrier */
+    pthread_barrier_wait(ctx->barrier);
+    return NULL;
+  }
   race_mqtt_subscribe(fd1, "#", 1, 1);
 
   /* Phase 2: Disconnect (session stays on broker) */
@@ -334,8 +343,17 @@ static void *race_session_resume_pub(void *arg) {
   ctx->rc = -1;
 
   int fd = race_open_tcp(ctx->ip, ctx->port);
-  if (fd < 0) return NULL;
-  if (race_mqtt_connect(fd, "race_pub_retain", 1) < 0) { close(fd); return NULL; }
+  if (fd < 0) {
+    /* P1-fix: unblock paired subscriber at the barrier */
+    pthread_barrier_wait(ctx->barrier);
+    return NULL;
+  }
+  if (race_mqtt_connect(fd, "race_pub_retain", 1) < 0) {
+    close(fd);
+    /* P1-fix: unblock paired subscriber at the barrier */
+    pthread_barrier_wait(ctx->barrier);
+    return NULL;
+  }
 
   /* Wait for subscriber to disconnect, then fire simultaneously */
   pthread_barrier_wait(ctx->barrier);
@@ -452,7 +470,14 @@ static void *race_will_sender(void *arg) {
   ctx->rc = -1;
 
   int fd = race_open_tcp(ctx->ip, ctx->port);
-  if (fd < 0) return NULL;
+  if (fd < 0) {
+    /* P1-fix: MUST reach the barrier even on error, otherwise the
+     * paired receiver thread blocks forever in pthread_barrier_wait.
+     * The barrier is init'd with count=2 — if we bail early without
+     * arriving, the receiver waits forever and pthread_join hangs. */
+    pthread_barrier_wait(ctx->barrier);
+    return NULL;
+  }
 
   /* CONNECT with Will message */
   u8 pkt[128];
@@ -480,8 +505,17 @@ static void *race_will_receiver(void *arg) {
   ctx->rc = -1;
 
   int fd = race_open_tcp(ctx->ip, ctx->port);
-  if (fd < 0) return NULL;
-  if (race_mqtt_connect(fd, "race_will_recv", 1) < 0) { close(fd); return NULL; }
+  if (fd < 0) {
+    /* P1-fix: must unblock the paired sender at the barrier */
+    pthread_barrier_wait(ctx->barrier);
+    return NULL;
+  }
+  if (race_mqtt_connect(fd, "race_will_recv", 1) < 0) {
+    close(fd);
+    /* P1-fix: must unblock the paired sender at the barrier */
+    pthread_barrier_wait(ctx->barrier);
+    return NULL;
+  }
   race_mqtt_subscribe(fd, "#", 0, 1);
 
   /* Synchronize — then drain for the will message */

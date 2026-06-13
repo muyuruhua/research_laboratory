@@ -25,6 +25,9 @@
 #include <netinet/tcp.h>      /* A3: TCP_NODELAY */
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <fcntl.h>       /* F_GETFL, F_SETFL, O_NONBLOCK */
+#include <poll.h>        /* poll(), struct pollfd, POLLOUT */
+#include <errno.h>       /* errno, EINPROGRESS */
 
 /* ── External globals we need (defined in afl-fuzz.c) ── */
 extern u32 local_port;
@@ -81,7 +84,6 @@ static int mqtt_mp_open_one(const char *ip, u32 port, u32 bind_port) {
   int sockfd = socket(AF_INET, SOCK_STREAM, 0);
   struct sockaddr_in serv_addr, local_addr;
   struct hostent *he = NULL;
-  int n;
 
   if (sockfd < 0) return -1;
 
@@ -108,14 +110,39 @@ static int mqtt_mp_open_one(const char *ip, u32 port, u32 bind_port) {
     }
   }
 
-  if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
-    /* A9: Tighter retry — 200 × 500 µs = 100 ms ceiling */
-    for (n = 0; n < 200; n++) {
-      if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == 0)
-        break;
-      usleep(500);
+  /* P1-fix: Non-blocking connect with 5-second timeout.
+   * The retry-loop connect(2) blocks for the kernel TCP timeout (20-120 s)
+   * on unreachable brokers, hanging the entire fuzz loop.  We switch to
+   * non-blocking connect + poll(2) so the call returns in bounded time. */
+  {
+    int flags = fcntl(sockfd, F_GETFL, 0);
+    if (flags < 0) { close(sockfd); return -1; }
+    fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
+
+    int rc = connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+    if (rc < 0) {
+      if (errno == EINPROGRESS) {
+        struct pollfd pfd;
+        pfd.fd = sockfd;
+        pfd.events = POLLOUT;
+        int pr = poll(&pfd, 1, 5000);  /* 5-second connect deadline */
+        if (pr <= 0) { close(sockfd); return -1; }
+        /* Verify the connection actually succeeded */
+        int so_error = 0;
+        socklen_t len = sizeof(so_error);
+        if (getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &so_error, &len) == 0
+            && so_error != 0) {
+          close(sockfd);
+          return -1;
+        }
+      } else {
+        /* Immediate failure (e.g. network unreachable) */
+        close(sockfd);
+        return -1;
+      }
     }
-    if (n == 200) { close(sockfd); return -1; }
+
+    fcntl(sockfd, F_SETFL, flags);  /* restore blocking mode */
   }
 
   /* A3: Disable Nagle — send small MQTT packets immediately */

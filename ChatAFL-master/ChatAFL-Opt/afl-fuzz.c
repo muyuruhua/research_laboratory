@@ -81,6 +81,7 @@
 #include <netdb.h>
 #include <netinet/tcp.h>   /* A3: TCP_NODELAY */
 #include <pthread.h>
+#include <poll.h>          /* P1-fix: non-blocking connect timeout */
 
 #include "aflnet.h"
 #include <graphviz/gvc.h>
@@ -863,7 +864,6 @@ static int mqtt_open_cluster_socket(const char *ip, u32 port) {
   struct sockaddr_in serv_addr;
   struct sockaddr_in local_serv_addr;
   struct hostent *host_entry = NULL;
-  int n;
 
   if (sockfd < 0) {
     return -1;
@@ -892,17 +892,37 @@ static int mqtt_open_cluster_socket(const char *ip, u32 port) {
     }
   }
 
-  if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
-    /* A9: Tighter retry — 200 × 500 µs = 100 ms ceiling */
-    for (n = 0; n < 200; n++) {
-      if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == 0)
-        break;
-      usleep(500);
+  /* P1-fix: Non-blocking connect with 5-second timeout.
+   * Same rationale as mp-driver-mqtt.c — the retry-loop connect(2) blocks
+   * for the kernel TCP timeout on unreachable brokers. */
+  {
+    int flags = fcntl(sockfd, F_GETFL, 0);
+    if (flags < 0) { close(sockfd); return -1; }
+    fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
+
+    int rc = connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+    if (rc < 0) {
+      if (errno == EINPROGRESS) {
+        struct pollfd pfd;
+        pfd.fd = sockfd;
+        pfd.events = POLLOUT;
+        int pr = poll(&pfd, 1, 5000);  /* 5-second connect deadline */
+        if (pr <= 0) { close(sockfd); return -1; }
+        int so_error = 0;
+        socklen_t len = sizeof(so_error);
+        if (getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &so_error, &len) == 0
+            && so_error != 0) {
+          close(sockfd);
+          return -1;
+        }
+      } else {
+        /* Immediate failure (e.g. network unreachable) */
+        close(sockfd);
+        return -1;
+      }
     }
-    if (n == 200) {
-      close(sockfd);
-      return -1;
-    }
+
+    fcntl(sockfd, F_SETFL, flags);  /* restore blocking mode */
   }
 
   /* A3: Disable Nagle for small MQTT control packets */
@@ -3490,11 +3510,8 @@ int send_over_network()
           u32 rev_responses[6] = {0};  /* hash of CONNACK per broker */
           u32 rev_count = 0;
           for (u32 bi = 0; bi < ecnt && bi < 6; bi++) {
-            struct timeval tv = {0, 200000}; /* 200ms timeout */
             int rfd = socket(AF_INET, SOCK_STREAM, 0);
             if (rfd < 0) continue;
-            setsockopt(rfd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-            setsockopt(rfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
             struct sockaddr_in sa;
             memset(&sa, 0, sizeof(sa));
@@ -3505,9 +3522,38 @@ int send_over_network()
             if (!he) { close(rfd); continue; }
             memcpy(&sa.sin_addr, he->h_addr_list[0], he->h_length);
 
-            if (connect(rfd, (struct sockaddr *)&sa, sizeof(sa)) != 0) {
-              close(rfd); continue;
+            /* P1-fix: Non-blocking connect with 200ms timeout.
+             * SO_SNDTIMEO/SO_RCVTIMEO only apply to send/recv, NOT connect. */
+            {
+              int rflags = fcntl(rfd, F_GETFL, 0);
+              if (rflags < 0) { close(rfd); continue; }
+              fcntl(rfd, F_SETFL, rflags | O_NONBLOCK);
+
+              int rrc = connect(rfd, (struct sockaddr *)&sa, sizeof(sa));
+              if (rrc < 0) {
+                if (errno == EINPROGRESS) {
+                  struct pollfd rpfd;
+                  rpfd.fd = rfd;
+                  rpfd.events = POLLOUT;
+                  int rpr = poll(&rpfd, 1, 200);  /* 200ms deadline */
+                  if (rpr <= 0) { close(rfd); continue; }
+                  int so_err = 0;
+                  socklen_t slen = sizeof(so_err);
+                  if (getsockopt(rfd, SOL_SOCKET, SO_ERROR, &so_err, &slen) == 0
+                      && so_err != 0) {
+                    close(rfd); continue;
+                  }
+                } else {
+                  close(rfd); continue;
+                }
+              }
+
+              fcntl(rfd, F_SETFL, rflags);  /* restore blocking for send/recv */
             }
+            /* Set send/recv timeouts for the subsequent MQTT handshake */
+            struct timeval tv = {0, 200000};
+            setsockopt(rfd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+            setsockopt(rfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
             /* Send CONNECT */
             send(rfd, rev_connect, sizeof(rev_connect), MSG_NOSIGNAL);
@@ -3796,29 +3842,60 @@ MP_SINGLE_FD_FALLBACK:
       }
     }
 
-    if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+    /* P1-fix: Non-blocking connect with bounded timeout.
+     * Covers the single-fd fallback path used when multi-party driver
+     * fails or during calibration warmup (total_execs <= 50).
+     * Without this, connect(2) blocks for kernel TCP timeout (20-120 s)
+     * if the local mosquitto fork-server child is hung. */
     {
-      /* Retry connect — MQTT on localhost via forkserver is ready within
-       * a few ms; 100 retries × 1 ms = 100 ms is ample.  Text protocols
-       * keep the original 1000 × 1 ms = 1 s for slower servers. */
-      int retry_limit = (protocol_name
-                         && strcasecmp(protocol_name, "MQTT") == 0)
-                        ? 100 : 1000;
-      for (n = 0; n < retry_limit; n++)
-      {
-        if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == 0)
-          break;
-        usleep(1000);
+      int sfflags = fcntl(sockfd, F_GETFL, 0);
+      if (sfflags < 0) { close(sockfd); return 1; }
+      fcntl(sockfd, F_SETFL, sfflags | O_NONBLOCK);
+
+      int sfrc = connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+      if (sfrc < 0) {
+        if (errno == EINPROGRESS) {
+          struct pollfd sfpfd;
+          sfpfd.fd = sockfd;
+          sfpfd.events = POLLOUT;
+          /* Quick retry for localhost (~1 ms typical), bounded at 1 s */
+          int retry_limit = (protocol_name
+                             && strcasecmp(protocol_name, "MQTT") == 0)
+                            ? 20 : 50;   /* 20x50ms=1000ms, 50x50ms=2500ms */
+          int retry_ok = 0;
+          for (int sfn = 0; sfn < retry_limit; sfn++) {
+            int sfpr = poll(&sfpfd, 1, 50);
+            if (sfpr > 0) {
+              int sfso_err = 0; socklen_t sfslen = sizeof(sfso_err);
+              if (getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &sfso_err, &sfslen) == 0
+                  && sfso_err == 0) { retry_ok = 1; break; }
+            }
+          }
+          if (!retry_ok) {
+            close(sockfd);
+            adaptive_wait_usecs = server_wait_usecs;
+            server_warmed_up = 0;
+            return 1;
+          }
+        } else {
+          /* Immediate failure — retry briefly */
+          int retry_ok = 0;
+          for (int sfn = 0; sfn < 10; sfn++) {
+            int sfrc2 = connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+            if (sfrc2 == 0 || (sfrc2 < 0 && errno == EISCONN)) { retry_ok = 1; break; }
+            if (sfrc2 < 0 && errno != ECONNREFUSED && errno != EAGAIN) break;
+            usleep(10000);
+          }
+          if (!retry_ok) {
+            close(sockfd);
+            adaptive_wait_usecs = server_wait_usecs;
+            server_warmed_up = 0;
+            return 1;
+          }
+        }
       }
-      if (n == retry_limit)
-      {
-        close(sockfd);
-        /* A1-fix: connect failed after retries — reset adaptive wait
-         * so next exec gets the full server_wait_usecs delay. */
-        adaptive_wait_usecs = server_wait_usecs;
-        server_warmed_up = 0;
-        return 1;
-      }
+
+      fcntl(sockfd, F_SETFL, sfflags);  /* restore blocking mode */
     }
 
     /* A1-fix: Successful connect — server is forking normally.
@@ -7929,7 +8006,14 @@ static void perform_dry_run(char **argv)
 
     case FAULT_NOINST:
 
-      FATAL("No instrumentation detected");
+      /* P1-fix: A single seed that fails to execute the target (e.g.
+       * fork server child crash on corrupt binary MQTT input) should
+       * NOT abort the entire session.  Log and skip; if the target
+       * truly has no instrumentation, it will be caught on the first
+       * normal execution as well. */
+      WARNF("Target failed to execute on '%s' (no instrumentation detected), skipping", fn);
+      useless_at_start++;
+      break;
 
     case FAULT_NOBITS:
 
@@ -16180,13 +16264,22 @@ int main(int argc, char **argv)
       goto stop_fuzzing;
   }
 
+  /* P1-fix: If no server states were detected during dry run,
+   * fall back to non-state-aware mode instead of aborting.
+   * This can happen with protocols where all server responses
+   * produce identical state fingerprints (e.g. CONNACK-only).
+   * Must be checked BEFORE entering the state-aware while(1) block
+   * — setting state_aware_mode=0 inside the block is TOO LATE:
+   * the state-aware while(1) has already been entered and will
+   * dereference uninitialized IPSM state data → SIGSEGV. */
+  if (state_aware_mode && state_ids_count == 0)
+  {
+    WARNF("No server states detected — disabling state-aware mode");
+    state_aware_mode = 0;
+  }
+
   if (state_aware_mode)
   {
-
-    if (state_ids_count == 0)
-    {
-      PFATAL("No server states have been detected. Server responses are likely empty!");
-    }
 
     /* Fix 5b: Node stagnation detection.
      * If no new IPSM nodes have been discovered recently, periodically

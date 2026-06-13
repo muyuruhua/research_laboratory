@@ -448,14 +448,23 @@ if [[ -z "${CHATAFL_MQTT_BROKERS:-}" ]] && is_mqtt_target "$DOCIMAGE"; then
     --name "$MQTT_STABLE_CONTAINER" \
     --hostname "$MQTT_STABLE_ALIAS" \
     --network-alias "$MQTT_STABLE_ALIAS" \
+    --network-alias mqtt-stable \
     --restart=unless-stopped \
     -d "$DOCIMAGE" /bin/bash -c \
-    "exec /home/ubuntu/experiments/mosquitto-gcov/src/mosquitto -c /home/ubuntu/experiments/mosquitto.conf")
+    "cat > /tmp/mosquitto-stable.conf <<'STABLE_EOF'
+listener 1883 0.0.0.0
+allow_anonymous true
+max_connections -1
+log_type none
+persistence false
+user root
+STABLE_EOF
+     exec /home/ubuntu/experiments/mosquitto-gcov/src/mosquitto -c /tmp/mosquitto-stable.conf")
   require_container_id "$stable_id" "MQTT stable broker container ${MQTT_STABLE_CONTAINER}"
 
-  # Wait for stable broker to be ready (up to 15 sec)
+  # Wait for stable broker to be ready (up to 30 sec)
   _stable_ok=0
-  for _w in $(seq 1 30); do
+  for _w in $(seq 1 60); do
     if docker exec "$MQTT_STABLE_CONTAINER" bash -c "nc -z 127.0.0.1 1883" 2>/dev/null; then
       _stable_ok=1; break
     fi
