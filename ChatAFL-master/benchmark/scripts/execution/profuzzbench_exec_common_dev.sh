@@ -392,6 +392,38 @@ recreate_named_network() {
       rm -f "$err_file"
       return 0
     fi
+
+    # ── 3rd attempt: fall back to 10.0.0.0/8 with explicit --subnet ──
+    # Docker's default pool (172.16.0.0/12 → 192.168.0.0/16) is exhausted
+    # and prune found zero empty networks to recycle.  Pick a random /16
+    # from 10.0.0.0/8 (RFC 1918, 16M+ addresses) to keep existing
+    # containers untouched — no Docker daemon restart required.
+    if grep -q 'available, non-overlapping IPv4 address pool' "$err_file" 2>/dev/null; then
+      printf "\n${LOG_TAG}: [DEV] Address pool still exhausted after prune, falling back to 10.0.0.0/8...\n" >&2
+      local _existing_subnets _second_octet _subnet _fallback_attempt _fallback_ok
+      _existing_subnets="$(docker network ls -q 2>/dev/null | xargs -r docker network inspect --format '{{range .IPAM.Config}}{{.Subnet}}{{"\n"}}{{end}}' 2>/dev/null | grep -v '^$' | sort || true)"
+      _fallback_attempt=0
+      _fallback_ok=0
+      while [[ $_fallback_attempt -lt 20 ]]; do
+        _second_octet=$(( RANDOM % 256 ))
+        _subnet="10.${_second_octet}.0.0/16"
+        if echo "$_existing_subnets" | grep -qFx "$_subnet" 2>/dev/null; then
+          _fallback_attempt=$((_fallback_attempt + 1))
+          continue
+        fi
+        if docker network create --subnet="$_subnet" "$network_name" >/dev/null 2>"$err_file"; then
+          printf "${LOG_TAG}: [DEV] Created network %s with fallback subnet %s\n" "$network_name" "$_subnet"
+          _fallback_ok=1
+          break
+        fi
+        _fallback_attempt=$((_fallback_attempt + 1))
+      done
+      if [[ $_fallback_ok -eq 1 ]]; then
+        rm -f "$err_file"
+        return 0
+      fi
+      printf "${LOG_TAG}: [DEV] Fallback subnet allocation also failed after %d attempts\n" "$_fallback_attempt" >&2
+    fi
   fi
 
   printf "\n${LOG_TAG}: [ERROR] docker network create %s failed: %s\n" "$network_name" "$(tr '\n' ' ' < "$err_file")" >&2
@@ -740,7 +772,7 @@ for i in $(seq 1 $RUNS); do
     # Volume挂载本地代码并在容器内重新编译
     # --memory: 移除硬限制（与MBFuzzer对齐），批次执行3并行在62GB主机上安全
     # NOTE: 消融并行运行时6组×hetero broker fleet会引发kernel OOM，
-    id=$(docker run --cpus=1 \
+    id=$(docker run --cpus=1 --memory=8g --memory-swap=8g \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
       -e CHATAFL_HYPOTHESIS=1 \
@@ -755,9 +787,9 @@ for i in $(seq 1 $RUNS); do
         cp -f /tmp/chatafl-opt-src/*.c /tmp/chatafl-opt-src/*.h /tmp/chatafl-opt-src/Makefile /home/ubuntu/chatafl-opt/ 2>/dev/null || true && \
         cd /home/ubuntu/chatafl-opt && make clean && make -j\$(nproc) && \
         echo '[DEV] Compilation complete, MD5: '\$(md5sum grammar-hypothesis.c | cut -d' ' -f1) && \
-        cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
+        cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   elif [[ "$FUZZER" == "chatafl" ]]; then
-    id=$(docker run --cpus=1 \
+    id=$(docker run --cpus=1 --memory=8g --memory-swap=8g \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
       ${MQTT_FLAGS} \
@@ -768,9 +800,9 @@ for i in $(seq 1 $RUNS); do
         ${SUBJECT_COPY}\
         cp -f /tmp/chatafl-src/*.c /tmp/chatafl-src/*.h /home/ubuntu/chatafl/ && \
         cd /home/ubuntu/chatafl && make clean && make -j\$(nproc) && \
-        cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
+        cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   elif [[ "$FUZZER" == "chatafl-cl1" ]]; then
-    id=$(docker run --cpus=1 \
+    id=$(docker run --cpus=1 --memory=8g --memory-swap=8g \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
       ${MQTT_FLAGS} \
@@ -781,9 +813,9 @@ for i in $(seq 1 $RUNS); do
         ${SUBJECT_COPY}\
         cp -f /tmp/chatafl-cl1-src/*.c /tmp/chatafl-cl1-src/*.h /home/ubuntu/chatafl-cl1/ && \
         cd /home/ubuntu/chatafl-cl1 && make clean && make -j\$(nproc) && \
-        cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
+        cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   elif [[ "$FUZZER" == "chatafl-cl2" ]]; then
-    id=$(docker run --cpus=1 \
+    id=$(docker run --cpus=1 --memory=8g --memory-swap=8g \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
       ${MQTT_FLAGS} \
@@ -794,9 +826,9 @@ for i in $(seq 1 $RUNS); do
         ${SUBJECT_COPY}\
         cp -f /tmp/chatafl-cl2-src/*.c /tmp/chatafl-cl2-src/*.h /home/ubuntu/chatafl-cl2/ && \
         cd /home/ubuntu/chatafl-cl2 && make clean && make -j\$(nproc) && \
-        cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
+        cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   else
-    id=$(docker run --cpus=1 ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
+    id=$(docker run --cpus=1 --memory=8g --memory-swap=8g ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   fi
   require_container_id "$id" "fuzz container run #${i}"
   cids+=("$id")

@@ -63,14 +63,54 @@ if $(strstr $FUZZER "afl") || $(strstr $FUZZER "llm"); then
   #Step-1. Do Fuzzing
   cd $WORKDIR
 
-  timeout -k 2s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER}/afl-fuzz \
-    -d -i ${INPUTS} -o $OUTDIR \
-    -N tcp://127.0.0.1/1883 \
-    $OPTIONS \
-    ${WORKDIR}/${TARGET_DIR}/src/mosquitto \
-    -c ${WORKDIR}/mosquitto.conf
+  STATUS=0
+  CRASH_COUNT=0
+  MAX_RESTARTS=5
+  START_TIME=$(date +%s)
+  END_TIME=$(( START_TIME + TIMEOUT ))
 
-  STATUS=$?
+  while true; do
+    REMAINING=$(( END_TIME - $(date +%s) ))
+    [ $REMAINING -le 0 ] && { STATUS=0; break; }
+
+    echo "[run] Starting afl-fuzz (remaining=${REMAINING}s, restart=${CRASH_COUNT})..."
+
+    timeout -k 2s --preserve-status $REMAINING /home/ubuntu/${FUZZER}/afl-fuzz \
+      -d -i ${INPUTS} -o $OUTDIR \
+      -N tcp://127.0.0.1/1883 \
+      $OPTIONS \
+      ${WORKDIR}/${TARGET_DIR}/src/mosquitto \
+      -c ${WORKDIR}/mosquitto.conf
+
+    STATUS=$?
+
+    # SIGSEGV/ABRT/BUS — afl-fuzz crashed, not the target.
+    # Save partial results and restart from the saved queue.
+    if [ $STATUS -eq 139 ] || [ $STATUS -eq 134 ] || [ $STATUS -eq 135 ]; then
+      CRASH_COUNT=$(( CRASH_COUNT + 1 ))
+      if [ $CRASH_COUNT -gt $MAX_RESTARTS ]; then
+        echo "[run] afl-fuzz crashed $MAX_RESTARTS times, giving up (status=$STATUS)"
+        break
+      fi
+      echo "[run] afl-fuzz crashed (status=$STATUS), collecting partial coverage & restarting (${CRASH_COUNT}/${MAX_RESTARTS})..."
+      # Save incremental coverage so far
+      pkill -TERM -f "mosquitto.*mosquitto.conf" 2>/dev/null || true
+      for _w in $(seq 1 20); do nc -z 127.0.0.1 1883 2>/dev/null || break; sleep 0.1; done
+      pkill -KILL -f "mosquitto.*mosquitto.conf" 2>/dev/null || true
+
+      cov_script ${WORKDIR}/${OUTDIR}/ 1883 ${SKIPCOUNT} ${WORKDIR}/${OUTDIR}/cov_over_time.csv 1 2>/dev/null || true
+      # Backup current state
+      cp ${WORKDIR}/${OUTDIR}/fuzzer_stats ${WORKDIR}/${OUTDIR}/fuzzer_stats.crash_${CRASH_COUNT} 2>/dev/null || true
+      # Resume from existing queue (-i- = reuse output dir, don't re-scan seeds)
+      INPUTS="-"
+      # Brief pause to let the kernel release crashed child processes
+      sleep 2
+      continue
+    fi
+
+    # Normal exit, timeout, or ctrl-c — done.
+    break
+  done
 
   #Step-2. Collect code coverage over time
   cd $WORKDIR

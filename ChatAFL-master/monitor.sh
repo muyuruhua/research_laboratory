@@ -170,7 +170,7 @@ target_label() {
 get_ipsm_stats() {
     local cid="$1" dot_path="$2"
     local nodes edges
-    nodes=$(docker exec "$cid" grep -c '\[color=blue\]' "$dot_path" 2>/dev/null || echo "0")
+    nodes=$(docker exec "$cid" grep -c '\[color=' "$dot_path" 2>/dev/null || echo "0")
     edges=$(docker exec "$cid" grep -c '\->' "$dot_path" 2>/dev/null || echo "0")
     echo "${nodes} ${edges}"
 }

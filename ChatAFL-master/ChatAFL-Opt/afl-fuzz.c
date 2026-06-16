@@ -16265,20 +16265,25 @@ int main(int argc, char **argv)
   }
 
   /* P1-fix: If no server states were detected during dry run,
-   * fall back to non-state-aware mode instead of aborting.
-   * This can happen with protocols where all server responses
-   * produce identical state fingerprints (e.g. CONNACK-only).
-   * Must be checked BEFORE entering the state-aware while(1) block
-   * — setting state_aware_mode=0 inside the block is TOO LATE:
-   * the state-aware while(1) has already been entered and will
-   * dereference uninitialized IPSM state data → SIGSEGV. */
+   * start in non-state-aware mode BUT keep state_aware_mode=1.
+   * update_state_aware_variables() is still called on every
+   * interesting seed (via save_if_interesting), so state_ids_count
+   * can grow later when the fuzzer discovers seeds that trigger
+   * diverse broker responses (e.g. SUBSCRIBE+PUBLISH producing
+   * a forwarded PUBLISH response distinct from CONNACK).
+   *
+   * Once state_ids_count > 0, the loop transitions from
+   * non-state-aware to state-aware scheduling via a goto,
+   * enabling P6 deep-path boosts, stall detection, and
+   * IPSM state graph growth. */
   if (state_aware_mode && state_ids_count == 0)
   {
-    WARNF("No server states detected — disabling state-aware mode");
-    state_aware_mode = 0;
+    WARNF("No server states detected during calibration — "
+          "state-aware scheduling deferred until diverse responses appear");
   }
 
-  if (state_aware_mode)
+retry_state_aware:
+  if (state_aware_mode && state_ids_count > 0)
   {
 
     /* Fix 5b: Node stagnation detection.
@@ -16440,6 +16445,18 @@ int main(int argc, char **argv)
 
       if (stop_soon)
         break;
+
+      /* P1-fix: Dynamic state-aware bootstrap.  If a seed discovered
+       * during non-state-aware fuzzing triggers diverse broker
+       * responses (e.g. SUBACK + forwarded PUBLISH distinct from
+       * CONNACK), update_state_aware_variables() above will have
+       * grown state_ids_count > 0.  Transition to state-aware
+       * scheduling mid-run. */
+      if (unlikely(state_aware_mode && state_ids_count > 0)) {
+        OKF("State machine bootstrapped (%u states) — "
+            "enabling state-aware scheduling", state_ids_count);
+        goto retry_state_aware;
+      }
 
       queue_cur = queue_cur->next;
       current_entry++;
