@@ -1,0 +1,33 @@
+\BOOKMARK [1][-]{section.1}{Introduction}{}% 1
+\BOOKMARK [1][-]{section.2}{Background and Motivation}{}% 2
+\BOOKMARK [2][-]{subsection.2.1}{Coverage-Guided Fuzzing vs. Network Targets}{section.2}% 3
+\BOOKMARK [2][-]{subsection.2.2}{Stateful Greybox Fuzzing \(SGF\)}{section.2}% 4
+\BOOKMARK [2][-]{subsection.2.3}{LLM Integration into Protocol Fuzzing}{section.2}% 5
+\BOOKMARK [2][-]{subsection.2.4}{A Motivating Example: Semantic Drift}{section.2}% 6
+\BOOKMARK [1][-]{section.3}{Related Work}{}% 7
+\BOOKMARK [1][-]{section.4}{LoopFuzz Design}{}% 8
+\BOOKMARK [2][-]{subsection.4.1}{Grammar Hypothesis Loop}{section.4}% 9
+\BOOKMARK [2][-]{subsection.4.2}{Runtime Admission Controller}{section.4}% 10
+\BOOKMARK [3][-]{subsubsection.4.2.1}{Structured Output and Parseability}{subsection.4.2}% 11
+\BOOKMARK [3][-]{subsubsection.4.2.2}{Response-Grounded Acceptability}{subsection.4.2}% 12
+\BOOKMARK [3][-]{subsubsection.4.2.3}{State Reachability and Coverage Gain}{subsection.4.2}% 13
+\BOOKMARK [2][-]{subsection.4.3}{Counterexample-Guided Local Repair}{section.4}% 14
+\BOOKMARK [2][-]{subsection.4.4}{State-Aware Scheduling and Plateau-Triggered Assistance}{section.4}% 15
+\BOOKMARK [1][-]{section.5}{Experimental Evaluation Design}{}% 16
+\BOOKMARK [2][-]{subsection.5.1}{Experimental Setup}{section.5}% 17
+\BOOKMARK [2][-]{subsection.5.2}{Baselines, Metrics, and Statistical Protocol}{section.5}% 18
+\BOOKMARK [2][-]{subsection.5.3}{Policy-Ablation Design}{section.5}% 19
+\BOOKMARK [2][-]{subsection.5.4}{Trace Accounting and Cost Reporting}{section.5}% 20
+\BOOKMARK [1][-]{section.6}{Results}{}% 21
+\BOOKMARK [2][-]{subsection.6.1}{RQ1: Wall-Clock Branch-Coverage Accumulation}{section.6}% 22
+\BOOKMARK [2][-]{subsection.6.2}{RQ2: Response-Derived State Exploration}{section.6}% 23
+\BOOKMARK [2][-]{subsection.6.3}{RQ3: Robustness and Boundary Behavior}{section.6}% 24
+\BOOKMARK [2][-]{subsection.6.4}{Plateau Activation Analysis}{section.6}% 25
+\BOOKMARK [2][-]{subsection.6.5}{Bug and Crash Triage}{section.6}% 26
+\BOOKMARK [2][-]{subsection.6.6}{Auxiliary LightFTP Branch Surface}{section.6}% 27
+\BOOKMARK [2][-]{subsection.6.7}{Failure-Target Analysis: Forked-daapd}{section.6}% 28
+\BOOKMARK [2][-]{subsection.6.8}{Ablation: Boundary-Condition Analysis}{section.6}% 29
+\BOOKMARK [1][-]{section.7}{Discussion}{}% 30
+\BOOKMARK [2][-]{subsection.7.1}{When IPSM Edges Are Informative}{section.7}% 31
+\BOOKMARK [1][-]{section.8}{Threats to Validity}{}% 32
+\BOOKMARK [1][-]{section.9}{Conclusion}{}% 33
