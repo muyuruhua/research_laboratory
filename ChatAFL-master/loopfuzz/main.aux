@@ -37,9 +37,9 @@
 \citation{snapfuzz_high_throughput_fuzzing_2022}
 \@writefile{toc}{\contentsline {section}{\numberline {2}Background and Motivation}{2}{section.2}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Coverage-Guided Fuzzing vs. Network Targets}{2}{subsection.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Stateful Greybox Fuzzing (SGF)}{2}{subsection.2.2}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Illustrative, non-archived FTP semantic-drift pattern with bounded post-trial admission and counterexample evidence}}{2}{figure.1}\protected@file@percent }
 \newlabel{fig:motivation}{{1}{2}{Illustrative, non-archived FTP semantic-drift pattern with bounded post-trial admission and counterexample evidence}{figure.1}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Stateful Greybox Fuzzing (SGF)}{2}{subsection.2.2}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.3}LLM Integration into Protocol Fuzzing}{2}{subsection.2.3}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.4}A Motivating Example: Semantic Drift}{2}{subsection.2.4}\protected@file@percent }
 \citation{snipuzz_black_box_fuzzing_2021,token_level_fuzzing_2021,gramatron_effective_grammar_aware_2021,griffin_grammar_free_dbms_2022,no_grammar_no_problem_2023,likely_invariants_feedback_2021,mundofuzz_grammar_inference_2022}
@@ -58,13 +58,13 @@
 \newlabel{tab:taxonomy}{{1}{3}{Representative fuzzer taxonomy}{table.1}{}}
 \@writefile{toc}{\contentsline {section}{\numberline {3}Related Work}{3}{section.3}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {4}LoopFuzz Design}{3}{section.4}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces LoopFuzz closed-loop architecture with bounded policy proposals, plateau-gated repair, and execute-then-admit request validation}}{4}{figure.2}\protected@file@percent }
-\newlabel{fig:arch}{{2}{4}{LoopFuzz closed-loop architecture with bounded policy proposals, plateau-gated repair, and execute-then-admit request validation}{figure.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Grammar Hypothesis Loop}{4}{subsection.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Grammar Hypothesis Loop}{3}{subsection.4.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces LoopFuzz feedback-driven orchestration architecture with bounded policy proposals, plateau-gated repair, and execute-then-admit request validation}}{4}{figure.2}\protected@file@percent }
+\newlabel{fig:arch}{{2}{4}{LoopFuzz feedback-driven orchestration architecture with bounded policy proposals, plateau-gated repair, and execute-then-admit request validation}{figure.2}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Runtime Admission Controller}{4}{subsection.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.2.1}Structured Output and Parseability}{4}{subsubsection.4.2.1}\protected@file@percent }
 \@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Request-admission predicates and audit fields}}{5}{table.2}\protected@file@percent }
 \newlabel{tab:admission_predicates}{{2}{5}{Request-admission predicates and audit fields}{table.2}{}}
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.2.1}Structured Output and Parseability}{5}{subsubsection.4.2.1}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsubsection}{\numberline {4.2.2}Response-Grounded Acceptability}{5}{subsubsection.4.2.2}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsubsection}{\numberline {4.2.3}State Reachability and Coverage Gain}{5}{subsubsection.4.2.3}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Counterexample-Guided Local Repair}{5}{subsection.4.3}\protected@file@percent }
@@ -108,7 +108,6 @@
 \@writefile{toc}{\contentsline {section}{\numberline {6}Results}{12}{section.6}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {6.1}RQ1: Wall-Clock Branch-Coverage Accumulation}{12}{subsection.6.1}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {6.2}RQ2: Response-Derived State Exploration}{12}{subsection.6.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {6.3}RQ3: Robustness and Boundary Behavior}{12}{subsection.6.3}\protected@file@percent }
 \@writefile{lot}{\contentsline {table}{\numberline {15}{\ignorespaces Primary endpoint \texttt  {b\_abs} and \texttt  {edges}}}{13}{table.15}\protected@file@percent }
 \newlabel{tab:24h_results}{{15}{13}{Primary endpoint \texttt {b\_abs} and \texttt {edges}}{table.15}{}}
 \@writefile{lot}{\contentsline {table}{\numberline {16}{\ignorespaces LoopFuzz pairwise endpoint statistics}}{13}{table.16}\protected@file@percent }
@@ -119,22 +118,23 @@
 \newlabel{tab:branch_efficiency}{{18}{13}{Branch-coverage accumulation metrics}{table.18}{}}
 \@writefile{lot}{\contentsline {table}{\numberline {19}{\ignorespaces Endpoint robustness diagnostics}}{13}{table.19}\protected@file@percent }
 \newlabel{tab:robustness_cv}{{19}{13}{Endpoint robustness diagnostics}{table.19}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Post-initial ($t>0$) y-zoomed branch-coverage trajectories for the nine primary-result targets with LightFTP as a saturated artifact-boundary case}}{14}{figure.3}\protected@file@percent }
-\newlabel{fig:primary_branch_curve}{{3}{14}{Post-initial ($t>0$) y-zoomed branch-coverage trajectories for the nine primary-result targets with LightFTP as a saturated artifact-boundary case}{figure.3}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Post-initial ($t>0$) y-zoomed IPSM-edge exploration trajectories for the nine primary-result targets under the selected-run set from Table\nobreakspace  {}\ref  {tab:24h_results}}}{14}{figure.4}\protected@file@percent }
-\newlabel{fig:primary_edge_curve}{{4}{14}{Post-initial ($t>0$) y-zoomed IPSM-edge exploration trajectories for the nine primary-result targets under the selected-run set from Table~\ref {tab:24h_results}}{figure.4}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {20}{\ignorespaces Auxiliary NSFuzz branch diagnostics}}{15}{table.20}\protected@file@percent }
-\newlabel{tab:aux_branch_results}{{20}{15}{Auxiliary NSFuzz branch diagnostics}{table.20}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {21}{\ignorespaces Auxiliary state-exploration diagnostics}}{15}{table.21}\protected@file@percent }
-\newlabel{tab:aux_edge_artifact}{{21}{15}{Auxiliary state-exploration diagnostics}{table.21}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.3}RQ3: Robustness and Boundary Behavior}{13}{subsection.6.3}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Post-initial ($t>0$) y-zoomed branch-coverage trajectories for the nine primary-result targets with LightFTP as a saturated artifact-boundary case. Note: y-axes are zoomed to show trajectory differences; absolute scales are given in Table\nobreakspace  {}\ref  {tab:24h_results}.}}{14}{figure.3}\protected@file@percent }
+\newlabel{fig:primary_branch_curve}{{3}{14}{Post-initial ($t>0$) y-zoomed branch-coverage trajectories for the nine primary-result targets with LightFTP as a saturated artifact-boundary case. Note: y-axes are zoomed to show trajectory differences; absolute scales are given in Table~\ref {tab:24h_results}}{figure.3}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Post-initial ($t>0$) y-zoomed IPSM-edge exploration trajectories for the nine primary-result targets under the selected-run set from Table\nobreakspace  {}\ref  {tab:24h_results}. Note: y-axes are zoomed to show trajectory differences; absolute scales are given in Table\nobreakspace  {}\ref  {tab:24h_results}.}}{14}{figure.4}\protected@file@percent }
+\newlabel{fig:primary_edge_curve}{{4}{14}{Post-initial ($t>0$) y-zoomed IPSM-edge exploration trajectories for the nine primary-result targets under the selected-run set from Table~\ref {tab:24h_results}. Note: y-axes are zoomed to show trajectory differences; absolute scales are given in Table~\ref {tab:24h_results}}{figure.4}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {20}{\ignorespaces Auxiliary NSFuzz branch cross-artifact diagnostics (incomparable metric surfaces). \textbf  {Different instrumentation; NOT directly comparable to AFLNet-lineage \texttt  {b\_abs}; Sec.\nobreakspace  {}\ref  {sec:lightftp_anomaly}.}}}{15}{table.20}\protected@file@percent }
+\newlabel{tab:aux_branch_results}{{20}{15}{Auxiliary NSFuzz branch cross-artifact diagnostics (incomparable metric surfaces). \textbf {Different instrumentation; NOT directly comparable to AFLNet-lineage \texttt {b\_abs}; Sec.~\ref {sec:lightftp_anomaly}.}}{table.20}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {21}{\ignorespaces Auxiliary state-exploration cross-artifact diagnostics (incomparable metric surfaces). \textbf  {Different instrumentation; NOT directly comparable to AFLNet-lineage \texttt  {b\_abs}/\texttt  {edges}; Sec.\nobreakspace  {}\ref  {sec:lightftp_anomaly}.}}}{15}{table.21}\protected@file@percent }
+\newlabel{tab:aux_edge_artifact}{{21}{15}{Auxiliary state-exploration cross-artifact diagnostics (incomparable metric surfaces). \textbf {Different instrumentation; NOT directly comparable to AFLNet-lineage \texttt {b\_abs}/\texttt {edges}; Sec.~\ref {sec:lightftp_anomaly}.}}{table.21}{}}
 \@writefile{lot}{\contentsline {table}{\numberline {22}{\ignorespaces Mosquitto selected-summary diagnostics}}{15}{table.22}\protected@file@percent }
 \newlabel{tab:mqtt_artifact_integrity}{{22}{15}{Mosquitto selected-summary diagnostics}{table.22}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {6.4}Plateau Activation Analysis}{15}{subsection.6.4}\protected@file@percent }
 \newlabel{sec:plateau_activation_analysis}{{6.4}{15}{Plateau Activation Analysis}{subsection.6.4}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {6.5}Bug and Crash Triage}{15}{subsection.6.5}\protected@file@percent }
-\newlabel{sec:bug_crash_triage}{{6.5}{15}{Bug and Crash Triage}{subsection.6.5}{}}
 \@writefile{lot}{\contentsline {table}{\numberline {23}{\ignorespaces Plateau-activation strata}}{16}{table.23}\protected@file@percent }
 \newlabel{tab:plateau_activation_strata}{{23}{16}{Plateau-activation strata}{table.23}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.5}Bug and Crash Triage}{16}{subsection.6.5}\protected@file@percent }
+\newlabel{sec:bug_crash_triage}{{6.5}{16}{Bug and Crash Triage}{subsection.6.5}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {6.6}Auxiliary LightFTP Branch Surface}{16}{subsection.6.6}\protected@file@percent }
 \newlabel{sec:lightftp_anomaly}{{6.6}{16}{Auxiliary LightFTP Branch Surface}{subsection.6.6}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {6.7}Failure-Target Analysis: Forked-daapd}{16}{subsection.6.7}\protected@file@percent }
@@ -146,8 +146,8 @@
 \@writefile{toc}{\contentsline {section}{\numberline {7}Discussion}{17}{section.7}\protected@file@percent }
 \@writefile{lot}{\contentsline {table}{\numberline {25}{\ignorespaces Forked-daapd design-boundary audit}}{18}{table.25}\protected@file@percent }
 \newlabel{tab:forked_design_boundary}{{25}{18}{Forked-daapd design-boundary audit}{table.25}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {26}{\ignorespaces Policy-perturbation endpoint deltas}}{18}{table.26}\protected@file@percent }
-\newlabel{tab:ablation_results}{{26}{18}{Policy-perturbation endpoint deltas}{table.26}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {26}{\ignorespaces Policy-perturbation endpoint deltas. Full column values come from the separate ablation archive (Sec.\nobreakspace  {}5.3), not the primary Table\nobreakspace  {}\ref  {tab:24h_results} LoopFuzz cell, and may differ because run sets differ.}}{18}{table.26}\protected@file@percent }
+\newlabel{tab:ablation_results}{{26}{18}{Policy-perturbation endpoint deltas. Full column values come from the separate ablation archive (Sec.~5.3), not the primary Table~\ref {tab:24h_results} LoopFuzz cell, and may differ because run sets differ}{table.26}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {7.1}When IPSM Edges Are Informative}{18}{subsection.7.1}\protected@file@percent }
 \newlabel{sec:ipsm_edges_informative}{{7.1}{18}{When IPSM Edges Are Informative}{subsection.7.1}{}}
 \@writefile{lot}{\contentsline {table}{\numberline {27}{\ignorespaces Exploratory ablation inference}}{19}{table.27}\protected@file@percent }
