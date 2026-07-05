@@ -3842,12 +3842,34 @@ MP_SINGLE_FD_FALLBACK:
       }
     }
 
-    /* P1-fix: Non-blocking connect with bounded timeout.
-     * Covers the single-fd fallback path used when multi-party driver
-     * fails or during calibration warmup (total_execs <= 50).
-     * Without this, connect(2) blocks for kernel TCP timeout (20-120 s)
-     * if the local mosquitto fork-server child is hung. */
+    if (!protocol_name || strcasecmp(protocol_name, "MQTT") != 0)
     {
+      /* Keep the original AFLNet/ChatAFL retry semantics for text-protocol
+       * daemons. They often return ECONNREFUSED while the forked server is
+       * still reaching listen(2), and the bounded MQTT path below was too
+       * short for targets such as Exim and forked-daapd. */
+      if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+      {
+        for (n = 0; n < 1000; n++)
+        {
+          if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == 0)
+            break;
+          usleep(1000);
+        }
+        if (n == 1000)
+        {
+          close(sockfd);
+          adaptive_wait_usecs = server_wait_usecs;
+          server_warmed_up = 0;
+          return 1;
+        }
+      }
+    }
+    else
+    {
+      /* P1-fix: MQTT keeps a non-blocking connect with bounded timeout.
+       * Without this, connect(2) can block for kernel TCP timeout (20-120 s)
+       * if the local mosquitto fork-server child is hung. */
       int sfflags = fcntl(sockfd, F_GETFL, 0);
       if (sfflags < 0) { close(sockfd); return 1; }
       fcntl(sockfd, F_SETFL, sfflags | O_NONBLOCK);
@@ -16264,22 +16286,21 @@ int main(int argc, char **argv)
       goto stop_fuzzing;
   }
 
-  /* P1-fix: If no server states were detected during dry run,
-   * start in non-state-aware mode BUT keep state_aware_mode=1.
-   * update_state_aware_variables() is still called on every
-   * interesting seed (via save_if_interesting), so state_ids_count
-   * can grow later when the fuzzer discovers seeds that trigger
-   * diverse broker responses (e.g. SUBSCRIBE+PUBLISH producing
-   * a forwarded PUBLISH response distinct from CONNACK).
-   *
-   * Once state_ids_count > 0, the loop transitions from
-   * non-state-aware to state-aware scheduling via a goto,
-   * enabling P6 deep-path boosts, stall detection, and
-   * IPSM state graph growth. */
   if (state_aware_mode && state_ids_count == 0)
   {
-    WARNF("No server states detected during calibration — "
-          "state-aware scheduling deferred until diverse responses appear");
+    if (protocol_name && strcasecmp(protocol_name, "MQTT") == 0)
+    {
+      /* MQTT may need non-state-aware bootstrap to discover richer
+       * multi-message interactions. Text protocols should fail fast here:
+       * a zero-state dry run means the fuzzer did not capture server
+       * responses, so continuing would silently publish 0-node IPSM data. */
+      WARNF("No server states detected during calibration - "
+            "state-aware scheduling deferred until diverse responses appear");
+    }
+    else
+    {
+      PFATAL("No server states have been detected. Server responses are likely empty!");
+    }
   }
 
 retry_state_aware:
