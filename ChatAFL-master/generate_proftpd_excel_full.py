@@ -138,12 +138,12 @@ print("=" * 80)
 print("Collecting ALL individual findings from 10 fuzzing groups...")
 print("=" * 80)
 
-group_dirs = sorted(glob.glob(os.path.join(EXTRACT_DIR, "out-proftpd-chatafl_opt_*")))
+group_dirs = sorted(glob.glob(os.path.join(EXTRACT_DIR, "out-proftpd-loopfuzz_*")))
 all_rows = []  # Each row: (is_crash, group, fname, fsize, category, severity, desc, cve, msgs, ...)
 
 for gd in group_dirs:
     group_name = os.path.basename(gd)
-    inner = os.path.join(gd, "out-proftpd-chatafl_opt")
+    inner = os.path.join(gd, "out-proftpd-loopfuzz")
     tar_name = group_name + ".tar.gz"
 
     # ── Crashes ──
@@ -241,7 +241,7 @@ ASAN检测: 544字节堆区域offset 104处, READ of size 8 (已释放后读取)
                     'cve': cve_pat,
                     'seed': '\n'.join(msgs[:20]) if msgs else f"[Request {req_size} bytes, {len(msgs)} messages]",
                     'version': TARGET_VERSION,
-                    'trigger': f"ChatAFL-Opt协议Oracle在fuzzing中检测到安全属性违规。Category: {cat_code}, Severity: {finding['severity']}, Request Size: {req_size} bytes, Request Index: {finding['request_index']}, Pattern Hash: {finding['pattern_hash']}, 种子文件: {f} ({fsize} bytes), {len(msgs)}条消息。AFLNet标记为replayable(可复现)。",
+                    'trigger': f"LoopFuzz协议Oracle在fuzzing中检测到安全属性违规。Category: {cat_code}, Severity: {finding['severity']}, Request Size: {req_size} bytes, Request Index: {finding['request_index']}, Pattern Hash: {finding['pattern_hash']}, 种子文件: {f} ({fsize} bytes), {len(msgs)}条消息。AFLNet标记为replayable(可复现)。",
                     'desc': f"""【漏洞说明】{cat_name} ({cwe})
 Oracle检测: {finding['description']}
 {desc_map.get(cat_code, finding['description'])}
@@ -250,7 +250,7 @@ Request数据大小: {req_size} bytes, {len(msgs)}条FTP消息
 发现编号: Oracle Finding #{fi+1}, Request Index={finding['request_index']}
 独立复现: ⚠️ 依赖fuzzer内部环境, standalone replay受session cleanup UAF影响""",
                     'is_crash': f"否 — 逻辑漏洞/协议层安全缺陷 ({cat_name}, 未触发服务器崩溃)",
-                    'why_vuln': f"1. ChatAFL-Opt协议Oracle在fuzzing中检测到FTP协议安全不变性被破坏。\n2. 违反FTP RFC 959/2577协议安全规范。\n3. {cat_name}属于{cwe}漏洞类型。\n4. 10个独立fuzzing组确认该安全属性违规(replayable标记)。\n5. Oracle验证: 服务器响应码<400表示接受了违规请求。\n6. 种子文件: {f}, 消息数: {len(msgs)}, Request大小: {req_size}字节。\n7. 该类型漏洞可被远程攻击者利用, 无需认证即可触发。",
+                    'why_vuln': f"1. LoopFuzz协议Oracle在fuzzing中检测到FTP协议安全不变性被破坏。\n2. 违反FTP RFC 959/2577协议安全规范。\n3. {cat_name}属于{cwe}漏洞类型。\n4. 10个独立fuzzing组确认该安全属性违规(replayable标记)。\n5. Oracle验证: 服务器响应码<400表示接受了违规请求。\n6. 种子文件: {f}, 消息数: {len(msgs)}, Request大小: {req_size}字节。\n7. 该类型漏洞可被远程攻击者利用, 无需认证即可触发。",
                 })
 
 print(f"Collected: {len(all_rows)} total rows")
@@ -308,7 +308,7 @@ for row_idx, r in enumerate(all_rows, 2):
     else:
         repro = f"""【逻辑漏洞复现过程】
 1. 实验来源: {r['source']}
-2. ChatAFL-Opt协议Oracle在fuzzing全过程中检测到FTP安全属性违规
+2. LoopFuzz协议Oracle在fuzzing全过程中检测到FTP安全属性违规
 3. AFLNet标记为replayable(可复现)
 4. 独立重放验证: 通过分析种子中的REQUEST DATA确认协议层违规
 5. 违规确认: Oracle分析确认FTP命令违反了协议安全不变性
@@ -380,10 +380,10 @@ stats_data = [
     ['【实验概况】', '', ''],
     ['目标协议', 'FTP (Port 21)', 'ProFTPD FTP服务器'],
     ['目标版本', TARGET_VERSION, f'Docker: {TARGET_DOCKER}'],
-    ['Fuzzing工具', 'ChatAFL-Opt (GPT-4o增强)', '10组独立运行, 每组约24小时'],
+    ['Fuzzing工具', 'LoopFuzz (GPT-4o增强)', '10组独立运行, 每组约24小时'],
     ['Fuzzing总时长', '约240小时(10组×~24小时)', '2026-05-30 02:47 至 2026-05-31 17:28'],
     ['实验根目录', EXPERIMENT_RESULTS, ''],
-    ['Tar.gz文件数', '10个', 'out-proftpd-chatafl_opt_1.tar.gz ~ opt_10.tar.gz'],
+    ['Tar.gz文件数', '10个', 'out-proftpd-loopfuzz_1.tar.gz ~ opt_10.tar.gz'],
     ['', '', ''],
     ['【Crash漏洞统计】', '', ''],
     ['崩溃种子总数', str(crash_count), f'来自{len(crash_groups)}个tar.gz的replayable-crashes目录'],
@@ -410,7 +410,7 @@ stats_data.append(['【各Tar.gz完整分布】', '', ''])
 
 for gd in sorted(group_dirs):
     gname = os.path.basename(gd) + ".tar.gz"
-    inner = os.path.join(gd, "out-proftpd-chatafl_opt")
+    inner = os.path.join(gd, "out-proftpd-loopfuzz")
     c_cnt = len([f for f in os.listdir(os.path.join(inner, "replayable-crashes")) if f != "README.txt"]) if os.path.isdir(os.path.join(inner, "replayable-crashes")) else 0
     v_cnt = len(os.listdir(os.path.join(inner, "replayable-violations"))) if os.path.isdir(os.path.join(inner, "replayable-violations")) else 0
     stats_data.append([gname, f"{c_cnt} crashes + {v_cnt} violation seeds", ''])
@@ -556,7 +556,7 @@ bash replay_crash_universal.sh proftpd <seed_path> [output_dir]
 
 # 示例:
 bash replay_crash_universal.sh proftpd \\
-  /tmp/proftpd_analysis/out-proftpd-chatafl_opt_1/out-proftpd-chatafl_opt/\\
+  /tmp/proftpd_analysis/out-proftpd-loopfuzz_1/out-proftpd-loopfuzz/\\
   replayable-crashes/id:000000,sig:06,src:000000+000598,op:havoc_explore,rep:32 \\
   /tmp/crash_output/
 
@@ -565,7 +565,7 @@ bash replay_crash_universal.sh proftpd \\
 # RESULT: CRASH CONFIRMED — 确认内存破坏漏洞
 
 # 批量复现所有62个种子:
-for seed in /tmp/proftpd_analysis/out-proftpd-chatafl_opt_*/out-proftpd-chatafl_opt/\\
+for seed in /tmp/proftpd_analysis/out-proftpd-loopfuzz_*/out-proftpd-loopfuzz/\\
 replayable-crashes/id:*; do
   [ -f "$seed" ] || continue
   bash replay_crash_universal.sh proftpd "$seed" \\
@@ -601,21 +601,21 @@ CRLF注入(CWE-93)等请求数据分析类型不受影响。''',
 - 建议先修复UAF再进行完整的逻辑漏洞独立重放''',
         '''# 使用方法 — 分析单个violation报告:
 bash replay_logical_vuln.sh proftpd \\
-  /tmp/proftpd_analysis/out-proftpd-chatafl_opt_1/out-proftpd-chatafl_opt/\\
+  /tmp/proftpd_analysis/out-proftpd-loopfuzz_1/out-proftpd-loopfuzz/\\
   replayable-violations/id:000008,sev:5,cat:0008 \\
   /tmp/logical_output/
 
 # 使用方法 — 分析整个violations目录:
 bash replay_logical_vuln.sh proftpd \\
-  /tmp/proftpd_analysis/out-proftpd-chatafl_opt_1/out-proftpd-chatafl_opt/\\
+  /tmp/proftpd_analysis/out-proftpd-loopfuzz_1/out-proftpd-loopfuzz/\\
   replayable-violations/ \\
   /tmp/logical_all_output/
 
 # 批量分析所有10组的violations:
-for d in /tmp/proftpd_analysis/out-proftpd-chatafl_opt_*; do
+for d in /tmp/proftpd_analysis/out-proftpd-loopfuzz_*; do
   gname=$(basename "$d")
   bash replay_logical_vuln.sh proftpd \\
-    "$d/out-proftpd-chatafl_opt/replayable-violations/" \\
+    "$d/out-proftpd-loopfuzz/replayable-violations/" \\
     "/tmp/batch_logical/$gname" 2>&1 | grep -E "Summary|Confirmed|Total"
 done'''
     ],
@@ -646,7 +646,7 @@ for col, h in enumerate(dist_headers, 1):
 row_idx = 2
 for gd in sorted(group_dirs):
     gname = os.path.basename(gd) + ".tar.gz"
-    inner = os.path.join(gd, "out-proftpd-chatafl_opt")
+    inner = os.path.join(gd, "out-proftpd-loopfuzz")
 
     c_dir = os.path.join(inner, "replayable-crashes")
     crash_files = sorted([f for f in os.listdir(c_dir) if f != "README.txt"]) if os.path.isdir(c_dir) else []
@@ -675,8 +675,8 @@ for gd in sorted(group_dirs):
     row_idx += 1
 
 # Totals row
-total_crash_count = sum(len([f for f in os.listdir(os.path.join(gd, "out-proftpd-chatafl_opt", "replayable-crashes")) if f != "README.txt"]) for gd in group_dirs if os.path.isdir(os.path.join(gd, "out-proftpd-chatafl_opt", "replayable-crashes")))
-total_viol_file_count = sum(len(os.listdir(os.path.join(gd, "out-proftpd-chatafl_opt", "replayable-violations"))) for gd in group_dirs if os.path.isdir(os.path.join(gd, "out-proftpd-chatafl_opt", "replayable-violations")))
+total_crash_count = sum(len([f for f in os.listdir(os.path.join(gd, "out-proftpd-loopfuzz", "replayable-crashes")) if f != "README.txt"]) for gd in group_dirs if os.path.isdir(os.path.join(gd, "out-proftpd-loopfuzz", "replayable-crashes")))
+total_viol_file_count = sum(len(os.listdir(os.path.join(gd, "out-proftpd-loopfuzz", "replayable-violations"))) for gd in group_dirs if os.path.isdir(os.path.join(gd, "out-proftpd-loopfuzz", "replayable-violations")))
 total_finding_count = sum(1 for r in all_rows if r['type']=='violation')
 
 values = ['【总计】', str(total_crash_count), str(total_viol_file_count), str(total_finding_count), '', '']

@@ -9,9 +9,9 @@ RECD = os.path.join(ROOT, 'recovered_data')
 # Lists provided by the user (mapped to fuzzer types)
 aflnet = ['1019471e1cae','18257ee3838d','20489d80f9f1','7828601b63f3','1a7c417a0833','61d20769891b','95c22519cb26','a94a828981fe','f34a3389827f','f0422f1b690a']
 chatafl = ['7ede83fe42f1','59385db6025b','fef1b16747cc','89f429f03e53','8705f3cbebad','11fd00130f76','a12eddfcf886','2029826af9b6']
-chatafl_opt = ['ed8fe8593deb','e38c6ffd6384','ca656cf4fb31','f08ff16051e2','467c0c9473a8','5cd96a3ce01c','42a24abf9fba','88f97531726c','26391854b422','389daf0811fe']
+loopfuzz = ['ed8fe8593deb','e38c6ffd6384','ca656cf4fb31','f08ff16051e2','467c0c9473a8','5cd96a3ce01c','42a24abf9fba','88f97531726c','26391854b422','389daf0811fe']
 
-ALL = {'aflnet': aflnet, 'chatafl': chatafl, 'chatafl-opt': chatafl_opt}
+ALL = {'aflnet': aflnet, 'chatafl': chatafl, 'loopfuzz': loopfuzz}
 
 OUT_DIR = os.path.join(ROOT, 'benchmark', f'recovered-containers-{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}')
 os.makedirs(OUT_DIR, exist_ok=True)

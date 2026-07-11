@@ -45,8 +45,13 @@ strstr() {
   return 0
 }
 
-#Commands for afl-based fuzzers (e.g., aflnet, chatafl, chatafl-opt)
-if $(strstr $FUZZER "afl") || $(strstr $FUZZER "llm"); then
+FUZZER_DIR="$FUZZER"
+if [ "$FUZZER" = "loopfuzz" ]; then
+  FUZZER_DIR="loopfuzz"
+fi
+
+#Commands for afl-based fuzzers (e.g., aflnet, chatafl, loopfuzz)
+if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" ]; then
 
   # Run fuzzer-specific commands (if any)
   if [ -e ${WORKDIR}/run-${FUZZER} ]; then
@@ -75,7 +80,7 @@ if $(strstr $FUZZER "afl") || $(strstr $FUZZER "llm"); then
 
     echo "[run] Starting afl-fuzz (remaining=${REMAINING}s, restart=${CRASH_COUNT})..."
 
-    timeout -k 2s --preserve-status $REMAINING /home/ubuntu/${FUZZER}/afl-fuzz \
+    timeout -k 2s --preserve-status $REMAINING /home/ubuntu/${FUZZER_DIR}/afl-fuzz \
       -d -i ${INPUTS} -o $OUTDIR \
       -N tcp://127.0.0.1/1883 \
       $OPTIONS \

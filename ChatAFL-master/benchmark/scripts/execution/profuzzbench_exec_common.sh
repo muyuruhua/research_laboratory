@@ -242,7 +242,7 @@ cids=()
 archive_names=()
 watchdog_pids=()
 
-# Log tag: FUZZER(target) e.g. CHATAFL-OPT(bftpd)
+# Log tag: FUZZER(target) e.g. loopfuzz(bftpd)
 LOG_TAG="${FUZZER^^}(${DOCIMAGE})"
 
 init_result_manifest
@@ -327,13 +327,13 @@ recreate_named_network() {
   fi
 
   if grep -q 'available, non-overlapping IPv4 address pool' "$err_file" 2>/dev/null; then
-    printf "\n${LOG_TAG}: Docker bridge address pool exhausted, pruning unused chatafl-mqtt-* networks...\n" >&2
+    printf "\n${LOG_TAG}: Docker bridge address pool exhausted, pruning unused loopfuzz-mqtt-* networks...\n" >&2
     while IFS= read -r stale_network; do
       [[ -n "$stale_network" ]] || continue
       if [[ "$(docker network inspect --format '{{len .Containers}}' "$stale_network" 2>/dev/null || echo 1)" == "0" ]]; then
         docker network rm "$stale_network" >/dev/null 2>&1 || true
       fi
-    done < <(docker network ls --format '{{.Name}}' | grep '^chatafl-mqtt-' || true)
+    done < <(docker network ls --format '{{.Name}}' | grep '^loopfuzz-mqtt-' || true)
 
     if docker network create "$network_name" >/dev/null 2>"$err_file"; then
       rm -f "$err_file"
@@ -422,7 +422,7 @@ HETERO_BROKER_SPECS=""
 declare -a HETERO_CONTAINERS=()
 
 if [[ -z "${CHATAFL_MQTT_BROKERS:-}" ]] && is_mqtt_target "$DOCIMAGE"; then
-  MQTT_AUTO_NETWORK="$(build_unique_docker_name "chatafl-mqtt-${DOCIMAGE}-${FUZZER}-${TIMESTAMP:-manual}-${$}")"
+  MQTT_AUTO_NETWORK="$(build_unique_docker_name "loopfuzz-mqtt-${DOCIMAGE}-${FUZZER}-${TIMESTAMP:-manual}-${$}")"
   if ! recreate_named_network "$MQTT_AUTO_NETWORK"; then
     echo "[ERROR] Failed to create MQTT auto network: ${MQTT_AUTO_NETWORK}"
     exit 1
@@ -526,7 +526,7 @@ for i in $(seq 1 $RUNS); do
     container_name="${MQTT_AUTO_CONTAINER_NAMES[$run_index]}"
   fi
 
-  # Build ablation env-var flags for chatafl-opt containers.
+  # Build ablation env-var flags for loopfuzz containers.
   # If the host exports CHATAFL_NO_REFINEMENT / NO_FRONTIER / NO_ADAPTIVE
   # / NO_STATE_PROMPT / ABLATION_THRESHOLD / CHATAFL_HYPOTHESIS,
   # they are forwarded into the container via -e.
@@ -553,8 +553,8 @@ for i in $(seq 1 $RUNS); do
     MQTT_FLAGS=" -e CHATAFL_MQTT_BROKERS=${CHATAFL_MQTT_BROKERS}"
   fi
 
-  # Enable Grammar Hypothesis system only for chatafl-opt
-  if [[ "$FUZZER" == "chatafl-opt" ]]; then
+  # Enable Grammar Hypothesis system only for loopfuzz
+  if [[ "$FUZZER" == "loopfuzz" ]]; then
     id=$(docker run --cpus=1 --memory=8g --memory-swap=8g ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" -e CHATAFL_HYPOTHESIS=1 ${ABLATION_FLAGS} ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} -d --init $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   else
     id=$(docker run --cpus=1 --memory=8g --memory-swap=8g ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} -d --init $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")

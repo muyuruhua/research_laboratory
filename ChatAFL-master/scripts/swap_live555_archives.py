@@ -8,8 +8,8 @@ import shutil
 
 
 BASE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'benchmark'))
-SRC1 = os.path.join(BASE, 'results-live555_Mar-16_23-10-02', 'out-live555-chatafl_opt_3.tar.gz')
-SRC2 = os.path.join(BASE, 'results-live555_Mar-17_18-31-54', 'out-live555-chatafl_opt_1.tar.gz')
+SRC1 = os.path.join(BASE, 'results-live555_Mar-16_23-10-02', 'out-live555-loopfuzz_3.tar.gz')
+SRC2 = os.path.join(BASE, 'results-live555_Mar-17_18-31-54', 'out-live555-loopfuzz_1.tar.gz')
 
 
 def extract_archive(archive_path: str, target_dir: str) -> None:

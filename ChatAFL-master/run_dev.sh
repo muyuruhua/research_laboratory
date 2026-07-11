@@ -19,7 +19,8 @@ export PROJECT_ROOT="$PFBENCH/.."  # ChatAFL-master根目录
 if [[ "x$NUM_CONTAINERS" == "x" ]] || [[ "x$TIMEOUT" == "x" ]] || [[ "x$TARGET_LIST" == "x" ]] || [[ "x$FUZZER_LIST" == "x" ]]
 then
     echo "Usage: $0 NUM_CONTAINERS TIMEOUT TARGET FUZZER"
-    echo "Example: $0 1 30 lightftp chatafl-opt"
+    echo "Example: $0 1 30 lightftp loopfuzz"
+    echo "Known fuzzers: aflnet,chatafl,chatafl-cl1,chatafl-cl2,loopfuzz,all"
     echo ""
     echo "Volume挂载开发模式："
     echo "  - 本地代码实时挂载到容器"
@@ -28,9 +29,55 @@ then
     echo ""
     echo "LLM API key 设置："
     echo "  export KEY=\"sk-...\""
-    echo "  ./run_dev.sh 1 20 mosquitto-v2.0.18 chatafl-opt"
+    echo "  ./run_dev.sh 1 20 mosquitto-v2.0.18 loopfuzz"
     exit 1
 fi
+
+normalize_fuzzer_list() {
+    local raw="$1" item canon out=""
+    for item in $(echo "$raw" | tr ',' ' '); do
+        case "$item" in
+            loopfuzz|LoopFuzz) canon="loopfuzz" ;;
+            aflnet|chatafl|chatafl-cl1|chatafl-cl2|all) canon="$item" ;;
+            "")
+                continue
+                ;;
+            *)
+                echo "[ERROR] Unknown fuzzer: $item" >&2
+                echo "[ERROR] Known fuzzers: aflnet,chatafl,chatafl-cl1,chatafl-cl2,loopfuzz,all" >&2
+                exit 2
+                ;;
+        esac
+        out="${out:+$out,}$canon"
+    done
+    if [[ -z "$out" ]]; then
+        echo "[ERROR] Empty fuzzer list" >&2
+        exit 2
+    fi
+    echo "$out"
+}
+
+validate_target_list() {
+    local raw="$1" item
+    for item in $(echo "$raw" | tr ',' ' '); do
+        case "$item" in
+            lightftp|bftpd|proftpd|pure-ftpd|exim|live555|kamailio|forked-daapd|lighttpd1|mosquitto|mosquitto-v2.0.18|mosquitto-v2.1.2|all)
+                ;;
+            "")
+                continue
+                ;;
+            *)
+                echo "[ERROR] Unknown target: $item" >&2
+                echo "[ERROR] Known targets: lightftp,bftpd,proftpd,pure-ftpd,exim,live555,kamailio,forked-daapd,lighttpd1,mosquitto,mosquitto-v2.0.18,mosquitto-v2.1.2,all" >&2
+                exit 2
+                ;;
+        esac
+    done
+}
+
+validate_target_list "$TARGET_LIST"
+FUZZER_LIST="$(normalize_fuzzer_list "$FUZZER_LIST")" || exit $?
+export FUZZER_LIST
 
 # ── LLM API Key 验证 ──────────────────────────────────────────────
 if [[ -z "${KEY}" ]]; then
@@ -39,7 +86,7 @@ if [[ -z "${KEY}" ]]; then
     echo "║  ⚠  WARNING: KEY 环境变量为空！                             ║"
     echo "║                                                            ║"
     echo "║  LLM 功能（语法假设、种子富集、高原突破）将全部失效。        ║"
-    echo "║  ChatAFL-Opt 将回退到纯硬编码模式运行。                     ║"
+    echo "║  LoopFuzz 将回退到纯硬编码模式运行。                     ║"
     echo "║                                                            ║"
     echo "║  设置方法:  export KEY=\"sk-...\"                            ║"
     echo "╚══════════════════════════════════════════════════════════════╝"

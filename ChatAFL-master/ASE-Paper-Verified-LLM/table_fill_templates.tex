@@ -13,7 +13,7 @@
 \begin{tabular}{l|ccc|ccc}
 \toprule
 \multirow{2}{*}{Target} & \multicolumn{3}{c|}{Code Edge Coverage} & \multicolumn{3}{c}{State Transitions (Edges)} \\
-& AFLNet & ChatAFL & ChatAFL-Opt & AFLNet & ChatAFL & ChatAFL-Opt \\
+& AFLNet & ChatAFL & LoopFuzz & AFLNet & ChatAFL & LoopFuzz \\
 \midrule
 Forked-daapd & $A1 \pm A2$ & $A3 \pm A4$ & $\mathbf{A5 \pm A6}^{A7}$ & $A8 \pm A9$ & $A10 \pm A11$ & $\mathbf{A12 \pm A13}^{A14}$ \\
 Mosquitto    & $B1 \pm B2$ & $B3 \pm B4$ & $\mathbf{B5 \pm B6}^{B7}$ & $B8 \pm B9$ & $B10 \pm B11$ & $\mathbf{B12 \pm B13}^{B14}$ \\
@@ -21,7 +21,7 @@ Exim         & $C1 \pm C2$ & $C3 \pm C4$ & $\mathbf{C5 \pm C6}^{C7}$ & $C8 \pm C
 Live555      & $D1 \pm D2$ & $D3 \pm D4$ & $\mathbf{D5 \pm D6}^{D7}$ & $D8 \pm D9$ & $D10 \pm D11$ & $\mathbf{D12 \pm D13}^{D14}$ \\
 Pure-FTPD    & $E1 \pm E2$ & $E3 \pm E4$ & $\mathbf{E5 \pm E6}^{E7}$ & $E8 \pm E9$ & $E10 \pm E11$ & $\mathbf{E12 \pm E13}^{E14}$ \\
 \bottomrule
-\multicolumn{7}{l}{\footnotesize Use $^*$ only where the ChatAFL-Opt mean is significantly higher than both baselines at $p < 0.05$. Leave blank otherwise.} \\
+\multicolumn{7}{l}{\footnotesize Use $^*$ only where the LoopFuzz mean is significantly higher than both baselines at $p < 0.05$. Leave blank otherwise.} \\
 \end{tabular}
 \normalsize
 \label{tab:24h_results}
@@ -30,7 +30,7 @@ Pure-FTPD    & $E1 \pm E2$ & $E3 \pm E4$ & $\mathbf{E5 \pm E6}^{E7}$ & $E8 \pm E
 % Placeholder guide:
 % A1/A2 = Forked-daapd AFLNet coverage mean/sd
 % A3/A4 = Forked-daapd ChatAFL coverage mean/sd
-% A5/A6 = Forked-daapd ChatAFL-Opt coverage mean/sd
+% A5/A6 = Forked-daapd LoopFuzz coverage mean/sd
 % A7    = * or blank
 % A8-A14 follow the same pattern for state transitions
 % Repeat the same logic for B*, C*, D*, E*.
@@ -40,7 +40,7 @@ Pure-FTPD    & $E1 \pm E2$ & $E3 \pm E4$ & $\mathbf{E5 \pm E6}^{E7}$ & $E8 \pm E
 % =========================================================
 \begin{table}[htbp]
 \centering
-\caption{Ablation results over five 24-hour trials. Each row reports the mean drop relative to the full ChatAFL-Opt configuration, isolating one disabled control mechanism at a time.}
+\caption{Ablation results over five 24-hour trials. Each row reports the mean drop relative to the full LoopFuzz configuration, isolating one disabled control mechanism at a time.}
 \label{tab:ablation}
 \small
 \begin{tabular}{l|cc|cc}
@@ -48,7 +48,7 @@ Pure-FTPD    & $E1 \pm E2$ & $E3 \pm E4$ & $\mathbf{E5 \pm E6}^{E7}$ & $E8 \pm E
 \multirow{2}{*}{Configuration} & \multicolumn{2}{c|}{Coverage Drop} & \multicolumn{2}{c}{State Drop} \\
 & Avg $\Delta$ & (\%) & Avg $\Delta$ & (\%) \\
 \midrule
-Full ChatAFL-Opt      & --- & --- & --- & --- \\
+Full LoopFuzz      & --- & --- & --- & --- \\
 - Frontier Weighting  & F1  & F2  & F3  & F4  \\
 - Adaptive Plateaus   & G1  & G2  & G3  & G4  \\
 - Hypothesis Refinement & H1 & H2 & H3 & H4 \\

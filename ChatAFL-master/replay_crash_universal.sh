@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==============================================================================
-# ChatAFL-Opt Universal Crash Replay Tool — Final Fixed Version
+# LoopFuzz Universal Crash Replay Tool — Final Fixed Version
 # Open/Closed: config is data-driven; add target = add row in DB below
 # ==============================================================================
 set -euo pipefail
@@ -161,7 +161,7 @@ for rep in \$(seq 1 128); do
     fi
 
     # --- Replay the seed ---
-    /home/ubuntu/chatafl-opt/aflnet-replay /tmp/crash_seed ${PROTO[$TARGET]} ${PORT[$TARGET]} 0 2>&1 || true
+    /home/ubuntu/loopfuzz/aflnet-replay /tmp/crash_seed ${PROTO[$TARGET]} ${PORT[$TARGET]} 0 2>&1 || true
 
     # --- Check if server crashed ---
     if ! kill -0 \$SPID 2>/dev/null; then

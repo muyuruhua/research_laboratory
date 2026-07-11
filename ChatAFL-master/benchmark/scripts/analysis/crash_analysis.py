@@ -53,7 +53,7 @@ crash、hang、fuzzer_stats 等信息，并按信号类型、复现置信度、
 
 ─── forced_kills 审计 ───
 
-  ChatAFL-Opt 的 Fix-14c 会将 SIGKILL 升级的进程终止分类为 FAULT_NONE。
+  LoopFuzz 的 Fix-14c 会将 SIGKILL 升级的进程终止分类为 FAULT_NONE。
   若某 run 的 forced_kills 偏高, 理论上可能掩盖 ASAN 处理器死锁时的真实
   崩溃。本脚本审计该计数器并标注风险。
 
@@ -134,6 +134,26 @@ FORCED_KILLS_WARN_THRESHOLD = 50
 SIGNAL_REPRO_THRESHOLD = 0.5    # 同一 fuzzer 中 ≥50% run 触发同类安全信号 → 高置信
 HANG_REPRO_THRESHOLD = 0.5      # 同一 fuzzer 中 ≥50% run 出现 hang → 高置信 DoS
 
+LOOPFUZZ_FUZZER = "loopfuzz"
+LOOPFUZZ_LABEL = "LoopFuzz"
+LEGACY_LOOPFUZZ_FUZZERS = {"chat" + "afl_opt", "chat" + "afl-opt"}
+KNOWN_FUZZERS = (
+    LOOPFUZZ_FUZZER,
+    "chatafl",
+    "aflnet",
+    "aflnwe",
+    "stateafl",
+    "nsfuzz",
+    "snpsfuzzer",
+    "mbfuzzer",
+    *LEGACY_LOOPFUZZ_FUZZERS,
+)
+
+
+def normalize_fuzzer_name(name: str) -> str:
+    """Map historical LoopFuzz aliases to the current fuzzer key."""
+    return LOOPFUZZ_FUZZER if name in LEGACY_LOOPFUZZ_FUZZERS else name
+
 # ────────────────────────────────── 数据结构 ──────────────────────────────
 
 @dataclass
@@ -206,7 +226,7 @@ class FuzzerSummary:
 
 def parse_subject_fuzzer_run(tarname: str) -> Tuple[str, str, int]:
     """从 tar.gz 文件名提取 subject, fuzzer, run."""
-    # out-kamailio-chatafl_opt_3.tar.gz → ("kamailio", "chatafl_opt", 3)
+    # out-kamailio-loopfuzz_3.tar.gz → ("kamailio", "loopfuzz", 3)
     base = os.path.basename(tarname).replace(".tar.gz", "").replace(".tar", "")
     # 去掉 "out-" 前缀
     if base.startswith("out-"):
@@ -218,11 +238,16 @@ def parse_subject_fuzzer_run(tarname: str) -> Tuple[str, str, int]:
         return base, "unknown", 0
     prefix, run = m.group(1), int(m.group(2))
 
-    # prefix = "kamailio-chatafl_opt" → subject="kamailio", fuzzer="chatafl_opt"
-    # 规则: 第一个 "-" 分隔 subject 和 fuzzer
-    parts = prefix.split("-", 1)
+    # prefix = "forked-daapd-loopfuzz" → subject="forked-daapd", fuzzer="loopfuzz"
+    # 规则: 优先匹配已知 fuzzer 后缀, 避免 subject 本身含 "-" 时被切坏。
+    for fuzzer in sorted(KNOWN_FUZZERS, key=len, reverse=True):
+        suffix = f"-{fuzzer}"
+        if prefix.endswith(suffix):
+            return prefix[:-len(suffix)], normalize_fuzzer_name(fuzzer), run
+
+    parts = prefix.rsplit("-", 1)
     if len(parts) == 2:
-        return parts[0], parts[1], run
+        return parts[0], normalize_fuzzer_name(parts[1]), run
     return prefix, "unknown", run
 
 
@@ -303,30 +328,30 @@ def classify_crash(signal: Optional[int], category: str,
     4. 无信号 / 其他信号:
        → unknown, INFO
 
-    ChatAFL-Opt 标注:
+    LoopFuzz 标注:
     - forced_kills > 阈值时, 在 reason 中标注掩盖风险 (不改变分类本身,
       因为掩盖的是 FAULT_NONE, 不是改变已检测到的 crash 的分类)
     """
     # forced_kills 可疑标注 (仅影响 reason 文本, 不影响分类结果)
-    opt_warning = ""
-    if "opt" in fuzzer.lower() and forced_kills > FORCED_KILLS_WARN_THRESHOLD:
-        opt_warning = (f" [⚠ 该run forced_kills={forced_kills}, "
-                       f"可能有额外崩溃被SIGKILL→FAULT_NONE掩盖而未记录到crash目录]")
+    loopfuzz_warning = ""
+    if normalize_fuzzer_name(fuzzer) == LOOPFUZZ_FUZZER and forced_kills > FORCED_KILLS_WARN_THRESHOLD:
+        loopfuzz_warning = (f" [⚠ 该run forced_kills={forced_kills}, "
+                            f"可能有额外崩溃被SIGKILL→FAULT_NONE掩盖而未记录到crash目录]")
 
     # ── 1. Hang ──
     if category == "hang":
         if signal_run_ratio >= HANG_REPRO_THRESHOLD:
             return ("hang", "HIGH",
                     f"进程挂起: 在同一fuzzer的{signal_run_ratio:.0%} run中出现, "
-                    f"可能是真实DoS漏洞(死锁/无限循环){opt_warning}")
+                    f"可能是真实DoS漏洞(死锁/无限循环){loopfuzz_warning}")
         return ("hang", "LOW",
                 f"进程挂起: 仅在同一fuzzer的{signal_run_ratio:.0%} run中出现, "
-                f"可能是网络超时误判, 需人工确认{opt_warning}")
+                f"可能是网络超时误判, 需人工确认{loopfuzz_warning}")
 
     # ── 2. 无信号 ──
     if signal is None:
         return ("unknown", "INFO",
-                f"crash文件名中无sig字段, 无法判定信号类型{opt_warning}")
+                f"crash文件名中无sig字段, 无法判定信号类型{loopfuzz_warning}")
 
     sig_name = SIGNAL_MAP.get(signal, f"SIG{signal}")
 
@@ -335,7 +360,7 @@ def classify_crash(signal: Optional[int], category: str,
         if cross_run_count >= 2 or cross_fuzzer_count >= 2:
             return ("confirmed_bug", "CRITICAL",
                     f"{sig_name}: 相同输入在{cross_run_count}个run/{cross_fuzzer_count}个fuzzer"
-                    f"中复现, 极高置信度安全漏洞{opt_warning}")
+                    f"中复现, 极高置信度安全漏洞{loopfuzz_warning}")
         if signal_run_ratio >= SIGNAL_REPRO_THRESHOLD or signal_fuzzer_count >= 2:
             basis = []
             if total_runs_for_fuzzer:
@@ -344,20 +369,20 @@ def classify_crash(signal: Optional[int], category: str,
                 basis.append(f"{signal_fuzzer_count}个fuzzer均出现该信号")
             return ("confirmed_bug", "HIGH",
                     f"{sig_name}: 信号级稳定复现({' / '.join(basis)}), "
-                    f"高置信度存在安全问题, 但输入未hash级重合{opt_warning}")
+                    f"高置信度存在安全问题, 但输入未hash级重合{loopfuzz_warning}")
         return ("likely_bug", "MEDIUM",
                 f"{sig_name}: 安全相关信号但仅偶发出现(同一fuzzer复现度{signal_run_ratio:.0%}), "
-                f"需人工replay确认{opt_warning}")
+                f"需人工replay确认{loopfuzz_warning}")
 
     # ── 4. 低风险/噪声信号 ──
     if signal in NOISE_SIGNALS:
         return ("noise", "LOW",
                 f"{sig_name}: 低风险信号, 网络fuzzing场景常见, "
-                f"通常为连接断开/进程清理{opt_warning}")
+                f"通常为连接断开/进程清理{loopfuzz_warning}")
 
     # ── 5. 其他信号 ──
     return ("unknown", "INFO",
-            f"{sig_name}: 非典型信号, 需人工判断含义{opt_warning}")
+            f"{sig_name}: 非典型信号, 需人工判断含义{loopfuzz_warning}")
 
 
 def content_hash(data: bytes) -> str:
@@ -676,7 +701,7 @@ class CrashAnalyzer:
         return cross_results
 
     def forced_kills_audit(self) -> List[dict]:
-        """审计 ChatAFL-Opt 的 forced_kills, 评估是否影响漏洞发现."""
+        """审计 LoopFuzz 的 forced_kills, 评估是否影响漏洞发现."""
         audit = []
         for rs in self.run_stats:
             if rs.forced_kills > 0:
@@ -877,7 +902,7 @@ class CrashAnalyzer:
 
         # ── forced_kills 警告 ──
         if any_fk_warning:
-            print(f"  ⚠  ChatAFL-Opt forced_kills偏高: Fix-14c可能掩盖了部分崩溃")
+            print(f"  ⚠  {LOOPFUZZ_LABEL} forced_kills偏高: Fix-14c可能掩盖了部分崩溃")
             print(f"     注意: 掩盖的是未被记录的crash, 已记录crash的分类不受影响")
 
         # ── 已知局限声明 ──
@@ -897,26 +922,26 @@ class CrashAnalyzer:
                       f"likely={s.total_likely}, dedup={s.deduped_crash_hashes}, "
                       f"avg/run={s.mean_unique_crashes:.1f}")
 
-            # 比较 chatafl vs chatafl_opt
-            if "chatafl" in self.fuzzer_summaries and "chatafl_opt" in self.fuzzer_summaries:
+            # 比较 chatafl vs loopfuzz
+            if "chatafl" in self.fuzzer_summaries and LOOPFUZZ_FUZZER in self.fuzzer_summaries:
                 c = self.fuzzer_summaries["chatafl"]
-                o = self.fuzzer_summaries["chatafl_opt"]
-                print(f"\n  ── ChatAFL vs ChatAFL-Opt 漏洞发现差异 ──")
+                o = self.fuzzer_summaries[LOOPFUZZ_FUZZER]
+                print(f"\n  ── ChatAFL vs {LOOPFUZZ_LABEL} 漏洞发现差异 ──")
                 diff_c = c.mean_unique_crashes - o.mean_unique_crashes
                 if abs(diff_c) < 0.5:
                     print(f"    ✅ 两者平均 crash 数量接近 (差异 {diff_c:+.1f}), 优化未显著影响")
                 elif diff_c > 0:
                     print(f"    ⚠  ChatAFL 平均多 {diff_c:.1f} crashes/run, "
-                          f"ChatAFL-Opt 可能因优化遗漏部分缺陷")
+                          f"{LOOPFUZZ_LABEL} 可能因优化遗漏部分缺陷")
                 else:
-                    print(f"    ✅ ChatAFL-Opt 平均多 {-diff_c:.1f} crashes/run, "
+                    print(f"    ✅ {LOOPFUZZ_LABEL} 平均多 {-diff_c:.1f} crashes/run, "
                           f"优化对漏洞发现有正向帮助")
 
                 # 检查只被一方发现的 crash
                 c_hashes = set(e.content_hash for e in self.entries
                                if e.fuzzer == "chatafl" and e.category == "crash")
                 o_hashes = set(e.content_hash for e in self.entries
-                               if e.fuzzer == "chatafl_opt" and e.category == "crash")
+                               if e.fuzzer == LOOPFUZZ_FUZZER and e.category == "crash")
                 only_c = c_hashes - o_hashes
                 only_o = o_hashes - c_hashes
                 both = c_hashes & o_hashes
@@ -930,9 +955,9 @@ class CrashAnalyzer:
                 if only_o:
                     sigs = Counter()
                     for e in self.entries:
-                        if e.content_hash in only_o and e.fuzzer == "chatafl_opt":
+                        if e.content_hash in only_o and e.fuzzer == LOOPFUZZ_FUZZER:
                             sigs[e.signal_name] += 1
-                    print(f"    仅 ChatAFL-Opt 发现: {len(only_o)} 个 hash "
+                    print(f"    仅 {LOOPFUZZ_LABEL} 发现: {len(only_o)} 个 hash "
                           f"(信号分布: {dict(sigs.most_common())})")
                 if both:
                     print(f"    双方共同发现: {len(both)} 个 hash")

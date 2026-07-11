@@ -186,7 +186,7 @@ def get_all_crash_seeds():
     seeds = []
     for group in range(1, 11):
         group_dir = f"opt_{group}"
-        crash_dir = os.path.join(EXTRACT_DIR, group_dir, "out-forked-daapd-chatafl_opt", "replayable-crashes")
+        crash_dir = os.path.join(EXTRACT_DIR, group_dir, "out-forked-daapd-loopfuzz", "replayable-crashes")
         if not os.path.exists(crash_dir):
             continue
         for fname in sorted(os.listdir(crash_dir)):
@@ -197,7 +197,7 @@ def get_all_crash_seeds():
                     'filename': fname,
                     'path': fpath,
                     'size': os.path.getsize(fpath),
-                    'archive': f"out-forked-daapd-chatafl_opt_{group}.tar.gz"
+                    'archive': f"out-forked-daapd-loopfuzz_{group}.tar.gz"
                 })
     return seeds
 
@@ -207,7 +207,7 @@ def get_all_violation_seeds():
     seeds = []
     for group in range(1, 11):
         group_dir = f"opt_{group}"
-        viol_dir = os.path.join(EXTRACT_DIR, group_dir, "out-forked-daapd-chatafl_opt", "replayable-violations")
+        viol_dir = os.path.join(EXTRACT_DIR, group_dir, "out-forked-daapd-loopfuzz", "replayable-violations")
         if not os.path.exists(viol_dir):
             continue
         for fname in sorted(os.listdir(viol_dir)):
@@ -223,7 +223,7 @@ def get_all_violation_seeds():
                     'path': fpath,
                     'size': os.path.getsize(fpath),
                     'category': cat,
-                    'archive': f"out-forked-daapd-chatafl_opt_{group}.tar.gz"
+                    'archive': f"out-forked-daapd-loopfuzz_{group}.tar.gz"
                 })
     return seeds
 
@@ -329,7 +329,7 @@ def create_workbook():
 ⚠️ 独立复现：standalone aflnet-replay模式下服务器未崩溃。崩溃需要在AFLNet fuzzer的ASAN重启周期中触发。
 ✅ AFLNet内部验证：此种子在fuzzing过程中已被AFLNet多次重放确认崩溃（位于replayable-crashes目录）。
 崩溃信号: SIGABRT(sig:06) — 这是ASAN检测到内存破坏后触发的进程终止信号。
-AFL fuzz命令行: /home/ubuntu/chatafl-opt/afl-fuzz -d -i /home/ubuntu/experiments/in-daap -o out-forked-daapd-chatafl_opt -N tcp://127.0.0.1/3689 -P HTTP -D 200000 -m none -q 3 -s 3 -E -K -t 5000+
+AFL fuzz命令行: /home/ubuntu/loopfuzz/afl-fuzz -d -i /home/ubuntu/experiments/in-daap -o out-forked-daapd-loopfuzz -N tcp://127.0.0.1/3689 -P HTTP -D 200000 -m none -q 3 -s 3 -E -K -t 5000+
 
 【复现说明】
 由于forked-daapd的DAAP协议基于HTTP，replay_crash_universal.sh中的PROTO配置已从"DAAP"修复为"HTTP"
@@ -345,7 +345,7 @@ forked-daapd 27.2 (owntone-server)在Memory Corruption - SIGABRT (ASAN detected 
 
 协议: {PROTOCOL}
 端口: TCP/3689
-Fuzzer: AFLNet (ChatAFL-Opt变种), 协议模式HTTP
+Fuzzer: AFLNet (LoopFuzz变种), 协议模式HTTP
 实验组: {seed['group']}/10
 种子大小: {seed['size']} bytes | 消息数: {len(messages) if 'messages' in dir() else 'N/A'}
 
@@ -459,7 +459,7 @@ forked-daapd 27.2 (owntone-server)在{cat_info['vuln_type']}方面存在安全�
 
 协议: {PROTOCOL}
 端口: TCP/3689
-Fuzzer: AFLNet (ChatAFL-Opt变种), 协议模式HTTP
+Fuzzer: AFLNet (LoopFuzz变种), 协议模式HTTP
 实验组: {seed['group']}/10
 种子大小: {seed['size']} bytes
 
@@ -852,8 +852,8 @@ forked-daapd版本: 27.2 (owntone-server)
 ASAN选项: ASAN_OPTIONS=abort_on_error=1:symbolize=0:detect_leaks=0
 
 AFLNet Fuzzer命令:
-/home/ubuntu/chatafl-opt/afl-fuzz -d -i /home/ubuntu/experiments/in-daap
-  -o out-forked-daapd-chatafl_opt -N tcp://127.0.0.1/3689 -P HTTP
+/home/ubuntu/loopfuzz/afl-fuzz -d -i /home/ubuntu/experiments/in-daap
+  -o out-forked-daapd-loopfuzz -N tcp://127.0.0.1/3689 -P HTTP
   -D 200000 -m none -q 3 -s 3 -E -K -t 5000+
   /home/ubuntu/experiments/forked-daapd/src/forked-daapd -d 0
   -c /home/ubuntu/experiments/forked-daapd.conf -f"""
@@ -896,7 +896,7 @@ AFLNet Fuzzer命令:
 
         row_data = [
             f"opt_{group}",
-            f"out-forked-daapd-chatafl_opt_{group}.tar.gz",
+            f"out-forked-daapd-loopfuzz_{group}.tar.gz",
             runtime_data[group-1] if group <= len(runtime_data) else "?",
             len(group_crashes),
             len(group_viols),

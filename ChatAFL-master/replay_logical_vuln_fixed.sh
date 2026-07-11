@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==============================================================================
-# ChatAFL-Opt Logical Vulnerability Replay & Verification Tool — FIXED VERSION
+# LoopFuzz Logical Vulnerability Replay & Verification Tool — FIXED VERSION
 #
 # Fix: Adds pre-authentication to handle garbled auth commands in violation seeds.
 # The fuzzer's stateful context allowed garbled auth to succeed; standalone replay
@@ -42,7 +42,7 @@ IS_UDP="${TARGET_IS_UDP[$TARGET]}"; HEALTH_CHECK="${TARGET_HEALTH_CHECK[$TARGET]
 mkdir -p "$OUT_DIR"
 
 echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║  ChatAFL-Opt Logical Vuln Replay (FIXED — Pre-Auth)         ║"
+echo "║  LoopFuzz Logical Vuln Replay (FIXED — Pre-Auth)         ║"
 echo "╠══════════════════════════════════════════════════════════════╣"
 echo "║  Target: $TARGET | Protocol: $PROTO | Port: $PORT"
 echo "║  Source: $VIOLATION_SRC"

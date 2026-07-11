@@ -20,7 +20,7 @@ OUT = os.path.join(OUT_DIR, f"forked-daapd_漏洞发现_{TS}.xlsx")
 
 TARGET_VER = "forked-daapd 27.2 (owntone-server, ASAN编译)"
 PROTO = "DAAP/HTTP (TCP/3689)"
-FUZZER = "AFLNet/ChatAFL-Opt, -P HTTP, 24.5h/组, 10组独立实验"
+FUZZER = "AFLNet/LoopFuzz, -P HTTP, 24.5h/组, 10组独立实验"
 
 CAT_MAP = {
     "0400": {
@@ -148,7 +148,7 @@ all_violations = []
 all_hangs = []
 
 for g in range(1, 11):
-    gdir = os.path.join(BASE, f"group_{g}", "out-forked-daapd-chatafl_opt")
+    gdir = os.path.join(BASE, f"group_{g}", "out-forked-daapd-loopfuzz")
 
     # Crashes
     cdir = os.path.join(gdir, "replayable-crashes")
@@ -163,7 +163,7 @@ for g in range(1, 11):
             all_crashes.append({
                 'group': g, 'filename': fn, 'path': fp, 'size': sz,
                 'messages': msgs, 'meta': meta,
-                'archive': f"out-forked-daapd-chatafl_opt_{g}.tar.gz"
+                'archive': f"out-forked-daapd-loopfuzz_{g}.tar.gz"
             })
 
     # Violations
@@ -179,7 +179,7 @@ for g in range(1, 11):
                 'group': g, 'filename': fn, 'path': fp, 'size': sz,
                 'violations': viols, 'request_data': req, 'response_data': resp,
                 'category': cat,
-                'archive': f"out-forked-daapd-chatafl_opt_{g}.tar.gz"
+                'archive': f"out-forked-daapd-loopfuzz_{g}.tar.gz"
             })
 
     # Hangs
@@ -195,7 +195,7 @@ for g in range(1, 11):
             all_hangs.append({
                 'group': g, 'filename': fn, 'path': fp, 'size': sz,
                 'messages': msgs, 'meta': meta,
-                'archive': f"out-forked-daapd-chatafl_opt_{g}.tar.gz"
+                'archive': f"out-forked-daapd-loopfuzz_{g}.tar.gz"
             })
 
 print(f"CRASH seeds: {len(all_crashes)}")
@@ -261,8 +261,8 @@ for s in all_crashes:
 崩溃信号: SIGABRT(sig:06) — ASAN检测内存安全违规→进程终止
 
 【AFL Fuzz命令】
-/home/ubuntu/chatafl-opt/afl-fuzz -d -i /home/ubuntu/experiments/in-daap
-  -o out-forked-daapd-chatafl_opt -N tcp://127.0.0.1/3689 -P HTTP
+/home/ubuntu/loopfuzz/afl-fuzz -d -i /home/ubuntu/experiments/in-daap
+  -o out-forked-daapd-loopfuzz -N tcp://127.0.0.1/3689 -P HTTP
   -D 200000 -m none -q 3 -s 3 -E -K -t 5000+
   /home/ubuntu/experiments/forked-daapd/src/forked-daapd -d 0
   -c /home/ubuntu/experiments/forked-daapd.conf -f"""
@@ -632,7 +632,7 @@ DAAP基于HTTP构建,forked-daapd API端点使用标准HTTP协议。aflnet-repla
       HOME=/home/ubuntu ./forked-daapd/src/forked-daapd -d 0 -c /home/ubuntu/experiments/forked-daapd.conf -f
 端口: TCP/3689 (DAAP/HTTP)
 ASAN: ASAN_OPTIONS=abort_on_error=1:symbolize=0:detect_leaks=0
-Fuzzer: /home/ubuntu/chatafl-opt/afl-fuzz -N tcp://127.0.0.1/3689 -P HTTP -t 5000+"""]
+Fuzzer: /home/ubuntu/loopfuzz/afl-fuzz -N tcp://127.0.0.1/3689 -P HTTP -t 5000+"""]
 ]
 
 for r, rd in enumerate(evals, 2):
@@ -658,7 +658,7 @@ for g in range(1, 11):
     gv = len([s for s in all_violations if s['group'] == g])
     gh = len([s for s in all_hangs if s['group'] == g])
     vcats_g = sorted(set(s['category'] for s in all_violations if s['group'] == g))
-    rd = [f"opt_{g}", f"out-forked-daapd-chatafl_opt_{g}.tar.gz",
+    rd = [f"opt_{g}", f"out-forked-daapd-loopfuzz_{g}.tar.gz",
           runtimes[g-1], gc, gv, gh,
           ', '.join([f"0x{c}" for c in vcats_g]),
           gc+gv+gh, "completed"]

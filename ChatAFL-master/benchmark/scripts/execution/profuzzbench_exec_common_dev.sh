@@ -294,7 +294,7 @@ watchdog_pids=()
 # 获取项目根目录
 PROJECT_ROOT="${PROJECT_ROOT:-$PWD/../..}"
 
-# Log tag: FUZZER(target) e.g. CHATAFL-OPT(bftpd)
+# Log tag: FUZZER(target) e.g. loopfuzz(bftpd)
 LOG_TAG="${FUZZER^^}(${DOCIMAGE})"
 
 init_result_manifest
@@ -380,13 +380,13 @@ recreate_named_network() {
   fi
 
   if grep -q 'available, non-overlapping IPv4 address pool' "$err_file" 2>/dev/null; then
-    printf "\n${LOG_TAG}: [DEV] Docker bridge address pool exhausted, pruning unused chatafl-mqtt-* networks...\n" >&2
+    printf "\n${LOG_TAG}: [DEV] Docker bridge address pool exhausted, pruning unused loopfuzz-mqtt-* networks...\n" >&2
     while IFS= read -r stale_network; do
       [[ -n "$stale_network" ]] || continue
       if [[ "$(docker network inspect --format '{{len .Containers}}' "$stale_network" 2>/dev/null || echo 1)" == "0" ]]; then
         docker network rm "$stale_network" >/dev/null 2>&1 || true
       fi
-    done < <(docker network ls --format '{{.Name}}' | grep '^chatafl-mqtt-' || true)
+    done < <(docker network ls --format '{{.Name}}' | grep '^loopfuzz-mqtt-' || true)
 
     if docker network create "$network_name" >/dev/null 2>"$err_file"; then
       rm -f "$err_file"
@@ -488,7 +488,7 @@ declare -a MQTT_AUTO_CONTAINER_NAMES=()
 declare -a MQTT_AUTO_BROKER_ALIASES=()
 
 if [[ -z "${CHATAFL_MQTT_BROKERS:-}" ]] && is_mqtt_target "$DOCIMAGE"; then
-  MQTT_AUTO_NETWORK="$(build_unique_docker_name "chatafl-mqtt-${DOCIMAGE}-${FUZZER}-${TIMESTAMP:-manual}-${$}")"
+  MQTT_AUTO_NETWORK="$(build_unique_docker_name "loopfuzz-mqtt-${DOCIMAGE}-${FUZZER}-${TIMESTAMP:-manual}-${$}")"
   if ! recreate_named_network "$MQTT_AUTO_NETWORK"; then
     echo "[ERROR] Failed to create MQTT auto network: ${MQTT_AUTO_NETWORK}"
     exit 1
@@ -735,7 +735,7 @@ for i in $(seq 1 $RUNS); do
     container_name="${MQTT_AUTO_CONTAINER_NAMES[$run_index]}"
   fi
 
-  # Build ablation env-var flags for chatafl-opt containers.
+  # Build ablation env-var flags for loopfuzz containers.
   # If the host exports CHATAFL_NO_REFINEMENT / NO_FRONTIER / NO_ADAPTIVE
   # / NO_STATE_PROMPT / ABLATION_THRESHOLD / CHATAFL_HYPOTHESIS,
   # they are forwarded into the container via -e.
@@ -767,8 +767,8 @@ for i in $(seq 1 $RUNS); do
     MQTT_FLAGS=" -e CHATAFL_MQTT_BROKERS=${CHATAFL_MQTT_BROKERS}"
   fi
 
-  # Enable Grammar Hypothesis system only for chatafl-opt
-  if [[ "$FUZZER" == "chatafl-opt" ]]; then
+  # Enable Grammar Hypothesis system only for loopfuzz
+  if [[ "$FUZZER" == "loopfuzz" ]]; then
     # Volume挂载本地代码并在容器内重新编译
     # --memory: 移除硬限制（与MBFuzzer对齐），批次执行3并行在62GB主机上安全
     # NOTE: 消融并行运行时6组×hetero broker fleet会引发kernel OOM，
@@ -779,13 +779,14 @@ for i in $(seq 1 $RUNS); do
       ${ABLATION_FLAGS} \
       ${MQTT_FLAGS} \
       ${MQTT_RUN_FLAGS} \
-      -v "${PROJECT_ROOT}/ChatAFL-Opt:/tmp/chatafl-opt-src:ro" \
+      -v "${PROJECT_ROOT}/LoopFuzz:/tmp/loopfuzz-src:ro" \
       ${SUBJECT_MOUNT} \
       -d -it $DOCIMAGE /bin/bash -c "\
         ${SUBJECT_COPY}\
         echo '[DEV] Copying and compiling updated code...' && \
-        cp -f /tmp/chatafl-opt-src/*.c /tmp/chatafl-opt-src/*.h /tmp/chatafl-opt-src/Makefile /home/ubuntu/chatafl-opt/ 2>/dev/null || true && \
-        cd /home/ubuntu/chatafl-opt && make clean && make -j\$(nproc) && \
+        if [ ! -d /home/ubuntu/loopfuzz ]; then cp -a /tmp/loopfuzz-src /home/ubuntu/loopfuzz; fi && \
+        cp -f /tmp/loopfuzz-src/*.c /tmp/loopfuzz-src/*.h /tmp/loopfuzz-src/Makefile /home/ubuntu/loopfuzz/ 2>/dev/null || true && \
+        cd /home/ubuntu/loopfuzz && make clean && make -j\$(nproc) && \
         echo '[DEV] Compilation complete, MD5: '\$(md5sum grammar-hypothesis.c | cut -d' ' -f1) && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   elif [[ "$FUZZER" == "chatafl" ]]; then

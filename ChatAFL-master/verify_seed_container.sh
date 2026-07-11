@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==============================================================================
-# ChatAFL-Opt Container-Based Seed Verification Framework
+# LoopFuzz Container-Based Seed Verification Framework
 # ==============================================================================
 # 针对触发漏洞的种子启动独立容器进行精确验证
 #
@@ -231,7 +231,7 @@ OUT_DIR = os.environ.get('OUT_DIR', '/tmp/verify_out')
 WORKDIR = os.environ.get('WORKDIR', '/tmp')
 SERVER_CMD = os.environ.get('SERVER_CMD', '')
 VERIFY_MODE = os.environ.get('VERIFY_MODE', 'full')
-FUZZER_BIN = os.environ.get('FUZZER_BIN', '/home/ubuntu/chatafl-opt')
+FUZZER_BIN = os.environ.get('FUZZER_BIN', '/home/ubuntu/loopfuzz')
 
 results = {
     'target': os.environ.get('TARGET', 'unknown'),
@@ -727,7 +727,7 @@ docker run --rm \
     -e "WORKDIR=$WORKDIR" \
     -e "SERVER_CMD=$SERVER_CMD" \
     -e "VERIFY_MODE=$VERIFY_MODE" \
-    -e "FUZZER_BIN=/home/ubuntu/chatafl-opt" \
+    -e "FUZZER_BIN=/home/ubuntu/loopfuzz" \
     -e "ASAN_OPTIONS=abort_on_error=1:symbolize=1:detect_leaks=0:log_path=/tmp/asan/verify" \
     "$IMAGE" /bin/bash -c "
 mkdir -p /tmp/asan /tmp/verify_out/{messages,responses}

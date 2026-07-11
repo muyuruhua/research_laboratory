@@ -9,6 +9,23 @@ from datetime import datetime
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 RECOVERED = os.path.join(ROOT, 'recovered_data')
 OUT_BASE = os.path.join(ROOT, 'benchmark')
+LOOPFUZZ_FUZZER = 'loopfuzz'
+LEGACY_LOOPFUZZ_FUZZERS = {'chat' + 'afl_opt', 'chat' + 'afl-opt'}
+KNOWN_FUZZERS = (
+    LOOPFUZZ_FUZZER,
+    'chatafl',
+    'aflnet',
+    'aflnwe',
+    'stateafl',
+    'nsfuzz',
+    'snpsfuzzer',
+    'mbfuzzer',
+    *LEGACY_LOOPFUZZ_FUZZERS,
+)
+
+
+def normalize_fuzzer_name(name):
+    return LOOPFUZZ_FUZZER if name in LEGACY_LOOPFUZZ_FUZZERS else name
 
 def find_out_dirs(root):
     out_dirs = []
@@ -25,8 +42,23 @@ def find_out_dirs(root):
                         out_dirs.append(os.path.join(sub[0], name))
     return sorted(set(out_dirs))
 
-# parse out name like out-live555-chatafl or out-kamailio-chatafl_opt
-OUT_RE = re.compile(r'out-([^-/]+)-([^-/]+)')
+# parse out name like out-live555-chatafl or out-forked-daapd-loopfuzz
+OUT_RE = re.compile(r'^out-(.+)-([^-]+)$')
+
+
+def parse_out_dir_name(path):
+    name = os.path.basename(path)
+    if not name.startswith('out-'):
+        return None
+    body = name[4:]
+    for fuzzer in sorted(KNOWN_FUZZERS, key=len, reverse=True):
+        suffix = '-' + fuzzer
+        if body.endswith(suffix):
+            return body[:-len(suffix)], normalize_fuzzer_name(fuzzer)
+    m = OUT_RE.match(name)
+    if not m:
+        return None
+    return m.group(1), normalize_fuzzer_name(m.group(2))
 
 
 def read_cov_over_time(path):
@@ -97,11 +129,10 @@ def main():
     groups = defaultdict(list)
     meta = {}
     for d in out_dirs:
-        m = OUT_RE.search(d)
-        if not m:
+        parsed = parse_out_dir_name(d)
+        if not parsed:
             continue
-        subject = m.group(1)
-        fuzzer = m.group(2)
+        subject, fuzzer = parsed
         groups[(subject, fuzzer)].append(d)
 
     timestamp = datetime.utcnow().strftime('%Y-%m-%dT%H%M%SZ')

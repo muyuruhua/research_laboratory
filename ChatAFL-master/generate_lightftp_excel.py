@@ -429,7 +429,7 @@ def build_vuln_description(desc, details):
         f"【CWE分类】{d['cwe']}\n"
         f"【CVE参考】{d['cve_ref']}\n\n"
         f"【漏洞触发原因】\n{d['root_cause']}\n\n"
-        f"【检测方法】\nChatAFL-Opt协议Oracle在Fuzzing过程中通过RFC 959安全不变性违反检测发现此漏洞。\n"
+        f"【检测方法】\nLoopFuzz协议Oracle在Fuzzing过程中通过RFC 959安全不变性违反检测发现此漏洞。\n"
         f"检测类别: {desc}\n"
         f"Oracle验证: C oracle (protocol-oracle.c) + Python独立复现验证(verify_oracle_fixed.py)\n"
     )
@@ -678,14 +678,14 @@ def create_excel(all_seeds):
                 '本次实验使用的是v2.3 (commit 139af7c)，包含CVE-2024-11144的漏洞。\n'
                 '但在10组24小时fuzzing中未产生任何replayable-crashes，说明:\n'
                 '(1) 触发CVE-2024-11144的竞态条件需要特定时序\n'
-                '(2) ChatAFL-Opt的FTP fuzzing场景未触发该竞态条件\n'
+                '(2) LoopFuzz的FTP fuzzing场景未触发该竞态条件\n'
                 '(3) 两者的发现互相补充，覆盖不同类型的安全缺陷'
             ),
             '判定': (
                 '同类版本(v2.3)但非相同漏洞：\n'
                 '1. CVE-2024-11144: 竞态条件导致崩溃，需要多线程并发场景\n'
                 '2. 本次发现: 协议逻辑漏洞，单连接即可触发\n'
-                '3. 不同发现工具: CVE-2024-11144由Defensics发现，本次由ChatAFL-Opt Oracle发现\n'
+                '3. 不同发现工具: CVE-2024-11144由Defensics发现，本次由LoopFuzz Oracle发现\n'
                 '4. 结论: 【非相同漏洞，同版本不同安全属性】'
             ),
         },
@@ -890,9 +890,9 @@ def create_excel(all_seeds):
         ('replay_crash_universal.sh 评估',
          'N/A — LightFTP v2.3在10组独立fuzzing实验中未产生任何replayable-crashes (0崩溃种子)。\n\n'
          '【结论】\n'
-         'LightFTP v2.3在ChatAFL-Opt的协议Fuzzing(24小时×10组)中未发现内存破坏漏洞。\n'
+         'LightFTP v2.3在LoopFuzz的协议Fuzzing(24小时×10组)中未发现内存破坏漏洞。\n'
          '但这不代表LightFTP v2.3没有内存安全问题:\n'
-         '- CVE-2024-11144 (竞态条件崩溃)存在于v2.3但未被ChatAFL-Opt触发\n'
+         '- CVE-2024-11144 (竞态条件崩溃)存在于v2.3但未被LoopFuzz触发\n'
          '- CVE-2025-65403 (缓冲区溢出)影响v2.0，v2.3可能已修复\n'
          '- 纯协议fuzzing可能未触发需要精确竞态条件的崩溃'),
         ('replay_logical_vuln.sh 评估',

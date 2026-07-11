@@ -2,7 +2,7 @@
 # ==============================================================================
 # Exim SMTP Vulnerability Reproduction & Verification Script
 # ==============================================================================
-# Purpose: Reproduce all violations found by ChatAFL-Opt for Exim SMTP
+# Purpose: Reproduce all violations found by LoopFuzz for Exim SMTP
 # Target: Exim 4.96-221-d6a5a05b8-XX (compiled with ASAN)
 # Protocol: SMTP (port 25)
 #

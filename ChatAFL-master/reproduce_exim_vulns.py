@@ -2,7 +2,7 @@
 """
 Exim SMTP Vulnerability Reproduction & Verification Tool
 =========================================================
-Reproduces violations found by ChatAFL-Opt against Exim 4.96.
+Reproduces violations found by LoopFuzz against Exim 4.96.
 Runs PoC SMTP sessions against the exim Docker container and verifies
 whether each vulnerability type is reproducible.
 

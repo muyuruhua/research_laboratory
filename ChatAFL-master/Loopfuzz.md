@@ -1,11 +1,11 @@
-# Loopfuzz：ChatAFL / ChatAFL-Opt 严谨架构、调用链、工作流、数据流与脚本总说明
+# Loopfuzz：ChatAFL / LoopFuzz 严谨架构、调用链、工作流、数据流与脚本总说明
 
 > 适用仓库：`/home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master`
 >
 > 本文基于当前仓库中的实际实现、README、执行脚本、审计笔记与源码接线关系整理，目标是回答四个问题：
 >
-> 1. **ChatAFL 和 ChatAFL-Opt 的本质区别是什么**
-> 2. **ChatAFL-Opt 的调用链路、框架、工作流、数据流是什么**
+> 1. **ChatAFL 和 LoopFuzz 的本质区别是什么**
+> 2. **LoopFuzz 的调用链路、框架、工作流、数据流是什么**
 > 3. **当前仓库里所有 `.sh` 脚本分别做什么**
 > 4. **开发 / 实验 / 分析时，应该如何理解整个系统的分层与边界**
 
@@ -19,7 +19,7 @@
     1. 启动期语法模板抽取；
     2. 启动期种子富集；
     3. plateau（覆盖停滞）时让 LLM 生成一条新请求。
-- **ChatAFL-Opt** 本质上已经不是“多调几个 LLM 接口”的小改版，而是一个：
+- **LoopFuzz** 本质上已经不是“多调几个 LLM 接口”的小改版，而是一个：
   - **状态感知（state-aware）**、
   - **带验证闭环（validator / hypothesis / refinement）**、
   - **带严格结构化 LLM 交互（strict JSON + actions[]）**、
@@ -28,7 +28,7 @@
 
 因此，两者的本质差异不是“Opt 比 baseline 多几个 heuristic”，而是：
 
-> **ChatAFL 是“开环 LLM 辅助模糊测试器”，而 ChatAFL-Opt 是“状态驱动 + 验证闭环 + 协议专项扩展”的系统化 fuzzing framework。**
+> **ChatAFL 是“开环 LLM 辅助模糊测试器”，而 LoopFuzz 是“状态驱动 + 验证闭环 + 协议专项扩展”的系统化 fuzzing framework。**
 
 ---
 
@@ -44,14 +44,14 @@
 - `ChatAFL/`
 - `ChatAFL-CL1/`
 - `ChatAFL-CL2/`
-- `ChatAFL-Opt/`
+- `LoopFuzz/`
 
 职责：
 
 - `aflnet/`：AFLNet 基线实现。
 - `ChatAFL/`：基线版 LLM 增强。
 - `ChatAFL-CL1/`、`ChatAFL-CL2/`：中间/变体版本。
-- `ChatAFL-Opt/`：当前最完整的优化版，包含 hypothesis、validator、state-aware prompt、MQTT 专项能力等。
+- `LoopFuzz/`：当前最完整的优化版，包含 hypothesis、validator、state-aware prompt、MQTT 专项能力等。
 
 ### 第 2 层：实验编排层
 
@@ -116,7 +116,7 @@
 
 ---
 
-## 3. ChatAFL 与 ChatAFL-Opt 的本质区别
+## 3. ChatAFL 与 LoopFuzz 的本质区别
 
 ## 3.1 相同点
 
@@ -177,9 +177,9 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 
 而不是主循环中的闭环子系统。
 
-## 3.3 ChatAFL-Opt 的核心特征
+## 3.3 LoopFuzz 的核心特征
 
-`ChatAFL-Opt/Makefile` 显示 `afl-fuzz` 链接了这些额外模块：
+`LoopFuzz/Makefile` 显示 `afl-fuzz` 链接了这些额外模块：
 
 - `grammar-hypothesis.o`
 - `hypothesis-adapter.o`
@@ -193,9 +193,9 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 - `mqtt-race.o`
 - 以及 `chat-llm.o`, `aflnet.o`
 
-这说明 ChatAFL-Opt 已经把“LLM 参与点”拆成了多个独立模块，而不是把所有逻辑揉在 `afl-fuzz.c` 里。
+这说明 LoopFuzz 已经把“LLM 参与点”拆成了多个独立模块，而不是把所有逻辑揉在 `afl-fuzz.c` 里。
 
-### ChatAFL-Opt 的本质升级
+### LoopFuzz 的本质升级
 
 #### 1. 从“自由文本建议”升级为“结构化 LLM 接口”
 
@@ -237,7 +237,7 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 
 ### 最终结论
 
-| 维度 | ChatAFL | ChatAFL-Opt |
+| 维度 | ChatAFL | LoopFuzz |
 |---|---|---|
 | LLM 角色 | 辅助增强器 | 结构化闭环子系统 |
 | plateau 输出 | 自由文本为主 | 严格 JSON / actions[] |
@@ -251,9 +251,9 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 
 ---
 
-## 4. ChatAFL-Opt 的框架图（概念视角）
+## 4. LoopFuzz 的框架图（概念视角）
 
-可以把 ChatAFL-Opt 理解成下面 8 个子系统：
+可以把 LoopFuzz 理解成下面 8 个子系统：
 
 ### 4.1 启动期协议知识构建子系统
 
@@ -378,7 +378,7 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 
 ---
 
-## 5. ChatAFL-Opt 的调用链路
+## 5. LoopFuzz 的调用链路
 
 这里按“从用户执行命令开始，到最终拿到结果”为顺序说明。
 
@@ -467,7 +467,7 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 
 1. 为当前 `(target, fuzzer)` 创建结果 manifest；
 2. 根据运行次数 `RUNS` 启多个容器；
-3. 为 `chatafl-opt` 自动注入：
+3. 为 `loopfuzz` 自动注入：
    - `KEY`
    - `CHATAFL_HYPOTHESIS=1`
    - 各类 ablation 变量
@@ -505,12 +505,12 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 3. 目标服务被启动
 4. 选中的 fuzzer（二进制通常是 `afl-fuzz` 变体）开始运行
 
-这时如果选择的是 `chatafl-opt`，那么真正跑起来的是：
+这时如果选择的是 `loopfuzz`，那么真正跑起来的是：
 
-- `ChatAFL-Opt/afl-fuzz`
+- `LoopFuzz/afl-fuzz`
 - 链接了 `aflnet.o + chat-llm.o + hypothesis + validator + mqtt*`
 
-## 5.5 第五层：ChatAFL-Opt 进程内调用链
+## 5.5 第五层：LoopFuzz 进程内调用链
 
 按时间顺序如下。
 
@@ -585,7 +585,7 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 
 ---
 
-## 6. ChatAFL-Opt 的工作流
+## 6. LoopFuzz 的工作流
 
 下面用“准备期 → 启动期 → 热路径 → 收尾期”的方式说明。
 
@@ -593,7 +593,7 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 
 ### 输入
 
-- fuzzer 源码：`ChatAFL-Opt/`
+- fuzzer 源码：`LoopFuzz/`
 - 被测目标：`benchmark/subjects/*/*`
 - 初始语料 / 协议样本
 - API Key：`KEY`
@@ -613,7 +613,7 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 - 种子富集
 - 读入 testcases
 
-### ChatAFL-Opt 额外做什么
+### LoopFuzz 额外做什么
 
 - 并行 enrichment
 - hypothesis 模式开关初始化
@@ -656,7 +656,7 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 
 ---
 
-## 7. ChatAFL-Opt 的数据流
+## 7. LoopFuzz 的数据流
 
 ## 7.1 数据源输入
 
@@ -748,7 +748,7 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 
 ---
 
-## 8. 为什么说 ChatAFL-Opt 是“框架”而不是“补丁版 ChatAFL”
+## 8. 为什么说 LoopFuzz 是“框架”而不是“补丁版 ChatAFL”
 
 因为它已经具备框架的几个标志：
 
@@ -798,7 +798,7 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 
 下面按层分类，覆盖当前仓库中需要关注的 shell 脚本。
 
-> 注：其中有一批脚本在 `aflnet/`、`ChatAFL/`、`ChatAFL-CL1/`、`ChatAFL-CL2/`、`ChatAFL-Opt/` 中是**同类复制版本**，用途相同，只是分别跟随各自 fuzzer 目录发布。
+> 注：其中有一批脚本在 `aflnet/`、`ChatAFL/`、`ChatAFL-CL1/`、`ChatAFL-CL2/`、`LoopFuzz/` 中是**同类复制版本**，用途相同，只是分别跟随各自 fuzzer 目录发布。
 
 ---
 
@@ -812,7 +812,7 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 
 - 检查 `KEY`
 - 把 `KEY` 写入各版本 `chat-llm.h`
-- 将 `aflnet/`、`ChatAFL/`、`ChatAFL-CL1/`、`ChatAFL-CL2/`、`ChatAFL-Opt/` 复制进每个 benchmark subject 目录
+- 将 `aflnet/`、`ChatAFL/`、`ChatAFL-CL1/`、`ChatAFL-CL2/`、`LoopFuzz/` 复制进每个 benchmark subject 目录
 - 调用 `profuzzbench_build_all.sh` 构建镜像
 
 适用场景：
@@ -1026,7 +1026,7 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 
 - 根据 `RUNS` 启多个容器
 - 对 MQTT 自动建网络、起稳定 broker、注入 broker list
-- 对 `chatafl-opt` 自动加 `CHATAFL_HYPOTHESIS=1`
+- 对 `loopfuzz` 自动加 `CHATAFL_HYPOTHESIS=1`
 - 等待容器结束
 - 记录 `.result_manifest.tsv`
 - 调 recovery helper 收集结果
@@ -1113,7 +1113,7 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 - `ChatAFL/`
 - `ChatAFL-CL1/`
 - `ChatAFL-CL2/`
-- `ChatAFL-Opt/`
+- `LoopFuzz/`
 
 也就是说，同类脚本一共有 5 份（或更多同构副本），用途基本一致。
 
@@ -1125,7 +1125,7 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 - `ChatAFL/qemu_mode/build_qemu_support.sh`
 - `ChatAFL-CL1/qemu_mode/build_qemu_support.sh`
 - `ChatAFL-CL2/qemu_mode/build_qemu_support.sh`
-- `ChatAFL-Opt/qemu_mode/build_qemu_support.sh`
+- `LoopFuzz/qemu_mode/build_qemu_support.sh`
 
 用途：
 
@@ -1144,7 +1144,7 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 - `ChatAFL/experimental/distributed_fuzzing/sync_script.sh`
 - `ChatAFL-CL1/experimental/distributed_fuzzing/sync_script.sh`
 - `ChatAFL-CL2/experimental/distributed_fuzzing/sync_script.sh`
-- `ChatAFL-Opt/experimental/distributed_fuzzing/sync_script.sh`
+- `LoopFuzz/experimental/distributed_fuzzing/sync_script.sh`
 
 用途：
 
@@ -1163,7 +1163,7 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 - `ChatAFL/experimental/crash_triage/triage_crashes.sh`
 - `ChatAFL-CL1/experimental/crash_triage/triage_crashes.sh`
 - `ChatAFL-CL2/experimental/crash_triage/triage_crashes.sh`
-- `ChatAFL-Opt/experimental/crash_triage/triage_crashes.sh`
+- `LoopFuzz/experimental/crash_triage/triage_crashes.sh`
 
 用途：
 
@@ -1183,7 +1183,7 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 - `ChatAFL/experimental/asan_cgroups/limit_memory.sh`
 - `ChatAFL-CL1/experimental/asan_cgroups/limit_memory.sh`
 - `ChatAFL-CL2/experimental/asan_cgroups/limit_memory.sh`
-- `ChatAFL-Opt/experimental/asan_cgroups/limit_memory.sh`
+- `LoopFuzz/experimental/asan_cgroups/limit_memory.sh`
 
 用途：
 
@@ -1202,7 +1202,7 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 - `ChatAFL/tutorials/lightftp/ftpclean.sh`
 - `ChatAFL-CL1/tutorials/lightftp/ftpclean.sh`
 - `ChatAFL-CL2/tutorials/lightftp/ftpclean.sh`
-- `ChatAFL-Opt/tutorials/lightftp/ftpclean.sh`
+- `LoopFuzz/tutorials/lightftp/ftpclean.sh`
 
 用途：
 
@@ -1221,7 +1221,7 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 - `ChatAFL/tutorials/ippsample/ippcleanup.sh`
 - `ChatAFL-CL1/tutorials/ippsample/ippcleanup.sh`
 - `ChatAFL-CL2/tutorials/ippsample/ippcleanup.sh`
-- `ChatAFL-Opt/tutorials/ippsample/ippcleanup.sh`
+- `LoopFuzz/tutorials/ippsample/ippcleanup.sh`
 
 用途：
 
@@ -1278,12 +1278,12 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 
 主要看：
 
-- `ChatAFL-Opt/afl-fuzz.c`
-- `ChatAFL-Opt/chat-llm.c`
-- `ChatAFL-Opt/llm-validator.c`
-- `ChatAFL-Opt/grammar-hypothesis.*`
-- `ChatAFL-Opt/mqtt-*`
-- `ChatAFL-Opt/mp-driver-*`
+- `LoopFuzz/afl-fuzz.c`
+- `LoopFuzz/chat-llm.c`
+- `LoopFuzz/llm-validator.c`
+- `LoopFuzz/grammar-hypothesis.*`
+- `LoopFuzz/mqtt-*`
+- `LoopFuzz/mp-driver-*`
 
 ## 11.2 如果你在改实验编排 / 结果收集
 
@@ -1317,13 +1317,13 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 
 ## 12. 一个完整实验的最简 mental model
 
-可以把一次 `chatafl-opt` 实验理解成下面这条链：
+可以把一次 `loopfuzz` 实验理解成下面这条链：
 
 1. **准备镜像**：`setup.sh`
 2. **启动实验**：`run_dev.sh` / `run.sh`
 3. **展开矩阵**：`profuzzbench_exec_all*.sh`
 4. **启动容器**：`profuzzbench_exec_common*.sh`
-5. **容器内执行**：subject `run` → `ChatAFL-Opt/afl-fuzz`
+5. **容器内执行**：subject `run` → `LoopFuzz/afl-fuzz`
 6. **启动期知识构建**：grammar + enrichment + MQTT seed prep
 7. **主循环 fuzzing**：state select → mutate → send → feedback
 8. **停滞处理**：plateau → rich prompt → strict JSON → validator → actions/request
@@ -1333,7 +1333,7 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 12. **外层恢复与汇总**：recovery helper + `run_summary.csv`
 13. **分析成图**：`analyze.sh`
 
-这就是 ChatAFL-Opt 的完整工作链。
+这就是 LoopFuzz 的完整工作链。
 
 ---
 
@@ -1342,14 +1342,14 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 ### 对“本质区别”的最终回答
 
 - ChatAFL 是：**AFLNet + 三段式 LLM 辅助**。
-- ChatAFL-Opt 是：**AFLNet 内核之上，加入 state-aware 调度、结构化 LLM 接口、validator / hypothesis / refinement 闭环，以及 MQTT 专项执行/差分/调度能力的完整 framework**。
+- LoopFuzz 是：**AFLNet 内核之上，加入 state-aware 调度、结构化 LLM 接口、validator / hypothesis / refinement 闭环，以及 MQTT 专项执行/差分/调度能力的完整 framework**。
 
 ### 对“调用链路”的最终回答
 
 - 用户入口：`run_dev.sh` / `run.sh` / `run_ablation.sh`
 - 实验调度：`profuzzbench_exec_all*.sh`
 - 单组执行：`profuzzbench_exec_common*.sh`
-- 容器内运行：subject `run` + `ChatAFL-Opt/afl-fuzz`
+- 容器内运行：subject `run` + `LoopFuzz/afl-fuzz`
 - 收尾恢复：`recover_result_archives.sh`
 - 分析汇总：`analyze.sh` / `run_summary.sh` / analysis scripts
 
@@ -1373,22 +1373,22 @@ ChatAFL 的 LLM 通道总体是**开环的**：
 1. `run_dev.sh`
 2. `benchmark/scripts/execution/profuzzbench_exec_all_dev.sh`
 3. `benchmark/scripts/execution/profuzzbench_exec_common_dev.sh`
-4. `ChatAFL-Opt/Makefile`
-5. `ChatAFL-Opt/afl-fuzz.c`
-6. `ChatAFL-Opt/chat-llm.c`
-7. `ChatAFL-Opt/llm-validator.c`
-8. `ChatAFL-Opt/grammar-hypothesis.*`
-9. `ChatAFL-Opt/mqtt-builder.*`
-10. `ChatAFL-Opt/mp-driver-mqtt.c`
-11. `ChatAFL-Opt/mqtt-differential.*`
+4. `LoopFuzz/Makefile`
+5. `LoopFuzz/afl-fuzz.c`
+6. `LoopFuzz/chat-llm.c`
+7. `LoopFuzz/llm-validator.c`
+8. `LoopFuzz/grammar-hypothesis.*`
+9. `LoopFuzz/mqtt-builder.*`
+10. `LoopFuzz/mp-driver-mqtt.c`
+11. `LoopFuzz/mqtt-differential.*`
 12. `analyze.sh`
 13. `benchmark/scripts/analysis/profuzzbench_generate_csv.sh`
 
 这样最容易从“外层工程链”一路走到“内核算法链”。
 
-## 15. ChatAFL-Opt核心思想
+## 15. LoopFuzz核心思想
 
-ChatAFL-Opt与ChatAFL在同一个目录下，它是将ChatAFL 这类“LLM帮你生成/变异协议消息”的方法，升级为【LLM提出结构/状态假设 → 运行时验证与反例驱动修正 → 形成可复现、可度量的状态探索闭环】。从而解决当前 LLM-fuzzing 最大的审稿痛点：幻觉、不可控、不可复现。ChatAFL 已证明LLM能从RFC抽出语法/状态信息并融入fuzz loop，但“验证与纠错机制”仍是强缺口。以下是工程扩展要求，请先严谨地结合【work_and_data_flow.txt】工作流和数据流判断要求是否已经主流程中实现并起作用：
+LoopFuzz与ChatAFL在同一个目录下，它是将ChatAFL 这类“LLM帮你生成/变异协议消息”的方法，升级为【LLM提出结构/状态假设 → 运行时验证与反例驱动修正 → 形成可复现、可度量的状态探索闭环】。从而解决当前 LLM-fuzzing 最大的审稿痛点：幻觉、不可控、不可复现。ChatAFL 已证明LLM能从RFC抽出语法/状态信息并融入fuzz loop，但“验证与纠错机制”仍是强缺口。以下是工程扩展要求，请先严谨地结合【work_and_data_flow.txt】工作流和数据流判断要求是否已经主流程中实现并起作用：
 
 1. LLM语法/消息模板生成（Hypothesis）
 o 输入：RFC片段/抓包样例/服务端响应码与错误信息

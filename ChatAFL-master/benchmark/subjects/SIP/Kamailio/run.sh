@@ -11,8 +11,13 @@ strstr() {
   return 0
 }
 
+FUZZER_DIR="$FUZZER"
+if [ "$FUZZER" = "loopfuzz" ]; then
+  FUZZER_DIR="loopfuzz"
+fi
+
 #Commands for afl-based fuzzers (e.g., aflnet, aflnwe)
-if $(strstr $FUZZER "afl") || $(strstr $FUZZER "llm"); then
+if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" ]; then
 
   # Run fuzzer-specific commands (if any)
   if [ -e ${WORKDIR}/run-${FUZZER} ]; then
@@ -29,7 +34,7 @@ if $(strstr $FUZZER "afl") || $(strstr $FUZZER "llm"); then
 
   cd $WORKDIR/${TARGET_DIR}
 
-  timeout -k 2s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER}/afl-fuzz -d -i ${INPUTS} -o $OUTDIR -N udp://127.0.0.1/5060 $OPTIONS -c ${WORKDIR}/run_pjsip ./src/kamailio -f ${WORKDIR}/kamailio-basic.cfg -L $KAMAILIO_MODULES -Y $KAMAILIO_RUNTIME_DIR -n 1 -D -E
+  timeout -k 2s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -o $OUTDIR -N udp://127.0.0.1/5060 $OPTIONS -c ${WORKDIR}/run_pjsip ./src/kamailio -f ${WORKDIR}/kamailio-basic.cfg -L $KAMAILIO_MODULES -Y $KAMAILIO_RUNTIME_DIR -n 1 -D -E
 
   STATUS=$?
 

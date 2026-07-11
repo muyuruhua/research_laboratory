@@ -73,12 +73,12 @@ all_files = []              # each file as a record
 for group_dir in sorted(os.listdir(BASE)):
     gpath = os.path.join(BASE, group_dir)
     if not os.path.isdir(gpath): continue
-    inner = os.path.join(gpath, "out-exim-chatafl_opt")
+    inner = os.path.join(gpath, "out-exim-loopfuzz")
     viol_dir = os.path.join(inner, "replayable-violations")
     if not os.path.isdir(viol_dir): continue
 
     tar_name = group_dir + ".tar.gz"
-    group_num = group_dir.replace("out-exim-chatafl_opt_", "")
+    group_num = group_dir.replace("out-exim-loopfuzz_", "")
 
     for vf in sorted(os.listdir(viol_dir)):
         vf_path = os.path.join(viol_dir, vf)
@@ -484,7 +484,7 @@ write_header(ws5, headers5, widths5)
 for group_dir in sorted(os.listdir(BASE)):
     gpath = os.path.join(BASE, group_dir)
     if not os.path.isdir(gpath): continue
-    inner = os.path.join(gpath, "out-exim-chatafl_opt")
+    inner = os.path.join(gpath, "out-exim-loopfuzz")
 
     crashes_dir = os.path.join(inner, "replayable-crashes")
     hangs_dir = os.path.join(inner, "replayable-hangs")
@@ -644,7 +644,7 @@ ws8 = wb.create_sheet("实验说明")
 notes = [
     ["字段", "说明"],
     ["实验源目录", "/experiment_data/ten_groups_ablation_ten/results-exim_ablation_full_20260531T210335/"],
-    ["Fuzzer", "ChatAFL-Opt (基于AFLNet的LLM增强型协议模糊测试工具)"],
+    ["Fuzzer", "LoopFuzz (基于AFLNet的LLM增强型协议模糊测试工具)"],
     ["目标协议", "SMTP (Simple Mail Transfer Protocol, RFC 5321)"],
     ["目标软件", "Exim 4.96-221-d6a5a05b8-XX (2026-04-13编译, gcc/Clang + ASAN)"],
     ["运行配置", "10组独立运行(opt_1~opt_10), 每组~24.6小时, 共~246小时"],
@@ -654,7 +654,7 @@ notes = [
     ["Violation检测", "replayable-violations: 504个独立种子文件 → 983条子违规"],
     ["Hang检测", "replayable-hangs: 112个超时文件"],
     ["Queue种子", "replayable-queue: ~1400-1600个/组, 共~14800个有效种子"],
-    ["Oracle模块", "ChatAFL-Opt/protocol-oracle.h (SMTP安全属性Oracle), 6种基类category + 31种组合"],
+    ["Oracle模块", "LoopFuzz/protocol-oracle.h (SMTP安全属性Oracle), 6种基类category + 31种组合"],
     ["复现工具", "replay_logical_vuln.sh (已修复端口检测bug), reproduce_exim_vulns.py (独立PoC验证)"],
     ["", ""],
     ["Category位掩码定义", ""],

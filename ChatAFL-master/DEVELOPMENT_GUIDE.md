@@ -32,17 +32,17 @@ cd ..
 2. **开发迭代**（后续开发使用）
 ```bash
 # 修改本地代码
-vim ChatAFL-Opt/grammar-hypothesis.c
-vim ChatAFL-Opt/afl-fuzz.c
+vim LoopFuzz/grammar-hypothesis.c
+vim LoopFuzz/afl-fuzz.c
 
 # 直接运行测试（volume自动挂载）
-sudo -E ./run_dev.sh 1 5 lightftp chatafl-opt
+sudo -E ./run_dev.sh 1 5 lightftp loopfuzz
 
 # 再次修改代码后，直接重新运行即可，无需重新构建镜像！
 ```
 
 ### 工作原理
-- `run_dev.sh` 会自动将 `ChatAFL-Opt/` 挂载到容器的 `/home/ubuntu/chatafl-opt/`
+- `run_dev.sh` 会自动将 `LoopFuzz/` 挂载到容器的 `/home/ubuntu/loopfuzz/`
 - 容器启动时使用挂载的代码，而非镜像中编译的旧代码
 - 修改本地文件 = 修改容器内文件
 
@@ -61,7 +61,7 @@ sudo -E ./run_dev.sh 1 5 lightftp chatafl-opt
 cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master
 
 # 快速测试5分钟
-./quick_test.sh lightftp chatafl-opt 5
+./quick_test.sh lightftp loopfuzz 5
 
 # 测试其他fuzzer
 ./quick_test.sh lightftp chatafl 10
@@ -69,7 +69,7 @@ cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master
 ```
 
 ### 输出位置
-结果自动保存到：`quick_test_results/chatafl-opt_YYYYMMDD_HHMMSS/`
+结果自动保存到：`quick_test_results/loopfuzz_YYYYMMDD_HHMMSS/`
 
 ---
 
@@ -77,18 +77,18 @@ cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master
 
 ```bash
 # 1. 修改代码
-vim ChatAFL-Opt/grammar-hypothesis.c
+vim LoopFuzz/grammar-hypothesis.c
 
 # 2. 快速验证（5分钟测试）
-./quick_test.sh lightftp chatafl-opt 5
+./quick_test.sh lightftp loopfuzz 5
 
 # 3. 查看日志
-tail -f quick_test_results/chatafl-opt_*/results-chatafl-opt/fuzzer-0/fuzz.log
+tail -f quick_test_results/loopfuzz_*/results-loopfuzz/fuzzer-0/fuzz.log
 
 # 4. 如果有问题，继续修改代码并重复步骤2-3
 
 # 5. 验证通过后，运行完整测试
-sudo -E ./run_dev.sh 1 30 lightftp chatafl-opt
+sudo -E ./run_dev.sh 1 30 lightftp loopfuzz
 ```
 
 ---
@@ -125,14 +125,14 @@ docker commit container_id new_image   # 无法追溯、难维护
 A: 如果fuzzer已编译成二进制，需要在容器内重新编译：
 ```bash
 docker exec -it <container_id> bash
-cd /home/ubuntu/chatafl-opt
+cd /home/ubuntu/loopfuzz
 make clean all
 ```
 
 ### Q2: 能否同时挂载多个fuzzer？
 A: 可以，修改 `profuzzbench_exec_common_dev.sh` 添加更多volume：
 ```bash
--v "${PROJECT_ROOT}/ChatAFL-Opt:/home/ubuntu/chatafl-opt" \
+-v "${PROJECT_ROOT}/LoopFuzz:/home/ubuntu/loopfuzz" \
 -v "${PROJECT_ROOT}/ChatAFL:/home/ubuntu/chatafl"
 ```
 
@@ -140,11 +140,11 @@ A: 可以，修改 `profuzzbench_exec_common_dev.sh` 添加更多volume：
 A: 启动交互式容器：
 ```bash
 docker run -it --rm \
-  -v "$PWD/ChatAFL-Opt:/home/ubuntu/chatafl-opt" \
+  -v "$PWD/LoopFuzz:/home/ubuntu/loopfuzz" \
   lightftp /bin/bash
   
 # 然后在容器内
-cd /home/ubuntu/chatafl-opt
+cd /home/ubuntu/loopfuzz
 ls -la
 make clean all
 ./afl-fuzz --help
@@ -167,11 +167,11 @@ make clean all
 
 ```bash
 # 提交代码
-git add ChatAFL-Opt/
+git add LoopFuzz/
 git commit -m "Fix grammar hypothesis"
 
 # 运行完整构建（用于正式实验）
 export KEY="your-api-key"
 ./setup.sh
-./run.sh 5 1440 lightftp chatafl-opt  # 5个容器，24小时
+./run.sh 5 1440 lightftp loopfuzz  # 5个容器，24小时
 ```

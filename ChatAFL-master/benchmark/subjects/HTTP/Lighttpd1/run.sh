@@ -11,8 +11,13 @@ strstr() {
   return 0
 }
 
+FUZZER_DIR="$FUZZER"
+if [ "$FUZZER" = "loopfuzz" ]; then
+  FUZZER_DIR="loopfuzz"
+fi
+
 #Commands for afl-based fuzzers (e.g., aflnet, aflnwe)
-if $(strstr $FUZZER "afl") || $(strstr $FUZZER "llm"); then
+if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" ]; then
 
   TARGET_DIR=${TARGET_DIR:-"lighttpd1"}
   INPUTS=${WORKDIR}/in-http
@@ -25,7 +30,7 @@ if $(strstr $FUZZER "afl") || $(strstr $FUZZER "llm"); then
   #Step-1. Do Fuzzing
   #Move to fuzzing folder
   cd $WORKDIR/${TARGET_DIR}/
-  timeout -k 2s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER}/afl-fuzz -d -i ${INPUTS} -x ${WORKDIR}/http.dict -o $OUTDIR -N tcp://127.0.0.1/8080 $OPTIONS ./src/lighttpd -D -f ${WORKDIR}/lighttpd.conf -m $PWD/src/.libs
+  timeout -k 2s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -x ${WORKDIR}/http.dict -o $OUTDIR -N tcp://127.0.0.1/8080 $OPTIONS ./src/lighttpd -D -f ${WORKDIR}/lighttpd.conf -m $PWD/src/.libs
 
   STATUS=$?
 

@@ -1,5 +1,5 @@
 /*
- * ChatAFL-Opt: Grammar Hypothesis Implementation
+ * LoopFuzz: Grammar Hypothesis Implementation
  * ==============================================
  * Implementation of hypothesis-driven grammar learning with validation loop
  */

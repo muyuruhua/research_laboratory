@@ -7,26 +7,26 @@ PAPER_DIR = Path(__file__).resolve().parent
 FIGURES_DIR = PAPER_DIR / 'figures'
 DATA_ROOT = Path('/home/ckt/Documents/000_2026_test_dev/experiment_data/ten groups data (ten)')
 
-FUZZER_ORDER = ['aflnet', 'chatafl', 'chatafl_opt']
+FUZZER_ORDER = ['aflnet', 'chatafl', 'loopfuzz']
 FUZZER_LABELS = {
     'aflnet': 'AFLNet',
     'chatafl': 'ChatAFL',
-    'chatafl_opt': 'LoopFuzz',
+    'loopfuzz': 'LoopFuzz',
 }
 FUZZER_COLORS = {
     'aflnet': '#1f77b4',
     'chatafl': '#ff7f0e',
-    'chatafl_opt': '#d62728',
+    'loopfuzz': '#d62728',
 }
 FUZZER_STYLES = {
     'aflnet': '-',
     'chatafl': '--',
-    'chatafl_opt': '-.',
+    'loopfuzz': '-.',
 }
 FUZZER_MARKERS = {
     'aflnet': 'o',
     'chatafl': 's',
-    'chatafl_opt': '^',
+    'loopfuzz': '^',
 }
 
 TARGETS = [

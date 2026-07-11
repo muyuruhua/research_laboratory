@@ -29,8 +29,55 @@ export FUZZER_LIST=$2
 if [[ "x$TARGET_LIST" == "x" ]] || [[ "x$FUZZER_LIST" == "x" ]]
 then
     echo "Usage: $0 TARGET FUZZER"
+    echo "Known fuzzers: aflnet,chatafl,chatafl-cl1,chatafl-cl2,loopfuzz,all"
     exit 1
 fi
+
+normalize_fuzzer_list() {
+    local raw="$1" item canon out=""
+    for item in $(echo "$raw" | tr ',' ' '); do
+        case "$item" in
+            loopfuzz|LoopFuzz) canon="loopfuzz" ;;
+            aflnet|chatafl|chatafl-cl1|chatafl-cl2|all) canon="$item" ;;
+            "")
+                continue
+                ;;
+            *)
+                echo "[ERROR] Unknown fuzzer: $item" >&2
+                echo "[ERROR] Known fuzzers: aflnet,chatafl,chatafl-cl1,chatafl-cl2,loopfuzz,all" >&2
+                exit 2
+                ;;
+        esac
+        out="${out:+$out,}$canon"
+    done
+    if [[ -z "$out" ]]; then
+        echo "[ERROR] Empty fuzzer list" >&2
+        exit 2
+    fi
+    echo "$out"
+}
+
+validate_target_list() {
+    local raw="$1" item
+    for item in $(echo "$raw" | tr ',' ' '); do
+        case "$item" in
+            lightftp|bftpd|proftpd|pure-ftpd|exim|live555|kamailio|forked-daapd|lighttpd1|mosquitto|mosquitto-v2.0.18|mosquitto-v2.1.2|all)
+                ;;
+            "")
+                continue
+                ;;
+            *)
+                echo "[ERROR] Unknown target: $item" >&2
+                echo "[ERROR] Known targets: lightftp,bftpd,proftpd,pure-ftpd,exim,live555,kamailio,forked-daapd,lighttpd1,mosquitto,mosquitto-v2.0.18,mosquitto-v2.1.2,all" >&2
+                exit 2
+                ;;
+        esac
+    done
+}
+
+validate_target_list "$TARGET_LIST"
+FUZZER_LIST="$(normalize_fuzzer_list "$FUZZER_LIST")" || exit $?
+export FUZZER_LIST
 
 echo
 echo "=========================================="
@@ -87,9 +134,9 @@ do
                 profuzzbench_exec_common_dev.sh lightftp $NUM_CONTAINERS ${RESULTS_DIR} chatafl-cl2 out-lightftp-chatafl_cl2 "-P FTP -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
-            if [[ $FUZZER == "chatafl-opt" ]] || [[ $FUZZER == "all" ]]
+            if [[ $FUZZER == "loopfuzz" ]] || [[ $FUZZER == "all" ]]
             then
-                profuzzbench_exec_common_dev.sh lightftp $NUM_CONTAINERS ${RESULTS_DIR} chatafl-opt out-lightftp-chatafl_opt "-P FTP -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+                profuzzbench_exec_common_dev.sh lightftp $NUM_CONTAINERS ${RESULTS_DIR} loopfuzz out-lightftp-loopfuzz "-P FTP -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
         fi
@@ -125,9 +172,9 @@ do
                 profuzzbench_exec_common_dev.sh bftpd $NUM_CONTAINERS ${RESULTS_DIR} chatafl-cl2 out-bftpd-chatafl_cl2 "-m none -P FTP -D 10000 -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
-            if [[ $FUZZER == "chatafl-opt" ]] || [[ $FUZZER == "all" ]]
+            if [[ $FUZZER == "loopfuzz" ]] || [[ $FUZZER == "all" ]]
             then
-                profuzzbench_exec_common_dev.sh bftpd $NUM_CONTAINERS ${RESULTS_DIR} chatafl-opt out-bftpd-chatafl_opt "-m none -P FTP -D 10000 -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+                profuzzbench_exec_common_dev.sh bftpd $NUM_CONTAINERS ${RESULTS_DIR} loopfuzz out-bftpd-loopfuzz "-m none -P FTP -D 10000 -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
         fi
@@ -163,9 +210,9 @@ do
                 profuzzbench_exec_common_dev.sh proftpd $NUM_CONTAINERS ${RESULTS_DIR} chatafl-cl2 out-proftpd-chatafl_cl2 "-m none -P FTP -D 10000 -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
-            if [[ $FUZZER == "chatafl-opt" ]] || [[ $FUZZER == "all" ]]
+            if [[ $FUZZER == "loopfuzz" ]] || [[ $FUZZER == "all" ]]
             then
-                profuzzbench_exec_common_dev.sh proftpd $NUM_CONTAINERS ${RESULTS_DIR} chatafl-opt out-proftpd-chatafl_opt "-m none -P FTP -D 10000 -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+                profuzzbench_exec_common_dev.sh proftpd $NUM_CONTAINERS ${RESULTS_DIR} loopfuzz out-proftpd-loopfuzz "-m none -P FTP -D 10000 -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
         fi
@@ -201,9 +248,9 @@ do
                 profuzzbench_exec_common_dev.sh pure-ftpd $NUM_CONTAINERS ${RESULTS_DIR} chatafl-cl2 out-pure-ftpd-chatafl_cl2 "-m none -P FTP -D 10000 -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
-            if [[ $FUZZER == "chatafl-opt" ]] || [[ $FUZZER == "all" ]]
+            if [[ $FUZZER == "loopfuzz" ]] || [[ $FUZZER == "all" ]]
             then
-                profuzzbench_exec_common_dev.sh pure-ftpd $NUM_CONTAINERS ${RESULTS_DIR} chatafl-opt out-pure-ftpd-chatafl_opt "-m none -P FTP -D 10000 -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+                profuzzbench_exec_common_dev.sh pure-ftpd $NUM_CONTAINERS ${RESULTS_DIR} loopfuzz out-pure-ftpd-loopfuzz "-m none -P FTP -D 10000 -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
         fi
@@ -239,9 +286,9 @@ do
                 profuzzbench_exec_common_dev.sh exim $NUM_CONTAINERS ${RESULTS_DIR} chatafl-cl2 out-exim-chatafl_cl2 "-P SMTP -D 10000 -q 3 -s 3 -E -K -W 100 -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
-            if [[ $FUZZER == "chatafl-opt" ]] || [[ $FUZZER == "all" ]]
+            if [[ $FUZZER == "loopfuzz" ]] || [[ $FUZZER == "all" ]]
             then
-                profuzzbench_exec_common_dev.sh exim $NUM_CONTAINERS ${RESULTS_DIR} chatafl-opt out-exim-chatafl_opt "-P SMTP -D 10000 -q 3 -s 3 -E -K -W 100 -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+                profuzzbench_exec_common_dev.sh exim $NUM_CONTAINERS ${RESULTS_DIR} loopfuzz out-exim-loopfuzz "-P SMTP -D 10000 -q 3 -s 3 -E -K -W 100 -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
         fi
@@ -277,9 +324,9 @@ do
                 profuzzbench_exec_common_dev.sh live555 $NUM_CONTAINERS ${RESULTS_DIR} chatafl-cl2 out-live555-chatafl_cl2 "-P RTSP -D 10000 -q 3 -s 3 -E -K -R -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
-            if [[ $FUZZER == "chatafl-opt" ]] || [[ $FUZZER == "all" ]]
+            if [[ $FUZZER == "loopfuzz" ]] || [[ $FUZZER == "all" ]]
             then
-                profuzzbench_exec_common_dev.sh live555 $NUM_CONTAINERS ${RESULTS_DIR} chatafl-opt out-live555-chatafl_opt "-P RTSP -D 10000 -q 3 -s 3 -E -K -R -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+                profuzzbench_exec_common_dev.sh live555 $NUM_CONTAINERS ${RESULTS_DIR} loopfuzz out-live555-loopfuzz "-P RTSP -D 10000 -q 3 -s 3 -E -K -R -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
         fi
@@ -315,9 +362,9 @@ do
                 profuzzbench_exec_common_dev.sh kamailio $NUM_CONTAINERS ${RESULTS_DIR} chatafl-cl2 out-kamailio-chatafl_cl2 "-m none -P SIP -l 5061 -D 50000 -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
-            if [[ $FUZZER == "chatafl-opt" ]] || [[ $FUZZER == "all" ]]
+            if [[ $FUZZER == "loopfuzz" ]] || [[ $FUZZER == "all" ]]
             then
-                profuzzbench_exec_common_dev.sh kamailio $NUM_CONTAINERS ${RESULTS_DIR} chatafl-opt out-kamailio-chatafl_opt "-m none -P SIP -l 5061 -D 50000 -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+                profuzzbench_exec_common_dev.sh kamailio $NUM_CONTAINERS ${RESULTS_DIR} loopfuzz out-kamailio-loopfuzz "-m none -P SIP -l 5061 -D 50000 -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
         fi
@@ -353,9 +400,9 @@ do
                 profuzzbench_exec_common_dev.sh forked-daapd $NUM_CONTAINERS ${RESULTS_DIR} chatafl-cl2 out-forked-daapd-chatafl_cl2 "-P HTTP -D 200000 -m none -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
-            if [[ $FUZZER == "chatafl-opt" ]] || [[ $FUZZER == "all" ]]
+            if [[ $FUZZER == "loopfuzz" ]] || [[ $FUZZER == "all" ]]
             then
-                profuzzbench_exec_common_dev.sh forked-daapd $NUM_CONTAINERS ${RESULTS_DIR} chatafl-opt out-forked-daapd-chatafl_opt "-P HTTP -D 200000 -m none -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+                profuzzbench_exec_common_dev.sh forked-daapd $NUM_CONTAINERS ${RESULTS_DIR} loopfuzz out-forked-daapd-loopfuzz "-P HTTP -D 200000 -m none -q 3 -s 3 -E -K -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
         fi
@@ -391,9 +438,9 @@ do
                 profuzzbench_exec_common_dev.sh lighttpd1 $NUM_CONTAINERS ${RESULTS_DIR} chatafl-cl2 out-lighttpd1-chatafl_cl2 "-P HTTP -D 200000 -m none -q 3 -s 3 -E -K -R -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
-            if [[ $FUZZER == "chatafl-opt" ]] || [[ $FUZZER == "all" ]]
+            if [[ $FUZZER == "loopfuzz" ]] || [[ $FUZZER == "all" ]]
             then
-                profuzzbench_exec_common_dev.sh lighttpd1 $NUM_CONTAINERS ${RESULTS_DIR} chatafl-opt out-lighttpd1-chatafl_opt "-P HTTP -D 200000 -m none -q 3 -s 3 -E -K -R -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+                profuzzbench_exec_common_dev.sh lighttpd1 $NUM_CONTAINERS ${RESULTS_DIR} loopfuzz out-lighttpd1-loopfuzz "-P HTTP -D 200000 -m none -q 3 -s 3 -E -K -R -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
         fi
@@ -430,9 +477,9 @@ do
                 profuzzbench_exec_common_dev.sh mosquitto $NUM_CONTAINERS ${RESULTS_DIR} chatafl-cl2 out-mosquitto-chatafl_cl2 "-P MQTT -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
-            if [[ $FUZZER == "chatafl-opt" ]] || [[ $FUZZER == "all" ]]
+            if [[ $FUZZER == "loopfuzz" ]] || [[ $FUZZER == "all" ]]
             then
-                profuzzbench_exec_common_dev.sh mosquitto $NUM_CONTAINERS ${RESULTS_DIR} chatafl-opt out-mosquitto-chatafl_opt "-P MQTT -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+                profuzzbench_exec_common_dev.sh mosquitto $NUM_CONTAINERS ${RESULTS_DIR} loopfuzz out-mosquitto-loopfuzz "-P MQTT -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
         fi
@@ -466,9 +513,9 @@ do
                 profuzzbench_exec_common_dev.sh mosquitto-v2.0.18 $NUM_CONTAINERS ${RESULTS_DIR} chatafl-cl2 out-mosquitto-v2.0.18-chatafl_cl2 "-P MQTT -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
-            if [[ $FUZZER == "chatafl-opt" ]] || [[ $FUZZER == "all" ]]
+            if [[ $FUZZER == "loopfuzz" ]] || [[ $FUZZER == "all" ]]
             then
-                profuzzbench_exec_common_dev.sh mosquitto-v2.0.18 $NUM_CONTAINERS ${RESULTS_DIR} chatafl-opt out-mosquitto-v2.0.18-chatafl_opt "-P MQTT -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+                profuzzbench_exec_common_dev.sh mosquitto-v2.0.18 $NUM_CONTAINERS ${RESULTS_DIR} loopfuzz out-mosquitto-v2.0.18-loopfuzz "-P MQTT -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
         fi
@@ -502,9 +549,9 @@ do
                 profuzzbench_exec_common_dev.sh mosquitto-v2.1.2 $NUM_CONTAINERS ${RESULTS_DIR} chatafl-cl2 out-mosquitto-v2.1.2-chatafl_cl2 "-P MQTT -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
-            if [[ $FUZZER == "chatafl-opt" ]] || [[ $FUZZER == "all" ]]
+            if [[ $FUZZER == "loopfuzz" ]] || [[ $FUZZER == "all" ]]
             then
-                profuzzbench_exec_common_dev.sh mosquitto-v2.1.2 $NUM_CONTAINERS ${RESULTS_DIR} chatafl-opt out-mosquitto-v2.1.2-chatafl_opt "-P MQTT -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+                profuzzbench_exec_common_dev.sh mosquitto-v2.1.2 $NUM_CONTAINERS ${RESULTS_DIR} loopfuzz out-mosquitto-v2.1.2-loopfuzz "-P MQTT -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
         fi
@@ -521,7 +568,7 @@ done
 wait
 
 RECOVERY_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/recover_result_archives.sh"
-for RESULTS_DIR in ${RESULTS_ROOT}/results-*; do
+for RESULTS_DIR in "${RESULTS_ROOT}"/results-*_"${TIMESTAMP}"; do
     [[ -d "$RESULTS_DIR" ]] || continue
     if [[ -f "$RECOVERY_HELPER" ]]; then
         bash "$RECOVERY_HELPER" "$RESULTS_DIR" || \

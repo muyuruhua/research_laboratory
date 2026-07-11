@@ -134,7 +134,7 @@ do
     # ─── LLM Token Cost Extraction ──────────────────────────────────
     # token_source:
     #   "exact"    — from fuzzer_stats llm_prompt_tokens / llm_completion_tok
-    #                Both chatafl and chatafl-opt now write these fields,
+    #                Both chatafl and LoopFuzz now write these fields,
     #                covering ALL LLM call sites: grammar, enrichment, and
     #                stall/plateau.  Sourced from the API "usage" object.
     #   "tiktoken" — LEGACY fallback: precise stall-only token count via

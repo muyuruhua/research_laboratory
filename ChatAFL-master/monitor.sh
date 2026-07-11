@@ -129,8 +129,8 @@ detect_outdir() {
 }
 
 # 从 out-dir 名称推断 fuzzer 标签
-# out-exim-chatafl_opt      → CHATAFL-OPT
-# out-pure-ftpd-chatafl_opt → CHATAFL-OPT  (目标名含连字符)
+# out-exim-loopfuzz      → loopfuzz
+# out-pure-ftpd-loopfuzz → loopfuzz  (目标名含连字符)
 # out-exim-aflnet            → AFLNET
 # 方法: 从尾部匹配已知 fuzzer 后缀 (fuzzer 名用下划线, 不会与连字符冲突)
 fuzzer_label() {
@@ -138,7 +138,7 @@ fuzzer_label() {
     local base rest
     base=$(basename "$outdir")
     rest="${base#out-}"          # 去掉 out- 前缀
-    if   [[ "$rest" == *-chatafl_opt ]]; then echo "CHATAFL-OPT"
+    if   [[ "$rest" == *-loopfuzz || "$rest" == *-LoopFuzz ]]; then echo "loopfuzz"
     elif [[ "$rest" == *-chatafl_cl1 ]]; then echo "CHATAFL-CL1"
     elif [[ "$rest" == *-chatafl_cl2 ]]; then echo "CHATAFL-CL2"
     elif [[ "$rest" == *-chatafl ]];     then echo "CHATAFL"
@@ -148,8 +148,8 @@ fuzzer_label() {
 }
 
 # 从 out-dir 名称推断 target
-# out-exim-chatafl_opt      → exim
-# out-pure-ftpd-chatafl_opt → pure-ftpd  (正确保留连字符)
+# out-exim-loopfuzz      → exim
+# out-pure-ftpd-loopfuzz → pure-ftpd  (正确保留连字符)
 # out-mosquitto-aflnet       → mosquitto
 # 方法: 去掉 out- 前缀后, 从尾部剥离已知 fuzzer 后缀, 剩余即为 target
 target_label() {
@@ -157,7 +157,8 @@ target_label() {
     local base rest
     base=$(basename "$outdir")
     rest="${base#out-}"
-    if   [[ "$rest" == *-chatafl_opt ]]; then echo "${rest%-chatafl_opt}"
+    if   [[ "$rest" == *-loopfuzz ]]; then echo "${rest%-loopfuzz}"
+    elif [[ "$rest" == *-LoopFuzz ]]; then echo "${rest%-LoopFuzz}"
     elif [[ "$rest" == *-chatafl_cl1 ]]; then echo "${rest%-chatafl_cl1}"
     elif [[ "$rest" == *-chatafl_cl2 ]]; then echo "${rest%-chatafl_cl2}"
     elif [[ "$rest" == *-chatafl ]];     then echo "${rest%-chatafl}"
@@ -584,7 +585,7 @@ print_table() {
         # 颜色选择
         local fc="$RST"
         case "$fuzzer" in
-            CHATAFL-OPT) fc="$GREEN" ;;
+            loopfuzz) fc="$GREEN" ;;
             CHATAFL*)    fc="$YELLOW" ;;
             AFLNET)      fc="$CYAN" ;;
         esac
@@ -635,7 +636,7 @@ print_table() {
 
             local fc="$RST"
             case "$fuzzer" in
-                CHATAFL-OPT) fc="$GREEN" ;;
+                loopfuzz) fc="$GREEN" ;;
                 CHATAFL*)    fc="$YELLOW" ;;
             esac
 
@@ -674,7 +675,7 @@ print_table() {
 
             local fc="$RST"
             case "$fuzzer" in
-                CHATAFL-OPT) fc="$GREEN" ;;
+                loopfuzz) fc="$GREEN" ;;
                 CHATAFL*)    fc="$YELLOW" ;;
             esac
 
@@ -758,7 +759,7 @@ print_table() {
 
         local fc="$RST"
         case "$fzr" in
-            CHATAFL-OPT) fc="$GREEN" ;;
+            loopfuzz) fc="$GREEN" ;;
             CHATAFL*)    fc="$YELLOW" ;;
             AFLNET)      fc="$CYAN" ;;
         esac

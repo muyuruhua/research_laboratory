@@ -61,9 +61,9 @@ do
                 profuzzbench_exec_common.sh lightftp $NUM_CONTAINERS results-lightftp chatafl-cl2 out-lightftp-chatafl_cl2 "-P FTP -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
-            if [[ $FUZZER == "chatafl-opt" ]] || [[ $FUZZER == "all" ]]
+            if [[ $FUZZER == "loopfuzz" ]] || [[ $FUZZER == "all" ]]
             then
-                profuzzbench_exec_common.sh lightftp $NUM_CONTAINERS results-lightftp chatafl-opt out-lightftp-chatafl_opt "-P FTP -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
+                profuzzbench_exec_common.sh lightftp $NUM_CONTAINERS results-lightftp loopfuzz out-lightftp-loopfuzz "-P FTP -D 10000 -q 3 -s 3 -E -K -m none -t ${TEST_TIMEOUT}+" $TIMEOUT $SKIPCOUNT &
             fi
 
         fi

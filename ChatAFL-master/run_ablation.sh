@@ -151,7 +151,7 @@ run_queued_groups() {
         echo "  HYP=${CHATAFL_HYPOTHESIS:-1} NO_REF=${CHATAFL_NO_REFINEMENT:-0} NO_FRONT=${CHATAFL_NO_FRONTIER:-0} NO_ADAPT=${CHATAFL_NO_ADAPTIVE:-0} NO_SP=${CHATAFL_NO_STATE_PROMPT:-0} THR=${CHATAFL_ABLATION_THRESHOLD:-adaptive}"
 
         cd "$BASE_DIR" || exit 1
-        ./run_dev.sh "$RUNS" "$TIMEOUT" "$TARGET" chatafl-opt
+        ./run_dev.sh "$RUNS" "$TIMEOUT" "$TARGET" loopfuzz
 
         echo "[ABLATION:${label}] 完成"
       ) &

@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==============================================================================
-# ChatAFL-Opt Logical Vulnerability Replay & Verification Tool (FIXED VERSION)
+# LoopFuzz Logical Vulnerability Replay & Verification Tool (FIXED VERSION)
 # ==============================================================================
 # Fixes applied:
 #   F1: Corrected server commands & env vars for all 4 benchmark targets
@@ -128,7 +128,7 @@ IS_UDP="${TARGET_IS_UDP[$TARGET]}"; HEALTH_CHECK="${TARGET_HEALTH_CHECK[$TARGET]
 mkdir -p "$OUT_DIR"
 
 echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║  ChatAFL-Opt Logical Vuln Replay (FIXED)                    ║"
+echo "║  LoopFuzz Logical Vuln Replay (FIXED)                    ║"
 echo "╠══════════════════════════════════════════════════════════════╣"
 echo "║  Target: $TARGET | Protocol: $PROTO (UDP=$IS_UDP) | Port: $PORT"
 echo "║  Source: $VIOLATION_SRC"

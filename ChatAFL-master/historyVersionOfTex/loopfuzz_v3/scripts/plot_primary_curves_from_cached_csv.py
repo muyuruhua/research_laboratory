@@ -41,29 +41,29 @@ TARGET_ORDER = [
     ("Lighttpd1", "lighttpd1"),
 ]
 
-FUZZER_ORDER = ["aflnet", "chatafl", "chatafl_opt"]
+FUZZER_ORDER = ["aflnet", "chatafl", "loopfuzz"]
 FUZZER_LABEL = {
     "aflnet": "AFLNet",
     "chatafl": "ChatAFL",
-    "chatafl_opt": "LoopFuzz",
+    "loopfuzz": "LoopFuzz",
 }
 
 COLORS = {
     "aflnet": "#1f77b4",
     "chatafl": "#ff7f0e",
-    "chatafl_opt": "#d62728",
+    "loopfuzz": "#d62728",
 }
 
 LINESTYLES = {
     "aflnet": "-",
     "chatafl": "--",
-    "chatafl_opt": "-.",
+    "loopfuzz": "-.",
 }
 
 MARKERS = {
     "aflnet": "o",
     "chatafl": "s",
-    "chatafl_opt": "^",
+    "loopfuzz": "^",
 }
 
 

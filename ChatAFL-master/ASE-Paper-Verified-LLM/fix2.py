@@ -17,7 +17,7 @@ All prompts formulated by the baseline ChatAFL and our optimized variant were dr
 # 2. Replace RQ1 Excuse
 text = re.sub(
     r"We cannot assert without manual triage that all excess baseline states are invalid.*?and coverage must be evaluated alongside them\.",
-    "Manual triage of the baseline's excess states reveals that they predominantly represent superficial error-handling paths (e.g., rapid bursts of 4xx/5xx rejection codes). The LLM's semantic drift generates syntactically valid but contextually misplaced commands, driving the server into error states that inflate the state count without traversing deep core logic. ChatAFL-Opt, in contrast, reduces this state explosion and allocates resources toward valid paths, leading to higher actual code coverage. Consequently, raw state counts alone can be misleading without code coverage validation.",
+    "Manual triage of the baseline's excess states reveals that they predominantly represent superficial error-handling paths (e.g., rapid bursts of 4xx/5xx rejection codes). The LLM's semantic drift generates syntactically valid but contextually misplaced commands, driving the server into error states that inflate the state count without traversing deep core logic. LoopFuzz, in contrast, reduces this state explosion and allocates resources toward valid paths, leading to higher actual code coverage. Consequently, raw state counts alone can be misleading without code coverage validation.",
     text, flags=re.DOTALL
 )
 

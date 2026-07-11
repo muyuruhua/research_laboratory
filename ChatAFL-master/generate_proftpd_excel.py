@@ -145,12 +145,12 @@ all_violations = []
 crash_types = defaultdict(list)  # dedup by type
 violation_types = defaultdict(list)  # dedup by category group
 
-group_dirs = sorted(glob.glob(os.path.join(EXTRACT_DIR, "out-proftpd-chatafl_opt_*")))
+group_dirs = sorted(glob.glob(os.path.join(EXTRACT_DIR, "out-proftpd-loopfuzz_*")))
 print(f"Found {len(group_dirs)} fuzzing groups")
 
 for gd in group_dirs:
     group_name = os.path.basename(gd)
-    inner_dir = os.path.join(gd, "out-proftpd-chatafl_opt")
+    inner_dir = os.path.join(gd, "out-proftpd-loopfuzz")
 
     # ── Process replayable-crashes ──
     crash_dir = os.path.join(inner_dir, "replayable-crashes")
@@ -348,7 +348,7 @@ vulnerability_rows.append({
     'type': 'CRLF注入/FTP命令走私 (CRLF Injection / FTP Command Smuggling) - CWE-93',
     'cve_pattern': 'CVE-2026-39983(同类模式); ProFTPD暂无公开CRLF注入CVE — 本发现为ProFTPD新类型漏洞',
     'reproduction': f'''【复现步骤】
-1. ChatAFL-Opt协议Oracle在fuzzing中检测到FTP命令参数中存在CRLF字符
+1. LoopFuzz协议Oracle在fuzzing中检测到FTP命令参数中存在CRLF字符
 2. 违反RFC 959 FTP协议规范：命令参数不应包含CR/LF控制字符
 3. 攻击者可利用CRLF注入实现FTP命令走私(Command Smuggling)
 4. 影响: 攻击者可在单次连接中注入额外的FTP命令，绕过协议状态机
@@ -382,7 +382,7 @@ CRLF注入是FTP协议层的严重安全问题:
 ProFTPD目前没有公开的CRLF注入CVE记录，本发现为ProFTPD 1.3.9rc1的新类型漏洞。''',
     'is_crash': '否 - 逻辑漏洞/协议层安全缺陷(未触发崩溃)',
     'why_vuln': f'''1. 违反RFC 959 FTP协议规范: 命令参数不应包含CR/LF控制字符。
-2. ChatAFL-Opt协议Oracle在{len(set(crlf_groups))}个独立fuzzing运行中检测到该安全属性违规。
+2. LoopFuzz协议Oracle在{len(set(crlf_groups))}个独立fuzzing运行中检测到该安全属性违规。
 3. CRLF注入(CWE-93)是OWASP Top 10级别的注入类漏洞。
 4. 可导致FTP命令走私，绕过认证和授权检查。
 5. ProFTPD 1.3.9rc1未对CRLF字符进行充分过滤，属于输入验证缺陷。
@@ -403,7 +403,7 @@ vulnerability_rows.append({
     'type': '敏感信息泄露 (Sensitive Information Leakage) - CWE-200',
     'cve_pattern': 'CVE-2024-42650(同类模式: FTP服务器响应中泄露敏感文件内容)',
     'reproduction': f'''【复现步骤】
-1. ChatAFL-Opt协议Oracle在fuzzing中检测到服务器响应中包含敏感信息
+1. LoopFuzz协议Oracle在fuzzing中检测到服务器响应中包含敏感信息
 2. 包括: 敏感文件内容(/etc/passwd等)、内部路径信息、服务器版本信息
 3. Oracle验证: 服务器响应中不应包含系统敏感数据
 
@@ -453,7 +453,7 @@ vulnerability_rows.append({
     'type': '认证状态绕过 (Authentication State Bypass) - CWE-862',
     'cve_pattern': 'CVE-2024-42644(同类模式: PASS without USER, 缺失认证检查)',
     'reproduction': f'''【复现步骤】
-1. ChatAFL-Opt协议Oracle在fuzzing中检测到PASS命令在USER命令之前被接受
+1. LoopFuzz协议Oracle在fuzzing中检测到PASS命令在USER命令之前被接受
 2. FTP协议RFC 959规定: 必须先发送USER命令建立认证上下文
 3. Oracle验证: 直接发送PASS命令获取230响应码即为认证绕过
 
@@ -500,7 +500,7 @@ vulnerability_rows.append({
     'type': '路径遍历 (Path Traversal) - CWE-22',
     'cve_pattern': 'CVE-2024-3935(同类模式: 服务器接受../路径遍历命令)',
     'reproduction': f'''【复现步骤】
-1. ChatAFL-Opt协议Oracle在fuzzing中检测到包含../的FTP命令被服务器接受
+1. LoopFuzz协议Oracle在fuzzing中检测到包含../的FTP命令被服务器接受
 2. 路径遍历允许攻击者访问Web根目录/用户主目录之外的文件
 3. Oracle验证: FTP响应码<400表示服务器接受了路径遍历请求
 
@@ -550,7 +550,7 @@ vulnerability_rows.append({
     'type': 'FTP Bounce攻击 (FTP Bounce Attack) - CWE-441',
     'cve_pattern': 'CVE-2018-15516(同类模式: PORT命令指向私有/内部IP地址)',
     'reproduction': f'''【复现步骤】
-1. ChatAFL-Opt协议Oracle在fuzzing中检测到PORT命令指向私有/内部IP地址
+1. LoopFuzz协议Oracle在fuzzing中检测到PORT命令指向私有/内部IP地址
 2. FTP Bounce攻击利用FTP服务器的PORT命令作为代理扫描内部网络
 3. Oracle验证: PORT命令中指定的IP是否为私有地址(127.x, 10.x, 192.168.x, 172.16.x)
 
@@ -598,7 +598,7 @@ vulnerability_rows.append({
     'type': 'FTP状态机违规 (Protocol State Machine Violation) - CWE-696',
     'cve_pattern': 'CVE-NEW-STATE-001(无公开CVE: ProFTPD状态机违规首次发现)',
     'reproduction': f'''【复现步骤】
-1. ChatAFL-Opt协议Oracle在fuzzing中检测到RNTO命令在RNFR命令之前被接受
+1. LoopFuzz协议Oracle在fuzzing中检测到RNTO命令在RNFR命令之前被接受
 2. FTP RFC 959规定: RNFR(Rename From)必须在RNTO(Rename To)之前发送
 3. Oracle验证: 未经过RNFR的RNTO命令收到<400响应码即为状态机违规
 
@@ -735,7 +735,7 @@ for col, h in enumerate(stats_headers, 1):
 stats_data = [
     ['目标协议', 'FTP (Port 21)', 'ProFTPD FTP服务器'],
     ['目标版本', TARGET_VERSION, 'ASAN编译, Linux x86-64'],
-    ['Fuzzing工具', 'ChatAFL-Opt (GPT-4o增强)', '10组独立运行, 每组约24小时'],
+    ['Fuzzing工具', 'LoopFuzz (GPT-4o增强)', '10组独立运行, 每组约24小时'],
     ['Fuzzing总时长', '约240小时(10组×24小时)', '2026-05-30至2026-05-31'],
     ['实验目录', EXPERIMENT_RESULTS, ''],
     ['Crash种子总数', str(len(all_crashes)), f'来自{len(crash_types)}个独立fuzzing组, 全部为SIGABRT(ASAN)'],
@@ -751,7 +751,7 @@ stats_data = [
     ['漏洞类型: 协议状态机违规', str(len(sm_list)), f'CWE-696'],
     ['', '', ''],
     ['Crash确认方式', 'replay_crash_universal.sh + Docker + ASAN', '独立环境复现验证'],
-    ['Violation确认方式', 'ChatAFL-Opt Protocol Oracle', 'AFLNet标记为replayable'],
+    ['Violation确认方式', 'LoopFuzz Protocol Oracle', 'AFLNet标记为replayable'],
 ]
 
 for row_idx, data in enumerate(stats_data, 2):
@@ -900,7 +900,7 @@ bash replay_crash_universal.sh proftpd <crash_seed_path> [output_dir]
 
 # 示例:
 bash replay_crash_universal.sh proftpd \\
-  /tmp/proftpd_analysis/out-proftpd-chatafl_opt_1/out-proftpd-chatafl_opt/\\
+  /tmp/proftpd_analysis/out-proftpd-loopfuzz_1/out-proftpd-loopfuzz/\\
   replayable-crashes/id:000000,sig:06,src:000000+000598,op:havoc_explore,rep:32 \\
   /tmp/crash_replay_output/
 
@@ -927,13 +927,13 @@ bash replay_logical_vuln.sh proftpd <violations_dir_or_report> [output_dir]
 
 # 示例(分析单个报告):
 bash replay_logical_vuln.sh proftpd \\
-  /tmp/proftpd_analysis/out-proftpd-chatafl_opt_1/out-proftpd-chatafl_opt/\\
+  /tmp/proftpd_analysis/out-proftpd-loopfuzz_1/out-proftpd-loopfuzz/\\
   replayable-violations/id:000008,sev:5,cat:0008 \\
   /tmp/logical_vuln_output/
 
 # 示例(分析整个violations目录):
 bash replay_logical_vuln.sh proftpd \\
-  /tmp/proftpd_analysis/out-proftpd-chatafl_opt_1/out-proftpd-chatafl_opt/\\
+  /tmp/proftpd_analysis/out-proftpd-loopfuzz_1/out-proftpd-loopfuzz/\\
   replayable-violations/ \\
   /tmp/logical_vuln_all_output/
 
@@ -974,7 +974,7 @@ print("PROFTPD VULNERABILITY DISCOVERY SUMMARY")
 print("=" * 80)
 print(f"""
 Target: ProFTPD 1.3.9rc1 (git) via FTP Port 21
-Fuzzing: ChatAFL-Opt (GPT-4o enhanced), 10 groups × ~24h = ~240 hours
+Fuzzing: LoopFuzz (GPT-4o enhanced), 10 groups × ~24h = ~240 hours
 Date: 2026-05-30 to 2026-05-31
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

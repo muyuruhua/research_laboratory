@@ -74,8 +74,8 @@ RUN cd chatafl-cl2 && \
 #     make -f Makefile.plugin clean all CHATAFL_ENHANCED=1 $MAKE_OPT && \
 #     cd llvm_mode && make $MAKE_OPT
 
-COPY --chown=ubuntu:ubuntu chatafl-opt chatafl-opt
-RUN cd chatafl-opt && \
+COPY --chown=ubuntu:ubuntu loopfuzz loopfuzz
+RUN cd loopfuzz && \
     make clean all $MAKE_OPT && \
     cd llvm_mode && make $MAKE_OPT
 

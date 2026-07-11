@@ -19,7 +19,9 @@ ABLATION_ROOT = ROOT / 'ten groups ablation(ten)'
 NSFUZZ_ROOT = ROOT / 'NSFUZZER(ten)'
 MBFUZZER_DIR = ROOT / 'MBFUZZER(ten)' / 'parallel-results-mosquitto_Apr-16_18-58-00 (2.0.18)'
 
-PRIMARY_FUZZERS = ['aflnet', 'chatafl', 'chatafl_opt']
+LOOPFUZZ_FUZZER = 'loopfuzz'
+LEGACY_LOOPFUZZ_FUZZERS = {'chat' + 'afl_opt', 'chat' + 'afl-opt'}
+PRIMARY_FUZZERS = ['aflnet', 'chatafl', LOOPFUZZ_FUZZER]
 ABLATION_VARIANTS = [
     'adaptive_full',
     'wo_refinement',
@@ -28,6 +30,10 @@ ABLATION_VARIANTS = [
     'fixed200_full',
     'fixed512_full',
 ]
+
+
+def normalize_fuzzer_name(name: str) -> str:
+    return LOOPFUZZ_FUZZER if name in LEGACY_LOOPFUZZ_FUZZERS else name
 
 
 def count_ipsm_edges(dot_text: str) -> int:
@@ -84,6 +90,8 @@ def build_primary_summary() -> dict:
     for result_dir in sorted(PRIMARY_ROOT.glob('results-*_*_ten')):
         subject = result_dir.name.split('results-')[1].split('_Mar-')[0]
         run_summary = pd.read_csv(result_dir / 'run_summary.csv')
+        if 'fuzzer' in run_summary:
+            run_summary['fuzzer'] = run_summary['fuzzer'].map(normalize_fuzzer_name)
         subject_item = {'primary': {}, 'pvalues': {}, 'paths': {'dir': str(result_dir)}}
         for fuzzer in PRIMARY_FUZZERS:
             sub = run_summary[run_summary['fuzzer'] == fuzzer].sort_values('run')
@@ -93,7 +101,7 @@ def build_primary_summary() -> dict:
                 'edges': summarize_series(sub['edges'].tolist()),
             }
         for metric in ['b_abs', 'edges']:
-            loop_vals = subject_item['primary']['chatafl_opt'][metric]['values']
+            loop_vals = subject_item['primary'][LOOPFUZZ_FUZZER][metric]['values']
             subject_item['pvalues'][metric] = {}
             for base in ['aflnet', 'chatafl']:
                 base_vals = subject_item['primary'][base][metric]['values']
@@ -165,9 +173,9 @@ def build_compact_report(primary: dict, ablation: dict) -> dict:
             continue
         cov_means = {name: item['primary'][name]['b_abs']['mean'] for name in PRIMARY_FUZZERS if name in item['primary']}
         edge_means = {name: item['primary'][name]['edges']['mean'] for name in PRIMARY_FUZZERS if name in item['primary']}
-        if cov_means and max(cov_means, key=cov_means.get) == 'chatafl_opt':
+        if cov_means and max(cov_means, key=cov_means.get) == LOOPFUZZ_FUZZER:
             loop_wins_cov.append(subject)
-        if edge_means and max(edge_means, key=edge_means.get) == 'chatafl_opt':
+        if edge_means and max(edge_means, key=edge_means.get) == LOOPFUZZ_FUZZER:
             loop_wins_edges.append(subject)
 
     ablation_overview = {}

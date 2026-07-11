@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ChatAFL-Opt 漏洞复现工具集
+LoopFuzz 漏洞复现工具集
 ============================
 提供 seed 格式重构 + Docker 容器内重放 + 安全属性验证。
 
@@ -266,7 +266,7 @@ def reconstruct_seeds_from_violation(
 
 DOCKER_IMAGE = "bftpd:latest"
 CONTAINER_WORKDIR = "/home/ubuntu/experiments/bftpd"
-CONTAINER_REPLAYER_DIR = "/home/ubuntu/chatafl-opt"
+CONTAINER_REPLAYER_DIR = "/home/ubuntu/loopfuzz"
 
 
 def _run_docker(seed_bytes: bytes, command: str,
@@ -626,7 +626,7 @@ def process_results_dir(results_dir: str, protocol: str = "FTP",
 
 def main():
     parser = argparse.ArgumentParser(
-        description="ChatAFL-Opt 漏洞复现工具 — crash 重放 + 逻辑漏洞安全属性验证",
+        description="LoopFuzz 漏洞复现工具 — crash 重放 + 逻辑漏洞安全属性验证",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=textwrap.dedent("""\
         Examples:
@@ -634,7 +634,7 @@ def main():
           python3 replay_tools.py benchmark/results-bftpd_May-08_16-15-27
 
           # 只处理单个 tar.gz
-          python3 replay_tools.py --single benchmark/results-bftpd_May-08_16-15-27/out-bftpd-chatafl_opt_1.tar.gz
+          python3 replay_tools.py --single benchmark/results-bftpd_May-08_16-15-27/out-bftpd-LoopFuzz_1.tar.gz
 
           # 指定其他 Docker 镜像
           python3 replay_tools.py --image proftpd:latest results-proftpd_May-08_12-34-22

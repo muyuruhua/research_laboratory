@@ -1,8 +1,8 @@
-# ChatAFL-Opt 消融实验指南
+# LoopFuzz 消融实验指南
 
-本指南基于当前 `ChatAFL-Opt` 的实现，定义消融矩阵设计、运行方式和结果解读。
+本指南基于当前 `LoopFuzz` 的实现，定义消融矩阵设计、运行方式和结果解读。
 
-> 代码核对状态（2026-05）：已按当前 `ChatAFL-Opt/afl-fuzz.c`、`run_ablation.sh`、
+> 代码核对状态（2026-05）：已按当前 `LoopFuzz/afl-fuzz.c`、`run_ablation.sh`、
 > `monitor.sh`、`benchmark/scripts/execution/profuzzbench_exec_common*.sh` 的真实行为校对。
 
 ---
@@ -42,7 +42,7 @@ wo_all ────────────────────────�
 | 组 | 作用 | 度量目标 |
 |----|------|---------|
 | **wo_all** | 下界锚点 | 退化到 ChatAFL + 固定阈值 512 的基线性能 |
-| **full** | 上界锚点 | 四个需求全开的完整 ChatAFL-Opt 性能 |
+| **full** | 上界锚点 | 四个需求全开的完整 LoopFuzz 性能 |
 | **wo_hypothesis** | 需求1+2+3 消融 | LLM 生成 grammar → 验证 → CEGAR 修正，整体是正向贡献还是拖累？ |
 | **wo_refinement** | 需求3 消融 | 反例回喂 LLM 局部修补语法，修对了还是修歪了？ |
 | **wo_frontier** | 需求4 消融 | 优先探索出度 0-1 的未饱和状态，能否加速状态空间覆盖？ |
@@ -115,7 +115,7 @@ export KEY="sk-..."
 export SKIPCOUNT=40
 ```
 
-`KEY` 是 LLM API key，`SKIPCOUNT` 是覆盖率统计间隔。`run_ablation.sh` 调用 `run_dev.sh`，使用本地 `ChatAFL-Opt/` 代码并在容器内重新编译。
+`KEY` 是 LLM API key，`SKIPCOUNT` 是覆盖率统计间隔。`run_ablation.sh` 调用 `run_dev.sh`，使用本地 `LoopFuzz/` 代码并在容器内重新编译。
 
 ### 预设模式
 
@@ -294,7 +294,7 @@ unset CHATAFL_HYPOTHESIS \
 # export CHATAFL_ABLATION_THRESHOLD=xxx
 
 # 3) 运行
-sudo -E ./run_dev.sh <RUNS> <TIMEOUT_MIN> <TARGET> chatafl-opt
+sudo -E ./run_dev.sh <RUNS> <TIMEOUT_MIN> <TARGET> loopfuzz
 
 # 4) 跑完后清理
 unset CHATAFL_HYPOTHESIS \
@@ -310,7 +310,7 @@ unset CHATAFL_HYPOTHESIS \
 ```bash
 unset CHATAFL_HYPOTHESIS CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER \
       CHATAFL_NO_ADAPTIVE CHATAFL_NO_STATE_PROMPT CHATAFL_ABLATION_THRESHOLD
-sudo -E ./run_dev.sh 5 1470 live555 chatafl-opt
+sudo -E ./run_dev.sh 5 1470 live555 loopfuzz
 ```
 
 **wo_all（全关闭基线）：**
@@ -322,28 +322,28 @@ export CHATAFL_NO_FRONTIER=1
 export CHATAFL_NO_ADAPTIVE=1
 export CHATAFL_NO_STATE_PROMPT=1
 export CHATAFL_ABLATION_THRESHOLD=512
-sudo -E ./run_dev.sh 5 1470 live555 chatafl-opt
+sudo -E ./run_dev.sh 5 1470 live555 loopfuzz
 ```
 
 **wo_hypothesis：**
 
 ```bash
 export CHATAFL_HYPOTHESIS=0
-sudo -E ./run_dev.sh 5 1470 live555 chatafl-opt
+sudo -E ./run_dev.sh 5 1470 live555 loopfuzz
 ```
 
 **wo_refinement：**
 
 ```bash
 export CHATAFL_NO_REFINEMENT=1
-sudo -E ./run_dev.sh 5 1470 live555 chatafl-opt
+sudo -E ./run_dev.sh 5 1470 live555 loopfuzz
 ```
 
 **wo_frontier：**
 
 ```bash
 export CHATAFL_NO_FRONTIER=1
-sudo -E ./run_dev.sh 5 1470 live555 chatafl-opt
+sudo -E ./run_dev.sh 5 1470 live555 loopfuzz
 ```
 
 **wo_adaptive：**
@@ -351,14 +351,14 @@ sudo -E ./run_dev.sh 5 1470 live555 chatafl-opt
 ```bash
 export CHATAFL_NO_ADAPTIVE=1
 export CHATAFL_ABLATION_THRESHOLD=512
-sudo -E ./run_dev.sh 5 1470 live555 chatafl-opt
+sudo -E ./run_dev.sh 5 1470 live555 loopfuzz
 ```
 
 **wo_state_prompt：**
 
 ```bash
 export CHATAFL_NO_STATE_PROMPT=1
-sudo -E ./run_dev.sh 5 1470 live555 chatafl-opt
+sudo -E ./run_dev.sh 5 1470 live555 loopfuzz
 ```
 
 ---
@@ -396,7 +396,7 @@ Docker `-e` 遵循 last-value-wins：`wo_all` 组导出 `CHATAFL_HYPOTHESIS=0`�
 ```bash
 # 错误：残留变量污染 full
 export CHATAFL_NO_ADAPTIVE=1
-sudo -E ./run_dev.sh 5 1470 live555 chatafl-opt   # 实际跑的是 wo_adaptive！
+sudo -E ./run_dev.sh 5 1470 live555 loopfuzz   # 实际跑的是 wo_adaptive！
 ```
 
 ### 为什么 run_ablation.sh 不会污染

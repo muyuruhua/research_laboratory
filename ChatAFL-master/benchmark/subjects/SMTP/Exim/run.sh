@@ -11,8 +11,13 @@ strstr() {
   return 0
 }
 
+FUZZER_DIR="$FUZZER"
+if [ "$FUZZER" = "loopfuzz" ]; then
+  FUZZER_DIR="loopfuzz"
+fi
+
 #Commands for afl-based fuzzers (e.g., aflnet, aflnwe)
-if $(strstr $FUZZER "afl") || $(strstr $FUZZER "llm") ; then
+if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" ]; then
 
   TARGET_DIR=${TARGET_DIR:-"exim"}
   INPUTS=${WORKDIR}/in-smtp
@@ -26,7 +31,7 @@ if $(strstr $FUZZER "afl") || $(strstr $FUZZER "llm") ; then
   #Move to fuzzing folder
   cd $WORKDIR/${TARGET_DIR}
   cp ./src/build-Linux-x86_64/exim /usr/exim/bin/exim
-  timeout -k 2s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER}/afl-fuzz -d -i ${INPUTS} -x ${WORKDIR}/smtp.dict -o $OUTDIR -N tcp://127.0.0.1/25 $OPTIONS -c ${WORKDIR}/clean exim -bd -d -oX 25 -oP /var/lock/exim.pid
+  timeout -k 2s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -x ${WORKDIR}/smtp.dict -o $OUTDIR -N tcp://127.0.0.1/25 $OPTIONS -c ${WORKDIR}/clean exim -bd -d -oX 25 -oP /var/lock/exim.pid
 
   STATUS=$?
 

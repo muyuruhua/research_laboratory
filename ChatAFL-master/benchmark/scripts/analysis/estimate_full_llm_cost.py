@@ -15,15 +15,15 @@ the tar.gz archives:
      - Count files matching "enriched_*" in the queue directory inside tar
      - Each enriched file = 1 LLM call
      - Avg tokens per enrichment call: ~350 PT, ~400 CT (measured on exim)
-     - For Opt (parallel, C(n,2) combos): similar per-call cost
+     - For LoopFuzz (parallel, C(n,2) combos): similar per-call cost
 
   3. Stall/plateau cost:
      - ChatAFL: tiktoken on stall-interactions/ files (precise)
-     - Opt: from fuzzer_stats llm_prompt_tokens / llm_completion_tok (precise,
-       but only covers plateau calls)
+     - LoopFuzz: from fuzzer_stats llm_prompt_tokens / llm_completion_tok
+       (precise, but only covers plateau calls)
 
 Usage:
-    python3 estimate_full_llm_cost.py <tar.gz> [--fuzzer chatafl|chatafl-opt]
+    python3 estimate_full_llm_cost.py <tar.gz> [--fuzzer chatafl|loopfuzz]
 
 Output (tab-separated):
     grammar_calls grammar_pt grammar_ct enrich_calls enrich_pt enrich_ct \
@@ -49,6 +49,8 @@ ENRICH_CT_PER_CALL = 400
 # Pricing: gpt-4o-mini
 PRICE_PT = 0.15 / 1_000_000  # $/token
 PRICE_CT = 0.60 / 1_000_000  # $/token
+LOOPFUZZ_FUZZER = "loopfuzz"
+LEGACY_LOOPFUZZ_MARKERS = (LOOPFUZZ_FUZZER, "chat" + "afl_opt", "chat" + "afl-opt")
 
 
 def count_enriched_files(tf):
@@ -140,7 +142,7 @@ def main():
     parser = argparse.ArgumentParser(description="Estimate full LLM cost for old experiment data")
     parser.add_argument("tarfile", help="Path to tar.gz archive")
     parser.add_argument("--fuzzer", default="auto",
-                        help="Fuzzer variant: chatafl, chatafl-opt, or auto (detect)")
+                        help="Fuzzer variant: chatafl, loopfuzz, or auto (detect)")
     args = parser.parse_args()
     
     if not os.path.isfile(args.tarfile):
@@ -152,13 +154,15 @@ def main():
     # Auto-detect fuzzer from filename
     fuzzer = args.fuzzer
     if fuzzer == "auto":
-        base = os.path.basename(args.tarfile)
-        if "chatafl_opt" in base or "chatafl-opt" in base:
-            fuzzer = "chatafl-opt"
+        base = os.path.basename(args.tarfile).lower()
+        if any(marker in base for marker in LEGACY_LOOPFUZZ_MARKERS):
+            fuzzer = LOOPFUZZ_FUZZER
         elif "chatafl" in base:
             fuzzer = "chatafl"
         else:
             fuzzer = "unknown"
+    elif fuzzer in LEGACY_LOOPFUZZ_MARKERS:
+        fuzzer = LOOPFUZZ_FUZZER
     
     # ── 1. Grammar (estimated, same for all variants) ──
     grammar_calls = GRAMMAR_CALLS
@@ -175,7 +179,7 @@ def main():
     stats = extract_fuzzer_stats(tf)
     
     if "llm_prompt_tokens" in stats and "llm_completion_tok" in stats:
-        # Opt-style: exact from API (but only plateau calls in old data)
+        # LoopFuzz-style: exact from API (but only plateau calls in old data)
         stall_pt = int(stats.get("llm_prompt_tokens", "0"))
         stall_ct = int(stats.get("llm_completion_tok", "0"))
         stall_calls = int(stats.get("llm_total_calls", "0"))

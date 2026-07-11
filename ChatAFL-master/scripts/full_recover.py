@@ -37,7 +37,7 @@ MAPPING = {
         'chatafl': [
             '7ede83fe42f1', '59385db6025b', 'fef1b16747cc', '89f429f03e53',
         ],
-        'chatafl_opt': [
+        'loopfuzz': [
             'ed8fe8593deb', 'e38c6ffd6384', '467c0c9473a8',
             '5cd96a3ce01c', '26391854b422',
         ],
@@ -50,7 +50,7 @@ MAPPING = {
         'chatafl': [
             '8705f3cbebad', '11fd00130f76', 'a12eddfcf886', '2029826af9b6',
         ],
-        'chatafl_opt': [
+        'loopfuzz': [
             'ca656cf4fb31', 'f08ff16051e2', '42a24abf9fba',
             '88f97531726c', '389daf0811fe',
         ],
