@@ -2,8 +2,10 @@
  * ChatAFL-Opt: Protocol-Specific Semantic Oracle Framework
  * =========================================================
  *
- * Extends vulnerability detection beyond crash-only (memory bugs) to
- * semantic/logic vulnerability detection based on RFC security invariants.
+ * Extends crash-only triage with semantic/logic vulnerability-candidate
+ * generation based on RFC security invariants.  These reports are not
+ * confirmed vulnerabilities until replay, configuration review, root-cause
+ * analysis, and security-impact validation are completed.
  *
  * Detection methodology (recalibrated 2026-07-06):
  *   1. MEDIUM+ reports require evidence that the server accepted the
@@ -16,32 +18,56 @@
  *      header lines, and text protocols require precise success codes.
  *      Ambiguous correlations (for example repeated RTSP CSeq values) are
  *      suppressed instead of guessed.
- *   4. FTP/SMTP command state is line-tokenized because AFLNet request regions
- *      can contain multiple CRLF-separated protocol commands.
- *   5. Counters represent reportable MEDIUM+ findings.  INFO/LOW entries
- *      can still appear as context in a saved MEDIUM+ report, but do not
- *      inflate oracle_total_violations or oracle_unique_violations.
+ *   4. FTP/SMTP command state is line-tokenized on CR or LF and response-bound
+ *      at response-consuming line granularity because AFLNet request regions
+ *      can contain multiple malformed command fragments and servers also answer
+ *      unknown lines.
+ *   5. Counters and replayable-violations reports represent reportable
+ *      MEDIUM+ candidates only.  INFO/LOW entries remain non-reportable
+ *      observations and must not be presented as vulnerability candidates.
+ *   6. Saved candidate reports are triage artifacts: the text report is a
+ *      bounded human-readable summary, while complete request/response bytes
+ *      are stored as binary sidecar files for manual replay and validation.
  *
  * Calibration summary:
- *   FTP:  command-state checks use command-line tokenization plus server
- *         331/230 state evidence; CRLF heuristic removed; traversal syntax
- *         without leaked content is LOW only.
+ *   FTP:  command-state checks bind USER/PASS/RNFR/RNTO/data commands through
+ *         response-consuming line slots; auth bypass requires absence of prior
+ *         230 login evidence; RNTO candidates are suppressed on explicit 503
+ *         sequence rejection or prior 350 RNFR evidence; CRLF heuristic removed;
+ *         traversal syntax without leaked content is LOW only.
  *   SMTP: relay requires external recipient + RCPT accept + DATA accept +
- *         final queue evidence; state checks tokenize command lines inside
- *         AFLNet regions; VRFY/EXPN is LOW config observation.
- *   RTSP: all acceptance checks require unambiguous CSeq correlation; repeated
- *         CSeq values suppress MEDIUM+ reports; transport-parser anomalies are
- *         LOW without crash/hang evidence.
+ *         final queue evidence, all bound through response-consuming line
+ *         slots; RCPT/DATA state candidates are suppressed when the cumulative
+ *         response contains explicit syntax/state rejection evidence; STARTTLS
+ *         downgrade is suppressed on explicit security rejection; VRFY/EXPN is
+ *         LOW config observation.
+ *   RTSP: PLAY/RECORD-before-SETUP candidates require a syntactically valid
+ *         RTSP request line without a Session header, method-local unique CSeq
+ *         correlation, method-shaped success response (PLAY needs Session plus
+ *         RTP-Info/Range; SDP bodies are not PLAY/RECORD success), and no prior
+ *         successful SETUP evidence from either request-side matching or
+ *         response-side blocks; repeated CSeq values suppress MEDIUM+ reports;
+ *         transport-parser anomalies are LOW without crash/hang evidence.
  *   SIP:  no active findings for the benchmark config; auth is not enabled
  *         and reliable SIP triage needs CSeq/branch-aware matching.
- *   DAAP: /databases without session requires a DAAP database body; path
- *         traversal requires leaked sensitive content.
- *   HTTP: path traversal requires sensitive content leakage; Server header
- *         fingerprinting and auth-bypass byte heuristics are removed.
+ *   DAAP: /databases without session requires a DAAP database body in the
+ *         matching response block; path traversal requires leaked sensitive
+ *         content in that block; /server-info field names are LOW context.
+ *   HTTP: path traversal requires sensitive content leakage in the matching
+ *         response block; CL/TE and conflicting Content-Length are MEDIUM
+ *         candidates requiring proxy/differential validation; response-splitting
+ *         byte markers and chunk parser-stress without split/crash/resource
+ *         proof are LOW; Server header fingerprinting and auth-bypass byte
+ *         heuristics are removed.
  *   MQTT: CONNECT parsing is bounds-checked; v5 properties are parsed from
  *         the real properties section and require successful CONNACK before
- *         becoming reportable; empty ClientID is INFO only when clean_session
- *         is false.
+ *         becoming reportable; zero-length SUBSCRIBE topic filters require a
+ *         valid SUBSCRIBE fixed header, nonzero packet id, zero topic length,
+ *         QoS byte, and matching successful SUBACK; they are protocol/state
+ *         candidates, not DoS, unless crash/hang evidence is produced by the
+ *         AFL/AFLNet crash pipeline; large v5 user-property lists are LOW
+ *         context without resource telemetry; empty ClientID is INFO only when
+ *         clean_session is false.
  */
 
 #ifndef __PROTOCOL_ORACLE_H

@@ -3,7 +3,8 @@
  * ===================================================
  *
  * Observes request-response traffic and flags protocol-level behavioural
- * deviations from RFC-mandated behaviour and known attack patterns.
+ * deviation candidates from RFC-mandated behaviour and target-relevant
+ * attack patterns.
  *
  * THE ORACLE DOES NOT DETECT VULNERABILITIES.  It detects observable
  * deviations that would be necessary (but not sufficient) conditions
@@ -20,6 +21,8 @@
  * Output pipeline:
  *   INFO/LOW (1-2)    -> contextual observations, not counted as findings
  *   MEDIUM+  (3-5)    -> reportable candidates with full request+response
+ *                         saved under replayable-violations, including
+ *                         complete binary request/response sidecars
  *
  * CVE references are kept only when they are target-relevant; otherwise the
  * report uses N/A and describes the observable protocol deviation.
@@ -33,6 +36,7 @@
 #include <ctype.h>
 #include <time.h>
 #include <sys/stat.h>
+#include <limits.h>
 
 #include "protocol-oracle.h"
 #include "alloc-inl.h"
@@ -51,6 +55,7 @@ uint64_t oracle_state_violation_count = 0;
 uint64_t oracle_info_leak_count    = 0;
 uint64_t oracle_path_traversal_count = 0;
 uint64_t oracle_dos_count          = 0;
+static uint64_t oracle_saved_reports = 0;
 
 /* Dedup bitmap */
 #define ORACLE_DEDUP_SIZE 4096
@@ -169,27 +174,33 @@ static int extract_nth_response_code(const unsigned char *resp, unsigned int len
 
             int code = (resp[i] - '0') * 100 + (resp[i+1] - '0') * 10 + (resp[i+2] - '0');
 
-            if (i + 3 < len && resp[i+3] == '-') {
-                /* Multi-line response continuation (e.g. "211-Extensions") */
-                in_multiline = 1;
-                multiline_code = code;
-            } else if (in_multiline && code == multiline_code) {
-                /* End of multi-line block (e.g. "211 End") — same request */
-                in_multiline = 0;
-                /* Don't increment count — the opening line already did */
+            char sep = (i + 3 < len) ? resp[i + 3] : '\0';
+
+            if (in_multiline) {
+                /* RFC-style multi-line replies (FTP/SMTP) are a single
+                 * response slot.  The opening "250-" / "211-" line has
+                 * already been counted; continuations and the terminating
+                 * "250 " / "211 " line must not shift later mappings. */
+                if (code == multiline_code && sep == ' ')
+                    in_multiline = 0;
             } else if (in_data_xfer) {
                 /* This is the completion response (2xx) of a data transfer.
                  * It belongs to the same request as the preceding 1xx.
                  * Consume it without incrementing count. */
-                in_data_xfer = 0;
+                if (code >= 200 && code <= 599)
+                    in_data_xfer = 0;
                 /* Don't increment count — paired with the 1xx above */
             } else {
                 /* Normal single-line response */
                 if (count == n) return code;
                 count++;
+                if (sep == '-') {
+                    in_multiline = 1;
+                    multiline_code = code;
+                }
                 /* If this is a 1xx preliminary (data transfer start),
                  * the NEXT final response is its completion partner. */
-                if (code >= 100 && code < 200) {
+                else if (code >= 100 && code < 200) {
                     in_data_xfer = 1;
                     /* Return the 1xx since it shows the command was accepted */
                     if (count - 1 == n) return code;
@@ -214,6 +225,38 @@ server_rejected_command(const unsigned char *resp, unsigned int resp_len,
     return (code >= 400 && code <= 599);
 }
 
+static int http_style_response_code_at(const unsigned char *resp,
+                                       unsigned int len,
+                                       unsigned int off,
+                                       int *code_out) {
+    if (!resp || off + 8 >= len) return 0;
+    if (!(off == 0 || resp[off - 1] == '\n')) return 0;
+
+    if (!((off + 5 <= len && strncmp((const char *)resp + off, "HTTP/", 5) == 0) ||
+          (off + 5 <= len && strncmp((const char *)resp + off, "RTSP/", 5) == 0) ||
+          (off + 4 <= len && strncmp((const char *)resp + off, "SIP/", 4) == 0))) {
+        return 0;
+    }
+
+    unsigned int j = off;
+    while (j < len && resp[j] != ' ' && resp[j] != '\r' && resp[j] != '\n') j++;
+    if (j >= len || resp[j] != ' ') return 0;
+    j++;
+
+    if (j + 2 >= len ||
+        resp[j] < '1' || resp[j] > '5' ||
+        resp[j + 1] < '0' || resp[j + 1] > '9' ||
+        resp[j + 2] < '0' || resp[j + 2] > '9') {
+        return 0;
+    }
+
+    if (code_out)
+        *code_out = (resp[j] - '0') * 100 +
+                    (resp[j + 1] - '0') * 10 +
+                    (resp[j + 2] - '0');
+    return 1;
+}
+
 /* Extract the Nth HTTP-style response code (for HTTP, RTSP, SIP, DAAP).
  * These protocols use "PROTO/x.y NNN reason" format, e.g.:
  *   HTTP/1.1 200 OK
@@ -225,32 +268,62 @@ static int extract_http_style_nth_response_code(const unsigned char *resp,
                                                  unsigned int len, int n) {
     int count = 0;
     unsigned int i = 0;
-    while (i + 12 < len) {
-        /* Check for line start */
-        if (i == 0 || resp[i-1] == '\n') {
-            /* Look for protocol tag: HTTP/ RTSP/ SIP/ */
-            if ((resp[i] == 'H' || resp[i] == 'R' || resp[i] == 'S') &&
-                (ci_memmem(resp + i, (len - i < 12) ? len - i : 12, "HTTP/", 5) ||
-                 ci_memmem(resp + i, (len - i < 12) ? len - i : 12, "RTSP/", 5) ||
-                 ci_memmem(resp + i, (len - i < 12) ? len - i : 12, "SIP/", 4))) {
-                /* Find the space before status code */
-                unsigned int j = i;
-                while (j < len && resp[j] != ' ') j++;
-                j++; /* skip space */
-                if (j + 2 < len &&
-                    resp[j] >= '1' && resp[j] <= '5' &&
-                    resp[j+1] >= '0' && resp[j+1] <= '9' &&
-                    resp[j+2] >= '0' && resp[j+2] <= '9') {
-                    int code = (resp[j]-'0')*100 + (resp[j+1]-'0')*10 + (resp[j+2]-'0');
-                    if (count == n) return code;
-                    count++;
-                }
-            }
+    while (i < len) {
+        int code = -1;
+        if (http_style_response_code_at(resp, len, i, &code)) {
+            if (count == n) return code;
+            count++;
         }
         while (i < len && resp[i] != '\n') i++;
         if (i < len) i++;
     }
     return -1;
+}
+
+static int extract_http_style_nth_response_block(const unsigned char *resp,
+                                                 unsigned int len,
+                                                 int n,
+                                                 const unsigned char **block,
+                                                 unsigned int *block_len,
+                                                 int *code_out) {
+    if (!resp || n < 0) return 0;
+
+    int count = 0;
+    unsigned int i = 0;
+    while (i < len) {
+        int code = -1;
+        if (http_style_response_code_at(resp, len, i, &code)) {
+            if (count == n) {
+                unsigned int start = i;
+                unsigned int end = len;
+                unsigned int j = i;
+
+                while (j < len && resp[j] != '\n') j++;
+                if (j < len) j++;
+
+                while (j < len) {
+                    int next_code = -1;
+                    if (http_style_response_code_at(resp, len, j, &next_code)) {
+                        end = j;
+                        break;
+                    }
+                    while (j < len && resp[j] != '\n') j++;
+                    if (j < len) j++;
+                }
+
+                if (block) *block = resp + start;
+                if (block_len) *block_len = end - start;
+                if (code_out) *code_out = code;
+                return 1;
+            }
+            count++;
+        }
+
+        while (i < len && resp[i] != '\n') i++;
+        if (i < len) i++;
+    }
+
+    return 0;
 }
 
 /* Decode MQTT variable-length encoding (remaining length field).
@@ -324,20 +397,60 @@ static int command_boundary_ok(const unsigned char *buf, unsigned int len,
            buf[off + clen] == ':';
 }
 
+static int text_is_line_break(unsigned char c) {
+    return c == '\r' || c == '\n';
+}
+
+static unsigned int text_skip_line_breaks(const unsigned char *buf,
+                                          unsigned int len,
+                                          unsigned int pos) {
+    while (pos < len && text_is_line_break(buf[pos])) pos++;
+    return pos;
+}
+
+static unsigned int text_line_raw_end(const unsigned char *buf,
+                                      unsigned int len,
+                                      unsigned int pos) {
+    while (pos < len && !text_is_line_break(buf[pos])) pos++;
+    return pos;
+}
+
+static unsigned int text_next_line_start(const unsigned char *buf,
+                                         unsigned int len,
+                                         unsigned int raw_end) {
+    if (raw_end < len && text_is_line_break(buf[raw_end])) {
+        unsigned char first = buf[raw_end++];
+        if (raw_end < len && text_is_line_break(buf[raw_end]) &&
+            buf[raw_end] != first) {
+            raw_end++;
+        }
+    }
+    return raw_end;
+}
+
+static unsigned int text_skip_leading_controls(const unsigned char *buf,
+                                               unsigned int len,
+                                               unsigned int pos) {
+    while (pos < len && buf[pos] < 0x20 &&
+           buf[pos] != '\t' && !text_is_line_break(buf[pos])) {
+        pos++;
+    }
+    return pos;
+}
+
 /* AFLNet can put multiple text-protocol commands in one request region.  These
  * helpers inspect command lines, not only the first bytes of the region. */
 static int request_line_command_pos(const unsigned char *req, unsigned int len,
                                     const char *cmd, unsigned int *pos) {
     unsigned int i = 0;
     while (i < len) {
-        while (i < len && (req[i] == '\r' || req[i] == '\n')) i++;
+        i = text_skip_line_breaks(req, len, i);
         unsigned int line_start = i;
         if (command_boundary_ok(req, len, line_start, cmd)) {
             if (pos) *pos = line_start;
             return 1;
         }
-        while (i < len && req[i] != '\n') i++;
-        if (i < len) i++;
+        i = text_next_line_start(req, len, text_line_raw_end(req, len, i));
     }
     return 0;
 }
@@ -345,6 +458,263 @@ static int request_line_command_pos(const unsigned char *req, unsigned int len,
 static int request_has_line_command(const unsigned char *req, unsigned int len,
                                     const char *cmd) {
     return request_line_command_pos(req, len, cmd, NULL);
+}
+
+typedef enum {
+    TEXT_PROTO_FTP = 1,
+    TEXT_PROTO_SMTP = 2
+} text_protocol_t;
+
+static const char *ftp_command_at(const unsigned char *buf, unsigned int len,
+                                  unsigned int off) {
+    static const char *cmds[] = {
+        "USER ", "PASS ", "ACCT ", "CWD ",  "SMNT ", "PORT ",
+        "TYPE ", "STRU ", "MODE ", "RETR ", "STOR ", "STOU ",
+        "APPE ", "ALLO ", "REST ", "RNFR ", "RNTO ", "DELE ",
+        "RMD ",  "MKD ",  "SITE ", "OPTS ", "AUTH ", "PBSZ ",
+        "PROT ", "MLSD ", "MLST ", "EPRT ", "EPSV",  "CDUP",
+        "QUIT",  "REIN",  "PASV",  "ABOR",  "PWD",   "XPWD",
+        "LIST",  "NLST",  "SYST",  "STAT",  "HELP",  "NOOP",
+        "FEAT",  "USER",  "PASS",  NULL
+    };
+
+    for (int i = 0; cmds[i]; i++) {
+        if (command_boundary_ok(buf, len, off, cmds[i])) return cmds[i];
+    }
+    return NULL;
+}
+
+static const char *smtp_command_at(const unsigned char *buf, unsigned int len,
+                                   unsigned int off) {
+    static const char *cmds[] = {
+        "MAIL FROM:", "RCPT TO:", "STARTTLS", "HELO ", "EHLO ",
+        "AUTH ",     "VRFY ",    "EXPN ",    "BDAT ", "ETRN ",
+        "ATRN ",     "DATA",     "RSET",     "HELP",  "NOOP",
+        "QUIT",      "HELO",     "EHLO",     "AUTH",  "VRFY",
+        "EXPN",      NULL
+    };
+
+    for (int i = 0; cmds[i]; i++) {
+        if (command_boundary_ok(buf, len, off, cmds[i])) return cmds[i];
+    }
+    return NULL;
+}
+
+static const char *text_protocol_command_at(const unsigned char *buf,
+                                            unsigned int len,
+                                            unsigned int off,
+                                            text_protocol_t proto) {
+    if (proto == TEXT_PROTO_FTP) return ftp_command_at(buf, len, off);
+    if (proto == TEXT_PROTO_SMTP) return smtp_command_at(buf, len, off);
+    return NULL;
+}
+
+static unsigned int text_line_content_end(const unsigned char *buf,
+                                          unsigned int line_start,
+                                          unsigned int raw_end) {
+    unsigned int end = raw_end;
+    while (end > line_start &&
+           (buf[end - 1] == '\r' || buf[end - 1] == '\n')) {
+        end--;
+    }
+    return end;
+}
+
+static int smtp_line_is_exact_data(const unsigned char *buf,
+                                   unsigned int line_start,
+                                   unsigned int content_end) {
+    return content_end - line_start == 4 &&
+           strncasecmp((const char *)buf + line_start, "DATA", 4) == 0;
+}
+
+static int smtp_line_is_dot_terminator(const unsigned char *buf,
+                                       unsigned int line_start,
+                                       unsigned int content_end) {
+    return content_end - line_start == 1 && buf[line_start] == '.';
+}
+
+/* FTP and SMTP servers answer malformed/unknown command lines too (usually
+ * 500/501/503).  Those lines must consume response slots; otherwise the oracle
+ * can bind a later success code to the wrong command and manufacture a
+ * vulnerability candidate.  For SMTP DATA bodies, message-body lines are not
+ * command slots; the terminating "." is a slot for the final queue response. */
+static int text_protocol_next_slot(const unsigned char *buf,
+                                   unsigned int len,
+                                   text_protocol_t proto,
+                                   unsigned int *cursor,
+                                   unsigned int *pos,
+                                   const char **cmd) {
+    unsigned int min_pos = cursor ? *cursor : 0;
+    unsigned int i = 0;
+    int smtp_in_data_body = 0;
+
+    while (i < len) {
+        i = text_skip_line_breaks(buf, len, i);
+        if (i >= len) break;
+
+        unsigned int line_start = i;
+        unsigned int raw_end = text_line_raw_end(buf, len, i);
+        unsigned int next = text_next_line_start(buf, len, raw_end);
+        unsigned int content_end = text_line_content_end(buf, line_start, raw_end);
+
+        if (proto == TEXT_PROTO_SMTP && smtp_in_data_body) {
+            int is_dot = smtp_line_is_dot_terminator(buf, line_start, content_end);
+            if (is_dot) {
+                if (line_start >= min_pos) {
+                    if (cursor) *cursor = next;
+                    if (pos) *pos = line_start;
+                    if (cmd) *cmd = NULL;
+                    return 1;
+                }
+                smtp_in_data_body = 0;
+            }
+            i = next;
+            continue;
+        }
+
+        const char *found = text_protocol_command_at(buf, len, line_start, proto);
+        if (line_start >= min_pos) {
+            if (cursor) *cursor = next;
+            if (pos) *pos = line_start;
+            if (cmd) *cmd = found;
+            return 1;
+        }
+
+        if (proto == TEXT_PROTO_SMTP &&
+            smtp_line_is_exact_data(buf, line_start, content_end)) {
+            smtp_in_data_body = 1;
+        }
+        i = next;
+    }
+
+    if (cursor) *cursor = len;
+    return 0;
+}
+
+static int text_protocol_next_command(const unsigned char *buf,
+                                      unsigned int len,
+                                      text_protocol_t proto,
+                                      unsigned int *cursor,
+                                      unsigned int *pos,
+                                      const char **cmd) {
+    unsigned int slot_pos = 0;
+    const char *slot_cmd = NULL;
+
+    while (text_protocol_next_slot(buf, len, proto, cursor,
+                                   &slot_pos, &slot_cmd)) {
+        if (slot_cmd) {
+            if (pos) *pos = slot_pos;
+            if (cmd) *cmd = slot_cmd;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int text_protocol_response_slot_count(const unsigned char *buf,
+                                             unsigned int len,
+                                             text_protocol_t proto) {
+    unsigned int cursor = 0, pos = 0;
+    const char *cmd = NULL;
+    int count = 0;
+
+    while (text_protocol_next_slot(buf, len, proto, &cursor, &pos, &cmd)) {
+        (void)pos;
+        (void)cmd;
+        count++;
+    }
+    return count;
+}
+
+static int text_response_slot_count_before_pos(const unsigned char **requests,
+                                               const unsigned int *req_lens,
+                                               int req_count,
+                                               int region_idx,
+                                               unsigned int cmd_pos,
+                                               text_protocol_t proto) {
+    int count = 0;
+
+    if (!requests || !req_lens || region_idx < 0 || region_idx >= req_count)
+        return 0;
+
+    for (int i = 0; i < region_idx; i++)
+        count += text_protocol_response_slot_count(requests[i], req_lens[i], proto);
+
+    unsigned int cursor = 0, pos = 0;
+    const char *cmd = NULL;
+    while (text_protocol_next_slot(requests[region_idx], req_lens[region_idx],
+                                   proto, &cursor, &pos, &cmd)) {
+        (void)cmd;
+        if (pos >= cmd_pos) break;
+        count++;
+    }
+
+    return count;
+}
+
+static int text_protocol_command_is_active_slot(const unsigned char *buf,
+                                                unsigned int len,
+                                                unsigned int cmd_pos,
+                                                text_protocol_t proto,
+                                                const char **cmd_out) {
+    unsigned int cursor = 0, pos = 0;
+    const char *cmd = NULL;
+
+    while (text_protocol_next_command(buf, len, proto, &cursor, &pos, &cmd)) {
+        if (pos == cmd_pos) {
+            if (cmd_out) *cmd_out = cmd;
+            return 1;
+        }
+        if (pos > cmd_pos) break;
+    }
+    return 0;
+}
+
+static int text_response_code_for_command(const unsigned char **requests,
+                                          const unsigned int *req_lens,
+                                          int req_count,
+                                          const unsigned char *response,
+                                          unsigned int resp_len,
+                                          int region_idx,
+                                          unsigned int cmd_pos,
+                                          text_protocol_t proto,
+                                          int resp_offset) {
+    if (!requests || !req_lens || !response ||
+        region_idx < 0 || region_idx >= req_count)
+        return -1;
+
+    if (!text_protocol_command_is_active_slot(requests[region_idx],
+                                             req_lens[region_idx],
+                                             cmd_pos, proto, NULL))
+        return -1;
+
+    int command_ordinal = text_response_slot_count_before_pos(requests, req_lens,
+        req_count, region_idx, cmd_pos, proto);
+    return extract_nth_response_code(response, resp_len,
+                                     resp_offset + command_ordinal);
+}
+
+static int text_prior_response_code_range_before_command(
+    const unsigned char **requests,
+    const unsigned int *req_lens,
+    int req_count,
+    const unsigned char *response,
+    unsigned int resp_len,
+    int region_idx,
+    unsigned int cmd_pos,
+    text_protocol_t proto,
+    int resp_offset,
+    int min_code,
+    int max_code) {
+    if (!response || region_idx < 0 || region_idx >= req_count) return 0;
+
+    int slots_before = text_response_slot_count_before_pos(requests, req_lens,
+        req_count, region_idx, cmd_pos, proto);
+    for (int n = 0; n < slots_before; n++) {
+        int code = extract_nth_response_code(response, resp_len, resp_offset + n);
+        if (code >= min_code && code <= max_code) return 1;
+    }
+    return 0;
 }
 
 static int prior_requests_have_line_command(const unsigned char **requests,
@@ -377,6 +747,55 @@ static int count_header_lines(const unsigned char *buf, unsigned int len,
     return count;
 }
 
+static int content_length_values_conflict(const unsigned char *buf,
+                                          unsigned int len) {
+    const char *header_name = "Content-Length";
+    size_t hlen = strlen(header_name);
+    int seen = 0;
+    int invalid = 0;
+    unsigned long long first = 0;
+    unsigned int i = 0;
+
+    while (i + hlen < len) {
+        if ((i == 0 || buf[i - 1] == '\n') &&
+            strncasecmp((const char *)buf + i, header_name, hlen) == 0) {
+            unsigned int j = i + hlen;
+            while (j < len && (buf[j] == ' ' || buf[j] == '\t')) j++;
+            if (j < len && buf[j] == ':') {
+                j++;
+                while (j < len && (buf[j] == ' ' || buf[j] == '\t')) j++;
+                if (j >= len || !isdigit(buf[j])) {
+                    invalid = 1;
+                } else {
+                    unsigned long long val = 0;
+                    while (j < len && isdigit(buf[j])) {
+                        unsigned int digit = (unsigned int)(buf[j] - '0');
+                        if (val > (ULLONG_MAX - digit) / 10) {
+                            invalid = 1;
+                            break;
+                        }
+                        val = val * 10 + digit;
+                        j++;
+                    }
+                    while (j < len && (buf[j] == ' ' || buf[j] == '\t')) j++;
+                    if (j < len && buf[j] != '\r' && buf[j] != '\n')
+                        invalid = 1;
+                    if (!seen) {
+                        first = val;
+                    } else if (val != first) {
+                        return 1;
+                    }
+                    seen++;
+                }
+            }
+        }
+        while (i < len && buf[i] != '\n') i++;
+        if (i < len) i++;
+    }
+
+    return invalid && seen > 0;
+}
+
 static int __attribute__((unused))
 header_line_length_exceeds(const unsigned char *buf, unsigned int len,
                            const char *header_name, unsigned int limit) {
@@ -402,9 +821,11 @@ static int parse_header_uint(const unsigned char *buf, unsigned int len,
     unsigned int i = 0;
 
     while (i + hlen < len) {
-        if ((i == 0 || buf[i - 1] == '\n') &&
-            strncasecmp((const char *)buf + i, header_name, hlen) == 0) {
-            unsigned int j = i + hlen;
+        i = text_skip_line_breaks(buf, len, i);
+        unsigned int line_start = text_skip_leading_controls(buf, len, i);
+        if (line_start + hlen <= len &&
+            strncasecmp((const char *)buf + line_start, header_name, hlen) == 0) {
+            unsigned int j = line_start + hlen;
             while (j < len && (buf[j] == ' ' || buf[j] == '\t')) j++;
             if (j >= len || buf[j] != ':') return 0;
             j++;
@@ -418,8 +839,40 @@ static int parse_header_uint(const unsigned char *buf, unsigned int len,
             if (out) *out = val;
             return 1;
         }
-        while (i < len && buf[i] != '\n') i++;
-        if (i < len) i++;
+        i = text_next_line_start(buf, len, text_line_raw_end(buf, len, i));
+    }
+    return 0;
+}
+
+static int parse_header_token(const unsigned char *buf, unsigned int len,
+                              const char *header_name,
+                              const unsigned char **out,
+                              unsigned int *out_len) {
+    size_t hlen = strlen(header_name);
+    unsigned int i = 0;
+
+    while (i + hlen < len) {
+        i = text_skip_line_breaks(buf, len, i);
+        unsigned int line_start = text_skip_leading_controls(buf, len, i);
+        if (line_start + hlen <= len &&
+            strncasecmp((const char *)buf + line_start, header_name, hlen) == 0) {
+            unsigned int j = line_start + hlen;
+            while (j < len && (buf[j] == ' ' || buf[j] == '\t')) j++;
+            if (j >= len || buf[j] != ':') return 0;
+            j++;
+            while (j < len && (buf[j] == ' ' || buf[j] == '\t')) j++;
+
+            unsigned int start = j;
+            while (j < len && buf[j] != '\r' && buf[j] != '\n' &&
+                   buf[j] != ';' && buf[j] != ' ' && buf[j] != '\t') {
+                j++;
+            }
+            if (j <= start) return 0;
+            if (out) *out = buf + start;
+            if (out_len) *out_len = j - start;
+            return 1;
+        }
+        i = text_next_line_start(buf, len, text_line_raw_end(buf, len, i));
     }
     return 0;
 }
@@ -427,6 +880,231 @@ static int parse_header_uint(const unsigned char *buf, unsigned int len,
 static int extract_rtsp_cseq(const unsigned char *req, unsigned int len,
                              unsigned int *cseq) {
     return parse_header_uint(req, len, "CSeq", cseq);
+}
+
+static int rtsp_line_starts_method(const unsigned char *buf, unsigned int len,
+                                   unsigned int off) {
+    return command_boundary_ok(buf, len, off, "OPTIONS ") ||
+           command_boundary_ok(buf, len, off, "DESCRIBE ") ||
+           command_boundary_ok(buf, len, off, "ANNOUNCE ") ||
+           command_boundary_ok(buf, len, off, "SETUP ") ||
+           command_boundary_ok(buf, len, off, "PLAY ") ||
+           command_boundary_ok(buf, len, off, "PAUSE ") ||
+           command_boundary_ok(buf, len, off, "TEARDOWN ") ||
+           command_boundary_ok(buf, len, off, "GET_PARAMETER ") ||
+           command_boundary_ok(buf, len, off, "SET_PARAMETER ") ||
+           command_boundary_ok(buf, len, off, "RECORD ") ||
+           command_boundary_ok(buf, len, off, "REGISTER ");
+}
+
+static unsigned int rtsp_method_block_end(const unsigned char *req,
+                                          unsigned int len,
+                                          unsigned int pos) {
+    unsigned int end = len;
+    unsigned int i = pos;
+    while (i < len) {
+        i = text_next_line_start(req, len, text_line_raw_end(req, len, i));
+        unsigned int line_start = i;
+        if (line_start > pos && line_start < len &&
+            rtsp_line_starts_method(req, len, line_start)) {
+            end = line_start;
+            break;
+        }
+    }
+    return end;
+}
+
+static int rtsp_next_method_cseq_pos(const unsigned char *req, unsigned int len,
+                                     const char *method, unsigned int *cursor,
+                                     unsigned int *cseq,
+                                     unsigned int *method_pos) {
+    unsigned int i = cursor ? *cursor : 0;
+
+    while (i < len) {
+        i = text_skip_line_breaks(req, len, i);
+        if (i >= len) break;
+
+        unsigned int line_start = i;
+        unsigned int next = text_next_line_start(req, len,
+            text_line_raw_end(req, len, i));
+
+        if (command_boundary_ok(req, len, line_start, method)) {
+            unsigned int block_end = rtsp_method_block_end(req, len, line_start);
+            if (cursor) *cursor = (block_end > line_start) ? block_end : next;
+            if (parse_header_uint(req + line_start, block_end - line_start,
+                                  "CSeq", cseq)) {
+                if (method_pos) *method_pos = line_start;
+                return 1;
+            }
+            i = (block_end > line_start) ? block_end : next;
+            continue;
+        }
+
+        i = next;
+    }
+
+    if (cursor) *cursor = len;
+    return 0;
+}
+
+static int rtsp_next_any_method_cseq_pos(const unsigned char *req,
+                                         unsigned int len,
+                                         unsigned int *cursor,
+                                         unsigned int *cseq,
+                                         unsigned int *method_pos) {
+    unsigned int i = cursor ? *cursor : 0;
+
+    while (i < len) {
+        i = text_skip_line_breaks(req, len, i);
+        if (i >= len) break;
+
+        unsigned int line_start = i;
+        unsigned int next = text_next_line_start(req, len,
+            text_line_raw_end(req, len, i));
+
+        if (rtsp_line_starts_method(req, len, line_start)) {
+            unsigned int block_end = rtsp_method_block_end(req, len, line_start);
+            if (cursor) *cursor = (block_end > line_start) ? block_end : next;
+            if (parse_header_uint(req + line_start, block_end - line_start,
+                                  "CSeq", cseq)) {
+                if (method_pos) *method_pos = line_start;
+                return 1;
+            }
+            i = (block_end > line_start) ? block_end : next;
+            continue;
+        }
+
+        i = next;
+    }
+
+    if (cursor) *cursor = len;
+    return 0;
+}
+
+static int rtsp_method_cseq_pos(const unsigned char *req, unsigned int len,
+                                const char *method, unsigned int *cseq,
+                                unsigned int *method_pos) {
+    unsigned int cursor = 0;
+    return rtsp_next_method_cseq_pos(req, len, method, &cursor,
+                                     cseq, method_pos);
+}
+
+static unsigned int rtsp_method_block_len(const unsigned char *req,
+                                          unsigned int len,
+                                          unsigned int method_pos) {
+    return rtsp_method_block_end(req, len, method_pos) - method_pos;
+}
+
+static int rtsp_request_cseq_occurrences(const unsigned char **requests,
+                                         const unsigned int *req_lens,
+                                         int req_count,
+                                         unsigned int want_cseq) {
+    int count = 0;
+
+    for (int i = 0; i < req_count; i++) {
+        unsigned int cursor = 0, cseq = 0, pos = 0;
+        while (rtsp_next_any_method_cseq_pos(requests[i], req_lens[i],
+                                             &cursor, &cseq, &pos)) {
+            (void)pos;
+            if (cseq == want_cseq) count++;
+        }
+    }
+    return count;
+}
+
+static int rtsp_method_session(const unsigned char *req, unsigned int len,
+                               unsigned int method_pos,
+                               const unsigned char **session,
+                               unsigned int *session_len) {
+    unsigned int block_len = rtsp_method_block_len(req, len, method_pos);
+    return parse_header_token(req + method_pos, block_len, "Session",
+                              session, session_len);
+}
+
+static int rtsp_method_line_is_valid_request(const unsigned char *req,
+                                             unsigned int len,
+                                             unsigned int method_pos,
+                                             const char *method) {
+    size_t method_len = strlen(method);
+    unsigned int line_end = text_line_raw_end(req, len, method_pos);
+    unsigned int uri_pos = method_pos + (unsigned int)method_len;
+
+    if (!command_boundary_ok(req, len, method_pos, method)) return 0;
+    if (line_end <= uri_pos + 7) return 0;
+
+    for (unsigned int i = method_pos; i < line_end; i++) {
+        if (req[i] < 0x20 && req[i] != '\t') return 0;
+    }
+
+    if (strncasecmp((const char *)req + uri_pos, "rtsp://", 7) != 0)
+        return 0;
+
+    for (unsigned int i = uri_pos + 7; i + 8 <= line_end; i++) {
+        if (req[i] == ' ' &&
+            strncasecmp((const char *)req + i + 1, "RTSP/1.", 7) == 0)
+            return 1;
+    }
+
+    return 0;
+}
+
+static int rtsp_block_session_matches(const unsigned char *block,
+                                      unsigned int block_len,
+                                      const unsigned char *session,
+                                      unsigned int session_len) {
+    const unsigned char *block_session = NULL;
+    unsigned int block_session_len = 0;
+
+    if (!session || session_len == 0) return 1;
+    if (!parse_header_token(block, block_len, "Session",
+                            &block_session, &block_session_len))
+        return 0;
+    return block_session_len == session_len &&
+           memcmp(block_session, session, session_len) == 0;
+}
+
+static int rtsp_block_has_session(const unsigned char *block,
+                                  unsigned int block_len) {
+    const unsigned char *session = NULL;
+    unsigned int session_len = 0;
+    return parse_header_token(block, block_len, "Session",
+                              &session, &session_len);
+}
+
+static int rtsp_block_has_sdp_body(const unsigned char *block,
+                                   unsigned int block_len) {
+    return ci_memmem(block, block_len, "Content-Type: application/sdp", 29) ||
+           ci_memmem(block, block_len, "\r\nv=0\r\n", 7) ||
+           ci_memmem(block, block_len, "\nv=0\r\n", 6);
+}
+
+static int rtsp_block_is_setup_success(const unsigned char *block,
+                                       unsigned int block_len,
+                                       int code,
+                                       const unsigned char *session,
+                                       unsigned int session_len) {
+    return code_is_2xx(code) &&
+           ci_memmem(block, block_len, "Transport:", 10) &&
+           ci_memmem(block, block_len, "Session:", 8) &&
+           rtsp_block_session_matches(block, block_len, session, session_len);
+}
+
+static int rtsp_block_is_play_success(const unsigned char *block,
+                                      unsigned int block_len,
+                                      int code) {
+    return code_is_2xx(code) &&
+           !rtsp_block_has_sdp_body(block, block_len) &&
+           rtsp_block_has_session(block, block_len) &&
+           (ci_memmem(block, block_len, "RTP-Info:", 9) ||
+            ci_memmem(block, block_len, "Range:", 6));
+}
+
+static int rtsp_block_is_record_success(const unsigned char *block,
+                                        unsigned int block_len,
+                                        int code) {
+    return code_is_2xx(code) &&
+           !rtsp_block_has_sdp_body(block, block_len) &&
+           rtsp_block_has_session(block, block_len);
 }
 
 static int rtsp_response_block_by_cseq_unique(const unsigned char *resp,
@@ -500,6 +1178,101 @@ static int extract_rtsp_response_code_by_cseq(const unsigned char *resp,
                                            NULL, NULL, &code))
         return code;
     return -1;
+}
+
+static int rtsp_prior_setup_request_accepted(
+    const unsigned char **requests,
+    const unsigned int *req_lens,
+    int req_count,
+    const unsigned char *response,
+    unsigned int resp_len,
+    int target_region_idx,
+    unsigned int target_method_pos,
+    const unsigned char *session,
+    unsigned int session_len) {
+
+    if (!requests || !req_lens || !response) return 0;
+
+    for (int i = 0; i < req_count; i++) {
+        if (i > target_region_idx) break;
+
+        unsigned int cursor = 0, setup_cseq = 0, setup_pos = 0;
+        while (rtsp_next_method_cseq_pos(requests[i], req_lens[i], "SETUP ",
+                                         &cursor, &setup_cseq, &setup_pos)) {
+            if (i == target_region_idx && setup_pos >= target_method_pos)
+                continue;
+
+            const unsigned char *block = NULL;
+            unsigned int block_len = 0;
+            int code = -1;
+            if (!rtsp_response_block_by_cseq_unique(response, resp_len,
+                    setup_cseq, &block, &block_len, &code))
+                continue;
+
+            if (rtsp_block_is_setup_success(block, block_len, code,
+                                            session, session_len))
+                return 1;
+        }
+    }
+
+    return 0;
+}
+
+static int rtsp_prior_setup_accepted_before_cseq(const unsigned char *resp,
+                                                 unsigned int len,
+                                                 unsigned int target_cseq,
+                                                 const unsigned char *session,
+                                                 unsigned int session_len) {
+    unsigned int i = 0;
+
+    while (i + 12 < len) {
+        if ((i == 0 || resp[i - 1] == '\n') &&
+            ci_memmem(resp + i, (len - i < 12) ? len - i : 12, "RTSP/", 5)) {
+            unsigned int j = i;
+            while (j < len && resp[j] != ' ') j++;
+            if (++j + 2 >= len) break;
+            if (!isdigit(resp[j]) || !isdigit(resp[j + 1]) || !isdigit(resp[j + 2])) {
+                while (i < len && resp[i] != '\n') i++;
+                if (i < len) i++;
+                continue;
+            }
+            int code = (resp[j] - '0') * 100 +
+                       (resp[j + 1] - '0') * 10 +
+                       (resp[j + 2] - '0');
+
+            unsigned int block_start = i;
+            unsigned int block_end = len;
+            unsigned int k = i + 1;
+            while (k + 5 < len) {
+                while (k < len && resp[k] != '\n') k++;
+                if (k < len) k++;
+                if (k + 5 < len && ci_memmem(resp + k,
+                    (len - k < 12) ? len - k : 12, "RTSP/", 5)) {
+                    block_end = k;
+                    break;
+                }
+            }
+
+            unsigned int cseq = 0;
+            int has_cseq = parse_header_uint(resp + block_start,
+                block_end - block_start, "CSeq", &cseq);
+            if (has_cseq && cseq == target_cseq)
+                return 0;
+
+            if (rtsp_block_is_setup_success(resp + block_start,
+                                            block_end - block_start,
+                                            code, session, session_len)) {
+                return 1;
+            }
+
+            i = block_end;
+            continue;
+        }
+        while (i < len && resp[i] != '\n') i++;
+        if (i < len) i++;
+    }
+
+    return 0;
 }
 
 typedef struct {
@@ -623,6 +1396,112 @@ static int smtp_rcpt_domain_is_external(const unsigned char *req, unsigned int l
     return 0;
 }
 
+static int ftp_cmd_is_user(const char *cmd) {
+    return cmd && (!strcmp(cmd, "USER ") || !strcmp(cmd, "USER"));
+}
+
+static int ftp_cmd_is_pass(const char *cmd) {
+    return cmd && (!strcmp(cmd, "PASS ") || !strcmp(cmd, "PASS"));
+}
+
+static int ftp_cmd_is_rnfr(const char *cmd) {
+    return cmd && !strcmp(cmd, "RNFR ");
+}
+
+static int ftp_cmd_is_rnto(const char *cmd) {
+    return cmd && !strcmp(cmd, "RNTO ");
+}
+
+static int ftp_cmd_is_sensitive_data(const char *cmd) {
+    return cmd &&
+        (!strcmp(cmd, "RETR ") || !strcmp(cmd, "STOR ") ||
+         !strcmp(cmd, "LIST")  || !strcmp(cmd, "NLST")  ||
+         !strcmp(cmd, "MKD ")  || !strcmp(cmd, "RMD ")  ||
+         !strcmp(cmd, "DELE ") || !strcmp(cmd, "APPE ") ||
+         !strcmp(cmd, "SITE "));
+}
+
+static int ftp_cmd_is_filesystem(const char *cmd) {
+    return cmd &&
+        (!strcmp(cmd, "RETR ") || !strcmp(cmd, "STOR ") ||
+         !strcmp(cmd, "DELE ") || !strcmp(cmd, "RMD ")  ||
+         !strcmp(cmd, "RNFR ") || !strcmp(cmd, "RNTO ") ||
+         !strcmp(cmd, "MKD ")  || !strcmp(cmd, "CWD ")  ||
+         !strcmp(cmd, "CDUP")  || !strcmp(cmd, "LIST")  ||
+         !strcmp(cmd, "NLST")  || !strcmp(cmd, "MLSD "));
+}
+
+static int text_command_line_is_clean(const unsigned char *buf,
+                                      unsigned int len,
+                                      unsigned int pos) {
+    unsigned int end = text_line_raw_end(buf, len, pos);
+    for (unsigned int i = pos; i < end; i++) {
+        if (buf[i] < 0x20 && buf[i] != '\t') return 0;
+    }
+    return end > pos;
+}
+
+static int ftp_response_has_rnto_reject(const unsigned char *resp,
+                                        unsigned int resp_len) {
+    return response_has_phrase(resp, resp_len, "RNFR before RNTO") ||
+           response_has_phrase(resp, resp_len, "Bad sequence of commands");
+}
+
+static int smtp_cmd_is_auth(const char *cmd) {
+    return cmd && (!strcmp(cmd, "AUTH ") || !strcmp(cmd, "AUTH"));
+}
+
+static int smtp_cmd_is_mail(const char *cmd) {
+    return cmd && !strcmp(cmd, "MAIL FROM:");
+}
+
+static int smtp_cmd_is_rcpt(const char *cmd) {
+    return cmd && !strcmp(cmd, "RCPT TO:");
+}
+
+static int smtp_cmd_is_data(const char *cmd) {
+    return cmd && !strcmp(cmd, "DATA");
+}
+
+static int smtp_cmd_is_vrfy(const char *cmd) {
+    return cmd && (!strcmp(cmd, "VRFY ") || !strcmp(cmd, "VRFY"));
+}
+
+static int smtp_cmd_is_expn(const char *cmd) {
+    return cmd && (!strcmp(cmd, "EXPN ") || !strcmp(cmd, "EXPN"));
+}
+
+static int smtp_cmd_is_starttls(const char *cmd) {
+    return cmd && !strcmp(cmd, "STARTTLS");
+}
+
+static int smtp_response_has_state_rejection(const unsigned char *resp,
+                                             unsigned int resp_len) {
+    return response_has_phrase(resp, resp_len, "NUL characters are not allowed") ||
+           response_has_phrase(resp, resp_len, "unrecognized command") ||
+           response_has_phrase(resp, resp_len, "Too many syntax or protocol errors") ||
+           response_has_phrase(resp, resp_len, "malformed address") ||
+           response_has_phrase(resp, resp_len, "Syntactically invalid") ||
+           response_has_phrase(resp, resp_len, "sender not yet given") ||
+           response_has_phrase(resp, resp_len, "sender already given") ||
+           response_has_phrase(resp, resp_len, "valid RCPT command must precede") ||
+           response_has_phrase(resp, resp_len, "missing or malformed local part");
+}
+
+static unsigned int line_span_len(const unsigned char *buf, unsigned int len,
+                                  unsigned int pos) {
+    unsigned int end = text_line_raw_end(buf, len, pos);
+    unsigned int next = text_next_line_start(buf, len, end);
+    return next - pos;
+}
+
+static int span_has_traversal_syntax(const unsigned char *buf,
+                                     unsigned int len) {
+    return ci_memmem(buf, len, "../", 3) ||
+           ci_memmem(buf, len, "..\\", 3) ||
+           ci_memmem(buf, len, "%2e%2e", 6);
+}
+
 /* Reset protocol state for new execution */
 static void reset_proto_state(void) {
     memset(&proto_state, 0, sizeof(proto_state));
@@ -662,59 +1541,13 @@ int oracle_check_ftp(
     const int resp_offset = 1;  /* skip banner */
 
     /* Parse requests to build state, then check response */
-    int has_user = 0, has_data_cmd = 0;
-    int has_path_traversal = 0, has_rnfr = 0;
-    int data_cmd_index = -1;
+    int has_user = 0, reported_data_bypass = 0;
+    int has_path_traversal = 0, rnfr_pending = 0;
     int authenticated = 0;
 
     for (int i = 0; i < req_count; i++) {
         const unsigned char *req = requests[i];
         unsigned int rlen = req_lens[i];
-        int code = extract_nth_response_code(response, resp_len, i + resp_offset);
-
-        if (code == 331) {
-            has_user = 1;
-            authenticated = 0;
-        } else if (code == 230) {
-            authenticated = 1;
-        }
-
-        if (request_has_line_command(req, rlen, "USER ")) {
-            /* Only accept USER if server responded 331 (Password required).
-             * Fuzz data may randomly match "USER " prefix; blind reset of
-             * authenticated would cause massive false-positive auth_bypass. */
-            if (code == 331) {
-                has_user = 1;
-                authenticated = 0;  /* new USER starts fresh auth sequence */
-            }
-        }
-        if (request_has_line_command(req, rlen, "PASS ") ||
-            request_has_line_command(req, rlen, "PASS\r\n") ||
-            (rlen == 4 && memcmp(req, "PASS", 4) == 0)) {
-            if (has_user) {
-                if (code >= 200 && code < 300) {
-                    authenticated = 1;  /* only if server accepted PASS */
-                }
-            }
-        }
-        if (request_has_line_command(req, rlen, "RNFR ")) has_rnfr = 1;
-
-        /* Data commands that require auth — only flag if NOT yet authenticated */
-        if (!authenticated &&
-            (request_has_line_command(req, rlen, "RETR ") ||
-             request_has_line_command(req, rlen, "STOR ") ||
-             request_has_line_command(req, rlen, "LIST") ||
-             request_has_line_command(req, rlen, "NLST") ||
-             request_has_line_command(req, rlen, "MKD ") ||
-             request_has_line_command(req, rlen, "RMD ") ||
-             request_has_line_command(req, rlen, "DELE ") ||
-             request_has_line_command(req, rlen, "APPE ") ||
-             request_has_line_command(req, rlen, "SITE "))) {
-            if (!has_data_cmd) {
-                has_data_cmd = 1;
-                data_cmd_index = i;  /* Record FIRST unauthenticated data cmd */
-            }
-        }
 
         /* Check path traversal attempts */
         if (ci_memmem(req, rlen, "../", 3) ||
@@ -724,51 +1557,93 @@ int oracle_check_ftp(
             has_path_traversal = 1;
         }
 
-        /* State machine: RNTO without RNFR — only flag if server ACCEPTED it */
-        if (request_has_line_command(req, rlen, "RNTO ") && !has_rnfr) {
-            if (code == 250) {
-                oracle_add_violation(result, ORACLE_SEV_MEDIUM,
-                    ORACLE_CAT_STATE_VIOLATION,
-                    ORACLE_EVIDENCE_STRONG,
-                    "FTP: RNTO without prior RNFR accepted by server",
-                    NULL, i);
-            }
-        }
+        unsigned int cursor = 0, cmd_pos = 0;
+        const char *cmd = NULL;
+        while (text_protocol_next_command(req, rlen, TEXT_PROTO_FTP,
+                                          &cursor, &cmd_pos, &cmd)) {
+            int code = text_response_code_for_command(requests, req_lens,
+                req_count, response, resp_len, i, cmd_pos, TEXT_PROTO_FTP,
+                resp_offset);
 
-        /* State machine: PASS without USER — check the specific response */
-        if (request_has_line_command(req, rlen, "PASS ") && !has_user) {
-            /* If any earlier request region contains USER, the splitter may have
-             * lost command boundaries.  If any earlier response was 331, the
-             * server objectively entered USER/PASS state even if USER syntax was
-             * fuzzed, so do not claim PASS-without-USER. */
-            int prior_user_seen =
-                prior_requests_have_line_command(requests, req_lens, i, "USER ");
-            for (int u = 0; u < i && !prior_user_seen; u++) {
-                int prior_code = extract_nth_response_code(response, resp_len, u + resp_offset);
-                if (prior_code == 331) prior_user_seen = 1;
-            }
-            if (!prior_user_seen && code == 230) {
-                oracle_add_violation(result, ORACLE_SEV_HIGH,
-                    ORACLE_CAT_STATE_VIOLATION | ORACLE_CAT_AUTH_BYPASS,
-                    ORACLE_EVIDENCE_STRONG,
-                    "FTP: PASS accepted without USER (auth state bypass)",
-                    "CVE-2024-42644", i);
-            }
-        }
-    }
+            if (!ftp_cmd_is_rnto(cmd) && !ftp_cmd_is_rnfr(cmd) && rnfr_pending)
+                rnfr_pending = 0;
 
-    /* Check response for auth bypass: data command succeeded without auth.
-     * IMPORTANT: Check the response for the specific data command, not the
-     * first response in the stream (which is typically the banner 220). */
-    if (has_data_cmd && resp_len > 0 && data_cmd_index >= 0) {
-        int code = extract_nth_response_code(response, resp_len, data_cmd_index + resp_offset);
-        if (code == 150 || code == 225 || code == 226) {
-            oracle_add_violation(result, ORACLE_SEV_CRITICAL,
-                ORACLE_CAT_AUTH_BYPASS,
-                ORACLE_EVIDENCE_STRONG,
-                "FTP: Data command succeeded without authentication",
-                "CVE-2024-42645", data_cmd_index);
-            /* oracle_auth_bypass_count auto-derived by dispatcher */
+            if (ftp_cmd_is_user(cmd)) {
+                /* Only accept USER if the specific USER line received 331.
+                 * Fuzz data may randomly match USER inside a larger region;
+                 * blind state changes create false auth-bypass evidence. */
+                if (code == 331) {
+                    has_user = 1;
+                    authenticated = 0;
+                }
+                continue;
+            }
+
+            if (ftp_cmd_is_pass(cmd)) {
+                int prior_user_challenge = has_user ||
+                    text_prior_response_code_range_before_command(
+                        requests, req_lens, req_count, response, resp_len,
+                        i, cmd_pos, TEXT_PROTO_FTP, resp_offset, 331, 331);
+                if (prior_user_challenge) {
+                    if (code >= 200 && code < 300)
+                        authenticated = 1;
+                } else {
+                    if (code == 230) {
+                        oracle_add_violation(result, ORACLE_SEV_HIGH,
+                            ORACLE_CAT_STATE_VIOLATION | ORACLE_CAT_AUTH_BYPASS,
+                            ORACLE_EVIDENCE_STRONG,
+                            "FTP: PASS accepted without USER (auth state bypass)",
+                            "CVE-2024-42644", i);
+                    }
+                }
+                continue;
+            }
+
+            if (ftp_cmd_is_rnfr(cmd)) {
+                rnfr_pending = (code == 350);
+                continue;
+            }
+
+            if (ftp_cmd_is_rnto(cmd)) {
+                int prior_rnfr_ready =
+                    text_prior_response_code_range_before_command(
+                        requests, req_lens, req_count, response, resp_len,
+                        i, cmd_pos, TEXT_PROTO_FTP, resp_offset, 350, 350);
+                if (!rnfr_pending && !prior_rnfr_ready &&
+                    text_command_line_is_clean(req, rlen, cmd_pos) &&
+                    !ftp_response_has_rnto_reject(response, resp_len) &&
+                    code == 250) {
+                    oracle_add_violation(result, ORACLE_SEV_MEDIUM,
+                        ORACLE_CAT_STATE_VIOLATION,
+                        ORACLE_EVIDENCE_STRONG,
+                        "FTP: RNTO without prior RNFR accepted by server",
+                        NULL, i);
+                }
+                rnfr_pending = 0;
+                continue;
+            }
+
+            /* Report only when the exact filesystem/data command received a
+             * transfer-success code and no earlier response slot proved login
+             * with 230.  This suppresses normal anonymous/default login flows
+             * that reached 230 before LIST/RETR/STOR. */
+            if (!reported_data_bypass && ftp_cmd_is_sensitive_data(cmd)) {
+                int prior_login = authenticated ||
+                    text_prior_response_code_range_before_command(
+                        requests, req_lens, req_count, response, resp_len,
+                        i, cmd_pos, TEXT_PROTO_FTP, resp_offset, 230, 230);
+                if (!prior_login &&
+                    (code == 150 || code == 225 || code == 226)) {
+                    oracle_add_violation(result, ORACLE_SEV_CRITICAL,
+                        ORACLE_CAT_AUTH_BYPASS,
+                        ORACLE_EVIDENCE_STRONG,
+                        "FTP: Data command succeeded without authentication",
+                        "CVE-2024-42645", i);
+                    reported_data_bypass = 1;
+                }
+            }
+
+            if (code == 230) authenticated = 1;
         }
     }
 
@@ -782,38 +1657,26 @@ int oracle_check_ftp(
         for (int i = 0; i < req_count; i++) {
             const unsigned char *req = requests[i];
             unsigned int rlen = req_lens[i];
-            /* Only filesystem-access commands can perform path traversal */
-            if (!request_starts_with(req, rlen, "RETR ") &&
-                !request_starts_with(req, rlen, "STOR ") &&
-                !request_starts_with(req, rlen, "DELE ") &&
-                !request_starts_with(req, rlen, "RMD ")  &&
-                !request_starts_with(req, rlen, "RNFR ") &&
-                !request_starts_with(req, rlen, "RNTO ") &&
-                !request_starts_with(req, rlen, "MKD ")  &&
-                !request_starts_with(req, rlen, "CWD ")  &&
-                !request_starts_with(req, rlen, "CDUP ") &&
-                !request_starts_with(req, rlen, "LIST ") &&
-                !request_starts_with(req, rlen, "NLST ") &&
-                !request_starts_with(req, rlen, "MLSD ") &&
-                !request_starts_with(req, rlen, "RETR")   &&
-                !request_starts_with(req, rlen, "STOR")   &&
-                !request_starts_with(req, rlen, "DELE")   &&
-                !request_starts_with(req, rlen, "RMD")    &&
-                !request_starts_with(req, rlen, "MKD")    &&
-                !request_starts_with(req, rlen, "CWD")    &&
-                !request_starts_with(req, rlen, "LIST")   &&
-                !request_starts_with(req, rlen, "NLST"))
-                continue;
-            if (ci_memmem(req, rlen, "../", 3) || ci_memmem(req, rlen, "..\\", 3) ||
-                ci_memmem(req, rlen, "%2e%2e", 6)) {
-                int code = extract_nth_response_code(response, resp_len, i + resp_offset);
+            unsigned int cursor = 0, cmd_pos = 0;
+            const char *cmd = NULL;
+            while (text_protocol_next_command(req, rlen, TEXT_PROTO_FTP,
+                                              &cursor, &cmd_pos, &cmd)) {
+                unsigned int span = line_span_len(req, rlen, cmd_pos);
+                if (!ftp_cmd_is_filesystem(cmd) ||
+                    !span_has_traversal_syntax(req + cmd_pos, span))
+                    continue;
+
+                int code = text_response_code_for_command(requests, req_lens,
+                    req_count, response, resp_len, i, cmd_pos, TEXT_PROTO_FTP,
+                    resp_offset);
                 if (code == 150 || code == 226 || code == 250 || code == 257) {
                     oracle_add_violation(result, ORACLE_SEV_LOW,
                         ORACLE_CAT_PATH_TRAVERSAL,
                         ORACLE_EVIDENCE_HEURISTIC,
                         "FTP: Traversal syntax accepted by filesystem command (manual replay required)",
                         "N/A", i);
-                    break;  /* One finding is enough */
+                    i = req_count;  /* One finding is enough */
+                    break;
                 }
             }
         }
@@ -869,19 +1732,11 @@ int oracle_check_ftp(
             }
         }
 
-        /* Tier-3 LOW: internal path/version disclosure */
-        if (ci_memmem(response, resp_len, "/home/", 6) ||
-            ci_memmem(response, resp_len, "/var/www", 7)) {
-            PAT_IN_REQ("/home/", 6);
-            if (!checked_in_requests) PAT_IN_REQ("/var/www", 7);
-            if (!checked_in_requests) {
-                oracle_add_violation(result, ORACLE_SEV_LOW,
-                    ORACLE_CAT_INFO_LEAK,
-                    ORACLE_EVIDENCE_WEAK,
-                    "FTP: Internal path disclosed in response",
-                    NULL, -1);
-            }
-        }
+        /* REMOVED (2026-07-06): plain absolute-path disclosure such as
+         * 257 "/home/ubuntu/test" from PWD/XPWD after login.  FTP servers
+         * commonly return the current directory, and without a chroot policy
+         * baseline this is configuration/normal behavior, not a vulnerability
+         * candidate.  Sensitive file CONTENT checks above remain active. */
     }
     #undef PAT_IN_REQ
 
@@ -934,34 +1789,40 @@ int oracle_check_ftp(
 
     /* TLS downgrade detection: AUTH TLS followed by
      * cleartext data commands suggests TLS enforcement bypass. */
-    for (int i = 0; i < req_count; i++) {
-        const unsigned char *req = requests[i];
-        unsigned int rlen = req_lens[i];
-        if (request_starts_with(req, rlen, "AUTH TLS") ||
-            request_starts_with(req, rlen, "AUTH SSL")) {
-            /* If a data command follows AUTH TLS AND receives success response,
-             * the server may be vulnerable to TLS downgrade */
-            int auth_code = extract_nth_response_code(response, resp_len, i + resp_offset);
-            if (auth_code == 234) {  /* AUTH TLS accepted */
-                /* Check for subsequent cleartext data commands */
-                for (int k = i + 1; k < req_count; k++) {
-                    const unsigned char *req2 = requests[k];
-                    unsigned int rlen2 = req_lens[k];
-                    if (request_starts_with(req2, rlen2, "RETR ") ||
-                        request_starts_with(req2, rlen2, "STOR ")) {
-                        int data_code = extract_nth_response_code(response, resp_len, k + resp_offset);
-                        if (data_code >= 150 && data_code <= 250) {
-                            oracle_add_violation(result, ORACLE_SEV_MEDIUM,
-                                ORACLE_CAT_STATE_VIOLATION,
-                                ORACLE_EVIDENCE_STRONG,
-                                "FTP: Cleartext data transfer after AUTH TLS (TLS downgrade risk)",
-                                "N/A", k);
-                            break;
-                        }
-                    }
+    {
+        int tls_accepted = 0;
+        int reported_tls = 0;
+        for (int i = 0; i < req_count && !reported_tls; i++) {
+            const unsigned char *req = requests[i];
+            unsigned int rlen = req_lens[i];
+            unsigned int cursor = 0, cmd_pos = 0;
+            const char *cmd = NULL;
+
+            while (text_protocol_next_command(req, rlen, TEXT_PROTO_FTP,
+                                              &cursor, &cmd_pos, &cmd)) {
+                int code = text_response_code_for_command(requests, req_lens,
+                    req_count, response, resp_len, i, cmd_pos, TEXT_PROTO_FTP,
+                    resp_offset);
+
+                if (!strcmp(cmd, "AUTH ") &&
+                    (command_boundary_ok(req, rlen, cmd_pos, "AUTH TLS") ||
+                     command_boundary_ok(req, rlen, cmd_pos, "AUTH SSL"))) {
+                    if (code == 234) tls_accepted = 1;
+                    continue;
+                }
+
+                if (tls_accepted &&
+                    (!strcmp(cmd, "RETR ") || !strcmp(cmd, "STOR ")) &&
+                    code >= 150 && code <= 250) {
+                    oracle_add_violation(result, ORACLE_SEV_MEDIUM,
+                        ORACLE_CAT_STATE_VIOLATION,
+                        ORACLE_EVIDENCE_STRONG,
+                        "FTP: Cleartext data transfer after AUTH TLS (TLS downgrade risk)",
+                        "N/A", i);
+                    reported_tls = 1;
+                    break;
                 }
             }
-            break;
         }
     }
 
@@ -972,8 +1833,14 @@ int oracle_check_ftp(
         for (int i = 0; i < req_count; i++) {
             const unsigned char *req = requests[i];
             unsigned int rlen = req_lens[i];
-            if (request_starts_with(req, rlen, "PASS ") && !has_user) {
-                int code = extract_nth_response_code(response, resp_len, i + resp_offset);
+            unsigned int cursor = 0, cmd_pos = 0;
+            const char *cmd = NULL;
+            while (text_protocol_next_command(req, rlen, TEXT_PROTO_FTP,
+                                              &cursor, &cmd_pos, &cmd)) {
+                if (!ftp_cmd_is_pass(cmd)) continue;
+                int code = text_response_code_for_command(requests, req_lens,
+                    req_count, response, resp_len, i, cmd_pos, TEXT_PROTO_FTP,
+                    resp_offset);
                 if (code >= 500 && code <= 599) failed_auth++;
             }
         }
@@ -1022,76 +1889,115 @@ int oracle_check_smtp(
 
     int has_auth = 0, has_mail = 0, has_rcpt = 0;
     int has_vrfy = 0, has_expn = 0;
+    int smtp_state_rejected = smtp_response_has_state_rejection(response, resp_len);
 
     for (int i = 0; i < req_count; i++) {
         const unsigned char *req = requests[i];
         unsigned int rlen = req_lens[i];
-        unsigned int auth_pos = 0, mail_pos = 0, rcpt_pos = 0, data_pos = 0;
-        unsigned int vrfy_pos = 0, expn_pos = 0;
-        int cur_auth = request_line_command_pos(req, rlen, "AUTH ", &auth_pos);
-        int cur_mail = request_line_command_pos(req, rlen, "MAIL FROM:", &mail_pos);
-        int cur_rcpt = request_line_command_pos(req, rlen, "RCPT TO:", &rcpt_pos);
-        int cur_data = request_line_command_pos(req, rlen, "DATA", &data_pos);
-        int cur_vrfy = request_line_command_pos(req, rlen, "VRFY ", &vrfy_pos);
-        int cur_expn = request_line_command_pos(req, rlen, "EXPN ", &expn_pos);
-        (void)auth_pos;
-        (void)vrfy_pos;
-        (void)expn_pos;
+        unsigned int cursor = 0, cmd_pos = 0;
+        const char *cmd = NULL;
 
-        /* State violation: DATA before RCPT.  SMTP acceptance of DATA is
-         * specifically 354; generic 2xx greetings/NOOP replies are not enough. */
-        int rcpt_seen_before_data = has_rcpt || (cur_rcpt && rcpt_pos < data_pos);
-        if (cur_data && !rcpt_seen_before_data) {
-            int code = extract_nth_response_code(response, resp_len, i + resp_offset);
-            if (code == 354 &&
-                !response_has_phrase(response, resp_len, "RCPT command must precede DATA")) {
-                oracle_add_violation(result, ORACLE_SEV_MEDIUM,
-                    ORACLE_CAT_STATE_VIOLATION,
-                    ORACLE_EVIDENCE_STRONG,
-                    "SMTP: DATA before RCPT TO accepted by server",
-                    NULL, i);
-            }
-        }
+        while (text_protocol_next_command(req, rlen, TEXT_PROTO_SMTP,
+                                          &cursor, &cmd_pos, &cmd)) {
+            int code = text_response_code_for_command(requests, req_lens,
+                req_count, response, resp_len, i, cmd_pos, TEXT_PROTO_SMTP,
+                resp_offset);
 
-        /* State violation: RCPT before MAIL FROM.  Require an RCPT accept code,
-         * and suppress when Exim explicitly says the sender is missing. */
-        int mail_seen_before_rcpt = has_mail || (cur_mail && mail_pos < rcpt_pos);
-        if (cur_rcpt && !mail_seen_before_rcpt) {
-            int code = extract_nth_response_code(response, resp_len, i + resp_offset);
-            if ((code == 250 || code == 251) &&
-                !response_has_phrase(response, resp_len, "sender not yet given")) {
-                oracle_add_violation(result, ORACLE_SEV_MEDIUM,
-                    ORACLE_CAT_STATE_VIOLATION,
-                    ORACLE_EVIDENCE_STRONG,
-                    "SMTP: RCPT TO before MAIL FROM accepted by server",
-                    NULL, i);
-            }
-        }
-
-        /* SMTP smuggling: newline injection in RCPT TO (CVE-2023-42117: Exim).
-         * Only flag when server ACCEPTED (2xx/3xx) the address with CR/LF,
-         * proving the server processed — not just received — the smuggling
-         * payload.  4xx/5xx rejection = server correctly identified it. */
-        if (cur_rcpt || cur_mail) {
-            if (smtp_path_has_bare_crlf(req, rlen)) {
-                int code = extract_nth_response_code(response, resp_len, i + resp_offset);
-                if ((code == 250 || code == 251) &&
-                    !response_has_phrase(response, resp_len, "NUL characters are not allowed") &&
-                    !response_has_phrase(response, resp_len, "sender not yet given")) {
-                    oracle_add_violation(result, ORACLE_SEV_HIGH,
-                        ORACLE_CAT_SMUGGLING | ORACLE_CAT_INJECTION,
+            /* State violation: DATA before RCPT.  SMTP acceptance of DATA is
+             * specifically 354; generic 2xx greetings/NOOP replies are not
+             * evidence for this command. */
+            if (smtp_cmd_is_data(cmd)) {
+                if (!has_rcpt && code == 354 &&
+                    !smtp_state_rejected &&
+                    text_command_line_is_clean(req, rlen, cmd_pos) &&
+                    !response_has_phrase(response, resp_len,
+                                         "RCPT command must precede DATA")) {
+                    oracle_add_violation(result, ORACLE_SEV_MEDIUM,
+                        ORACLE_CAT_STATE_VIOLATION,
                         ORACLE_EVIDENCE_STRONG,
-                        "SMTP: Bare CR/LF inside address path accepted by server",
+                        "SMTP: DATA before RCPT TO accepted by server",
+                        NULL, i);
+                }
+                continue;
+            }
+
+            /* State violation: RCPT before MAIL FROM.  Require the RCPT line's
+             * own 250/251 response.  A 250 from EHLO or an earlier command in
+             * the same AFLNet region is not valid evidence. */
+            if (smtp_cmd_is_rcpt(cmd)) {
+                if (!has_mail && (code == 250 || code == 251) &&
+                    !smtp_state_rejected &&
+                    text_command_line_is_clean(req, rlen, cmd_pos) &&
+                    !response_has_phrase(response, resp_len,
+                                         "sender not yet given")) {
+                    oracle_add_violation(result, ORACLE_SEV_MEDIUM,
+                        ORACLE_CAT_STATE_VIOLATION,
+                        ORACLE_EVIDENCE_STRONG,
+                        "SMTP: RCPT TO before MAIL FROM accepted by server",
+                        NULL, i);
+                }
+
+                unsigned int span = line_span_len(req, rlen, cmd_pos);
+                if (smtp_path_has_bare_crlf(req + cmd_pos, span) &&
+                    (code == 250 || code == 251) &&
+                    !response_has_phrase(response, resp_len,
+                                         "NUL characters are not allowed") &&
+                    !response_has_phrase(response, resp_len,
+                                         "sender not yet given") &&
+                    !response_has_phrase(response, resp_len,
+                                         "missing or malformed local part") &&
+                    !response_has_phrase(response, resp_len,
+                                         "syntax error")) {
+                    oracle_add_violation(result, ORACLE_SEV_LOW,
+                        ORACLE_CAT_SMUGGLING | ORACLE_CAT_INJECTION,
+                        ORACLE_EVIDENCE_HEURISTIC,
+                        "SMTP: Bare CR/LF inside address path observed (manual smuggling context only)",
                         "N/A", i);
                 }
+
+                if (code == 250 || code == 251)
+                    has_rcpt = 1;
+                continue;
+            }
+
+            if (smtp_cmd_is_mail(cmd)) {
+                unsigned int span = line_span_len(req, rlen, cmd_pos);
+                if (smtp_path_has_bare_crlf(req + cmd_pos, span) &&
+                    code == 250 &&
+                    !response_has_phrase(response, resp_len,
+                                         "NUL characters are not allowed") &&
+                    !response_has_phrase(response, resp_len,
+                                         "missing or malformed local part") &&
+                    !response_has_phrase(response, resp_len,
+                                         "syntax error")) {
+                    oracle_add_violation(result, ORACLE_SEV_LOW,
+                        ORACLE_CAT_SMUGGLING | ORACLE_CAT_INJECTION,
+                        ORACLE_EVIDENCE_HEURISTIC,
+                        "SMTP: Bare CR/LF inside address path observed (manual smuggling context only)",
+                        "N/A", i);
+                }
+
+                if (code == 250)
+                    has_mail = 1;
+                continue;
+            }
+
+            if (smtp_cmd_is_auth(cmd)) {
+                if (code == 235)
+                    has_auth = 1;
+                continue;
+            }
+
+            if (smtp_cmd_is_vrfy(cmd)) {
+                has_vrfy = 1;
+                continue;
+            }
+
+            if (smtp_cmd_is_expn(cmd)) {
+                has_expn = 1;
+                continue;
             }
         }
-
-        if (cur_auth) has_auth = 1;
-        if (cur_mail) has_mail = 1;
-        if (cur_rcpt) has_rcpt = 1;
-        if (cur_vrfy) has_vrfy = 1;
-        if (cur_expn) has_expn = 1;
     }
 
     /* Open relay detection.  Objective evidence requires:
@@ -1103,21 +2009,42 @@ int oracle_check_smtp(
      * Localhost/local-domain delivery is configuration-dependent, not relay. */
     if (has_mail && has_rcpt && !has_auth && resp_len > 0) {
         int rcpt_idx = -1;
+        unsigned int rcpt_pos = 0;
         for (int i = req_count - 1; i >= 0; i--) {
-            if (request_has_line_command(requests[i], req_lens[i], "RCPT TO:") &&
-                smtp_rcpt_domain_is_external(requests[i], req_lens[i])) {
-                rcpt_idx = i; break;
+            unsigned int cursor = 0, cmd_pos = 0;
+            const char *cmd = NULL;
+            while (text_protocol_next_command(requests[i], req_lens[i],
+                                              TEXT_PROTO_SMTP, &cursor,
+                                              &cmd_pos, &cmd)) {
+                if (smtp_cmd_is_rcpt(cmd) &&
+                    smtp_rcpt_domain_is_external(requests[i] + cmd_pos,
+                                                 req_lens[i] - cmd_pos)) {
+                    rcpt_idx = i;
+                    rcpt_pos = cmd_pos;
+                }
             }
+            if (rcpt_idx >= 0) break;
         }
         if (rcpt_idx >= 0) {
-            int rcpt_code = extract_nth_response_code(response, resp_len, rcpt_idx + resp_offset);
+            int rcpt_code = text_response_code_for_command(requests, req_lens,
+                req_count, response, resp_len, rcpt_idx, rcpt_pos,
+                TEXT_PROTO_SMTP, resp_offset);
             int data_accepted = 0;
-            for (int i = rcpt_idx + 1; i < req_count; i++) {
-                if (request_has_line_command(requests[i], req_lens[i], "DATA")) {
-                    int data_code = extract_nth_response_code(response, resp_len, i + resp_offset);
+            for (int i = rcpt_idx; i < req_count; i++) {
+                unsigned int cursor = 0, cmd_pos = 0;
+                const char *cmd = NULL;
+                while (text_protocol_next_command(requests[i], req_lens[i],
+                                                  TEXT_PROTO_SMTP, &cursor,
+                                                  &cmd_pos, &cmd)) {
+                    if (i == rcpt_idx && cmd_pos <= rcpt_pos) continue;
+                    if (!smtp_cmd_is_data(cmd)) continue;
+                    int data_code = text_response_code_for_command(requests,
+                        req_lens, req_count, response, resp_len, i, cmd_pos,
+                        TEXT_PROTO_SMTP, resp_offset);
                     if (data_code == 354) data_accepted = 1;
                     break;
                 }
+                if (data_accepted) break;
             }
             if ((rcpt_code == 250 || rcpt_code == 251) && data_accepted &&
                 response_has_phrase(response, resp_len, "250 OK id=")) {
@@ -1136,9 +2063,16 @@ int oracle_check_smtp(
      * is a low-severity enumeration observation. */
     if ((has_vrfy || has_expn) && resp_len > 0) {
         for (int i = 0; i < req_count; i++) {
-            if (request_has_line_command(requests[i], req_lens[i], "VRFY ") ||
-                request_has_line_command(requests[i], req_lens[i], "EXPN ")) {
-                int code = extract_nth_response_code(response, resp_len, i + resp_offset);
+            unsigned int cursor = 0, cmd_pos = 0;
+            const char *cmd = NULL;
+            while (text_protocol_next_command(requests[i], req_lens[i],
+                                              TEXT_PROTO_SMTP, &cursor,
+                                              &cmd_pos, &cmd)) {
+                if (!smtp_cmd_is_vrfy(cmd) && !smtp_cmd_is_expn(cmd))
+                    continue;
+                int code = text_response_code_for_command(requests, req_lens,
+                    req_count, response, resp_len, i, cmd_pos,
+                    TEXT_PROTO_SMTP, resp_offset);
                 if (code == 250) {
                     oracle_add_violation(result, ORACLE_SEV_LOW,
                         ORACLE_CAT_INFO_LEAK,
@@ -1159,25 +2093,36 @@ int oracle_check_smtp(
      * the session may be vulnerable to STRIPTLS attack. */
     {
         int starttls_accepted = 0;
-        for (int i = 0; i < req_count; i++) {
-            if (request_has_line_command(requests[i], req_lens[i], "STARTTLS")) {
-                int code = extract_nth_response_code(response, resp_len, i + resp_offset);
-                if (code == 220) {
-                    starttls_accepted = 1;
+        int reported_starttls = 0;
+        for (int i = 0; i < req_count && !reported_starttls; i++) {
+            unsigned int cursor = 0, cmd_pos = 0;
+            const char *cmd = NULL;
+            while (text_protocol_next_command(requests[i], req_lens[i],
+                                              TEXT_PROTO_SMTP, &cursor,
+                                              &cmd_pos, &cmd)) {
+                int code = text_response_code_for_command(requests, req_lens,
+                    req_count, response, resp_len, i, cmd_pos,
+                    TEXT_PROTO_SMTP, resp_offset);
+
+                if (smtp_cmd_is_starttls(cmd)) {
+                    if (code == 220) starttls_accepted = 1;
+                    continue;
                 }
-            }
-            /* Check for cleartext sensitive commands after STARTTLS was accepted */
-            if (starttls_accepted &&
-                (request_has_line_command(requests[i], req_lens[i], "MAIL FROM:") ||
-                 request_has_line_command(requests[i], req_lens[i], "AUTH "))) {
-                /* If MAIL FROM/AUTH succeeds without TLS, TLS downgrade is possible */
-                int code = extract_nth_response_code(response, resp_len, i + resp_offset);
-                if (code >= 200 && code < 400) {
+
+                /* Check for cleartext sensitive commands after STARTTLS was
+                 * accepted.  Exim's "554 Security failure" is an objective
+                 * rejection, so it must not be reported as STRIPTLS evidence. */
+                if (starttls_accepted &&
+                    (smtp_cmd_is_mail(cmd) || smtp_cmd_is_auth(cmd)) &&
+                    code >= 200 && code < 400 &&
+                    !response_has_phrase(response, resp_len,
+                                         "Security failure")) {
                     oracle_add_violation(result, ORACLE_SEV_HIGH,
                         ORACLE_CAT_STATE_VIOLATION,
                         ORACLE_EVIDENCE_STRONG,
                         "SMTP: Cleartext command after STARTTLS (STRIPTLS downgrade risk)",
                         "N/A", i);
+                    reported_starttls = 1;
                     break;
                 }
             }
@@ -1208,8 +2153,15 @@ int oracle_check_smtp(
     {
         int failed_auth_count = 0;
         for (int i = 0; i < req_count; i++) {
-            if (request_has_line_command(requests[i], req_lens[i], "AUTH ")) {
-                int code = extract_nth_response_code(response, resp_len, i + resp_offset);
+            unsigned int cursor = 0, cmd_pos = 0;
+            const char *cmd = NULL;
+            while (text_protocol_next_command(requests[i], req_lens[i],
+                                              TEXT_PROTO_SMTP, &cursor,
+                                              &cmd_pos, &cmd)) {
+                if (!smtp_cmd_is_auth(cmd)) continue;
+                int code = text_response_code_for_command(requests, req_lens,
+                    req_count, response, resp_len, i, cmd_pos,
+                    TEXT_PROTO_SMTP, resp_offset);
                 if (code >= 500 && code <= 535) failed_auth_count++;
             }
         }
@@ -1248,33 +2200,47 @@ int oracle_check_rtsp(
 
     reset_proto_state();
 
-    int setup_accepted = 0;
-    int setup_request_seen = 0;
-
     for (int i = 0; i < req_count; i++) {
         const unsigned char *req = requests[i];
         unsigned int rlen = req_lens[i];
-        unsigned int cseq = 0;
-        int code = -1;
-        int has_cseq = extract_rtsp_cseq(req, rlen, &cseq);
-        if (has_cseq) {
-            code = extract_rtsp_response_code_by_cseq(response, resp_len, cseq);
-        }
-        int is_setup = request_has_line_command(req, rlen, "SETUP ");
-        int is_play = request_has_line_command(req, rlen, "PLAY ");
-        int is_record = request_has_line_command(req, rlen, "RECORD ");
 
-        if (is_setup) {
-            setup_request_seen = 1;
-            if (code_is_2xx(code)) setup_accepted = 1;
-        }
+        /* State machine: PLAY before SETUP.  This is reportable only when the
+         * PLAY request itself is a syntactically valid RTSP request without a
+         * Session header and its CSeq response has PLAY-specific evidence
+         * (Session + RTP-Info/Range, not an SDP/DESCRIBE body).  A PLAY that
+         * already carries Session is a session-reuse/hijack hypothesis, not a
+         * wire-level proof of "before SETUP" in the current conversation. */
+        unsigned int play_cursor = 0, play_cseq = 0, play_pos = 0;
+        while (rtsp_next_method_cseq_pos(req, rlen, "PLAY ",
+                                         &play_cursor, &play_cseq, &play_pos)) {
+            if (rtsp_request_cseq_occurrences(requests, req_lens,
+                                              req_count, play_cseq) != 1)
+                continue;
 
-        /* State machine: PLAY before SETUP.  If any prior SETUP request exists
-         * but response correlation is ambiguous, suppress rather than guessing:
-         * a duplicate CSeq can otherwise bind PLAY to an earlier OPTIONS/SETUP
-         * response and create false positives. */
-        if (is_play && !setup_accepted && !setup_request_seen && has_cseq) {
-            if (code >= 200 && code < 300) {
+            const unsigned char *play_block = NULL;
+            unsigned int play_block_len = 0;
+            int play_code = -1;
+            if (!rtsp_response_block_by_cseq_unique(response, resp_len,
+                    play_cseq, &play_block, &play_block_len, &play_code))
+                continue;
+
+            const unsigned char *play_session = NULL;
+            unsigned int play_session_len = 0;
+            if (rtsp_method_session(req, rlen, play_pos,
+                                    &play_session, &play_session_len))
+                continue;
+
+            int prior_setup = rtsp_prior_setup_accepted_before_cseq(response,
+                resp_len, play_cseq, play_session, play_session_len);
+            int any_prior_setup = rtsp_prior_setup_accepted_before_cseq(response,
+                resp_len, play_cseq, NULL, 0);
+            int prior_setup_request = rtsp_prior_setup_request_accepted(
+                requests, req_lens, req_count, response, resp_len,
+                i, play_pos, NULL, 0);
+            if (!prior_setup && !any_prior_setup &&
+                !prior_setup_request &&
+                rtsp_method_line_is_valid_request(req, rlen, play_pos, "PLAY ") &&
+                rtsp_block_is_play_success(play_block, play_block_len, play_code)) {
                 oracle_add_violation(result, ORACLE_SEV_HIGH,
                     ORACLE_CAT_STATE_VIOLATION,
                     ORACLE_EVIDENCE_STRONG,
@@ -1284,9 +2250,42 @@ int oracle_check_rtsp(
             }
         }
 
-        /* State machine: RECORD before SETUP — only flag if server accepted */
-        if (is_record && !setup_accepted && !setup_request_seen && has_cseq) {
-            if (code >= 200 && code < 300) {
+        /* State machine: RECORD before SETUP.  As with PLAY, require a valid
+         * request line with no Session header and a RECORD-shaped success
+         * response; SDP bodies are DESCRIBE evidence, not RECORD acceptance. */
+        unsigned int record_cursor = 0, record_cseq = 0, record_pos = 0;
+        while (rtsp_next_method_cseq_pos(req, rlen, "RECORD ",
+                                         &record_cursor, &record_cseq,
+                                         &record_pos)) {
+            if (rtsp_request_cseq_occurrences(requests, req_lens,
+                                              req_count, record_cseq) != 1)
+                continue;
+
+            const unsigned char *record_block = NULL;
+            unsigned int record_block_len = 0;
+            int record_code = -1;
+            if (!rtsp_response_block_by_cseq_unique(response, resp_len,
+                    record_cseq, &record_block, &record_block_len, &record_code))
+                continue;
+
+            const unsigned char *record_session = NULL;
+            unsigned int record_session_len = 0;
+            if (rtsp_method_session(req, rlen, record_pos,
+                                    &record_session, &record_session_len))
+                continue;
+
+            int prior_setup = rtsp_prior_setup_accepted_before_cseq(response,
+                resp_len, record_cseq, record_session, record_session_len);
+            int any_prior_setup = rtsp_prior_setup_accepted_before_cseq(response,
+                resp_len, record_cseq, NULL, 0);
+            int prior_setup_request = rtsp_prior_setup_request_accepted(
+                requests, req_lens, req_count, response, resp_len,
+                i, record_pos, NULL, 0);
+            if (!prior_setup && !any_prior_setup &&
+                !prior_setup_request &&
+                rtsp_method_line_is_valid_request(req, rlen, record_pos, "RECORD ") &&
+                rtsp_block_is_record_success(record_block, record_block_len,
+                                             record_code)) {
                 oracle_add_violation(result, ORACLE_SEV_MEDIUM,
                     ORACLE_CAT_STATE_VIOLATION,
                     ORACLE_EVIDENCE_STRONG,
@@ -1299,7 +2298,11 @@ int oracle_check_rtsp(
          * Only flag when server ACCEPTED (2xx) the request, proving
          * the oversized header was processed, not just received. */
         const unsigned char *cseq_hdr = ci_memmem(req, rlen, "CSeq:", 5);
-        if (cseq_hdr && has_cseq) {
+        if (cseq_hdr) {
+            unsigned int cseq = 0;
+            int has_cseq = extract_rtsp_cseq(req, rlen, &cseq);
+            int code = has_cseq ?
+                extract_rtsp_response_code_by_cseq(response, resp_len, cseq) : -1;
             unsigned int remaining = rlen - (unsigned int)(cseq_hdr - req);
             const unsigned char *eol = memchr(cseq_hdr, '\r', remaining);
             if (eol && (eol - cseq_hdr) > 256) {
@@ -1314,8 +2317,8 @@ int oracle_check_rtsp(
         }
     }
 
-    /* (PLAY-without-SETUP check is now integrated in the per-request loop above
-     * using extract_http_style_nth_response_code for accurate matching) */
+    /* PLAY/RECORD-without-SETUP checks are integrated in the per-request loop
+     * above using method-local CSeq extraction and response-side SETUP proof. */
 
     /* ── Optimized patterns from 协议漏洞汇总.xlsx ── */
 
@@ -1502,12 +2505,19 @@ int oracle_check_daap(
         /* Accessing databases without session */
         if ((ci_memmem(req, rlen, "/databases/", 11) ||
              ci_memmem(req, rlen, "/databases?", 11)) && !has_session) {
-            /* Check the specific response for this request */
+            /* Check the specific response block for this request.  A 200 code
+             * from one response plus a DAAP body from another response is not
+             * objective auth-bypass evidence. */
             if (resp_len > 0) {
-                int code = extract_http_style_nth_response_code(response, resp_len, i);
-                int has_db_body = ci_memmem(response, resp_len, "avdb", 4) ||
-                                  ci_memmem(response, resp_len, "dmap.listing", 12) ||
-                                  ci_memmem(response, resp_len, "mlcl", 4);
+                const unsigned char *resp_block = NULL;
+                unsigned int resp_block_len = 0;
+                int code = -1;
+                int has_block = extract_http_style_nth_response_block(response,
+                    resp_len, i, &resp_block, &resp_block_len, &code);
+                int has_db_body = has_block &&
+                                  (ci_memmem(resp_block, resp_block_len, "avdb", 4) ||
+                                   ci_memmem(resp_block, resp_block_len, "dmap.listing", 12) ||
+                                   ci_memmem(resp_block, resp_block_len, "mlcl", 4));
                 if (code == 200 && has_db_body) {
                     oracle_add_violation(result, ORACLE_SEV_HIGH,
                         ORACLE_CAT_AUTH_BYPASS,
@@ -1523,11 +2533,15 @@ int oracle_check_daap(
         if (ci_memmem(req, rlen, "../", 3) ||
             ci_memmem(req, rlen, "%2e%2e", 6)) {
             if (resp_len > 0) {
-                int code = extract_http_style_nth_response_code(response, resp_len, i);
-                int leaked_sensitive =
-                    ci_memmem(response, resp_len, "root:x:0:0:", 11) ||
-                    ci_memmem(response, resp_len, "PRIVATE KEY-----", 16) ||
-                    ci_memmem(response, resp_len, "BEGIN OPENSSH PRIVATE KEY", 25);
+                const unsigned char *resp_block = NULL;
+                unsigned int resp_block_len = 0;
+                int code = -1;
+                int has_block = extract_http_style_nth_response_block(response,
+                    resp_len, i, &resp_block, &resp_block_len, &code);
+                int leaked_sensitive = has_block &&
+                    (ci_memmem(resp_block, resp_block_len, "root:x:0:0:", 11) ||
+                     ci_memmem(resp_block, resp_block_len, "PRIVATE KEY-----", 16) ||
+                     ci_memmem(resp_block, resp_block_len, "BEGIN OPENSSH PRIVATE KEY", 25));
                 if (code == 200 && leaked_sensitive) {
                     oracle_add_violation(result, ORACLE_SEV_CRITICAL,
                         ORACLE_CAT_PATH_TRAVERSAL | ORACLE_CAT_INFO_LEAK,
@@ -1540,18 +2554,32 @@ int oracle_check_daap(
         }
     }
 
-    /* Info leak: server-info response contains sensitive data */
+    /* Info leak: server-info response contains unusual field names.
+     * Field-name exposure alone has no demonstrated security impact, so keep
+     * it as LOW context unless a future rule proves a concrete secret value. */
     if (resp_len > 0) {
-        if (ci_memmem(response, resp_len, "dmap.serverinforesponse", 23)) {
-            /* Check for unusual fields that shouldn't be exposed */
-            if (ci_memmem(response, resp_len, "password", 8) ||
-                ci_memmem(response, resp_len, "adminurl", 8)) {
-                oracle_add_violation(result, ORACLE_SEV_MEDIUM,
+        int reported_server_info = 0;
+        for (int i = 0; i < req_count && !reported_server_info; i++) {
+            if (!ci_memmem(requests[i], req_lens[i], "/server-info", 12))
+                continue;
+
+            const unsigned char *resp_block = NULL;
+            unsigned int resp_block_len = 0;
+            int code = -1;
+            if (!extract_http_style_nth_response_block(response, resp_len, i,
+                    &resp_block, &resp_block_len, &code))
+                continue;
+
+            if (code == 200 &&
+                ci_memmem(resp_block, resp_block_len, "dmap.serverinforesponse", 23) &&
+                (ci_memmem(resp_block, resp_block_len, "password", 8) ||
+                 ci_memmem(resp_block, resp_block_len, "adminurl", 8))) {
+                oracle_add_violation(result, ORACLE_SEV_LOW,
                     ORACLE_CAT_INFO_LEAK,
-                    ORACLE_EVIDENCE_WEAK,
-                    "DAAP: Server-info response contains sensitive fields",
-                    NULL, -1);
-                /* oracle_info_leak_count auto-derived by dispatcher */
+                    ORACLE_EVIDENCE_MODERATE,
+                    "DAAP: Server-info response exposes sensitive-looking field names (context only)",
+                    NULL, i);
+                reported_server_info = 1;
             }
         }
     }
@@ -1592,11 +2620,15 @@ int oracle_check_http(
             ci_memmem(req, rlen, "..%252f", 7) ||
             ci_memmem(req, rlen, "%c0%ae", 6)) {
             if (resp_len > 0) {
-                int code = extract_http_style_nth_response_code(response, resp_len, i);
-                int leaked_sensitive =
-                    ci_memmem(response, resp_len, "root:x:0:0:", 11) ||
-                    ci_memmem(response, resp_len, "PRIVATE KEY-----", 16) ||
-                    ci_memmem(response, resp_len, "BEGIN OPENSSH PRIVATE KEY", 25);
+                const unsigned char *resp_block = NULL;
+                unsigned int resp_block_len = 0;
+                int code = -1;
+                int has_block = extract_http_style_nth_response_block(response,
+                    resp_len, i, &resp_block, &resp_block_len, &code);
+                int leaked_sensitive = has_block &&
+                    (ci_memmem(resp_block, resp_block_len, "root:x:0:0:", 11) ||
+                     ci_memmem(resp_block, resp_block_len, "PRIVATE KEY-----", 16) ||
+                     ci_memmem(resp_block, resp_block_len, "BEGIN OPENSSH PRIVATE KEY", 25));
                 if (code == 200 && leaked_sensitive) {
                     oracle_add_violation(result, ORACLE_SEV_CRITICAL,
                         ORACLE_CAT_PATH_TRAVERSAL | ORACLE_CAT_INFO_LEAK,
@@ -1608,33 +2640,45 @@ int oracle_check_http(
         }
 
         /* Request smuggling: both Content-Length and Transfer-Encoding.
-         * RFC 7230 §3.3.3: MUST NOT include both.  Only flag when server
-         * ACCEPTED (2xx) the malformed request, proving the server
-         * processed — not just received — the ambiguous framing. */
+         * RFC 7230/9112 forbid ambiguous message framing.  A single origin
+         * server's 2xx response is enough for a MEDIUM candidate, but not a
+         * HIGH finding: practical smuggling impact still requires proxy or
+         * differential parser validation. */
         int has_cl = count_header_lines(req, rlen, "Content-Length") > 0;
         int has_te = count_header_lines(req, rlen, "Transfer-Encoding") > 0;
         if (has_cl && has_te) {
-            int code = extract_http_style_nth_response_code(response, resp_len, i);
+            const unsigned char *resp_block = NULL;
+            unsigned int resp_block_len = 0;
+            int code = -1;
+            extract_http_style_nth_response_block(response, resp_len, i,
+                &resp_block, &resp_block_len, &code);
             if (code >= 200 && code < 300 &&
-                !response_has_phrase(response, resp_len, "400 Bad Request")) {
-                oracle_add_violation(result, ORACLE_SEV_HIGH,
+                !response_has_phrase(resp_block, resp_block_len, "400 Bad Request")) {
+                oracle_add_violation(result, ORACLE_SEV_MEDIUM,
                     ORACLE_CAT_SMUGGLING,
                     ORACLE_EVIDENCE_MODERATE,
-                    "HTTP: Both Content-Length and Transfer-Encoding accepted (smuggling risk)",
+                    "HTTP: CL/TE ambiguous framing accepted (candidate; needs proxy/differential validation)",
                     NULL, i);
             }
         }
 
-        /* Multiple Content-Length headers */
+        /* Multiple Content-Length headers.  Identical decimal values are not
+         * enough evidence for CL desync: many parsers normalize duplicate
+         * identical values safely.  Report only conflicting or malformed CL
+         * values that the server still processed with a 2xx response. */
         int cl_count = count_header_lines(req, rlen, "Content-Length");
-        if (cl_count > 1) {
-            int code = extract_http_style_nth_response_code(response, resp_len, i);
+        if (cl_count > 1 && content_length_values_conflict(req, rlen)) {
+            const unsigned char *resp_block = NULL;
+            unsigned int resp_block_len = 0;
+            int code = -1;
+            extract_http_style_nth_response_block(response, resp_len, i,
+                &resp_block, &resp_block_len, &code);
             if (code >= 200 && code < 300 &&
-                !response_has_phrase(response, resp_len, "400 Bad Request")) {
-                oracle_add_violation(result, ORACLE_SEV_HIGH,
+                !response_has_phrase(resp_block, resp_block_len, "400 Bad Request")) {
+                oracle_add_violation(result, ORACLE_SEV_MEDIUM,
                     ORACLE_CAT_SMUGGLING,
                     ORACLE_EVIDENCE_MODERATE,
-                    "HTTP: Multiple Content-Length headers accepted by server (CL desync)",
+                    "HTTP: Conflicting Content-Length headers accepted (candidate; needs desync validation)",
                     NULL, i);
             }
         }
@@ -1645,12 +2689,14 @@ int oracle_check_http(
         /* Info leak: sensitive file content */
         if ((ci_memmem(response, resp_len, "root:x:0:0:", 11) &&
              !request_contains_any(requests, req_lens, req_count, "root:x:0:0:")) ||
-            (ci_memmem(response, resp_len, "/etc/passwd", 11) &&
-             !request_contains_any(requests, req_lens, req_count, "/etc/passwd"))) {
+            (ci_memmem(response, resp_len, "PRIVATE KEY-----", 16) &&
+             !request_contains_any(requests, req_lens, req_count, "PRIVATE KEY-----")) ||
+            (ci_memmem(response, resp_len, "BEGIN OPENSSH PRIVATE KEY", 25) &&
+             !request_contains_any(requests, req_lens, req_count, "BEGIN OPENSSH PRIVATE KEY"))) {
             oracle_add_violation(result, ORACLE_SEV_CRITICAL,
-                ORACLE_CAT_INFO_LEAK | ORACLE_CAT_PATH_TRAVERSAL,
+                ORACLE_CAT_INFO_LEAK,
                 ORACLE_EVIDENCE_WEAK,
-                "HTTP: /etc/passwd content leaked in response",
+                "HTTP: Sensitive file content leaked in response",
                 NULL, -1);
             /* oracle_info_leak_count auto-derived by dispatcher */
         }
@@ -1683,11 +2729,15 @@ int oracle_check_http(
             ci_memmem(req, rlen, "%%32%65%%32%65", 12) ||
             ci_memmem(req, rlen, ".%2e/", 5)) {
             if (resp_len > 0) {
-                int code = extract_http_style_nth_response_code(response, resp_len, i);
-                int leaked_sensitive =
-                    ci_memmem(response, resp_len, "root:x:0:0:", 11) ||
-                    ci_memmem(response, resp_len, "PRIVATE KEY-----", 16) ||
-                    ci_memmem(response, resp_len, "BEGIN OPENSSH PRIVATE KEY", 25);
+                const unsigned char *resp_block = NULL;
+                unsigned int resp_block_len = 0;
+                int code = -1;
+                int has_block = extract_http_style_nth_response_block(response,
+                    resp_len, i, &resp_block, &resp_block_len, &code);
+                int leaked_sensitive = has_block &&
+                    (ci_memmem(resp_block, resp_block_len, "root:x:0:0:", 11) ||
+                     ci_memmem(resp_block, resp_block_len, "PRIVATE KEY-----", 16) ||
+                     ci_memmem(resp_block, resp_block_len, "BEGIN OPENSSH PRIVATE KEY", 25));
                 if (code == 200 && leaked_sensitive) {
                     oracle_add_violation(result, ORACLE_SEV_CRITICAL,
                         ORACLE_CAT_PATH_TRAVERSAL | ORACLE_CAT_INFO_LEAK,
@@ -1701,22 +2751,26 @@ int oracle_check_http(
     }
 
     /* Response splitting / HTTP header injection.
-     * CRLF followed by HTTP/1.x in request body can split the response
-     * into multiple HTTP messages.  Only flag when server ACCEPTED (2xx)
-     * the request containing the injection payload — a 4xx rejection
-     * proves the server correctly identified it as malformed. */
+     * CRLF followed by HTTP/1.x inside request bytes is only a parser-stress
+     * observation unless the response itself proves an injected/split response.
+     * Keep it LOW so normal request bodies containing these bytes are not saved
+     * as vulnerability candidates. */
     for (int i = 0; i < req_count; i++) {
         const unsigned char *req = requests[i];
         unsigned int rlen = req_lens[i];
         const unsigned char *crlf_http = ci_memmem(req, rlen, "\r\nHTTP/1.", 9);
         if (crlf_http) {
-            int code = extract_http_style_nth_response_code(response, resp_len, i);
+            const unsigned char *resp_block = NULL;
+            unsigned int resp_block_len = 0;
+            int code = -1;
+            extract_http_style_nth_response_block(response, resp_len, i,
+                &resp_block, &resp_block_len, &code);
             if (code >= 200 && code < 300 &&
-                !response_has_phrase(response, resp_len, "400 Bad Request")) {
-                oracle_add_violation(result, ORACLE_SEV_HIGH,
+                !response_has_phrase(resp_block, resp_block_len, "400 Bad Request")) {
+                oracle_add_violation(result, ORACLE_SEV_LOW,
                     ORACLE_CAT_SMUGGLING | ORACLE_CAT_INJECTION,
-                    ORACLE_EVIDENCE_MODERATE,
-                    "HTTP: CRLF injection with embedded HTTP response accepted by server",
+                    ORACLE_EVIDENCE_HEURISTIC,
+                    "HTTP: CRLF+HTTP marker accepted in request bytes (context only; no split-response proof)",
                     NULL, i);
             }
         }
@@ -1724,9 +2778,8 @@ int oracle_check_http(
 
     /* Chunk extension abuse — chunked transfer encoding with oversized
      * chunk-size values (>16 hex digits exceeds uint64 range).
-     * Only flag when server ACCEPTED (2xx) the request with oversized
-     * chunk, proving the parser actually processed the overflow-inducing
-     * value rather than rejecting it at the framing level. */
+     * A 2xx response only proves parser acceptance; without crash/hang/resource
+     * telemetry it is LOW context, not a DoS vulnerability candidate. */
     for (int i = 0; i < req_count; i++) {
         const unsigned char *req = requests[i];
         unsigned int rlen = req_lens[i];
@@ -1742,13 +2795,17 @@ int oracle_check_http(
                         else if (req[j] == '\r') break;
                     }
                     if (hex_count > 16) {
-                        int code = extract_http_style_nth_response_code(response, resp_len, i);
+                        const unsigned char *resp_block = NULL;
+                        unsigned int resp_block_len = 0;
+                        int code = -1;
+                        extract_http_style_nth_response_block(response, resp_len, i,
+                            &resp_block, &resp_block_len, &code);
                         if (code >= 200 && code < 300 &&
-                            !response_has_phrase(response, resp_len, "400 Bad Request")) {
-                            oracle_add_violation(result, ORACLE_SEV_MEDIUM,
-                                ORACLE_CAT_DOS,
-                                ORACLE_EVIDENCE_MODERATE,
-                                "HTTP: Oversized chunk-size value accepted (potential BO in chunk parser)",
+                            !response_has_phrase(resp_block, resp_block_len, "400 Bad Request")) {
+                            oracle_add_violation(result, ORACLE_SEV_LOW,
+                                ORACLE_CAT_RESOURCE_EXHAUST,
+                                ORACLE_EVIDENCE_HEURISTIC,
+                                "HTTP: Oversized chunk-size value accepted (parser-stress context only)",
                                 NULL, i);
                         }
                     }
@@ -1898,6 +2955,7 @@ int oracle_check_mqtt(
 
             case 8:  /* SUBSCRIBE */
                 if (!has_connect && resp_buffer_trustworthy) {
+                    if (req[0] != 0x82) break; /* MQTT SUBSCRIBE flags MUST be 0010 */
                     /* Only flag if the response packet at THIS request's position
                      * is a valid SUBACK (0x90).  We walk through the response
                      * buffer counting MQTT packets to find the i-th one, then
@@ -1963,7 +3021,7 @@ int oracle_check_mqtt(
     /* ── Optimized patterns from 协议漏洞汇总.xlsx ── */
 
     /* Malformed SUBSCRIBE with zero topic length (CVE-2019-5432: mqtt-packet
-     * malformed SUBSCRIBE causes broker crash).
+     * malformed SUBSCRIBE causes broker crash in affected parsers).
      * MQTT §3.8.3-1: topic filter length MUST be >= 1.
      *
      * FIXED (2026-07-04): Was purely content-based with no response-side
@@ -1983,8 +3041,9 @@ int oracle_check_mqtt(
      * Without both layers, the check is suppressed — the fuzzer's
      * mutation caused the condition and the broker never processed it.
      *
-     * Also removed manual oracle_dos_count++ — oracle_check() dispatcher
-     * auto-derives per-category counters from category bitmasks. */
+     * If a broker returns a matching SUBACK, the objective finding is a
+     * protocol/state violation.  Do NOT label it DoS without independent
+     * crash, hang, or resource-exhaustion evidence from AFL/AFLNet. */
     {
         /* Pre-scan: verify CONNACK success (return code 0x00).
          * Without it, broker rejected the connection — all SUBSCRIBE
@@ -1997,7 +3056,7 @@ int oracle_check_mqtt(
                 unsigned int rlen = req_lens[i];
                 if (rlen < 2) continue;
                 uint8_t pkt_type = (req[0] >> 4) & 0x0F;
-                if (pkt_type == 8) { /* SUBSCRIBE */
+                if (pkt_type == 8 && req[0] == 0x82) { /* SUBSCRIBE */
                     unsigned int rl_b = 0;
                     int rem_len = mqtt_decode_remaining_length(req + 1, rlen - 1, &rl_b);
                     if (rem_len > 0 && rem_len >= 3) {
@@ -2009,11 +3068,13 @@ int oracle_check_mqtt(
                         if (hdr_size + 2 <= pkt_end) {
                             pkt_id = (req[hdr_size] << 8) | req[hdr_size + 1];
                         }
+                        if (pkt_id == 0) continue;
                         unsigned int payload_off = hdr_size + 2;
                         unsigned int scan = payload_off;
                         while (scan + 2 <= pkt_end) {
                             uint16_t topic_len = (req[scan] << 8) | req[scan + 1];
                             if (topic_len == 0) {
+                                if (scan + 2 >= pkt_end || req[scan + 2] > 2) break;
                                 /* Verify: did broker send SUBACK for this packet?
                                  * Scan response for SUBACK (type 9) with
                                  * matching packet ID.  Without both CONNACK
@@ -2029,7 +3090,10 @@ int oracle_check_mqtt(
                                         if (srl >= 2 && rs + 1 + sb + 2 <= resp_len) {
                                             uint16_t spid = (response[rs + 1 + sb] << 8)
                                                           | response[rs + 1 + sb + 1];
-                                            if (spid == pkt_id) {
+                                            unsigned int rc_off = rs + 1 + sb + 2;
+                                            int granted = (rc_off < resp_len &&
+                                                           response[rc_off] <= 2);
+                                            if (spid == pkt_id && granted) {
                                                 suback_confirmed = 1; break;
                                             }
                                         }
@@ -2041,11 +3105,11 @@ int oracle_check_mqtt(
                                     rs += 1 + srb + sr;
                                 }
                                 if (suback_confirmed) {
-                                    oracle_add_violation(result, ORACLE_SEV_HIGH,
-                                        ORACLE_CAT_DOS,
+                                    oracle_add_violation(result, ORACLE_SEV_MEDIUM,
+                                        ORACLE_CAT_STATE_VIOLATION,
                                         ORACLE_EVIDENCE_STRONG,
                                         "MQTT: SUBSCRIBE with zero-length topic "
-                                        "filter processed by broker",
+                                        "filter accepted by broker (protocol violation)",
                                         "N/A", i);
                                     break;
                                 }
@@ -2065,10 +3129,13 @@ int oracle_check_mqtt(
         }
     }
 
-    /* MQTT v5 user-property abuse (CVE-2021-41039 class).
+    /* MQTT v5 user-property abuse.
      * Count PROP_USER (0x26) only inside the MQTT v5 CONNECT properties
      * section.  MQTT v5 properties are in the CONNECT variable header after
-     * keepalive and before payload; scanning payload/random bytes is noise. */
+     * keepalive and before payload; scanning payload/random bytes is noise.
+     * A large accepted property list alone is not resource-exhaustion proof:
+     * without crash, hang, timeout, memory telemetry, or broker-side error, it
+     * remains LOW context rather than a reportable DoS candidate. */
     {
         int user_prop_count = 0;
         for (int i = 0; i < req_count; i++) {
@@ -2091,11 +3158,11 @@ int oracle_check_mqtt(
         }
         if (user_prop_count > 50 &&
             mqtt_response_has_connack_success(response, resp_len)) {
-            oracle_add_violation(result, ORACLE_SEV_MEDIUM,
-                ORACLE_CAT_DOS | ORACLE_CAT_RESOURCE_EXHAUST,
-                ORACLE_EVIDENCE_MODERATE,
-                "MQTT: Excessive v5 user-properties accepted in CONNECT (CPU exhaustion risk)",
-                "CVE-2021-41039", -1);
+            oracle_add_violation(result, ORACLE_SEV_LOW,
+                ORACLE_CAT_RESOURCE_EXHAUST,
+                ORACLE_EVIDENCE_HEURISTIC,
+                "MQTT: Large v5 user-property list accepted in CONNECT (resource context only)",
+                "N/A", -1);
         }
     }
 
@@ -2140,6 +3207,7 @@ int oracle_check_mqtt(
 
 void oracle_init(const char *protocol_name) {
     memset(oracle_dedup_bitmap, 0, sizeof(oracle_dedup_bitmap));
+    oracle_saved_reports = 0;
     oracle_initialized = 1;
     printf("[ORACLE] Initialized protocol-specific semantic oracle for: %s\n",
            protocol_name ? protocol_name : "unknown");
@@ -2152,6 +3220,24 @@ int oracle_is_new_violation(uint32_t pattern_hash) {
     if (oracle_dedup_bitmap[slot] == pattern_hash) return 0;
     oracle_dedup_bitmap[slot] = pattern_hash;
     return 1;
+}
+
+static int oracle_write_binary_blob(const char *fn,
+                                    const unsigned char *data,
+                                    unsigned int len) {
+    if (len > 0 && !data) return 0;
+
+    FILE *fp = fopen(fn, "wb");
+    if (!fp) return 0;
+
+    int ok = 1;
+    if (data && len > 0) {
+        size_t written = fwrite(data, 1, len, fp);
+        ok = (written == len);
+    }
+
+    fclose(fp);
+    return ok;
 }
 
 int oracle_check(
@@ -2226,16 +3312,40 @@ void oracle_save_violation(
 
     if (!out_dir || !result || result->violation_count == 0) return;
 
+    int reportable_count = 0;
+    uint8_t report_max_severity = ORACLE_SEV_NONE;
+    uint16_t report_categories = ORACLE_CAT_NONE;
+    for (int i = 0; i < result->violation_count; i++) {
+        const oracle_violation_t *v = &result->violations[i];
+        if (v->severity < ORACLE_SEV_MEDIUM) continue;
+        reportable_count++;
+        if (v->severity > report_max_severity)
+            report_max_severity = v->severity;
+        report_categories |= v->category;
+    }
+    if (reportable_count == 0) return;
+
     /* Create violations directory */
     char dir_path[512];
     snprintf(dir_path, sizeof(dir_path), "%s/replayable-violations", out_dir);
     mkdir(dir_path, 0755);
 
-    /* Generate filename */
+    /* Generate report filename.  Do not use oracle_unique_violations here:
+     * repeated occurrences of the same semantic pattern are still distinct
+     * triage artifacts and must not overwrite the first saved candidate. */
+    uint64_t report_id = ++oracle_saved_reports;
     char fn[1024];
     snprintf(fn, sizeof(fn), "%s/id:%06llu,sev:%d,cat:%04x",
-             dir_path, (unsigned long long)oracle_unique_violations,
-             result->max_severity, result->categories_hit);
+             dir_path, (unsigned long long)report_id,
+             report_max_severity, report_categories);
+
+    char req_fn[1100];
+    char resp_fn[1100];
+    snprintf(req_fn, sizeof(req_fn), "%s.request.bin", fn);
+    snprintf(resp_fn, sizeof(resp_fn), "%s.response.bin", fn);
+
+    int req_saved = oracle_write_binary_blob(req_fn, request_data, request_len);
+    int resp_saved = oracle_write_binary_blob(resp_fn, response_data, response_len);
 
     FILE *fp = fopen(fn, "w");
     if (!fp) return;
@@ -2245,13 +3355,31 @@ void oracle_save_violation(
     fprintf(fp, "The oracle detects protocol-level behavioural deviations;\n");
     fprintf(fp, "exploitability depends on server configuration and deployment context.\n");
     fprintf(fp, "Time: %ld\n", (long)time(NULL));
-    fprintf(fp, "Violations: %d\n", result->violation_count);
-    fprintf(fp, "Max Severity: %d\n", result->max_severity);
-    fprintf(fp, "Categories: 0x%04x\n\n", result->categories_hit);
+    fprintf(fp, "Report ID: %llu\n", (unsigned long long)report_id);
+    fprintf(fp, "Unique Pattern Count At Save: %llu\n",
+            (unsigned long long)oracle_unique_violations);
+    fprintf(fp, "Violations: %d\n", reportable_count);
+    fprintf(fp, "Max Severity: %d\n", report_max_severity);
+    fprintf(fp, "Categories: 0x%04x\n", report_categories);
+    fprintf(fp, "Full Request File: %s (%s)\n", req_fn,
+            req_saved ? "saved" : "not saved");
+    fprintf(fp, "Full Request Bytes: %u\n", request_len);
+    fprintf(fp, "Full Request FNV1a32: 0x%08x\n",
+            (request_data && request_len > 0) ?
+            oracle_hash(request_data, request_len) : 0);
+    fprintf(fp, "Full Response File: %s (%s)\n", resp_fn,
+            resp_saved ? "saved" : "not saved");
+    fprintf(fp, "Full Response Bytes: %u\n", response_len);
+    fprintf(fp, "Full Response FNV1a32: 0x%08x\n\n",
+            (response_data && response_len > 0) ?
+            oracle_hash(response_data, response_len) : 0);
 
+    int printed = 0;
     for (int i = 0; i < result->violation_count; i++) {
         const oracle_violation_t *v = &result->violations[i];
-        fprintf(fp, "--- Violation %d ---\n", i + 1);
+        if (v->severity < ORACLE_SEV_MEDIUM) continue;
+        printed++;
+        fprintf(fp, "--- Violation %d ---\n", printed);
         fprintf(fp, "Severity: %d\n", v->severity);
         fprintf(fp, "Category: 0x%04x\n", v->category);
         fprintf(fp, "Evidence Quality: %d (%s)\n", v->evidence_quality,
@@ -2267,16 +3395,20 @@ void oracle_save_violation(
         fprintf(fp, "Pattern Hash: 0x%08x\n\n", v->pattern_hash);
     }
 
-    /* Write request data */
+    /* Write a bounded text preview for quick inspection.  The full binary
+     * request/response bytes are saved in sidecar files above. */
     if (request_data && request_len > 0) {
-        fprintf(fp, "=== REQUEST DATA (%u bytes) ===\n", request_len);
+        unsigned int preview_len = request_len > 4096 ? 4096 : request_len;
+        fprintf(fp, "=== REQUEST DATA PREVIEW (%u/%u bytes) ===\n",
+                preview_len, request_len);
         fwrite(request_data, 1, request_len > 4096 ? 4096 : request_len, fp);
         fprintf(fp, "\n");
     }
 
-    /* Write response data */
     if (response_data && response_len > 0) {
-        fprintf(fp, "=== RESPONSE DATA (%u bytes) ===\n", response_len);
+        unsigned int preview_len = response_len > 4096 ? 4096 : response_len;
+        fprintf(fp, "=== RESPONSE DATA PREVIEW (%u/%u bytes) ===\n",
+                preview_len, response_len);
         fwrite(response_data, 1, response_len > 4096 ? 4096 : response_len, fp);
         fprintf(fp, "\n");
     }
