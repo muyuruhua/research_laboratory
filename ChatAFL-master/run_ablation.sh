@@ -11,22 +11,23 @@
 # 默认：TARGET=live555  RUNS=5  TIMEOUT=1470  PRESET=core
 #
 # --groups 参数枚举（与 monitor.sh Ablation 值等价）：
-#   wo_all, wo_hypothesis, full, wo_refinement, wo_frontier,
+#   wo_all, wo_hypothesis, full, wo_admission, wo_refinement, wo_frontier,
 #   wo_adaptive, wo_state_prompt, adaptive_full,
 #   fixed150, fixed200, fixed300, fixed512
 #   多个用逗号分隔，如: --groups full,wo_adaptive,wo_all
 #   --groups 覆盖 PRESET 参数，不修改任何预设函数（开闭原则）
 #
 # 预设：
-#   core      单变量消融矩阵：wo_all + full + wo_hypothesis + 4策略消融（7组，默认）
+#   core      单变量消融矩阵：wo_all + full + wo_hypothesis + no-admission + 4策略消融（8组，默认）
 #   threshold 阈值子实验：adaptive vs fixed150/200/300/512（5组）
-#   appendix  完整消融：core(7组) + threshold(5组) = 12组
+#   appendix  完整消融：core(8组) + threshold(5组) = 13组
 #   legacy    旧 bundled 7 组，仅用于复现/对齐历史结果
 #
-# core 设计原则（2026-05 修订，严格单变量消融，7组）：
+# core 设计原则（2026-05 修订，严格单变量消融，8组）：
 #   - wo_all:            全部策略 OFF + Hypothesis OFF + fixed=512（下界基线）
 #   - wo_hypothesis:     full − 仅 Hypothesis OFF（需求1+2+3 独立消融）
 #   - full:              全部策略 ON + Hypothesis ON + 自适应阈值 ON（初始=512，上界）
+#   - wo_admission:      full − 仅 NO_ADMISSION（runtime admission 因果消融）
 #   - wo_refinement:     full − 仅 NO_REFINEMENT（需求3 CEGAR 消融）
 #   - wo_frontier:       full − 仅 NO_FRONTIER（需求4 frontier 消融）
 #   - wo_adaptive:       full − 仅 NO_ADAPTIVE + fixed=512（需求4 自适应 消融）
@@ -134,6 +135,7 @@ run_queued_groups() {
         unset CHATAFL_HYPOTHESIS \
               CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER \
               CHATAFL_NO_ADAPTIVE CHATAFL_NO_STATE_PROMPT \
+              CHATAFL_NO_ADMISSION \
               CHATAFL_ABLATION_THRESHOLD TIMESTAMP
 
         if [[ -n "$vars" ]]; then
@@ -148,7 +150,7 @@ run_queued_groups() {
         export TIMESTAMP="ablation_${label}_$(date +%Y%m%dT%H%M%S)"
 
         echo "[ABLATION:${label}] 启动 → ablation/results-${TARGET}_${TIMESTAMP}/"
-        echo "  HYP=${CHATAFL_HYPOTHESIS:-1} NO_REF=${CHATAFL_NO_REFINEMENT:-0} NO_FRONT=${CHATAFL_NO_FRONTIER:-0} NO_ADAPT=${CHATAFL_NO_ADAPTIVE:-0} NO_SP=${CHATAFL_NO_STATE_PROMPT:-0} THR=${CHATAFL_ABLATION_THRESHOLD:-adaptive}"
+        echo "  HYP=${CHATAFL_HYPOTHESIS:-1} NO_REF=${CHATAFL_NO_REFINEMENT:-0} NO_FRONT=${CHATAFL_NO_FRONTIER:-0} NO_ADAPT=${CHATAFL_NO_ADAPTIVE:-0} NO_SP=${CHATAFL_NO_STATE_PROMPT:-0} NO_ADM=${CHATAFL_NO_ADMISSION:-0} THR=${CHATAFL_ABLATION_THRESHOLD:-adaptive}"
 
         cd "$BASE_DIR" || exit 1
         ./run_dev.sh "$RUNS" "$TIMEOUT" "$TARGET" loopfuzz
@@ -184,7 +186,7 @@ run_queued_groups() {
 # launch_custom_groups — 根据 monitor.sh Ablation 标签名入队指定组
 #
 # 参数: 逗号分隔的组名，如 "full,wo_adaptive,wo_all"
-# 枚举: wo_all, wo_hypothesis, full, wo_refinement, wo_frontier,
+# 枚举: wo_all, wo_hypothesis, full, wo_admission, wo_refinement, wo_frontier,
 #        wo_adaptive, wo_state_prompt, adaptive_full,
 #        fixed150, fixed200, fixed300, fixed512
 #
@@ -218,6 +220,10 @@ launch_custom_groups() {
         valid+=("$name")
         queue_group "$name" ""
         ;;
+      wo_admission)
+        valid+=("$name")
+        queue_group "wo_admission" "CHATAFL_NO_ADMISSION=1"
+        ;;
       wo_refinement)
         valid+=("$name")
         queue_group "wo_refinement" "CHATAFL_NO_REFINEMENT=1"
@@ -246,7 +252,7 @@ launch_custom_groups() {
       *)
         echo "[ERROR] 未知消融组: '$name'"
         echo "        可用枚举值（与 monitor.sh Ablation 等价）:"
-        echo "          wo_all, wo_hypothesis, full, wo_refinement, wo_frontier,"
+        echo "          wo_all, wo_hypothesis, full, wo_admission, wo_refinement, wo_frontier,"
         echo "          wo_adaptive, wo_state_prompt, adaptive_full,"
         echo "          fixed150, fixed200, fixed300, fixed512"
         ;;
@@ -262,12 +268,12 @@ launch_custom_groups() {
 }
 
 launch_core_preset() {
-  # ── 严格单变量消融矩阵（7 组）──────────────────────────────────────
+  # ── 严格单变量消融矩阵（8 组）──────────────────────────────────────
   # 设计原则：
-  #   - wo_all 关闭全部策略（含 Hypothesis），作为 ChatAFL 代理基线
+  #   - wo_all 关闭全部策略（含 Hypothesis），作为 LoopFuzz 内部下界锚点，不替代 ChatAFL/ 基线
   #   - full 打开全部策略，作为完整系统的性能上界
   #   - wo_hypothesis 仅关闭 Hypothesis（需求1+2+3），保留需求4全开
-  #   - 四个策略消融组各自仅关闭一个策略，其他全部 ON
+  #   - no-admission 与四个策略消融组各自仅关闭一个策略，其他全部 ON
   #   - 每个消融组与 full 仅差一个开关，消除多变量混淆
   #   - 自适应阈值初始=512（与 ChatAFL 基线 UNINTERESTING_THRESHOLD 一致）
 
@@ -287,7 +293,11 @@ launch_core_preset() {
   queue_group "wo_hypothesis" \
     "CHATAFL_HYPOTHESIS=0"
 
-  # Layer 3: 四个单变量消融（每个仅关闭一个策略）
+  # Layer 3: Runtime admission 因果消融（仅关闭 admission gate）
+  queue_group "wo_admission" \
+    "CHATAFL_NO_ADMISSION=1"
+
+  # Layer 4: 四个单变量消融（每个仅关闭一个策略）
   queue_group "wo_refinement" \
     "CHATAFL_NO_REFINEMENT=1"
 
@@ -319,9 +329,9 @@ launch_threshold_preset() {
 }
 
 launch_appendix_preset() {
-  # core 预设：wo_all + full + 4策略消融（6组）
+  # core 预设：wo_all + full + wo_hypothesis + wo_admission + 4策略消融（8组）
   # threshold 预设：5组阈值变体
-  # 合计 11 组完整消融矩阵
+  # 合计 13 组完整消融矩阵
   launch_core_preset
   launch_threshold_preset
 }
@@ -355,13 +365,13 @@ if [[ -n "$CUSTOM_GROUPS" ]]; then
 else
   case "$PRESET" in
     core)
-      PRESET_DESC="严格单变量消融：wo_all + full + wo_hypothesis + 4策略消融（7组）"
+      PRESET_DESC="严格单变量消融：wo_all + full + wo_hypothesis + wo_admission + 4策略消融（8组）"
       ;;
     threshold)
       PRESET_DESC="阈值子实验：adaptive vs fixed150 / 200 / 300 / 512（5组）"
       ;;
     appendix)
-      PRESET_DESC="完整消融：core(7组) + threshold(5组) = 12组"
+      PRESET_DESC="完整消融：core(8组) + threshold(5组) = 13组"
       ;;
     legacy)
       PRESET_DESC="旧 bundled 7 组：仅用于复现与历史对齐（含显式 fixed100）"

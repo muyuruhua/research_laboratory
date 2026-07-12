@@ -37,7 +37,3 @@ NSFuzz、MBFuzzer 如果不能同管线比较，就不要让读者以为你们�
 
 第三，token fairness。
 目前 LoopFuzz 的 LLM budget 更高，controlled ChatAFL 的 max_tokens 是 2048，LoopFuzz 是 4096，而且实际 token usage 也更高。审稿人很容易质疑：是不是花了更多 LLM budget 才赢？补一个 fairness arm 后，这个攻击点会明显变弱。
-
-我在考虑 可能不投 computers & security， 在考虑 投 Journal of Network and Computer Applications  这个是JCR Q1，稍微更好一点，但是也更难
-
-要看最终的实验成果如何，所以 以上这几项 和CVE就是关键。

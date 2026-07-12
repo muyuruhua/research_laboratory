@@ -646,12 +646,15 @@ static u32 adaptive_plateau_threshold = 512; /* Dynamic plateau threshold (start
  *   CHATAFL_NO_ADAPTIVE=1    → disable adaptive plateau threshold
  *   CHATAFL_NO_STATE_PROMPT=1 → disable state-aware rich prompt + actions[]
  *                               (falls back to ChatAFL's simple prompt)
+ *   CHATAFL_NO_ADMISSION=1   → admit schema-valid LLM request candidates
+ *                               even when runtime gain evidence fails
  * When unset (default), all optimizations are active.
  * ============================================ */
 static u8 ablation_no_refinement   = 0;
 static u8 ablation_no_frontier     = 0;
 static u8 ablation_no_adaptive     = 0;
 static u8 ablation_no_state_prompt = 0;
+static u8 ablation_no_admission    = 0;
 
 /* ============================================
  * LLM Cost Tracking
@@ -664,6 +667,21 @@ static u64 llm_total_prompt_tokens     = 0;
 static u64 llm_total_completion_tokens = 0;
 static u64 llm_total_calls             = 0;
 static u64 llm_dedup_hits              = 0;  /* prompt-hash cache hits */
+
+/* Candidate-level admission accounting.  These counters are backed by
+ * out_dir/admission-events.jsonl and summarize only LLM-origin candidates. */
+static u64 admission_event_seq       = 0;
+static u64 admission_candidate_total = 0;
+static u64 admission_p_fail          = 0;
+static u64 admission_u_fail          = 0;
+static u64 admission_r_fail          = 0;
+static u64 admission_g_fail          = 0;
+static u64 admission_native_promoted = 0;
+static u64 admission_forced_promoted = 0;
+
+/* Last common_fuzz_stuff() result, used by the LLM admission ledger. */
+static u8 last_common_fuzz_saved = 0;
+static u8 last_common_fuzz_fault = FAULT_NONE;
 
 /* Simple prompt-hash dedup table for plateau handler.
  * We store the last 64 prompt hashes (djb2) and skip LLM calls that
@@ -1855,6 +1873,299 @@ kliter_t(lms) * M2_prev, *M2_next;
 // Function pointers pointing to Protocol-specific functions
 unsigned int *(*extract_response_codes)(unsigned char *buf, unsigned int buf_size, unsigned int *state_count_ref) = NULL;
 region_t *(*extract_requests)(unsigned char *buf, unsigned int buf_size, unsigned int *region_count_ref) = NULL;
+
+typedef struct {
+  u64 time_ms;
+  u64 execs;
+  u32 queued;
+  u32 favored;
+  u32 ipsm_nodes;
+  u32 ipsm_edges;
+  u32 bitmap_bytes;
+} admission_snapshot_t;
+
+static void admission_take_snapshot(admission_snapshot_t *s) {
+  if (!s) return;
+  s->time_ms = get_cur_time();
+  s->execs = total_execs;
+  s->queued = queued_paths;
+  s->favored = queued_favored;
+  s->ipsm_nodes = ipsm ? agnnodes(ipsm) : 0;
+  s->ipsm_edges = ipsm ? agnedges(ipsm) : 0;
+  s->bitmap_bytes = count_non_255_bytes(virgin_bits);
+}
+
+static u32 admission_u32_delta(u32 after, u32 before) {
+  return after >= before ? after - before : 0;
+}
+
+static const char *admission_fault_name(u8 fault) {
+  switch (fault) {
+    case FAULT_NONE:  return "none";
+    case FAULT_TMOUT: return "timeout";
+    case FAULT_CRASH: return "crash";
+    case FAULT_ERROR: return "error";
+    case FAULT_NOINST:return "noinst";
+    case FAULT_NOBITS:return "nobits";
+    default:          return "unknown";
+  }
+}
+
+static u32 admission_hash_bytes(const u8 *buf, u32 len) {
+  if (!buf || !len) return 0;
+  return hash32((void *)buf, len, HASH_CONST);
+}
+
+static void admission_request_summary(const u8 *buf, u32 len,
+                                      char *first_line, size_t first_line_sz,
+                                      char *path, size_t path_sz) {
+  size_t i, out = 0;
+
+  if (first_line_sz) first_line[0] = 0;
+  if (path_sz) path[0] = 0;
+  if (!buf || !len || !first_line || first_line_sz == 0) return;
+
+  for (i = 0; i < len && out + 1 < first_line_sz; i++) {
+    unsigned char c = buf[i];
+    if (c == '\r' || c == '\n') break;
+    if (c == '\t') c = ' ';
+    first_line[out++] = (c >= 32 && c <= 126) ? (char)c : '.';
+  }
+  first_line[out] = 0;
+
+  /* HTTP/DAAP-over-HTTP diagnostic: capture the request path without
+   * storing the full payload.  Forked-daapd uses -P HTTP in the benchmark. */
+  if (path && path_sz > 0) {
+    char *sp1 = strchr(first_line, ' ');
+    if (sp1) {
+      while (*sp1 == ' ') sp1++;
+      char *sp2 = strchr(sp1, ' ');
+      if (sp2 && sp2 > sp1) {
+        size_t plen = (size_t)(sp2 - sp1);
+        if (plen >= path_sz) plen = path_sz - 1;
+        memcpy(path, sp1, plen);
+        path[plen] = 0;
+      }
+    }
+  }
+}
+
+static char *admission_edge_sequence_to_string(unsigned int *states,
+                                               unsigned int state_count) {
+  char *out = ck_alloc(1);
+  size_t used = 0;
+  out[0] = 0;
+
+  if (!states || state_count < 2) return out;
+
+  for (unsigned int i = 1; i < state_count; i++) {
+    char part[80];
+    int n = snprintf(part, sizeof(part), "%s%u->%u",
+                     used ? ";" : "", states[i - 1], states[i]);
+    if (n <= 0) continue;
+    if (used + (size_t)n > 512) {
+      const char *ellipsis = ";...";
+      size_t elen = strlen(ellipsis);
+      out = ck_realloc(out, used + elen + 1);
+      memcpy(out + used, ellipsis, elen + 1);
+      break;
+    }
+    out = ck_realloc(out, used + (size_t)n + 1);
+    memcpy(out + used, part, (size_t)n + 1);
+    used += (size_t)n;
+  }
+
+  return out;
+}
+
+static char *admission_collect_state_evidence(u8 executed,
+                                              u32 target_sid,
+                                              u32 *state_count_out,
+                                              u32 *first_state_out,
+                                              u32 *last_state_out,
+                                              u8 *has_error_out,
+                                              u8 *target_hit_out,
+                                              char **edge_seq_out) {
+  unsigned int state_count = 0;
+  unsigned int *states = NULL;
+  char *seq = NULL;
+
+  if (state_count_out) *state_count_out = 0;
+  if (first_state_out) *first_state_out = 0;
+  if (last_state_out) *last_state_out = 0;
+  if (has_error_out) *has_error_out = 0;
+  if (target_hit_out) *target_hit_out = 0;
+  if (edge_seq_out) *edge_seq_out = NULL;
+
+  if (!executed || !extract_response_codes || !response_buf || response_buf_size <= 0) {
+    seq = strdup("");
+    if (edge_seq_out) *edge_seq_out = strdup("");
+    return seq;
+  }
+
+  states = (*extract_response_codes)((unsigned char *)response_buf,
+                                     (unsigned int)response_buf_size,
+                                     &state_count);
+  if (!states || state_count == 0) {
+    if (states) ck_free(states);
+    seq = strdup("");
+    if (edge_seq_out) *edge_seq_out = strdup("");
+    return seq;
+  }
+
+  if (state_count_out) *state_count_out = state_count;
+  if (first_state_out) *first_state_out = states[0];
+  if (last_state_out) *last_state_out = states[state_count - 1];
+
+  u8 has_error = 0, target_hit = 0;
+  for (unsigned int i = 0; i < state_count; i++) {
+    if (classify_state_error_hint(states[i], protocol_name) == 1)
+      has_error = 1;
+    if (states[i] == target_sid)
+      target_hit = 1;
+  }
+  if (has_error_out) *has_error_out = has_error;
+  if (target_hit_out) *target_hit_out = target_hit;
+
+  u8 *seq_u8 = state_sequence_to_string(states, state_count);
+  seq = seq_u8 ? strdup((char *)seq_u8) : strdup("");
+  if (seq_u8) ck_free(seq_u8);
+  if (edge_seq_out)
+    *edge_seq_out = admission_edge_sequence_to_string(states, state_count);
+
+  ck_free(states);
+  return seq;
+}
+
+static void admission_json_add_u64(struct json_object *obj,
+                                   const char *key, u64 val) {
+  json_object_object_add(obj, key, json_object_new_int64((long long)val));
+}
+
+static void admission_log_candidate_event(const char *source,
+                                          const char *action_type,
+                                          s32 seed_id,
+                                          u32 target_sid,
+                                          const u8 *candidate,
+                                          u32 candidate_len,
+                                          const admission_snapshot_t *before,
+                                          const admission_snapshot_t *after_common,
+                                          const admission_snapshot_t *after_final,
+                                          u8 p_pass,
+                                          const char *p_reason,
+                                          u8 executed,
+                                          u8 common_ret,
+                                          u8 forced_promoted) {
+  if (!out_dir || !before || !after_common || !after_final) return;
+
+  char first_line[192], request_path[192];
+  admission_request_summary(candidate, candidate_len,
+                            first_line, sizeof(first_line),
+                            request_path, sizeof(request_path));
+
+  u32 state_count = 0, first_state = 0, last_state = 0;
+  u8 has_error = 0, target_hit = 0;
+  char *edge_seq = NULL;
+  char *state_seq = admission_collect_state_evidence(executed, target_sid,
+                                                     &state_count,
+                                                     &first_state,
+                                                     &last_state,
+                                                     &has_error,
+                                                     &target_hit,
+                                                     &edge_seq);
+
+  u32 ipsm_edge_delta = admission_u32_delta(after_common->ipsm_edges, before->ipsm_edges);
+  u32 ipsm_node_delta = admission_u32_delta(after_common->ipsm_nodes, before->ipsm_nodes);
+  u32 queued_delta = admission_u32_delta(after_common->queued, before->queued);
+  u32 favored_delta = admission_u32_delta(after_common->favored, before->favored);
+  u32 bitmap_delta = admission_u32_delta(after_common->bitmap_bytes, before->bitmap_bytes);
+  u32 forced_queue_delta = admission_u32_delta(after_final->queued, after_common->queued);
+
+  u8 native_promoted = last_common_fuzz_saved ? 1 : 0;
+  u8 u_pass = (p_pass && executed && last_common_fuzz_fault == FAULT_NONE &&
+               state_count > 0 && !has_error);
+  u8 r_pass = (p_pass && executed && state_count > 0 &&
+               (state_count > 1 || target_hit || ipsm_edge_delta > 0 || ipsm_node_delta > 0));
+  u8 g_pass = (p_pass && executed &&
+               (native_promoted || bitmap_delta > 0 ||
+                ipsm_edge_delta > 0 || ipsm_node_delta > 0));
+  u8 promoted = (native_promoted || forced_promoted) ? 1 : 0;
+
+  admission_candidate_total++;
+  if (!p_pass) admission_p_fail++;
+  if (!u_pass) admission_u_fail++;
+  if (!r_pass) admission_r_fail++;
+  if (!g_pass) admission_g_fail++;
+  if (native_promoted) admission_native_promoted++;
+  if (forced_promoted) admission_forced_promoted++;
+
+  struct json_object *j = json_object_new_object();
+  admission_json_add_u64(j, "event_id", ++admission_event_seq);
+  admission_json_add_u64(j, "time_ms", after_final->time_ms);
+  admission_json_add_u64(j, "execs_done", after_common->execs);
+  json_object_object_add(j, "source", json_object_new_string(source ? source : ""));
+  json_object_object_add(j, "action_type", json_object_new_string(action_type ? action_type : ""));
+  json_object_object_add(j, "seed_id", json_object_new_int(seed_id));
+  json_object_object_add(j, "target_state_id", json_object_new_int((int)target_sid));
+  json_object_object_add(j, "no_admission", json_object_new_boolean(ablation_no_admission));
+  json_object_object_add(j, "executed", json_object_new_boolean(executed));
+  json_object_object_add(j, "common_ret", json_object_new_int(common_ret));
+  json_object_object_add(j, "fault", json_object_new_string(admission_fault_name(last_common_fuzz_fault)));
+
+  json_object_object_add(j, "p_pass", json_object_new_boolean(p_pass));
+  json_object_object_add(j, "p_reason", json_object_new_string(p_reason ? p_reason : ""));
+  json_object_object_add(j, "u_pass", json_object_new_boolean(u_pass));
+  json_object_object_add(j, "u_reason", json_object_new_string(
+      u_pass ? "non-error response state observed" :
+      (!executed ? "not executed" :
+       (last_common_fuzz_fault != FAULT_NONE ? admission_fault_name(last_common_fuzz_fault) :
+        (state_count == 0 ? "no response state" : "likely error response")))));
+  json_object_object_add(j, "r_pass", json_object_new_boolean(r_pass));
+  json_object_object_add(j, "r_reason", json_object_new_string(
+      r_pass ? "state transition or target reachability observed" :
+      (!executed ? "not executed" : "no state transition evidence")));
+  json_object_object_add(j, "g_pass", json_object_new_boolean(g_pass));
+  json_object_object_add(j, "g_reason", json_object_new_string(
+      g_pass ? "native coverage/IPSM/queue gain observed" :
+      (!executed ? "not executed" : "no native gain")));
+
+  json_object_object_add(j, "state_count", json_object_new_int((int)state_count));
+  json_object_object_add(j, "first_state", json_object_new_int((int)first_state));
+  json_object_object_add(j, "last_state", json_object_new_int((int)last_state));
+  json_object_object_add(j, "target_hit", json_object_new_boolean(target_hit));
+  json_object_object_add(j, "response_error_hint", json_object_new_boolean(has_error));
+  json_object_object_add(j, "state_sequence", json_object_new_string(state_seq ? state_seq : ""));
+  json_object_object_add(j, "edge_sequence", json_object_new_string(edge_seq ? edge_seq : ""));
+
+  json_object_object_add(j, "candidate_len", json_object_new_int((int)candidate_len));
+  json_object_object_add(j, "candidate_hash", json_object_new_int((int)admission_hash_bytes(candidate, candidate_len)));
+  json_object_object_add(j, "request_first_line", json_object_new_string(first_line));
+  json_object_object_add(j, "request_path", json_object_new_string(request_path));
+
+  json_object_object_add(j, "bitmap_delta", json_object_new_int((int)bitmap_delta));
+  json_object_object_add(j, "ipsm_nodes_delta", json_object_new_int((int)ipsm_node_delta));
+  json_object_object_add(j, "ipsm_edges_delta", json_object_new_int((int)ipsm_edge_delta));
+  json_object_object_add(j, "queued_paths_delta", json_object_new_int((int)queued_delta));
+  json_object_object_add(j, "favored_delta", json_object_new_int((int)favored_delta));
+  json_object_object_add(j, "forced_queue_delta", json_object_new_int((int)forced_queue_delta));
+  json_object_object_add(j, "native_promoted", json_object_new_boolean(native_promoted));
+  json_object_object_add(j, "forced_promoted", json_object_new_boolean(forced_promoted));
+  json_object_object_add(j, "promoted", json_object_new_boolean(promoted));
+  admission_json_add_u64(j, "latency_ms",
+                         after_common->time_ms >= before->time_ms ?
+                         after_common->time_ms - before->time_ms : 0);
+
+  u8 *fn = alloc_printf("%s/admission-events.jsonl", out_dir);
+  FILE *f = fopen((char *)fn, "a");
+  if (f) {
+    fprintf(f, "%s\n", json_object_to_json_string(j));
+    fclose(f);
+  }
+  ck_free(fn);
+  json_object_put(j);
+  free(state_seq);
+  if (edge_seq) ck_free(edge_seq);
+}
 
 // Patterns generated from the Language Model
 klist_t(rang) * protocol_patterns;
@@ -8765,14 +9076,30 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
              "llm_total_calls    : %llu\n"
              "llm_prompt_tokens  : %llu\n"
              "llm_completion_tok : %llu\n"
-             "llm_dedup_hits     : %llu\n",
+             "llm_dedup_hits     : %llu\n"
+             "admission_events   : %llu\n"
+             "admission_p_fail   : %llu\n"
+             "admission_u_fail   : %llu\n"
+             "admission_r_fail   : %llu\n"
+             "admission_g_fail   : %llu\n"
+             "admission_native_promo : %llu\n"
+             "admission_forced_promo : %llu\n"
+             "ablation_no_admission : %u\n",
           chat_times,
           adaptive_plateau_threshold,
           edges_growth_rate,
           (unsigned long long)llm_total_calls,
           (unsigned long long)llm_total_prompt_tokens,
           (unsigned long long)llm_total_completion_tokens,
-          (unsigned long long)llm_dedup_hits);
+          (unsigned long long)llm_dedup_hits,
+          (unsigned long long)admission_candidate_total,
+          (unsigned long long)admission_p_fail,
+          (unsigned long long)admission_u_fail,
+          (unsigned long long)admission_r_fail,
+          (unsigned long long)admission_g_fail,
+          (unsigned long long)admission_native_promoted,
+          (unsigned long long)admission_forced_promoted,
+          ablation_no_admission);
 
   fprintf(f, "mp_multi_ok        : %u\n"
              "mp_multi_fallback  : %u\n"
@@ -10073,6 +10400,9 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
 
   u8 fault;
 
+  last_common_fuzz_saved = 0;
+  last_common_fuzz_fault = FAULT_NONE;
+
   if (post_handler)
   {
 
@@ -10200,6 +10530,7 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
   /* End of AFLNet code */
 
   fault = run_target(argv, exec_tmout);
+  last_common_fuzz_fault = fault;
 
   /* Protocol-specific semantic oracle check.
    * Analyzes request-response pairs for security property violations
@@ -10307,6 +10638,7 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
   /* This handles FAULT_ERROR for us: */
 
   u8 is_interesting = save_if_interesting(argv, out_buf, len, fault);
+  last_common_fuzz_saved = is_interesting;
 
   if (is_interesting)
   {
@@ -10323,6 +10655,73 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
     show_stats();
 
   return 0;
+}
+
+static u8 admission_force_queue_candidate(u8 *candidate, u32 len) {
+  if (!ablation_no_admission || last_common_fuzz_saved || stop_soon)
+    return 0;
+  if (last_common_fuzz_fault == FAULT_TMOUT ||
+      last_common_fuzz_fault == FAULT_CRASH ||
+      last_common_fuzz_fault == FAULT_ERROR)
+    return 0;
+  if (!out_dir || !candidate || !len || !kl_messages)
+    return 0;
+
+#ifndef SIMPLE_FILES
+  u8 *fn = alloc_printf("%s/queue/id:%06u,no_admission", out_dir, queued_paths);
+#else
+  u8 *fn = alloc_printf("%s/queue/id_%06u_no_admission", out_dir, queued_paths);
+#endif
+
+  u32 full_len = save_kl_messages_to_file(kl_messages, fn, 0, messages_sent);
+  add_to_queue(fn, full_len ? full_len : len, 0);
+
+  if (state_aware_mode)
+    update_state_aware_variables(queue_top, 0);
+
+  u8 *fn_replay = alloc_printf("%s/replayable-queue/%s",
+                               out_dir, basename(queue_top->fname));
+  save_kl_messages_to_file(kl_messages, fn_replay, 1, messages_sent);
+  ck_free(fn_replay);
+
+  queue_top->exec_cksum = hash32(trace_bits, MAP_SIZE, HASH_CONST);
+  return 1;
+}
+
+static u8 admission_run_llm_candidate(char **argv,
+                                      const char *source,
+                                      const char *action_type,
+                                      s32 seed_id,
+                                      u32 target_sid,
+                                      u8 *candidate,
+                                      u32 candidate_len,
+                                      u8 p_pass,
+                                      const char *p_reason) {
+  admission_snapshot_t before, after_common, after_final;
+  u8 common_ret = 0, executed = 0, forced = 0;
+
+  admission_take_snapshot(&before);
+
+  if (p_pass && candidate && candidate_len > 0) {
+    executed = 1;
+    common_ret = common_fuzz_stuff(argv, candidate, candidate_len);
+  } else {
+    last_common_fuzz_saved = 0;
+    last_common_fuzz_fault = FAULT_NONE;
+  }
+
+  admission_take_snapshot(&after_common);
+
+  if (executed && !common_ret)
+    forced = admission_force_queue_candidate(candidate, candidate_len);
+
+  admission_take_snapshot(&after_final);
+  admission_log_candidate_event(source, action_type, seed_id, target_sid,
+                                candidate, candidate_len,
+                                &before, &after_common, &after_final,
+                                p_pass, p_reason, executed, common_ret, forced);
+
+  return common_ret;
 }
 
 /* Helper to choose random block len for block operations in fuzz_one().
@@ -11693,8 +12092,21 @@ AFLNET_REGIONS_SELECTION:;
         struct json_object *jroot = NULL;
         if (stall_message)
         {
+          char *raw_stall_message = stall_message;
           jroot = validate_and_parse_llm_json(stall_message);
-          free(stall_message);
+          if (!jroot) {
+            admission_snapshot_t snap;
+            admission_take_snapshot(&snap);
+            admission_log_candidate_event("plateau_llm_output", "json",
+                                          queue_cur ? (s32)queue_cur->index : -1,
+                                          target_state_id,
+                                          (u8 *)raw_stall_message,
+                                          (u32)strlen(raw_stall_message),
+                                          &snap, &snap, &snap,
+                                          0, "json-schema-invalid",
+                                          0, 0, 0);
+          }
+          free(raw_stall_message);
           stall_message = NULL;
         }
 
@@ -11789,8 +12201,16 @@ AFLNET_REGIONS_SELECTION:;
                     ck_free(buf); continue;
                   }
 
-                  /* Submit mutated candidate safely via common_fuzz_stuff */
-                  if (common_fuzz_stuff(argv, (char*)buf, (u32)buf_len)) {
+                  /* Submit mutated candidate safely and record P/U/R/G evidence. */
+                  if (admission_run_llm_candidate(argv,
+                                                  "plateau_action_mutation",
+                                                  opname,
+                                                  (s32)sid,
+                                                  target_state_id,
+                                                  (u8 *)buf,
+                                                  (u32)buf_len,
+                                                  1,
+                                                  "actions-schema-valid")) {
                     /* do nothing extra here */
                   }
 
@@ -11891,8 +12311,16 @@ AFLNET_REGIONS_SELECTION:;
             }
           }
 
-          /* Proceed with existing behavior: format/attempt to fuzz the suggested message */
-          if (common_fuzz_stuff(argv, fuzz_data, fuzz_len))
+          /* Proceed with existing behavior and record P/U/R/G evidence. */
+          if (admission_run_llm_candidate(argv,
+                                          "plateau_suggested_request",
+                                          "suggested_request",
+                                          queue_cur ? (s32)queue_cur->index : -1,
+                                          target_state_id,
+                                          (u8 *)fuzz_data,
+                                          fuzz_len,
+                                          1,
+                                          "suggested-request-schema-valid"))
           {
             splicing_with = -1;
             if (!stop_soon && !queue_cur->cal_failed && !queue_cur->was_fuzzed)
@@ -16039,6 +16467,10 @@ int main(int argc, char **argv)
     ablation_no_state_prompt = 1;
     OKF("ABLATION: State-aware rich prompt + actions[] DISABLED (simple prompt mode)");
   }
+  if (getenv("CHATAFL_NO_ADMISSION")) {
+    ablation_no_admission = 1;
+    OKF("ABLATION: Runtime gain admission DISABLED for LLM request candidates");
+  }
 
   /* ============================================
    * Ablation Configuration Summary Banner
@@ -16047,7 +16479,8 @@ int main(int argc, char **argv)
    * ============================================ */
   {
     int any_ablation = ablation_no_refinement || ablation_no_frontier
-                     || ablation_no_adaptive  || ablation_no_state_prompt;
+                     || ablation_no_adaptive  || ablation_no_state_prompt
+                     || ablation_no_admission;
     fprintf(stderr,
       "\n"
       "========== ABLATION CONFIG ==========\n"
@@ -16055,6 +16488,7 @@ int main(int argc, char **argv)
       "  NO_FRONTIER     : %s\n"
       "  NO_ADAPTIVE     : %s\n"
       "  NO_STATE_PROMPT : %s\n"
+      "  NO_ADMISSION    : %s\n"
       "  MODE            : %s\n"
       "  HYPOTHESIS      : %s\n"
       "  LOOPFUZZ     : %s\n"
@@ -16063,6 +16497,7 @@ int main(int argc, char **argv)
       ablation_no_frontier     ? "ON (disabled)" : "off",
       ablation_no_adaptive     ? "ON (disabled)" : "off",
       ablation_no_state_prompt ? "ON (disabled)" : "off",
+      ablation_no_admission    ? "ON (force-admit LLM candidates)" : "off",
       any_ablation ? "ABLATION RUN" : "FULL (no ablation)",
       getenv("CHATAFL_HYPOTHESIS") ? "enabled" : "disabled",
       /* AFL_ENABLE_LOOPFUZZ is set in Dockerfiles but is DISPLAY-ONLY —

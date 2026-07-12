@@ -5,6 +5,7 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <unistd.h>
+#include <stdlib.h>
 
 #include "chat-llm.h"
 #include "alloc-inl.h"
@@ -46,6 +47,20 @@ static size_t chat_with_llm_helper(void *contents, size_t size, size_t nmemb, vo
 unsigned long long llm_last_prompt_tokens     = 0;
 unsigned long long llm_last_completion_tokens = 0;
 
+int chat_llm_effective_max_tokens(void)
+{
+    const char *env = getenv("CHATAFL_MAX_TOKENS");
+    if (env && *env) {
+        char *end = NULL;
+        long v = strtol(env, &end, 10);
+        if (end && *end == '\0' && v > 0 && v <= 32768)
+            return (int)v;
+        fprintf(stderr, "[ChatAFL] Ignoring invalid CHATAFL_MAX_TOKENS=%s; using %d\n",
+                env, MAX_TOKENS);
+    }
+    return MAX_TOKENS;
+}
+
 char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
 {
     CURL *curl;
@@ -74,13 +89,14 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
     char *content_header = "Content-Type: application/json";
     char *accept_header = "Accept: application/json";
     char *data = NULL;
+    int max_tokens = chat_llm_effective_max_tokens();
     if (strcmp(model, "gpt-5.4") == 0)
     {
-        asprintf(&data, "{\"model\": \"gpt-5.4\", \"prompt\": \"%s\", \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
+        asprintf(&data, "{\"model\": \"gpt-5.4\", \"prompt\": \"%s\", \"max_tokens\": %d, \"temperature\": %f}", prompt, max_tokens, temperature);
     }
     else
     {
-        asprintf(&data, "{\"model\": \"gpt-5.4-mini\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
+        asprintf(&data, "{\"model\": \"gpt-5.4-mini\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f}", prompt, max_tokens, temperature);
     }
     curl_global_init(CURL_GLOBAL_DEFAULT);
     do
@@ -1000,7 +1016,7 @@ char *enrich_sequence(char *sequence, khash_t(strSet) * missing_message_types)
     sequence_escaped_str++;
 
     int sequence_len = strlen(sequence_escaped_str) - 1;
-    int allowed_tokens = (MAX_TOKENS - strlen(prompt_template) - missing_fields_len);
+    int allowed_tokens = (chat_llm_effective_max_tokens() - strlen(prompt_template) - missing_fields_len);
     if (sequence_len > allowed_tokens)
     {
         sequence_len = allowed_tokens;

@@ -440,8 +440,9 @@ collect_one() {
     viol_total=${viol_total:-0}
 
     # ── 消融开关检测 → 标签与 run_ablation.sh 组名完全等价 ──────────
-    # core 预设 7 组标签: wo_all | full | wo_hypothesis | wo_refinement |
-    #                      wo_frontier | wo_adaptive | wo_state_prompt
+    # core 预设 8 组标签: wo_all | full | wo_hypothesis | wo_admission |
+    #                      wo_refinement | wo_frontier | wo_adaptive |
+    #                      wo_state_prompt
     # threshold 预设标签:  fixed150 | fixed200 | fixed300 | fixed512
     # legacy / 混合消融:    wo_refinement+wo_frontier+... (多个 wo_ 拼接)
     local ablation_label
@@ -451,7 +452,7 @@ collect_one() {
             echo "-"             # ChatAFL / AFLNet 不具备消融能力
             exit 0
         fi
-        no_hyp=0; no_refine=0; no_frontier=0; no_adaptive=0; no_sp=0; threshold=""
+        no_hyp=0; no_refine=0; no_frontier=0; no_adaptive=0; no_sp=0; no_admission=0; threshold=""
         while IFS="=" read -r k v; do
             case "$k" in
                 CHATAFL_HYPOTHESIS)        [[ "$v" == "0" ]] && no_hyp=1 ;;
@@ -459,31 +460,38 @@ collect_one() {
                 CHATAFL_NO_FRONTIER)       [[ "$v" == "1" ]] && no_frontier=1 ;;
                 CHATAFL_NO_ADAPTIVE)       [[ "$v" == "1" ]] && no_adaptive=1 ;;
                 CHATAFL_NO_STATE_PROMPT)   [[ "$v" == "1" ]] && no_sp=1 ;;
+                CHATAFL_NO_ADMISSION)      [[ "$v" == "1" ]] && no_admission=1 ;;
                 CHATAFL_ABLATION_THRESHOLD) threshold="$v" ;;
             esac
         done <<< "$env_vars"
 
         # ── wo_all: 全部策略 OFF（含 Hypothesis）────────────────────
-        if [[ $no_hyp -eq 1 && $no_refine -eq 1 && $no_frontier -eq 1 && $no_adaptive -eq 1 && $no_sp -eq 1 ]]; then
+        if [[ $no_hyp -eq 1 && $no_refine -eq 1 && $no_frontier -eq 1 && $no_adaptive -eq 1 && $no_sp -eq 1 && $no_admission -eq 0 ]]; then
             echo "wo_all"
             exit 0
         fi
 
         # ── wo_hypothesis: 仅 Hypothesis OFF，需求4 全 ON ──────────
-        if [[ $no_hyp -eq 1 && $no_refine -eq 0 && $no_frontier -eq 0 && $no_adaptive -eq 0 && $no_sp -eq 0 ]]; then
+        if [[ $no_hyp -eq 1 && $no_refine -eq 0 && $no_frontier -eq 0 && $no_adaptive -eq 0 && $no_sp -eq 0 && $no_admission -eq 0 ]]; then
             echo "wo_hypothesis"
             exit 0
         fi
 
+        # ── wo_admission: 仅关闭 LLM request 的 admission gate ───────
+        if [[ $no_hyp -eq 0 && $no_refine -eq 0 && $no_frontier -eq 0 && $no_adaptive -eq 0 && $no_sp -eq 0 && $no_admission -eq 1 ]]; then
+            echo "wo_admission"
+            exit 0
+        fi
+
         # ── full: 全部策略 ON + 自适应阈值 ON ────────────────────────
-        if [[ $no_refine -eq 0 && $no_frontier -eq 0 && $no_adaptive -eq 0 && $no_sp -eq 0 ]]; then
+        if [[ $no_refine -eq 0 && $no_frontier -eq 0 && $no_adaptive -eq 0 && $no_sp -eq 0 && $no_admission -eq 0 ]]; then
             echo "full"
             exit 0
         fi
 
         # ── 阈值子实验：全部策略 ON + 自适应 OFF + 固定阈值 ──────────
         # 阈值=512 时等价于 wo_adaptive（core 预设单变量消融），统一标签
-        if [[ $no_refine -eq 0 && $no_frontier -eq 0 && $no_adaptive -eq 1 && $no_sp -eq 0 ]]; then
+        if [[ $no_refine -eq 0 && $no_frontier -eq 0 && $no_adaptive -eq 1 && $no_sp -eq 0 && $no_admission -eq 0 ]]; then
             if [[ "$threshold" == "512" || -z "$threshold" ]]; then
                 echo "wo_adaptive"
             else
@@ -494,9 +502,17 @@ collect_one() {
 
         # ── 单/多开关消融：拼接 wo_xxx ──────────────────────────────
         parts=""
+        [[ $no_hyp -eq 1 ]]      && parts+="+wo_hypothesis"
+        [[ $no_admission -eq 1 ]] && parts+="+wo_admission"
         [[ $no_refine -eq 1 ]]   && parts+="+wo_refinement"
         [[ $no_frontier -eq 1 ]] && parts+="+wo_frontier"
-        [[ $no_adaptive -eq 1 ]] && parts+="+wo_adaptive"
+        if [[ $no_adaptive -eq 1 ]]; then
+            if [[ -n "$threshold" && "$threshold" != "512" ]]; then
+                parts+="+fixed${threshold}"
+            else
+                parts+="+wo_adaptive"
+            fi
+        fi
         [[ $no_sp -eq 1 ]]       && parts+="+wo_state_prompt"
         echo "${parts#+}"
     ' 2>/dev/null || echo "?")

@@ -5053,10 +5053,12 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
 
   fprintf(f, "llm_total_calls    : %llu\n"
              "llm_prompt_tokens  : %llu\n"
-             "llm_completion_tok : %llu\n",
+             "llm_completion_tok : %llu\n"
+             "llm_max_tokens     : %d\n",
           (unsigned long long)llm_total_calls,
           (unsigned long long)llm_total_prompt_tokens,
-          (unsigned long long)llm_total_completion_tokens);
+          (unsigned long long)llm_total_completion_tokens,
+          chat_llm_effective_max_tokens());
 
   fclose(f);
 }

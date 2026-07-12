@@ -13,13 +13,14 @@
 
 **严格单变量消融**：消融矩阵中每组与 `full` 仅差一个开关。任意两组之间的性能差异可直接归因于该单一策略的净贡献，消除多变量混淆。
 
-### 7 组定义
+### 8 组定义
 
 | 组名 | 关闭的策略 | 环境变量 |
 |------|-----------|---------|
 | **wo_all** | 全部四个需求 | `CHATAFL_HYPOTHESIS=0`, `NO_REFINEMENT=1`, `NO_FRONTIER=1`, `NO_ADAPTIVE=1`, `NO_STATE_PROMPT=1`, `THRESHOLD=512` |
 | **full** | （无，全开） | （不设任何 `NO_*` 标志） |
 | **wo_hypothesis** | 需求1+2+3 | `CHATAFL_HYPOTHESIS=0` |
+| **wo_admission** | runtime admission gate | `NO_ADMISSION=1` |
 | **wo_refinement** | 需求3 CEGAR | `NO_REFINEMENT=1` |
 | **wo_frontier** | 需求4 稀有状态优先 | `NO_FRONTIER=1` |
 | **wo_adaptive** | 需求4 自适应阈值 | `NO_ADAPTIVE=1`, `THRESHOLD=512` |
@@ -33,6 +34,7 @@ wo_all ────────────────────────�
   │   差值 = 四个需求的总贡献                                       │
   │                                                             │
   ├── wo_hypothesis  →  full − wo_hypothesis  = 需求1+2+3 的净贡献
+  ├── wo_admission   →  full − wo_admission   = P/U/R/G admission 的净贡献
   ├── wo_refinement  →  full − wo_refinement  = 需求3 CEGAR 的净贡献
   ├── wo_frontier    →  full − wo_frontier    = 需求4 frontier 的净贡献
   ├── wo_adaptive    →  full − wo_adaptive    = 需求4 自适应的净贡献
@@ -41,9 +43,10 @@ wo_all ────────────────────────�
 
 | 组 | 作用 | 度量目标 |
 |----|------|---------|
-| **wo_all** | 下界锚点 | 退化到 ChatAFL + 固定阈值 512 的基线性能 |
+| **wo_all** | 下界锚点 | LoopFuzz 内部最小策略/ChatAFL-style 控制路径 + 固定阈值 512；不替代 `ChatAFL/` 基线 |
 | **full** | 上界锚点 | 四个需求全开的完整 LoopFuzz 性能 |
 | **wo_hypothesis** | 需求1+2+3 消融 | LLM 生成 grammar → 验证 → CEGAR 修正，整体是正向贡献还是拖累？ |
+| **wo_admission** | admission 因果消融 | schema-valid LLM request 直接入队时，是否削弱 queue/IPSM/coverage 转化？ |
 | **wo_refinement** | 需求3 消融 | 反例回喂 LLM 局部修补语法，修对了还是修歪了？ |
 | **wo_frontier** | 需求4 消融 | 优先探索出度 0-1 的未饱和状态，能否加速状态空间覆盖？ |
 | **wo_adaptive** | 需求4 消融 | 根据 edges 增长率动态调整 plateau 触发频率，比固定 512 好吗？ |
@@ -70,7 +73,9 @@ full − wo_xxx < 0  →  该策略存在负交互，需调整协调机制
 | `CHATAFL_NO_FRONTIER=1` | 关闭 frontier bonus（低出度状态 2×~4× 能量加成）+ error penalty（错误响应扣分） |
 | `CHATAFL_NO_ADAPTIVE=1` | 关闭自适应 plateau 阈值，锁定为固定值 |
 | `CHATAFL_NO_STATE_PROMPT=1` | 关闭状态感知 prompt，退化到 ChatAFL 原始简单 prompt |
+| `CHATAFL_NO_ADMISSION=1` | 关闭 LLM request 的运行时增益 admission gate；schema-valid 候选即使无原生 gain 也强制入队 |
 | `CHATAFL_ABLATION_THRESHOLD=N` | 当 `NO_ADAPTIVE=1` 时指定固定阈值。建议显式设置 |
+| `CHATAFL_MAX_TOKENS=N` | 仅用于 ChatAFL token fairness；默认 2048，设为 4096 得到 `ChatAFL+4096` |
 
 ### 开关依赖关系
 
@@ -102,6 +107,7 @@ docker logs <容器ID> 2>&1 | grep "ABLATION\|hypothesis"
 | `NO_FRONTIER` | `ABLATION: Frontier bonus + error penalty DISABLED` |
 | `NO_ADAPTIVE=1 THR=512` | `ABLATION: Adaptive plateau threshold DISABLED (fixed=512)` |
 | `NO_STATE_PROMPT` | `ABLATION: State-aware rich prompt + actions[] DISABLED` |
+| `NO_ADMISSION` | `ABLATION: Runtime gain admission DISABLED for LLM request candidates` |
 
 ---
 
@@ -120,13 +126,13 @@ export SKIPCOUNT=40
 ### 预设模式
 
 ```bash
-# 默认 core 预设（7 组单变量消融）
+# 默认 core 预设（8 组单变量消融）
 sudo -E ./run_ablation.sh live555 5 1470
 
 # 阈值子实验（5 组）
 sudo -E ./run_ablation.sh live555 5 1470 threshold
 
-# 完整消融矩阵（core + threshold = 12 组）
+# 完整消融矩阵（core + threshold = 13 组）
 sudo -E ./run_ablation.sh live555 5 1470 appendix
 
 # 旧 bundled 7 组（仅历史复现）
@@ -261,8 +267,21 @@ ablation/results-bftpd_ablation_wo_all_20260528T120000/
 | `oracle_unique_violations` | fuzzer_stats | 语义漏洞发现数 |
 | `llm_total_calls` | fuzzer_stats | LLM 总调用次数 |
 | prompt / completion tokens | fuzzer_stats | LLM token 消耗 |
+| `admission-events.jsonl` | out_dir | candidate-level P/U/R/G、response state、IPSM/coverage delta、promotion decision |
+| `admission_*` | fuzzer_stats | admission ledger 汇总计数 |
 
 **关键归一化**：因 Docker CPU 争抢导致 Exec/s 差异可超过 3×，必须用 per-1000-execs 归一化指标（paths/1K、edges/1K、crashes/1K）来消除吞吐量差异。
+
+### Candidate-level 与 productive-edge 汇总
+
+```bash
+python3 admission_event_summary.py ablation/results-<target>_ablation_full_* \
+  -o admission_summary_full.csv
+python3 admission_event_summary.py ablation/results-<target>_ablation_wo_admission_* \
+  -o admission_summary_wo_admission.csv
+```
+
+该脚本直接读取 `admission-events.jsonl` 或结果 tarball，输出 `P/U/R/G` 通过计数、native/forced promotion、productive IPSM-edge 事件、`R=true && G=false` 的 state-progress-without-gain 行，以及 forked-daapd/DAAP-over-HTTP 的 request path 分布。
 
 ### 判定语言
 
@@ -287,6 +306,7 @@ cd /home/ckt/Documents/000_2026_test_dev/research_laboratory/ChatAFL-master
 unset CHATAFL_HYPOTHESIS \
       CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER \
       CHATAFL_NO_ADAPTIVE CHATAFL_NO_STATE_PROMPT \
+      CHATAFL_NO_ADMISSION CHATAFL_MAX_TOKENS \
       CHATAFL_ABLATION_THRESHOLD
 
 # 2) 设置当前组需要的变量
@@ -300,6 +320,7 @@ sudo -E ./run_dev.sh <RUNS> <TIMEOUT_MIN> <TARGET> loopfuzz
 unset CHATAFL_HYPOTHESIS \
       CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER \
       CHATAFL_NO_ADAPTIVE CHATAFL_NO_STATE_PROMPT \
+      CHATAFL_NO_ADMISSION CHATAFL_MAX_TOKENS \
       CHATAFL_ABLATION_THRESHOLD
 ```
 
@@ -309,8 +330,29 @@ unset CHATAFL_HYPOTHESIS \
 
 ```bash
 unset CHATAFL_HYPOTHESIS CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER \
-      CHATAFL_NO_ADAPTIVE CHATAFL_NO_STATE_PROMPT CHATAFL_ABLATION_THRESHOLD
+      CHATAFL_NO_ADAPTIVE CHATAFL_NO_STATE_PROMPT CHATAFL_NO_ADMISSION \
+      CHATAFL_MAX_TOKENS CHATAFL_ABLATION_THRESHOLD
 sudo -E ./run_dev.sh 5 1470 live555 loopfuzz
+```
+
+**wo_admission（仅关闭 admission gate）：**
+
+```bash
+unset CHATAFL_HYPOTHESIS CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER \
+      CHATAFL_NO_ADAPTIVE CHATAFL_NO_STATE_PROMPT CHATAFL_MAX_TOKENS \
+      CHATAFL_ABLATION_THRESHOLD
+export CHATAFL_NO_ADMISSION=1
+sudo -E ./run_dev.sh 5 1470 live555 loopfuzz
+```
+
+**ChatAFL+4096（token fairness baseline）：**
+
+```bash
+unset CHATAFL_HYPOTHESIS CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER \
+      CHATAFL_NO_ADAPTIVE CHATAFL_NO_STATE_PROMPT CHATAFL_NO_ADMISSION \
+      CHATAFL_ABLATION_THRESHOLD
+export CHATAFL_MAX_TOKENS=4096
+sudo -E ./run_dev.sh 5 1470 live555 chatafl
 ```
 
 **wo_all（全关闭基线）：**
@@ -421,10 +463,11 @@ env | grep '^CHATAFL_' || echo "环境已干净"
 
 1. `wo_frontier` 同时关闭 frontier bonus 和 error penalty，不能拆分因果
 2. `wo_state_prompt` 同时关闭 `state_ctx` 和 `actions[]` 路径，不能拆分因果
-3. 需求2（Verifier）无独立开关——可解析性检查、Oracle、IPSM 状态跟踪与主循环耦合
+3. `wo_admission` 只隔离 LLM request 的运行时增益 admission；可解析性检查、Oracle、IPSM 状态跟踪仍与主循环耦合
 4. fork 隔离、bounded execution、并行 enrichment、dedup ring 始终开启，无对应消融开关
 5. 因此当前最严谨表述为："当前 shipped 行为下，某个 bundled policy 是否显示净效应"，而非"该模块的独立因果贡献已被严格证明"
 6. `run_dev.sh` 独立运行等价于 `full` 组（无任何 `NO_*` 标志，`HYPOTHESIS=1`），通过 Docker 注入
+7. 新增 `admission-events.jsonl` 只提供 candidate-level 证据与 productive-edge/Forked-daapd 后处理入口；论文数值必须来自重新运行后的归档
 
 ### 如要实现真正正交消融
 
@@ -436,4 +479,4 @@ env | grep '^CHATAFL_' || echo "环境已干净"
 - `CHATAFL_NO_ACTIONS`（仅关 actions[]）
 - `CHATAFL_NO_VERIFIER`（关验证器 pipeline）
 
-这些开关实现之前，本文档与 `run_ablation.sh` 的 7 组 core 预设是当前最严谨、最可落地的版本。
+这些开关实现之前，本文档与 `run_ablation.sh` 的 8 组 core 预设是当前最严谨、最可落地的版本。

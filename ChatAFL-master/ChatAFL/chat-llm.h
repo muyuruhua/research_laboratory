@@ -69,6 +69,7 @@ KHASH_INIT(consistency_table, const char *, khash_t(field_table) *, 1, kh_str_ha
  * reflect the API-reported usage of that single invocation. */
 extern unsigned long long llm_last_prompt_tokens;
 extern unsigned long long llm_last_completion_tokens;
+int chat_llm_effective_max_tokens(void);
 
 char *chat_with_llm(char *prompt, char *model, int tries, float temperature);
 char *construct_prompt_for_templates(char *protocol_name, char **final_msg);

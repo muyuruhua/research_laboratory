@@ -747,7 +747,11 @@ for i in $(seq 1 $RUNS); do
   [[ -n "${CHATAFL_NO_FRONTIER}" ]]        && ABLATION_FLAGS+=" -e CHATAFL_NO_FRONTIER=1"
   [[ -n "${CHATAFL_NO_ADAPTIVE}" ]]        && ABLATION_FLAGS+=" -e CHATAFL_NO_ADAPTIVE=1"
   [[ -n "${CHATAFL_NO_STATE_PROMPT}" ]]    && ABLATION_FLAGS+=" -e CHATAFL_NO_STATE_PROMPT=1"
+  [[ -n "${CHATAFL_NO_ADMISSION}" ]]       && ABLATION_FLAGS+=" -e CHATAFL_NO_ADMISSION=1"
   [[ -n "${CHATAFL_ABLATION_THRESHOLD}" ]] && ABLATION_FLAGS+=" -e CHATAFL_ABLATION_THRESHOLD=${CHATAFL_ABLATION_THRESHOLD}"
+
+  TOKEN_FLAGS=""
+  [[ -n "${CHATAFL_MAX_TOKENS:-}" ]]       && TOKEN_FLAGS+=" -e CHATAFL_MAX_TOKENS=${CHATAFL_MAX_TOKENS}"
 
   # Per-container MQTT broker list: local broker + stable reference + multi-broker fleet
   MQTT_FLAGS=""
@@ -777,6 +781,7 @@ for i in $(seq 1 $RUNS); do
       -e KEY="${KEY}" \
       -e CHATAFL_HYPOTHESIS=1 \
       ${ABLATION_FLAGS} \
+      ${TOKEN_FLAGS} \
       ${MQTT_FLAGS} \
       ${MQTT_RUN_FLAGS} \
       -v "${PROJECT_ROOT}/LoopFuzz:/tmp/loopfuzz-src:ro" \
@@ -793,6 +798,7 @@ for i in $(seq 1 $RUNS); do
     id=$(docker run --cpus=1 --memory=8g --memory-swap=8g \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
+      ${TOKEN_FLAGS} \
       ${MQTT_FLAGS} \
       ${MQTT_RUN_FLAGS} \
       -v "${PROJECT_ROOT}/ChatAFL:/tmp/chatafl-src:ro" \
@@ -829,7 +835,7 @@ for i in $(seq 1 $RUNS); do
         cd /home/ubuntu/chatafl-cl2 && make clean && make -j\$(nproc) && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   else
-    id=$(docker run --cpus=1 --memory=8g --memory-swap=8g ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
+    id=$(docker run --cpus=1 --memory=8g --memory-swap=8g ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${TOKEN_FLAGS} ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   fi
   require_container_id "$id" "fuzz container run #${i}"
   cids+=("$id")
