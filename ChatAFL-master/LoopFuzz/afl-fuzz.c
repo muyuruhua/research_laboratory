@@ -648,6 +648,8 @@ static u32 adaptive_plateau_threshold = 512; /* Dynamic plateau threshold (start
  *                               (falls back to ChatAFL's simple prompt)
  *   CHATAFL_NO_ADMISSION=1   → admit schema-valid LLM request candidates
  *                               even when runtime gain evidence fails
+ *   CHATAFL_ADMISSION_LOG=1  → enable candidate-level admission evidence
+ *                               logging for P/U/R/G accounting
  * When unset (default), all optimizations are active.
  * ============================================ */
 static u8 ablation_no_refinement   = 0;
@@ -655,6 +657,7 @@ static u8 ablation_no_frontier     = 0;
 static u8 ablation_no_adaptive     = 0;
 static u8 ablation_no_state_prompt = 0;
 static u8 ablation_no_admission    = 0;
+static u8 admission_accounting_enabled = 0;
 
 /* ============================================
  * LLM Cost Tracking
@@ -2056,6 +2059,8 @@ static void admission_log_candidate_event(const char *source,
                                           u8 executed,
                                           u8 common_ret,
                                           u8 forced_promoted) {
+  if (!admission_accounting_enabled)
+    return;
   if (!out_dir || !before || !after_common || !after_final) return;
 
   char first_line[192], request_path[192];
@@ -9084,7 +9089,8 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
              "admission_g_fail   : %llu\n"
              "admission_native_promo : %llu\n"
              "admission_forced_promo : %llu\n"
-             "ablation_no_admission : %u\n",
+             "ablation_no_admission : %u\n"
+             "admission_accounting : %u\n",
           chat_times,
           adaptive_plateau_threshold,
           edges_growth_rate,
@@ -9099,7 +9105,8 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)admission_g_fail,
           (unsigned long long)admission_native_promoted,
           (unsigned long long)admission_forced_promoted,
-          ablation_no_admission);
+          ablation_no_admission,
+          admission_accounting_enabled);
 
   fprintf(f, "mp_multi_ok        : %u\n"
              "mp_multi_fallback  : %u\n"
@@ -10700,6 +10707,17 @@ static u8 admission_run_llm_candidate(char **argv,
   admission_snapshot_t before, after_common, after_final;
   u8 common_ret = 0, executed = 0, forced = 0;
 
+  /* Fast path for primary/full runs: preserve the old ChatAFL-Opt/LoopFuzz
+   * candidate submission behavior unless an admission experiment asks for
+   * accounting or force-admission semantics. */
+  if (!ablation_no_admission && !admission_accounting_enabled) {
+    if (p_pass && candidate && candidate_len > 0)
+      return common_fuzz_stuff(argv, candidate, candidate_len);
+    last_common_fuzz_saved = 0;
+    last_common_fuzz_fault = FAULT_NONE;
+    return 0;
+  }
+
   admission_take_snapshot(&before);
 
   if (p_pass && candidate && candidate_len > 0) {
@@ -12094,7 +12112,7 @@ AFLNET_REGIONS_SELECTION:;
         {
           char *raw_stall_message = stall_message;
           jroot = validate_and_parse_llm_json(stall_message);
-          if (!jroot) {
+          if (!jroot && admission_accounting_enabled) {
             admission_snapshot_t snap;
             admission_take_snapshot(&snap);
             admission_log_candidate_event("plateau_llm_output", "json",
@@ -16471,6 +16489,13 @@ int main(int argc, char **argv)
     ablation_no_admission = 1;
     OKF("ABLATION: Runtime gain admission DISABLED for LLM request candidates");
   }
+  {
+    char *adm_log_env = getenv("CHATAFL_ADMISSION_LOG");
+    if ((adm_log_env && strcmp(adm_log_env, "0") != 0) || ablation_no_admission) {
+      admission_accounting_enabled = 1;
+      OKF("Admission accounting ENABLED");
+    }
+  }
 
   /* ============================================
    * Ablation Configuration Summary Banner
@@ -16489,6 +16514,7 @@ int main(int argc, char **argv)
       "  NO_ADAPTIVE     : %s\n"
       "  NO_STATE_PROMPT : %s\n"
       "  NO_ADMISSION    : %s\n"
+      "  ADMISSION_LOG   : %s\n"
       "  MODE            : %s\n"
       "  HYPOTHESIS      : %s\n"
       "  LOOPFUZZ     : %s\n"
@@ -16498,6 +16524,7 @@ int main(int argc, char **argv)
       ablation_no_adaptive     ? "ON (disabled)" : "off",
       ablation_no_state_prompt ? "ON (disabled)" : "off",
       ablation_no_admission    ? "ON (force-admit LLM candidates)" : "off",
+      admission_accounting_enabled ? "ON" : "off",
       any_ablation ? "ABLATION RUN" : "FULL (no ablation)",
       getenv("CHATAFL_HYPOTHESIS") ? "enabled" : "disabled",
       /* AFL_ENABLE_LOOPFUZZ is set in Dockerfiles but is DISPLAY-ONLY —

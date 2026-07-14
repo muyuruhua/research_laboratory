@@ -136,7 +136,7 @@ run_queued_groups() {
               CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER \
               CHATAFL_NO_ADAPTIVE CHATAFL_NO_STATE_PROMPT \
               CHATAFL_NO_ADMISSION \
-              CHATAFL_ABLATION_THRESHOLD TIMESTAMP
+              CHATAFL_ADMISSION_LOG CHATAFL_ABLATION_THRESHOLD TIMESTAMP
 
         if [[ -n "$vars" ]]; then
           IFS=',' read -ra ASSIGN <<< "$vars"
@@ -147,10 +147,11 @@ run_queued_groups() {
 
         export CHATAFL_NO_HETERO_BROKERS=1
         export CHATAFL_FROM_ABLATION=1
+        export CHATAFL_ADMISSION_LOG=1
         export TIMESTAMP="ablation_${label}_$(date +%Y%m%dT%H%M%S)"
 
         echo "[ABLATION:${label}] 启动 → ablation/results-${TARGET}_${TIMESTAMP}/"
-        echo "  HYP=${CHATAFL_HYPOTHESIS:-1} NO_REF=${CHATAFL_NO_REFINEMENT:-0} NO_FRONT=${CHATAFL_NO_FRONTIER:-0} NO_ADAPT=${CHATAFL_NO_ADAPTIVE:-0} NO_SP=${CHATAFL_NO_STATE_PROMPT:-0} NO_ADM=${CHATAFL_NO_ADMISSION:-0} THR=${CHATAFL_ABLATION_THRESHOLD:-adaptive}"
+        echo "  HYP=${CHATAFL_HYPOTHESIS:-1} NO_REF=${CHATAFL_NO_REFINEMENT:-0} NO_FRONT=${CHATAFL_NO_FRONTIER:-0} NO_ADAPT=${CHATAFL_NO_ADAPTIVE:-0} NO_SP=${CHATAFL_NO_STATE_PROMPT:-0} NO_ADM=${CHATAFL_NO_ADMISSION:-0} ADM_LOG=${CHATAFL_ADMISSION_LOG:-0} THR=${CHATAFL_ABLATION_THRESHOLD:-adaptive}"
 
         cd "$BASE_DIR" || exit 1
         ./run_dev.sh "$RUNS" "$TIMEOUT" "$TARGET" loopfuzz
