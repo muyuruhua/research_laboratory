@@ -105,8 +105,16 @@ mqtt-differential.o: mqtt-differential.c mqtt-differential.h $(COMM_HDR)
 mqtt-race.o: mqtt-race.c mqtt-race.h $(COMM_HDR)
 	$(CC) $(CFLAGS) -Wno-maybe-uninitialized -c mqtt-race.c -o mqtt-race.o
 
-protocol-oracle.o: protocol-oracle.c protocol-oracle.h $(COMM_HDR)
-	$(CC) $(CFLAGS) -c protocol-oracle.c -o protocol-oracle.o
+# Oracle source selection: default uses fast oracle (test/legacy, ~1957 lines).
+# Set CHATAFL_PRECISE_ORACLE=1 during make to use the precise oracle (dev2026, ~3432 lines)
+# which performs deeper protocol semantic verification at the cost of ~2.4x per-exec overhead.
+ORACLE_SRC = protocol-oracle.c
+ifdef CHATAFL_PRECISE_ORACLE
+  ORACLE_SRC = protocol-oracle-precise.c
+endif
+
+protocol-oracle.o: $(ORACLE_SRC) protocol-oracle.h $(COMM_HDR)
+	$(CC) $(CFLAGS) -c $(ORACLE_SRC) -o protocol-oracle.o
 
 afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet.o aflnet.h chat-llm.o chat-llm.h grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o llm-validator.o mqtt-builder.o mp-driver-mqtt.o mqtt-generate.o mqtt-scheduler.o mqtt-differential.o mqtt-race.o protocol-oracle.o | test_x86
 	$(CC) $(CFLAGS) $@.c aflnet.o chat-llm.o grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o llm-validator.o mqtt-builder.o mp-driver-mqtt.o mqtt-generate.o mqtt-scheduler.o mqtt-differential.o mqtt-race.o protocol-oracle.o -o $@ $(LDFLAGS) -lcurl -ljson-c -lpcre2-8 -lpthread
