@@ -477,6 +477,13 @@ u32 state_cycles = 0;
 u32 messages_sent = 0;
 char *mqtt_cluster_diff_summary = NULL;
 u32 mqtt_cluster_broker_count = 0;
+/* Semantic oracle sampling.  The precise oracle runs on every execution by
+ * default (rate=1).  Set CHATAFL_ORACLE_SAMPLE_RATE=N to run it on only every
+ * N-th execution as a throughput safety valve.  Modulo-based sampling keeps
+ * latency flat in the common case. */
+static u32 oracle_sample_rate = 1;
+static u64 oracle_sample_skips = 0;         /* executions skipped by sampling */
+
 u32 mqtt_cluster_unique_signatures = 0;
 u8 mqtt_cluster_diverged = 0;
 static u8 mqtt_cluster_probe_logged = 0;
@@ -9162,7 +9169,9 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
              "oracle_state_violations : %llu\n"
              "oracle_info_leaks  : %llu\n"
              "oracle_path_traversals : %llu\n"
-             "oracle_dos_patterns : %llu\n",
+             "oracle_dos_patterns : %llu\n"
+             "oracle_sample_rate : %u\n"
+             "oracle_sample_skips : %llu\n",
           (unsigned long long)oracle_total_checks,
           (unsigned long long)oracle_total_violations,
           (unsigned long long)oracle_unique_violations,
@@ -9170,7 +9179,9 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)oracle_state_violation_count,
           (unsigned long long)oracle_info_leak_count,
           (unsigned long long)oracle_path_traversal_count,
-          (unsigned long long)oracle_dos_count);
+          (unsigned long long)oracle_dos_count,
+          oracle_sample_rate,
+          (unsigned long long)oracle_sample_skips);
 
   fclose(f);
 }
@@ -10542,34 +10553,42 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
   /* Protocol-specific semantic oracle check.
    * Analyzes request-response pairs for security property violations
    * (auth bypass, state machine violations, info leak, path traversal, etc.)
-   * Goes beyond crash-only detection to find logic vulnerabilities. */
+   * Goes beyond crash-only detection to find logic vulnerabilities.
+   *
+   * The indexed precise oracle is O(total_bytes) per execution and runs on every
+   * execution by default.  CHATAFL_ORACLE_SAMPLE_RATE=N can skip N-1 of every N
+   * executions as a safety valve — the modulo keeps a deterministic, flat cadence. */
   if (protocol_name && response_buf && response_buf_size > 0 && fault != FAULT_CRASH) {
-    /* Build request array from kl_messages for oracle check */
-    int oracle_req_count = 0;
-    kliter_t(lms) *it;
-    for (it = kl_begin(kl_messages); it != kl_end(kl_messages); it = kl_next(it))
-      oracle_req_count++;
+    if (oracle_sample_rate <= 1 || (total_execs % oracle_sample_rate) == 0) {
+      /* Build request array from kl_messages for oracle check */
+      int oracle_req_count = 0;
+      kliter_t(lms) *it;
+      for (it = kl_begin(kl_messages); it != kl_end(kl_messages); it = kl_next(it))
+        oracle_req_count++;
 
-    if (oracle_req_count > 0 && oracle_req_count <= 64) {
-      const unsigned char *oracle_reqs[64];
-      unsigned int oracle_req_lens[64];
-      int idx = 0;
-      for (it = kl_begin(kl_messages); it != kl_end(kl_messages) && idx < 64; it = kl_next(it)) {
-        oracle_reqs[idx] = (const unsigned char *)kl_val(it)->mdata;
-        oracle_req_lens[idx] = (unsigned int)kl_val(it)->msize;
-        idx++;
-      }
+      if (oracle_req_count > 0 && oracle_req_count <= 64) {
+        const unsigned char *oracle_reqs[64];
+        unsigned int oracle_req_lens[64];
+        int idx = 0;
+        for (it = kl_begin(kl_messages); it != kl_end(kl_messages) && idx < 64; it = kl_next(it)) {
+          oracle_reqs[idx] = (const unsigned char *)kl_val(it)->mdata;
+          oracle_req_lens[idx] = (unsigned int)kl_val(it)->msize;
+          idx++;
+        }
 
-      oracle_result_t oracle_result;
-      int nviol = oracle_check(protocol_name, oracle_reqs, oracle_req_lens,
-                                idx, (const unsigned char *)response_buf,
-                                (unsigned int)response_buf_size, &oracle_result);
-      if (nviol > 0 && oracle_result.max_severity >= ORACLE_SEV_MEDIUM) {
-        oracle_save_violation(out_dir, &oracle_result,
-                              out_buf, len,
-                              (const unsigned char *)response_buf,
-                              (unsigned int)response_buf_size);
+        oracle_result_t oracle_result;
+        int nviol = oracle_check(protocol_name, oracle_reqs, oracle_req_lens,
+                                  idx, (const unsigned char *)response_buf,
+                                  (unsigned int)response_buf_size, &oracle_result);
+        if (nviol > 0 && oracle_result.max_severity >= ORACLE_SEV_MEDIUM) {
+          oracle_save_violation(out_dir, &oracle_result,
+                                out_buf, len,
+                                (const unsigned char *)response_buf,
+                                (unsigned int)response_buf_size);
+        }
       }
+    } else if (oracle_sample_rate > 1) {
+      oracle_sample_skips++;  /* execution skipped by sampling */
     }
   }
 
@@ -16455,6 +16474,19 @@ int main(int argc, char **argv)
   if (getenv("CHATAFL_NO_FRONTIER")) {
     ablation_no_frontier = 1;
     OKF("ABLATION: Frontier bonus + error penalty DISABLED");
+  }
+  /* Semantic-oracle sampling rate (default 1 = every execution).  The indexed
+   * precise oracle is cheap; this is an optional safety valve for very slow
+   * targets.  N=2 skips every other execution, N=10 runs on ~10%. */
+  {
+    const char *osr = getenv("CHATAFL_ORACLE_SAMPLE_RATE");
+    if (osr && *osr) {
+      u32 rate = (u32)atoi(osr);
+      if (rate > 0) oracle_sample_rate = rate;
+    }
+    if (oracle_sample_rate > 1)
+      OKF("ORACLE: running on every %u-th execution (CHATAFL_ORACLE_SAMPLE_RATE=%u)",
+          oracle_sample_rate, oracle_sample_rate);
   }
   if (getenv("CHATAFL_NO_ADAPTIVE")) {
     ablation_no_adaptive = 1;

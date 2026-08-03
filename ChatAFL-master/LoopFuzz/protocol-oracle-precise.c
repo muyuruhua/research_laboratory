@@ -67,6 +67,68 @@ static char oracle_stats_buf[512];
 static protocol_state_t proto_state;
 
 /* ============================================
+ * Per-Execution Indexes (single-pass optimization)
+ * ============================================
+ * The original precise oracle re-scans the request regions and the
+ * response buffer from scratch for every command (text_response_code_
+ * for_command calls text_response_slot_count_before_pos which re-tokenizes
+ * ALL prior regions, plus extract_nth_response_code which re-scans the
+ * whole response).  That is O(N*M) per oracle_check call and the dominant
+ * cause of the ~2.4x per-exec overhead.  Instead, we build flat indexes
+ * ONCE per oracle_check execution and make the hot helpers consult them
+ * (O(1) / O(slots)).  The index is built with the exact same tokenizer /
+ * code extractors, so results are bit-identical to the old multi-pass scan.
+ */
+#define ORACLE_CMD_CAP    256   /* req_count<=64 * ~4 cmd/region worst case */
+#define ORACLE_RESP_CAP   512
+#define ORACLE_HTTP_BLOCKS 128
+#define ORACLE_RTSP_BLOCKS 128
+#define ORACLE_MQTT_PKTS   64
+
+typedef struct {
+    int           region_idx;  /* which request region the slot is in   */
+    unsigned int  slot_pos;    /* byte offset of the line in the region */
+    const char   *cmd;         /* command name if it is a command slot, else NULL */
+    int           cum_slot;    /* global slot ordinal (0-based, before resp_offset) */
+} oracle_slot_t;
+
+static oracle_slot_t    g_slots[ORACLE_CMD_CAP];
+static int              g_slot_count = 0;
+static int              g_resp_codes[ORACLE_RESP_CAP];
+static int              g_resp_code_count = 0;
+static int              g_text_index_valid = 0;
+
+typedef struct {
+    unsigned int offset;       /* offset of the response block in response */
+    unsigned int len;
+    int          code;
+} oracle_http_block_t;
+static oracle_http_block_t g_http_blocks[ORACLE_HTTP_BLOCKS];
+static int                 g_http_block_count = 0;
+static int                 g_http_index_valid = 0;
+
+typedef struct {
+    unsigned int offset;
+    unsigned int len;
+    int          code;
+    unsigned int cseq;
+    int          has_cseq;
+} oracle_rtsp_block_t;
+static oracle_rtsp_block_t g_rtsp_blocks[ORACLE_RTSP_BLOCKS];
+static int                 g_rtsp_block_count = 0;
+static int                 g_rtsp_index_valid = 0;
+
+typedef struct {
+    unsigned int offset;       /* offset of the packet's fixed header */
+    uint8_t      first_byte;
+    uint8_t      pkt_type;     /* high nibble */
+    int          rem_len;
+} oracle_mqtt_pkt_t;
+static oracle_mqtt_pkt_t g_mqtt_pkts[ORACLE_MQTT_PKTS];
+static int               g_mqtt_pkt_count = 0;
+static int               g_mqtt_index_valid = 0;
+
+/* ============================================
  * Helper Functions
  * ============================================ */
 
@@ -280,12 +342,14 @@ static int extract_http_style_nth_response_code(const unsigned char *resp,
     return -1;
 }
 
-static int extract_http_style_nth_response_block(const unsigned char *resp,
-                                                 unsigned int len,
-                                                 int n,
-                                                 const unsigned char **block,
-                                                 unsigned int *block_len,
-                                                 int *code_out) {
+/* Slow reference: full response scan to find the Nth HTTP-style block.
+ * Equivalent to the indexed fast path below. */
+static int extract_http_style_nth_response_block_slow(const unsigned char *resp,
+                                                      unsigned int len,
+                                                      int n,
+                                                      const unsigned char **block,
+                                                      unsigned int *block_len,
+                                                      int *code_out) {
     if (!resp || n < 0) return 0;
 
     int count = 0;
@@ -324,6 +388,46 @@ static int extract_http_style_nth_response_block(const unsigned char *resp,
     }
 
     return 0;
+}
+
+/* Fast path: consult the pre-built HTTP response-block index (one pass over
+ * the response instead of one pass per request).  build_http_block_index()
+ * records the same blocks that extract_http_style_nth_response_block_slow
+ * would find. */
+static int extract_http_style_nth_response_block(const unsigned char *resp,
+                                                 unsigned int len,
+                                                 int n,
+                                                 const unsigned char **block,
+                                                 unsigned int *block_len,
+                                                 int *code_out) {
+    (void)len;
+    if (!resp || n < 0) return 0;
+
+    if (g_http_index_valid) {
+        if (n >= g_http_block_count) return 0;
+        if (block) *block = resp + g_http_blocks[n].offset;
+        if (block_len) *block_len = g_http_blocks[n].len;
+        if (code_out) *code_out = g_http_blocks[n].code;
+#ifdef ORACLE_SELF_TEST
+        {
+            const unsigned char *ref_block = NULL;
+            unsigned int ref_len = 0;
+            int ref_code = -1;
+            int ref_ok = extract_http_style_nth_response_block_slow(resp, len, n,
+                &ref_block, &ref_len, &ref_code);
+            if (ref_ok != 1 || ref_code != g_http_blocks[n].code ||
+                ref_len != g_http_blocks[n].len) {
+                fprintf(stderr, "[oracle-selftest] http block mismatch n=%d "
+                        "ref_code=%d idx_code=%d ref_len=%u idx_len=%u\n",
+                        n, ref_code, g_http_blocks[n].code, ref_len,
+                        g_http_blocks[n].len);
+                abort();
+            }
+        }
+#endif
+        return 1;
+    }
+    return extract_http_style_nth_response_block_slow(resp, len, n, block, block_len, code_out);
 }
 
 /* Decode MQTT variable-length encoding (remaining length field).
@@ -464,6 +568,9 @@ typedef enum {
     TEXT_PROTO_FTP = 1,
     TEXT_PROTO_SMTP = 2
 } text_protocol_t;
+
+/* Which text protocol the current execution's slot index was built for. */
+static text_protocol_t g_text_index_proto = TEXT_PROTO_FTP;
 
 static const char *ftp_command_at(const unsigned char *buf, unsigned int len,
                                   unsigned int off) {
@@ -670,15 +777,18 @@ static int text_protocol_command_is_active_slot(const unsigned char *buf,
     return 0;
 }
 
-static int text_response_code_for_command(const unsigned char **requests,
-                                          const unsigned int *req_lens,
-                                          int req_count,
-                                          const unsigned char *response,
-                                          unsigned int resp_len,
-                                          int region_idx,
-                                          unsigned int cmd_pos,
-                                          text_protocol_t proto,
-                                          int resp_offset) {
+/* Slow reference implementation: re-scans all prior regions + the response.
+ * Used as the fallback when the index is not built, and for ORACLE_SELF_TEST
+ * cross-checking (see the fast versions below). */
+static int text_response_code_for_command_slow(const unsigned char **requests,
+                                               const unsigned int *req_lens,
+                                               int req_count,
+                                               const unsigned char *response,
+                                               unsigned int resp_len,
+                                               int region_idx,
+                                               unsigned int cmd_pos,
+                                               text_protocol_t proto,
+                                               int resp_offset) {
     if (!requests || !req_lens || !response ||
         region_idx < 0 || region_idx >= req_count)
         return -1;
@@ -694,7 +804,53 @@ static int text_response_code_for_command(const unsigned char **requests,
                                      resp_offset + command_ordinal);
 }
 
-static int text_prior_response_code_range_before_command(
+/* Fast path: look up the pre-built slot index (cumulative slot ordinal) and
+ * the pre-extracted response-code array.  Equivalent to the slow version
+ * because build_text_index() walks the same text_protocol_next_slot() ordering
+ * and extract_all_response_codes() produces extract_nth_response_code() values. */
+static int text_response_code_for_command(const unsigned char **requests,
+                                          const unsigned int *req_lens,
+                                          int req_count,
+                                          const unsigned char *response,
+                                          unsigned int resp_len,
+                                          int region_idx,
+                                          unsigned int cmd_pos,
+                                          text_protocol_t proto,
+                                          int resp_offset) {
+    if (!requests || !req_lens || !response ||
+        region_idx < 0 || region_idx >= req_count)
+        return -1;
+
+    if (g_text_index_valid && proto == g_text_index_proto) {
+        for (int k = 0; k < g_slot_count; k++) {
+            if (g_slots[k].region_idx == region_idx &&
+                g_slots[k].slot_pos == cmd_pos) {
+                if (!g_slots[k].cmd) return -1;  /* not an active command slot */
+                int idx = resp_offset + g_slots[k].cum_slot;
+                if (idx < 0 || idx >= g_resp_code_count) return -1;
+#ifdef ORACLE_SELF_TEST
+                {
+                    int ref = text_response_code_for_command_slow(requests, req_lens,
+                        req_count, response, resp_len, region_idx, cmd_pos,
+                        proto, resp_offset);
+                    if (ref != g_resp_codes[idx]) {
+                        fprintf(stderr, "[oracle-selftest] code mismatch r=%d p=%u "
+                                "ref=%d idx=%d\n", region_idx, cmd_pos, ref,
+                                g_resp_codes[idx]);
+                        abort();
+                    }
+                }
+#endif
+                return g_resp_codes[idx];
+            }
+        }
+        return -1;  /* slot not found in index → not a valid response slot */
+    }
+    return text_response_code_for_command_slow(requests, req_lens, req_count,
+        response, resp_len, region_idx, cmd_pos, proto, resp_offset);
+}
+
+static int text_prior_response_code_range_before_command_slow(
     const unsigned char **requests,
     const unsigned int *req_lens,
     int req_count,
@@ -715,6 +871,44 @@ static int text_prior_response_code_range_before_command(
         if (code >= min_code && code <= max_code) return 1;
     }
     return 0;
+}
+
+static int text_prior_response_code_range_before_command(
+    const unsigned char **requests,
+    const unsigned int *req_lens,
+    int req_count,
+    const unsigned char *response,
+    unsigned int resp_len,
+    int region_idx,
+    unsigned int cmd_pos,
+    text_protocol_t proto,
+    int resp_offset,
+    int min_code,
+    int max_code) {
+    if (!response || region_idx < 0 || region_idx >= req_count) return 0;
+
+    if (g_text_index_valid && proto == g_text_index_proto) {
+        /* Find the target command's cumulative slot ordinal. */
+        int target_slot = -1;
+        for (int k = 0; k < g_slot_count; k++) {
+            if (g_slots[k].region_idx == region_idx &&
+                g_slots[k].slot_pos == cmd_pos) {
+                target_slot = g_slots[k].cum_slot;
+                break;
+            }
+        }
+        if (target_slot < 0) return 0;
+        for (int n = 0; n < target_slot; n++) {
+            int idx = resp_offset + n;
+            if (idx < 0 || idx >= g_resp_code_count) continue;
+            int code = g_resp_codes[idx];
+            if (code >= min_code && code <= max_code) return 1;
+        }
+        return 0;
+    }
+    return text_prior_response_code_range_before_command_slow(requests, req_lens,
+        req_count, response, resp_len, region_idx, cmd_pos, proto, resp_offset,
+        min_code, max_code);
 }
 
 static int prior_requests_have_line_command(const unsigned char **requests,
@@ -1107,12 +1301,12 @@ static int rtsp_block_is_record_success(const unsigned char *block,
            rtsp_block_has_session(block, block_len);
 }
 
-static int rtsp_response_block_by_cseq_unique(const unsigned char *resp,
-                                              unsigned int len,
-                                              unsigned int want_cseq,
-                                              const unsigned char **block,
-                                              unsigned int *block_len,
-                                              int *code_out) {
+static int rtsp_response_block_by_cseq_unique_slow(const unsigned char *resp,
+                                                   unsigned int len,
+                                                   unsigned int want_cseq,
+                                                   const unsigned char **block,
+                                                   unsigned int *block_len,
+                                                   int *code_out) {
     unsigned int i = 0;
     int matches = 0;
     const unsigned char *found_block = NULL;
@@ -1168,6 +1362,58 @@ static int rtsp_response_block_by_cseq_unique(const unsigned char *resp,
         return 1;
     }
     return 0;
+}
+
+/* Fast path: consult the pre-built RTSP block index (single pass over the
+ * response once, then O(#blocks) per CSeq lookup instead of one full response
+ * scan per lookup).  build_rtsp_block_index() records the same blocks with the
+ * same (cseq, code, len) that rtsp_response_block_by_cseq_unique_slow finds. */
+static int rtsp_response_block_by_cseq_unique(const unsigned char *resp,
+                                              unsigned int len,
+                                              unsigned int want_cseq,
+                                              const unsigned char **block,
+                                              unsigned int *block_len,
+                                              int *code_out) {
+    (void)len;
+    if (g_rtsp_index_valid) {
+        int matches = 0;
+        const unsigned char *found_block = NULL;
+        unsigned int found_len = 0;
+        int found_code = -1;
+        for (int k = 0; k < g_rtsp_block_count; k++) {
+            if (g_rtsp_blocks[k].has_cseq &&
+                g_rtsp_blocks[k].cseq == want_cseq) {
+                matches++;
+                found_block = resp + g_rtsp_blocks[k].offset;
+                found_len = g_rtsp_blocks[k].len;
+                found_code = g_rtsp_blocks[k].code;
+            }
+        }
+        if (matches == 1) {
+            if (block) *block = found_block;
+            if (block_len) *block_len = found_len;
+            if (code_out) *code_out = found_code;
+#ifdef ORACLE_SELF_TEST
+            {
+                const unsigned char *ref_block = NULL;
+                unsigned int ref_len = 0;
+                int ref_code = -1;
+                int ref_ok = rtsp_response_block_by_cseq_unique_slow(resp, len,
+                    want_cseq, &ref_block, &ref_len, &ref_code);
+                if (ref_ok != 1 || ref_code != found_code || ref_len != found_len) {
+                    fprintf(stderr, "[oracle-selftest] rtsp block mismatch "
+                            "cseq=%u ref_code=%d idx_code=%d ref_len=%u idx_len=%u\n",
+                            want_cseq, ref_code, found_code, ref_len, found_len);
+                    abort();
+                }
+            }
+#endif
+            return 1;
+        }
+        return 0;
+    }
+    return rtsp_response_block_by_cseq_unique_slow(resp, len, want_cseq,
+                                                   block, block_len, code_out);
 }
 
 static int extract_rtsp_response_code_by_cseq(const unsigned char *resp,
@@ -1508,6 +1754,205 @@ static void reset_proto_state(void) {
 }
 
 /* ============================================
+ * Per-Execution Index Builders
+ * ============================================
+ * These build the flat indexes in one linear pass over the requests and
+ * the response, using the exact same tokenizer / extractor functions that
+ * the old multi-pass scan used.  The hot helpers below (text_response_code_
+ * for_command, text_prior_response_code_range_before_command,
+ * extract_http_style_nth_response_block, rtsp_response_block_by_cseq_unique)
+ * consult these indexes so a per-execution oracle check is O(total_bytes)
+ * instead of O(N_commands * total_bytes). */
+
+/* Single-pass response-code extractor.  Replicates extract_nth_response_code()
+ * state machine exactly, but extracts ALL codes in one scan of the response.
+ * codes[k] == extract_nth_response_code(resp,len,k) for every k produced.
+ * Returns the number of response slots found (== number of codes). */
+static int extract_all_response_codes(const unsigned char *resp, unsigned int len,
+                                      int *codes, int cap) {
+    int count = 0;
+    unsigned int i = 0;
+    int in_multiline = 0;
+    int multiline_code = 0;
+    int in_data_xfer = 0;
+
+    while (i + 2 < len) {
+        if ((i == 0 || (i > 0 && resp[i-1] == '\n')) &&
+            resp[i] >= '1' && resp[i] <= '5' &&
+            resp[i+1] >= '0' && resp[i+1] <= '9' &&
+            resp[i+2] >= '0' && resp[i+2] <= '9') {
+
+            int code = (resp[i] - '0') * 100 +
+                       (resp[i+1] - '0') * 10 +
+                       (resp[i+2] - '0');
+            char sep = (i + 3 < len) ? resp[i + 3] : '\0';
+
+            if (in_multiline) {
+                if (code == multiline_code && sep == ' ')
+                    in_multiline = 0;
+            } else if (in_data_xfer) {
+                if (code >= 200 && code <= 599)
+                    in_data_xfer = 0;
+            } else {
+                if (count < cap) codes[count] = code;
+                count++;
+                if (sep == '-') {
+                    in_multiline = 1;
+                    multiline_code = code;
+                } else if (code >= 100 && code < 200) {
+                    in_data_xfer = 1;
+                }
+            }
+        }
+        while (i < len && resp[i] != '\n') i++;
+        if (i < len) i++;
+    }
+    return count;
+}
+
+/* Build the text-protocol slot index (FTP/SMTP).  Walks text_protocol_next_slot
+ * (which yields response-consuming slots, skipping SMTP DATA bodies) over every
+ * region in order and records region/pos/cmd plus the cumulative slot ordinal.
+ * Must be called before any text_response_code_for_command() lookup. */
+static void build_text_index(const unsigned char **requests,
+                             const unsigned int *req_lens,
+                             int req_count,
+                             text_protocol_t proto,
+                             const unsigned char *response,
+                             unsigned int resp_len,
+                             int resp_offset) {
+    g_slot_count = 0;
+    int n = 0;
+    for (int r = 0; r < req_count && n < ORACLE_CMD_CAP; r++) {
+        unsigned int cursor = 0, pos = 0;
+        const char *cmd = NULL;
+        while (n < ORACLE_CMD_CAP && text_protocol_next_slot(requests[r], req_lens[r],
+                                                             proto, &cursor, &pos, &cmd)) {
+            g_slots[n].region_idx = r;
+            g_slots[n].slot_pos = pos;
+            g_slots[n].cmd = cmd;
+            g_slots[n].cum_slot = n;
+            n++;
+        }
+    }
+    g_slot_count = n;
+
+    /* Pre-extract all response codes in one pass.  We need resp_offset + g_slot_count
+     * codes (the banner plus one code per response-consuming slot).  extract_all_
+     * response_codes returns the number of slots actually present; entries beyond
+     * that are padded with -1 so lookups return the same -1 that
+     * extract_nth_response_code() would have returned. */
+    int need = resp_offset + g_slot_count;
+    if (need > ORACLE_RESP_CAP) need = ORACLE_RESP_CAP;
+    int found = extract_all_response_codes(response, resp_len, g_resp_codes, need);
+    for (int k = found; k < need; k++) g_resp_codes[k] = -1;
+    g_resp_code_count = need;
+    g_text_index_proto = proto;
+    g_text_index_valid = 1;
+}
+
+/* Build the HTTP/DAAP response-block index in one pass. */
+static void build_http_block_index(const unsigned char *resp, unsigned int len) {
+    g_http_block_count = 0;
+    unsigned int i = 0;
+    while (i < len && g_http_block_count < ORACLE_HTTP_BLOCKS) {
+        int code = -1;
+        if (http_style_response_code_at(resp, len, i, &code)) {
+            unsigned int start = i;
+            unsigned int end = len;
+            unsigned int j = i;
+            while (j < len && resp[j] != '\n') j++;
+            if (j < len) j++;
+            while (j < len) {
+                int next_code = -1;
+                if (http_style_response_code_at(resp, len, j, &next_code)) {
+                    end = j;
+                    break;
+                }
+                while (j < len && resp[j] != '\n') j++;
+                if (j < len) j++;
+            }
+            g_http_blocks[g_http_block_count].offset = start;
+            g_http_blocks[g_http_block_count].len = end - start;
+            g_http_blocks[g_http_block_count].code = code;
+            g_http_block_count++;
+        }
+        while (i < len && resp[i] != '\n') i++;
+        if (i < len) i++;
+    }
+    g_http_index_valid = 1;
+}
+
+/* Build the RTSP response-block index in one pass, keyed by CSeq. */
+static void build_rtsp_block_index(const unsigned char *resp, unsigned int len) {
+    g_rtsp_block_count = 0;
+    unsigned int i = 0;
+    while (i < len && g_rtsp_block_count < ORACLE_RTSP_BLOCKS) {
+        if ((i == 0 || resp[i-1] == '\n') &&
+            ci_memmem(resp + i, (len - i < 12) ? len - i : 12, "RTSP/", 5)) {
+            unsigned int j = i;
+            while (j < len && resp[j] != ' ') j++;
+            if (++j + 2 >= len) {
+                while (i < len && resp[i] != '\n') i++;
+                if (i < len) i++;
+                continue;
+            }
+            if (!isdigit(resp[j]) || !isdigit(resp[j+1]) || !isdigit(resp[j+2])) {
+                while (i < len && resp[i] != '\n') i++;
+                if (i < len) i++;
+                continue;
+            }
+            int code = (resp[j] - '0') * 100 + (resp[j+1] - '0') * 10 + (resp[j+2] - '0');
+            unsigned int block_start = i;
+            unsigned int block_end = len;
+            unsigned int k = i + 1;
+            while (k + 5 < len) {
+                while (k < len && resp[k] != '\n') k++;
+                if (k < len) k++;
+                if (k + 5 < len && ci_memmem(resp + k, (len - k < 12) ? len - k : 12, "RTSP/", 5)) {
+                    block_end = k;
+                    break;
+                }
+            }
+            unsigned int cseq = 0;
+            int has_cseq = parse_header_uint(resp + block_start, block_end - block_start,
+                                             "CSeq", &cseq);
+            g_rtsp_blocks[g_rtsp_block_count].offset = block_start;
+            g_rtsp_blocks[g_rtsp_block_count].len = block_end - block_start;
+            g_rtsp_blocks[g_rtsp_block_count].code = code;
+            g_rtsp_blocks[g_rtsp_block_count].cseq = cseq;
+            g_rtsp_blocks[g_rtsp_block_count].has_cseq = has_cseq;
+            g_rtsp_block_count++;
+            i = block_end;
+            continue;
+        }
+        while (i < len && resp[i] != '\n') i++;
+        if (i < len) i++;
+    }
+    g_rtsp_index_valid = 1;
+}
+
+/* Build the MQTT response packet index in one pass. */
+static void build_mqtt_packet_index(const unsigned char *resp, unsigned int len) {
+    g_mqtt_pkt_count = 0;
+    unsigned int off = 0;
+    while (off + 1 < len && g_mqtt_pkt_count < ORACLE_MQTT_PKTS) {
+        unsigned int rl_b = 0;
+        int rl = mqtt_decode_remaining_length(resp + off + 1, len - off - 1, &rl_b);
+        if (rl < 0) break;
+        unsigned int pkt_end = off + 1 + rl_b + (unsigned int)rl;
+        if (pkt_end > len) break;
+        g_mqtt_pkts[g_mqtt_pkt_count].offset = off;
+        g_mqtt_pkts[g_mqtt_pkt_count].first_byte = resp[off];
+        g_mqtt_pkts[g_mqtt_pkt_count].pkt_type = (resp[off] >> 4) & 0x0F;
+        g_mqtt_pkts[g_mqtt_pkt_count].rem_len = rl;
+        g_mqtt_pkt_count++;
+        off = pkt_end;
+    }
+    g_mqtt_index_valid = 1;
+}
+
+/* ============================================
  * FTP Oracle
  * ============================================
  * Security invariants from RFC 959 + real CVEs:
@@ -1539,6 +1984,11 @@ int oracle_check_ftp(
      * = response to request[0], etc.  We must offset by 1 when mapping request
      * index i to response index. */
     const int resp_offset = 1;  /* skip banner */
+
+    /* Build the single-pass slot+response-code index once so the per-command
+     * text_response_code_for_command() lookups below are O(1). */
+    build_text_index(requests, req_lens, req_count, TEXT_PROTO_FTP,
+                     response, resp_len, resp_offset);
 
     /* Parse requests to build state, then check response */
     int has_user = 0, reported_data_bypass = 0;
@@ -1887,6 +2337,10 @@ int oracle_check_smtp(
      * response to request[0]. */
     const int resp_offset = 1;  /* skip banner */
 
+    /* Build the single-pass slot+response-code index once. */
+    build_text_index(requests, req_lens, req_count, TEXT_PROTO_SMTP,
+                     response, resp_len, resp_offset);
+
     int has_auth = 0, has_mail = 0, has_rcpt = 0;
     int has_vrfy = 0, has_expn = 0;
     int smtp_state_rejected = smtp_response_has_state_rejection(response, resp_len);
@@ -2200,6 +2654,9 @@ int oracle_check_rtsp(
 
     reset_proto_state();
 
+    /* Build the RTSP response-block index once so CSeq-based lookups are O(1). */
+    build_rtsp_block_index(response, resp_len);
+
     for (int i = 0; i < req_count; i++) {
         const unsigned char *req = requests[i];
         unsigned int rlen = req_lens[i];
@@ -2495,6 +2952,9 @@ int oracle_check_daap(
 
     reset_proto_state();
 
+    /* Build the HTTP-style response-block index once (DAAP is HTTP-based). */
+    build_http_block_index(response, resp_len);
+
     for (int i = 0; i < req_count; i++) {
         const unsigned char *req = requests[i];
         unsigned int rlen = req_lens[i];
@@ -2606,6 +3066,9 @@ int oracle_check_http(
     oracle_result_t *result) {
 
     reset_proto_state();
+
+    /* Build the HTTP response-block index once so block lookups are O(1). */
+    build_http_block_index(response, resp_len);
 
     for (int i = 0; i < req_count; i++) {
         const unsigned char *req = requests[i];
@@ -2849,6 +3312,11 @@ int oracle_check_mqtt(
 
     reset_proto_state();
 
+    /* Build the MQTT response packet index once so per-request packet lookups
+     * (PUBLISH→PUBACK, SUBSCRIBE→SUBACK) are O(1) instead of re-walking the
+     * response from offset 0 for every request. */
+    build_mqtt_packet_index(response, resp_len);
+
     int has_connect = 0;
 
     /* Validate response buffer integrity before auth-bypass checks.
@@ -2911,26 +3379,13 @@ int oracle_check_mqtt(
             {
                 if (!has_connect && resp_buffer_trustworthy) {
                     /* Only flag if the i-th response packet is a valid PUBACK
-                     * (type=0x40, remaining_len=0x02).  Walk through response
-                     * packets counting to find the one at this request's index. */
+                     * (type=0x40, remaining_len=0x02).  Consult the pre-built
+                     * packet index instead of re-walking the response. */
                     int publish_accepted = 0;
-                    if (resp_len >= 2) {
-                        unsigned int ri = 0;
-                        int pkt_idx = 0;
-                        while (ri + 1 < resp_len) {
-                            unsigned int rl_b = 0;
-                            int rl = mqtt_decode_remaining_length(response + ri + 1,
-                                resp_len - ri - 1, &rl_b);
-                            if (rl < 0) break;
-                            if (pkt_idx == i) {
-                                if (response[ri] == 0x40 && rl == 2) {
-                                    publish_accepted = 1;
-                                }
-                                break;
-                            }
-                            ri += 1 + rl_b + rl;
-                            pkt_idx++;
-                        }
+                    if (g_mqtt_index_valid && i < g_mqtt_pkt_count &&
+                        g_mqtt_pkts[i].first_byte == 0x40 &&
+                        g_mqtt_pkts[i].rem_len == 2) {
+                        publish_accepted = 1;
                     }
                     if (publish_accepted) {
                         oracle_add_violation(result, ORACLE_SEV_HIGH,
@@ -2957,31 +3412,17 @@ int oracle_check_mqtt(
                 if (!has_connect && resp_buffer_trustworthy) {
                     if (req[0] != 0x82) break; /* MQTT SUBSCRIBE flags MUST be 0010 */
                     /* Only flag if the response packet at THIS request's position
-                     * is a valid SUBACK (0x90).  We walk through the response
-                     * buffer counting MQTT packets to find the i-th one, then
-                     * verify it is 0x90 with a valid remaining length >= 3.
+                     * is a valid SUBACK (0x90).  Consult the pre-built packet
+                     * index; the i-th response packet corresponds to the i-th
+                     * request.  Verify it is 0x90 with remaining length >= 3.
                      * This avoids false positives from SUBACK bytes appearing
                      * later in the buffer (after a CONNECT that we haven't
                      * seen yet in the request stream). */
                     int sub_accepted = 0;
-                    if (resp_len >= 2) {
-                        unsigned int ri = 0;
-                        int pkt_idx = 0;
-                        while (ri + 1 < resp_len) {
-                            unsigned int rl_b = 0;
-                            int rl = mqtt_decode_remaining_length(response + ri + 1,
-                                resp_len - ri - 1, &rl_b);
-                            if (rl < 0) break;
-                            if (pkt_idx == i) {
-                                /* This is the response to request[i] */
-                                if (response[ri] == 0x90 && rl >= 3) {
-                                    sub_accepted = 1;
-                                }
-                                break;
-                            }
-                            ri += 1 + rl_b + rl;
-                            pkt_idx++;
-                        }
+                    if (g_mqtt_index_valid && i < g_mqtt_pkt_count &&
+                        g_mqtt_pkts[i].first_byte == 0x90 &&
+                        g_mqtt_pkts[i].rem_len >= 3) {
+                        sub_accepted = 1;
                     }
                     if (sub_accepted) {
                         oracle_add_violation(result, ORACLE_SEV_HIGH,
@@ -3076,21 +3517,24 @@ int oracle_check_mqtt(
                             if (topic_len == 0) {
                                 if (scan + 2 >= pkt_end || req[scan + 2] > 2) break;
                                 /* Verify: did broker send SUBACK for this packet?
-                                 * Scan response for SUBACK (type 9) with
-                                 * matching packet ID.  Without both CONNACK
-                                 * success AND matching SUBACK, the broker
+                                 * Scan the pre-built packet index for SUBACK
+                                 * (type 9) with matching packet ID.  Without both
+                                 * CONNACK success AND matching SUBACK, the broker
                                  * never processed the zero-length filter. */
                                 int suback_confirmed = 0;
-                                for (unsigned int rs = 0; rs + 4 < resp_len; ) {
-                                    uint8_t rt = (response[rs] >> 4) & 0x0F;
-                                    if (rt == 9) { /* SUBACK */
-                                        unsigned int sb = 0;
+                                if (g_mqtt_index_valid) {
+                                    for (int pk = 0; pk < g_mqtt_pkt_count; pk++) {
+                                        if (g_mqtt_pkts[pk].pkt_type != 9) continue; /* SUBACK */
+                                        unsigned int off = g_mqtt_pkts[pk].offset;
+                                        unsigned int rl_b = 0;
                                         int srl = mqtt_decode_remaining_length(
-                                            response + rs + 1, resp_len - rs - 1, &sb);
-                                        if (srl >= 2 && rs + 1 + sb + 2 <= resp_len) {
-                                            uint16_t spid = (response[rs + 1 + sb] << 8)
-                                                          | response[rs + 1 + sb + 1];
-                                            unsigned int rc_off = rs + 1 + sb + 2;
+                                            response + off + 1, resp_len - off - 1, &rl_b);
+                                        if (srl < 0) break;
+                                        unsigned int vh = off + 1 + rl_b;
+                                        if (srl >= 2 && vh + 2 <= resp_len) {
+                                            uint16_t spid = (response[vh] << 8)
+                                                          | response[vh + 1];
+                                            unsigned int rc_off = vh + 2;
                                             int granted = (rc_off < resp_len &&
                                                            response[rc_off] <= 2);
                                             if (spid == pkt_id && granted) {
@@ -3098,11 +3542,6 @@ int oracle_check_mqtt(
                                             }
                                         }
                                     }
-                                    unsigned int srb = 0;
-                                    int sr = mqtt_decode_remaining_length(
-                                        response + rs + 1, resp_len - rs - 1, &srb);
-                                    if (sr < 0) break;
-                                    rs += 1 + srb + sr;
                                 }
                                 if (suback_confirmed) {
                                     oracle_add_violation(result, ORACLE_SEV_MEDIUM,

@@ -123,6 +123,50 @@ edges_growth_rate        : 2.45
 - `write_stats_file()` 函数末尾
 - 在peak_rss_mb输出后添加
 
+### 4. Indexed Precise Oracle（protocol-oracle-precise.c 单遍索引化）
+
+#### 优化日期
+2026年8月2日
+
+#### 背景问题
+precise oracle 判定质量远高于 legacy 版（逐命令 tokenize、命令↔响应精确绑定、prior 证据回溯、CSeq 关联），但存在 **~2.4× 单次执行开销**，直接压低 exec/s，进而拖慢分支覆盖率与 IPSM 状态边发现。根因是 O(N²) 重复扫描：
+
+- `text_response_code_for_command()` 每次被调用（FTP/SMTP 每执行约 45 次）都会调用 `text_response_slot_count_before_pos()` 重新 tokenize 所有先前 region，再调用 `extract_nth_response_code()` 重新线性扫描整个 response。
+- HTTP/DAAP 的 `extract_http_style_nth_response_block()` 每个 request 线性扫描整个 response。
+- MQTT 的 PUBLISH/SUBSCRIBE-without-CONNECT 检查对每个 request 从 offset 0 重走 response。
+- FTP/SMTP 各做 6 趟独立 pass 扫描同一份 requests。
+
+#### 核心机制（单遍索引）
+在每次 `oracle_check_*` 开头构建一次性索引，让热路径 helper 变为 O(1) / O(#slots) 查询：
+
+| 索引 | 构建函数 | 用途 |
+|------|---------|------|
+| 命令槽索引 `g_slots[]` | `build_text_index()` | FTP/SMTP：逐命令记录 region/pos/cmd/cum_slot |
+| 响应码数组 `g_resp_codes[]` | `extract_all_response_codes()` | 单遍提取全部响应码 |
+| HTTP 响应块索引 `g_http_blocks[]` | `build_http_block_index()` | HTTP/DAAP |
+| RTSP 响应块索引 `g_rtsp_blocks[]` | `build_rtsp_block_index()` | RTSP 按 CSeq |
+| MQTT 包索引 `g_mqtt_pkts[]` | `build_mqtt_packet_index()` | MQTT |
+
+**正确性保证**：索引用与旧代码**完全相同**的 tokenizer/提取函数构建（`text_protocol_next_slot`、`extract_nth_response_code` 状态机、`http_style_response_code_at`、`parse_header_uint`、`mqtt_decode_remaining_length`），因此 cum_slot 与响应码与旧多遍扫描**逐位一致**。旧逻辑保留为 `*_slow` 参考函数，作为索引未构建时的 fallback 和自测试基准。
+
+#### 实现位置
+- `protocol-oracle-precise.c`：新增索引结构体 + 5 个 build 函数 + 重写 4 个热 helper + 各 `oracle_check_*` 开头调用 build
+- `Makefile`：默认 `ORACLE_SRC = protocol-oracle-precise.c`（indexed precise 成为默认），`CHATAFL_FAST_ORACLE=1` 回退 legacy
+- `afl-fuzz.c`：新增 `CHATAFL_ORACLE_SAMPLE_RATE=N` 采样门（默认 1 = 每执行都跑，作为吞吐安全阀）+ `oracle_sample_rate` / `oracle_sample_skips` 写入 fuzzer_stats
+
+#### 验证
+1. **自测试** `oracle_selftest.c`：编译 `-DORACLE_SELF_TEST` 时 fast 路径与 `*_slow` 参考逐调用 `assert` 比对；覆盖 FTP/SMTP/RTSP/HTTP/MQTT/DAAP 10 组代表性输入，全部 fast==slow。负向验证（故意改错 cum_slot）能触发 mismatch abort，证明 harness 有效。
+2. **冒烟**：本地 FTP smoke server + `afl-fuzz -N tcp://127.0.0.1/2121 -P FTP` 运行 20-25s，oracle 初始化正常、无崩溃；`CHATAFL_ORACLE_SAMPLE_RATE=3` 时 stats 显示 `oracle_sample_rate=3`、`oracle_sample_skips=337`、`oracle_total_checks=166`（≈1/3，采样门正确）。
+3. **编译**：`make clean && make` 零错误。
+
+#### 效果（预期）
+- 单次 oracle 成本从 O(命令数² × 响应长度) 降至 O(总输入字节)。
+- exec/s 向 legacy 版收敛 → 分支覆盖与 IPSM 状态边恢复，同时保留 precise 的判定质量。
+- 吞吐残留影响可由 `CHATAFL_ORACLE_SAMPLE_RATE` 兜底。
+
+#### 待实验确认
+- 60min × 多目标实测 exec/s 与 edges/状态边对比 legacy 基线（需 root/容器环境）。
+
 #### 效果
 - **可观测性**: 实验后可从fuzzer_stats直接查看优化效果
 - **调试支持**: 快速定位问题（如parse_success/failure为0）

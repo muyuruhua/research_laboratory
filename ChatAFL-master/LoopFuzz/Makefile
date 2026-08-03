@@ -105,12 +105,15 @@ mqtt-differential.o: mqtt-differential.c mqtt-differential.h $(COMM_HDR)
 mqtt-race.o: mqtt-race.c mqtt-race.h $(COMM_HDR)
 	$(CC) $(CFLAGS) -Wno-maybe-uninitialized -c mqtt-race.c -o mqtt-race.o
 
-# Oracle source selection: default uses fast oracle (test/legacy, ~1957 lines).
-# Set CHATAFL_PRECISE_ORACLE=1 during make to use the precise oracle (dev2026, ~3432 lines)
-# which performs deeper protocol semantic verification at the cost of ~2.4x per-exec overhead.
-ORACLE_SRC = protocol-oracle.c
-ifdef CHATAFL_PRECISE_ORACLE
-  ORACLE_SRC = protocol-oracle-precise.c
+# Oracle source selection: default uses the indexed precise oracle (dev2026,
+# ~3700 lines) which performs deep protocol semantic verification.  It now runs
+# at near-single-pass cost thanks to the per-execution slot/response indexes, so
+# it is the default.  Set CHATAFL_FAST_ORACLE=1 during make to fall back to the
+# legacy fast oracle (~1957 lines, higher false-positive rate, no evidence
+# grading, but fastest raw per-check time).
+ORACLE_SRC = protocol-oracle-precise.c
+ifdef CHATAFL_FAST_ORACLE
+  ORACLE_SRC = protocol-oracle.c
 endif
 
 protocol-oracle.o: $(ORACLE_SRC) protocol-oracle.h $(COMM_HDR)
