@@ -58,6 +58,7 @@ PRESET="${REMAINING_ARGS[3]:-${ABLATION_PRESET:-core}}"
 # 每组同时运行的消融组数（默认6=全并行，内存限制已移除，62GB主机安全）
 # 设1=串行（最安全最慢），设3=半并行
 ABLATION_PARALLEL="${ABLATION_PARALLEL:-6}"
+MEMORY_PER_FUZZER=6  # must match --memory in profuzzbench_exec_common_dev.sh
 
 BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
 RESULTS_BASE_DIR="${BASE_DIR}/ablation"
@@ -79,15 +80,15 @@ fi
 # ── Pre-flight checks ────────────────────────────────────────────────
 echo ""
 echo "[PREFLIGHT] System resource check:"
-echo "  Docker memory limit per fuzzer container: 8g (up from 6g, see profuzzbench_exec_common_dev.sh)"
+echo "  Docker memory limit per fuzzer container: 6g (down from 8g, see profuzzbench_exec_common_dev.sh)"
 AVAIL_MEM_KB=$(awk '/MemAvailable/ {print $2}' /proc/meminfo 2>/dev/null || echo "unknown")
 if [[ "$AVAIL_MEM_KB" != "unknown" ]]; then
   AVAIL_MEM_GB=$((AVAIL_MEM_KB / 1024 / 1024))
   echo "  Host available memory: ~${AVAIL_MEM_GB} GB"
   TOTAL_CONTAINERS_EST=$((ABLATION_PARALLEL * RUNS))
-  NEEDED_GB=$((TOTAL_CONTAINERS_EST * 8 + 2))
+  NEEDED_GB=$((TOTAL_CONTAINERS_EST * MEMORY_PER_FUZZER + 2))
   if [[ $AVAIL_MEM_GB -lt $NEEDED_GB ]]; then
-    echo "  ⚠️  WARNING: Estimated ~${TOTAL_CONTAINERS_EST} containers × 8GB (batch size) + 2GB overhead = ~${NEEDED_GB} GB needed"
+    echo "  ⚠️  WARNING: Estimated ~${TOTAL_CONTAINERS_EST} containers × ${MEMORY_PER_FUZZER}GB (batch size) + 2GB overhead = ~${NEEDED_GB} GB needed"
     echo "  ⚠️  Available memory (${AVAIL_MEM_GB} GB) may be insufficient — expect OOM kills!"
   else
     echo "  ✓ Sufficient memory for ~${TOTAL_CONTAINERS_EST} containers"
@@ -407,8 +408,21 @@ esac
 fi
 
 GROUP_COUNT=${#GROUP_SPECS[@]}
+EFFECTIVE_PARALLEL=$(( ABLATION_PARALLEL < GROUP_COUNT ? ABLATION_PARALLEL : GROUP_COUNT ))
+EFFECTIVE_CONTAINERS=$(( EFFECTIVE_PARALLEL * RUNS ))
+EFFECTIVE_MEM_NEEDED=$(( EFFECTIVE_CONTAINERS * MEMORY_PER_FUZZER + EFFECTIVE_PARALLEL * 1 + 2 ))
+# ↑ fuzzers + brokers(est. ~1GB per group for stable/multi/hetero) + overhead
 echo ""
 echo "  [ABLATION] ${GROUP_COUNT} 组已入队，分 $(( (GROUP_COUNT + ABLATION_PARALLEL - 1) / ABLATION_PARALLEL )) 批执行"
+if [[ "$AVAIL_MEM_KB" != "unknown" ]]; then
+  echo "  [ABLATION] 实际最大并发: ${EFFECTIVE_PARALLEL} 组 × ${RUNS} 容器/组 = ${EFFECTIVE_CONTAINERS} fuzzer 容器"
+  echo "  [ABLATION] 估算总内存需求: ~${EFFECTIVE_MEM_NEEDED} GB (可用: ~${AVAIL_MEM_GB} GB)"
+  if [[ $AVAIL_MEM_GB -lt $EFFECTIVE_MEM_NEEDED ]]; then
+    echo "  ⚠️  CRITICAL: 实际内存不足！建议: export ABLATION_PARALLEL=$(( EFFECTIVE_PARALLEL - 1 >= 1 ? EFFECTIVE_PARALLEL - 1 : 1 )) 并重试"
+  else
+    echo "  ✓ 内存充足，安全余量 ~$(( AVAIL_MEM_GB - EFFECTIVE_MEM_NEEDED )) GB"
+  fi
+fi
 echo ""
 
 # ── Execute queued groups in batches ──

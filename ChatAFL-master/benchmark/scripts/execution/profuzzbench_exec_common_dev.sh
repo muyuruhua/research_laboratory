@@ -775,9 +775,9 @@ for i in $(seq 1 $RUNS); do
   # Enable Grammar Hypothesis system only for loopfuzz
   if [[ "$FUZZER" == "loopfuzz" ]]; then
     # Volume挂载本地代码并在容器内重新编译
-    # --memory: 移除硬限制（与MBFuzzer对齐），批次执行3并行在62GB主机上安全
+	    # --memory: 6g (6 groups × 6g + 6 × 0.25g brokers + 2g overhead ≈ 39.5 GB, safe with 44 GB host)
     # NOTE: 消融并行运行时6组×hetero broker fleet会引发kernel OOM，
-    id=$(docker run --cpus=1 --memory=8g --memory-swap=8g \
+    id=$(docker run --cpus=1 --memory=6g --memory-swap=6g \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
       -e CHATAFL_HYPOTHESIS=1 \
@@ -796,7 +796,7 @@ for i in $(seq 1 $RUNS); do
         echo '[DEV] Compilation complete, MD5: '\$(md5sum grammar-hypothesis.c | cut -d' ' -f1) && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   elif [[ "$FUZZER" == "chatafl" ]]; then
-    id=$(docker run --cpus=1 --memory=8g --memory-swap=8g \
+    id=$(docker run --cpus=1 --memory=6g --memory-swap=6g \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
       ${TOKEN_FLAGS} \
@@ -810,7 +810,7 @@ for i in $(seq 1 $RUNS); do
         cd /home/ubuntu/chatafl && make clean && make -j\$(nproc) && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   elif [[ "$FUZZER" == "chatafl-cl1" ]]; then
-    id=$(docker run --cpus=1 --memory=8g --memory-swap=8g \
+    id=$(docker run --cpus=1 --memory=6g --memory-swap=6g \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
       ${MQTT_FLAGS} \
@@ -823,7 +823,7 @@ for i in $(seq 1 $RUNS); do
         cd /home/ubuntu/chatafl-cl1 && make clean && make -j\$(nproc) && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   elif [[ "$FUZZER" == "chatafl-cl2" ]]; then
-    id=$(docker run --cpus=1 --memory=8g --memory-swap=8g \
+    id=$(docker run --cpus=1 --memory=6g --memory-swap=6g \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
       ${MQTT_FLAGS} \
@@ -836,7 +836,7 @@ for i in $(seq 1 $RUNS); do
         cd /home/ubuntu/chatafl-cl2 && make clean && make -j\$(nproc) && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   else
-    id=$(docker run --cpus=1 --memory=8g --memory-swap=8g ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${TOKEN_FLAGS} ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
+    id=$(docker run --cpus=1 --memory=6g --memory-swap=6g ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${TOKEN_FLAGS} ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   fi
   require_container_id "$id" "fuzz container run #${i}"
   cids+=("$id")
