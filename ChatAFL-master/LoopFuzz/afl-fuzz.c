@@ -6699,7 +6699,27 @@ EXP_ST void init_forkserver(char **argv)
     setsid();
 
     dup2(dev_null_fd, 1);
-    dup2(dev_null_fd, 2);
+
+    /* O6-capture: redirect child stderr to a capture file instead of
+     * /dev/null.  In fork-server mode the target binary (which IS the
+     * fork-server child after execv) inherits this fd, and all grand-
+     * children write crash diagnostics here — including glibc heap
+     * integrity checks (malloc_printerr), __stack_chk_fail, assert()
+     * failures, and ASAN stderr fallback output.  Without this, every
+     * crash signal that does NOT go through ASAN's file-based log_path
+     * reporter is silently discarded, making post-mortem triage
+     * impossible.  Fallback to /dev/null if the file cannot be opened
+     * (e.g. read-only filesystem). */
+    {
+      int err_fd = open("/tmp/afl_stderr_capture",
+                        O_WRONLY | O_CREAT | O_TRUNC, 0644);
+      if (err_fd >= 0) {
+        dup2(err_fd, 2);
+        close(err_fd);
+      } else {
+        dup2(dev_null_fd, 2);
+      }
+    }
 
     if (out_file)
     {
@@ -6958,6 +6978,13 @@ static u8 run_target(char **argv, u32 timeout)
 
   child_timed_out = 0;
 
+  /* O6-capture: truncate the stderr capture file before each execution.
+   * This ensures save_if_interesting() sees only the current exec's
+   * stderr when a crash occurs (not accumulated output from prior runs).
+   * truncate() is ~10-50 µs — negligible versus a fork-server exec
+   * which takes 1-5000 ms. */
+  truncate("/tmp/afl_stderr_capture", 0);
+
   /* After this memset, trace_bits[] are effectively volatile, so we
      must prevent any earlier operations from venturing into that
      territory. */
@@ -7017,6 +7044,24 @@ static u8 run_target(char **argv, u32 timeout)
               mqtt_persistent_count);
           save_kl_messages_to_file(kl_messages, fn_persist_crash,
                                    1, messages_sent);
+          /* O6: Save ASAN log alongside persistent crash seed (see O6
+           * comment in save_if_interesting for rationale). */
+          {
+            u8 *asan_fn = alloc_printf("%s.asan.log", fn_persist_crash);
+            u8 *cp_cmd = alloc_printf(
+                "cp /tmp/asan.* %s 2>/dev/null || true", asan_fn);
+            system((char*)cp_cmd);
+            ck_free(cp_cmd);
+            ck_free(asan_fn);
+
+            u8 *stderr_fn = alloc_printf("%s.stderr.log", fn_persist_crash);
+            u8 *stderr_cp = alloc_printf(
+                "cp /tmp/afl_stderr_capture %s 2>/dev/null || true",
+                stderr_fn);
+            system((char*)stderr_cp);
+            ck_free(stderr_cp);
+            ck_free(stderr_fn);
+          }
           ck_free(fn_persist_crash);
           fprintf(stderr, "[O4] Persistent child crashed at count=%u, "
                   "saved to replayable-crashes/\n",
@@ -8858,6 +8903,47 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
   ck_write(fd, mem, len, fn);
   close(fd);*/
 
+  /* O6: Save ASAN sanitizer logs alongside each unique crash seed.
+   *
+   * ASAN (with abort_on_error=1, our default config) writes detailed
+   * diagnostics — including a symbolized stack trace — to /tmp/asan.<pid>
+   * before calling abort().  Capturing this log alongside the crash seed
+   * enables accurate root-cause triage (heap-buffer-overflow, UAF,
+   * double-free, etc.) without needing to re-run the fuzzer.
+   *
+   * Fire-and-forget: if no ASAN log exists (clean exit, non-ASAN build,
+   * or log already rotated), cp silently produces no output.  The
+   * system() overhead (~1-2 ms per crash) is negligible given that
+   * FAULT_CRASH occurs only once every 3,400-38,000 executions.
+   *
+   * OCP: extends save_if_interesting's crash/hang save path without
+   * touching any coverage bitmap or state-machine data structures.
+   * Hangs (FAULT_TMOUT) are included — a hang may also be an ASAN
+   * slow-path that eventually aborts. */
+  {
+    u8 *asan_fn = alloc_printf("%s.asan.log", fn);
+    u8 *cp_cmd = alloc_printf("cp /tmp/asan.* %s 2>/dev/null || true",
+                              asan_fn);
+    system((char*)cp_cmd);
+    ck_free(cp_cmd);
+    ck_free(asan_fn);
+
+    /* Also capture child stderr: glibc heap diagnostics, assert failures,
+     * __stack_chk_fail, and other crash indicators that write to stderr
+     * rather than through ASAN's log_path file reporter.  The fork-server
+     * child redirects stderr to /tmp/afl_stderr_capture (see O6-capture
+     * in init_forkserver), and run_target() truncates it before each
+     * exec so only the current exec's output is present. */
+    {
+      u8 *stderr_fn = alloc_printf("%s.stderr.log", fn);
+      u8 *stderr_cp = alloc_printf(
+          "cp /tmp/afl_stderr_capture %s 2>/dev/null || true", stderr_fn);
+      system((char*)stderr_cp);
+      ck_free(stderr_cp);
+      ck_free(stderr_fn);
+    }
+  }
+
   ck_free(fn);
 
   return keeping;
@@ -10584,7 +10670,8 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
           oracle_save_violation(out_dir, &oracle_result,
                                 out_buf, len,
                                 (const unsigned char *)response_buf,
-                                (unsigned int)response_buf_size);
+                                (unsigned int)response_buf_size,
+                                oracle_reqs, oracle_req_lens, idx);
         }
       }
     } else if (oracle_sample_rate > 1) {
@@ -16255,6 +16342,26 @@ int main(int argc, char **argv)
 
   setup_signal_handlers();
   check_asan_opts();
+
+  /* O6-logpath: Ensure ASAN writes crash diagnostics to a log file
+   * that O6's save_if_interesting() can collect alongside each crash
+   * seed.  Without log_path, ASAN output goes to stderr which is
+   * discarded in fork-server mode — making post-mortem triage
+   * impossible.  Appending (not replacing) preserves the Dockerfile's
+   * existing ASAN_OPTIONS (e.g. abort_on_error=1:symbolize=0:...).
+   * Child processes inherit via fork(), so this injection is zero-cost
+   * at runtime. */
+  {
+    u8 *old_opts = getenv("ASAN_OPTIONS");
+    if (old_opts && !strstr(old_opts, "log_path=")) {
+      u8 *new_opts = alloc_printf("%s:log_path=/tmp/asan", old_opts);
+      setenv("ASAN_OPTIONS", (char*)new_opts, 1);
+      ck_free(new_opts);
+    } else if (!old_opts) {
+      setenv("ASAN_OPTIONS",
+             "abort_on_error=1:symbolize=0:detect_leaks=0:log_path=/tmp/asan", 1);
+    }
+  }
 
   if (sync_id)
     fix_up_sync();

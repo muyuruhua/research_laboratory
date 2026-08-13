@@ -1887,7 +1887,10 @@ void oracle_save_violation(
     const unsigned char *request_data,
     unsigned int request_len,
     const unsigned char *response_data,
-    unsigned int response_len) {
+    unsigned int response_len,
+    const unsigned char **requests,
+    const unsigned int *req_lens,
+    int req_count) {
 
     if (!out_dir || !result || result->violation_count == 0) return;
 
@@ -1901,6 +1904,23 @@ void oracle_save_violation(
     snprintf(fn, sizeof(fn), "%s/id:%06llu,sev:%d,cat:%04x",
              dir_path, (unsigned long long)oracle_unique_violations,
              result->max_severity, result->categories_hit);
+
+    /* Save length-prefixed replay sequence alongside the report so the
+     * triggering messages can be replayed by aflnet-replay. */
+    {
+        char replay_fn[1100];
+        snprintf(replay_fn, sizeof(replay_fn), "%s.request.replay", fn);
+        FILE *rfp = fopen(replay_fn, "wb");
+        if (rfp) {
+            for (int i = 0; i < req_count; i++) {
+                unsigned int sz = req_lens[i];
+                fwrite(&sz, sizeof(sz), 1, rfp);
+                if (sz > 0 && requests[i])
+                    fwrite(requests[i], 1, sz, rfp);
+            }
+            fclose(rfp);
+        }
+    }
 
     FILE *fp = fopen(fn, "w");
     if (!fp) return;

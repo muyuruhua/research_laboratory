@@ -725,7 +725,15 @@ static int text_protocol_response_slot_count(const unsigned char *buf,
     const char *cmd = NULL;
     int count = 0;
 
-    while (text_protocol_next_slot(buf, len, proto, &cursor, &pos, &cmd)) {
+    /* Count only *command* lines, not every non-empty line.  Response codes
+     * are produced per command (the AFLNet response buffer accumulates one
+     * response per message the server processed); fuzzer-mutated garbage lines
+     * that are glued into a single region do NOT each produce an independent
+     * response.  Counting them (as text_protocol_next_slot does) shifts the
+     * command->response ordinal mapping and makes the oracle bind a later
+     * success code (e.g. a 250 from MKD) to the wrong command (e.g. RNTO),
+     * manufacturing false state-violation candidates. */
+    while (text_protocol_next_command(buf, len, proto, &cursor, &pos, &cmd)) {
         (void)pos;
         (void)cmd;
         count++;
@@ -749,8 +757,8 @@ static int text_response_slot_count_before_pos(const unsigned char **requests,
 
     unsigned int cursor = 0, pos = 0;
     const char *cmd = NULL;
-    while (text_protocol_next_slot(requests[region_idx], req_lens[region_idx],
-                                   proto, &cursor, &pos, &cmd)) {
+    while (text_protocol_next_command(requests[region_idx], req_lens[region_idx],
+                                      proto, &cursor, &pos, &cmd)) {
         (void)cmd;
         if (pos >= cmd_pos) break;
         count++;
@@ -948,6 +956,8 @@ static int content_length_values_conflict(const unsigned char *buf,
     int seen = 0;
     int invalid = 0;
     unsigned long long first = 0;
+    unsigned int last_cl_line_end = 0;
+    int have_last = 0;
     unsigned int i = 0;
 
     while (i + hlen < len) {
@@ -956,6 +966,30 @@ static int content_length_values_conflict(const unsigned char *buf,
             unsigned int j = i + hlen;
             while (j < len && (buf[j] == ' ' || buf[j] == '\t')) j++;
             if (j < len && buf[j] == ':') {
+                /* A blank line (empty header line) separates one HTTP request
+                 * from the next.  Content-Length headers straddling a blank
+                 * line belong to DIFFERENT requests, not to a single request
+                 * with conflicting CL values.  Fuzzer mutation often destroys
+                 * the \r\n\r\n boundary and glues several requests into one
+                 * region, which previously made the oracle count one CL from
+                 * each glued request as a false "conflicting CL" smuggling hit.
+                 * Reset the per-request state when we cross a blank line. */
+                if (have_last) {
+                    int has_blank = 0;
+                    for (unsigned int k = last_cl_line_end; k + 2 < i; k++) {
+                        if (buf[k] == '\n' &&
+                            ((buf[k + 1] == '\n') ||
+                             (buf[k + 1] == '\r' && buf[k + 2] == '\n'))) {
+                            has_blank = 1;
+                            break;
+                        }
+                    }
+                    if (has_blank) {
+                        seen = 0;
+                        invalid = 0;
+                        first = 0;
+                    }
+                }
                 j++;
                 while (j < len && (buf[j] == ' ' || buf[j] == '\t')) j++;
                 if (j >= len || !isdigit(buf[j])) {
@@ -981,6 +1015,13 @@ static int content_length_values_conflict(const unsigned char *buf,
                     }
                     seen++;
                 }
+                /* Remember where this CL header's line ends, so the next CL
+                 * can detect whether a blank line (request boundary) separates
+                 * the two headers. */
+                unsigned int line_end = i;
+                while (line_end < len && buf[line_end] != '\n') line_end++;
+                last_cl_line_end = line_end;
+                have_last = 1;
             }
         }
         while (i < len && buf[i] != '\n') i++;
@@ -1826,8 +1867,12 @@ static void build_text_index(const unsigned char **requests,
     for (int r = 0; r < req_count && n < ORACLE_CMD_CAP; r++) {
         unsigned int cursor = 0, pos = 0;
         const char *cmd = NULL;
-        while (n < ORACLE_CMD_CAP && text_protocol_next_slot(requests[r], req_lens[r],
-                                                             proto, &cursor, &pos, &cmd)) {
+        /* Index command lines only (see text_protocol_response_slot_count).
+         * The cumulative ordinal must match the per-command response-code
+         * ordering; counting garbage lines here shifts every later command's
+         * response lookup and manufactures false violations. */
+        while (n < ORACLE_CMD_CAP && text_protocol_next_command(requests[r], req_lens[r],
+                                                                proto, &cursor, &pos, &cmd)) {
             g_slots[n].region_idx = r;
             g_slots[n].slot_pos = pos;
             g_slots[n].cmd = cmd;
@@ -3679,6 +3724,33 @@ static int oracle_write_binary_blob(const char *fn,
     return ok;
 }
 
+/* Write the triggering message sequence in the AFLNet length-prefixed
+ * replay format ([u32 size][payload]...), byte-for-byte compatible with
+ * `save_kl_messages_to_file(..., replay_enabled=1, ...)` and therefore
+ * directly consumable by `aflnet-replay`.  The size prefix is written in
+ * native byte order (little-endian on x86-64), matching how aflnet-replay
+ * reads it via `fread(&size, sizeof(unsigned int), 1, fp)`. */
+static int oracle_write_replay_messages(const char *fn,
+                                        const unsigned char **requests,
+                                        const unsigned int *req_lens,
+                                        int req_count) {
+    if (!fn || !requests || !req_lens || req_count <= 0) return 0;
+
+    FILE *fp = fopen(fn, "wb");
+    if (!fp) return 0;
+
+    int ok = 1;
+    for (int i = 0; i < req_count; i++) {
+        unsigned int sz = req_lens[i];
+        if (fwrite(&sz, sizeof(sz), 1, fp) != 1) { ok = 0; break; }
+        if (sz > 0 && requests[i] &&
+            fwrite(requests[i], 1, sz, fp) != sz) { ok = 0; break; }
+    }
+
+    fclose(fp);
+    return ok;
+}
+
 int oracle_check(
     const char *protocol_name,
     const unsigned char **requests,
@@ -3747,7 +3819,10 @@ void oracle_save_violation(
     const unsigned char *request_data,
     unsigned int request_len,
     const unsigned char *response_data,
-    unsigned int response_len) {
+    unsigned int response_len,
+    const unsigned char **requests,
+    const unsigned int *req_lens,
+    int req_count) {
 
     if (!out_dir || !result || result->violation_count == 0) return;
 
@@ -3780,11 +3855,14 @@ void oracle_save_violation(
 
     char req_fn[1100];
     char resp_fn[1100];
+    char replay_fn[1100];
     snprintf(req_fn, sizeof(req_fn), "%s.request.bin", fn);
     snprintf(resp_fn, sizeof(resp_fn), "%s.response.bin", fn);
+    snprintf(replay_fn, sizeof(replay_fn), "%s.request.replay", fn);
 
     int req_saved = oracle_write_binary_blob(req_fn, request_data, request_len);
     int resp_saved = oracle_write_binary_blob(resp_fn, response_data, response_len);
+    int replay_saved = oracle_write_replay_messages(replay_fn, requests, req_lens, req_count);
 
     FILE *fp = fopen(fn, "w");
     if (!fp) return;
@@ -3802,6 +3880,9 @@ void oracle_save_violation(
     fprintf(fp, "Categories: 0x%04x\n", report_categories);
     fprintf(fp, "Full Request File: %s (%s)\n", req_fn,
             req_saved ? "saved" : "not saved");
+    fprintf(fp, "Full Replay File: %s (%s)\n", replay_fn,
+            replay_saved ? "saved" : "not saved");
+    fprintf(fp, "Full Request Messages: %d\n", req_count);
     fprintf(fp, "Full Request Bytes: %u\n", request_len);
     fprintf(fp, "Full Request FNV1a32: 0x%08x\n",
             (request_data && request_len > 0) ?

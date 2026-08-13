@@ -237,6 +237,15 @@ int oracle_is_new_violation(uint32_t pattern_hash);
 
 /*
  * Save a violation report to the output directory.
+ *
+ * `requests` / `req_lens` / `req_count` describe the per-message
+ * boundaries of the triggering sequence (built from the kl_messages
+ * linked list at the call site).  They are saved to a sidecar
+ * `.request.replay` file in the AFLNet length-prefixed format
+ * ([u32 LE size][payload]...), so that `aflnet-replay` can reproduce
+ * the exact message sequence in standalone mode — unlike the raw
+ * `request_data` blob, which drops message boundaries and therefore
+ * cannot be replayed faithfully.
  */
 void oracle_save_violation(
     const char *out_dir,
@@ -244,7 +253,10 @@ void oracle_save_violation(
     const unsigned char *request_data,
     unsigned int request_len,
     const unsigned char *response_data,
-    unsigned int response_len
+    unsigned int response_len,
+    const unsigned char **requests,
+    const unsigned int *req_lens,
+    int req_count
 );
 
 /*
