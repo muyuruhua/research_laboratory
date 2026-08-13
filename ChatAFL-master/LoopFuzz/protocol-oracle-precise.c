@@ -1031,6 +1031,46 @@ static int content_length_values_conflict(const unsigned char *buf,
     return invalid && seen > 0;
 }
 
+/* Check whether a single HTTP request (one headers block, delimited by a
+ * blank line) carries BOTH Content-Length and Transfer-Encoding.  A blank line
+ * separates one request from the next; a CL in request A and a TE in request B
+ * must not be reported as CL/TE smuggling inside a single request.  Fuzzer
+ * mutation often destroys the \r\n\r\n boundary and glues several requests
+ * into one region, which previously made "has_cl && has_te" count headers from
+ * different glued requests as one ambiguous-framing request.  This mirrors the
+ * cross-request fix in content_length_values_conflict(). */
+static int cl_and_te_in_same_request(const unsigned char *buf, unsigned int len) {
+    unsigned int start = 0;
+    unsigned int i = 0;
+
+    while (i < len) {
+        int blank = 0;
+        if (buf[i] == '\n' && i + 1 < len && buf[i + 1] == '\n') {
+            blank = 1;
+        } else if (buf[i] == '\r' && i + 3 < len &&
+                   buf[i + 1] == '\n' && buf[i + 2] == '\r' && buf[i + 3] == '\n') {
+            blank = 1;
+        }
+
+        if (blank) {
+            if (count_header_lines(buf + start, i - start, "Content-Length") > 0 &&
+                count_header_lines(buf + start, i - start, "Transfer-Encoding") > 0)
+                return 1;
+            i += (buf[i] == '\r') ? 4 : 2;
+            start = i;
+            continue;
+        }
+        i++;
+    }
+
+    if (start < len &&
+        count_header_lines(buf + start, len - start, "Content-Length") > 0 &&
+        count_header_lines(buf + start, len - start, "Transfer-Encoding") > 0)
+        return 1;
+
+    return 0;
+}
+
 static int __attribute__((unused))
 header_line_length_exceeds(const unsigned char *buf, unsigned int len,
                            const char *header_name, unsigned int limit) {
@@ -3151,10 +3191,12 @@ int oracle_check_http(
          * RFC 7230/9112 forbid ambiguous message framing.  A single origin
          * server's 2xx response is enough for a MEDIUM candidate, but not a
          * HIGH finding: practical smuggling impact still requires proxy or
-         * differential parser validation. */
-        int has_cl = count_header_lines(req, rlen, "Content-Length") > 0;
-        int has_te = count_header_lines(req, rlen, "Transfer-Encoding") > 0;
-        if (has_cl && has_te) {
+         * differential parser validation.
+         *
+         * Only flag when a SINGLE request (one headers block) carries both CL
+         * and TE; CL in one glued request and TE in the next is not smuggling.
+         * (See cl_and_te_in_same_request.) */
+        if (cl_and_te_in_same_request(req, rlen)) {
             const unsigned char *resp_block = NULL;
             unsigned int resp_block_len = 0;
             int code = -1;
