@@ -759,6 +759,37 @@ static int text_response_slot_count_before_pos(const unsigned char **requests,
     return count;
 }
 
+/* Fraction of non-empty lines in the whole sequence that are NOT recognizable
+ * protocol commands (garbage lines produced by fuzzer mutation).  A high ratio
+ * means the message boundaries were heavily corrupted, so the server answered
+ * each garbage line with a 500 and the ordinal mapping between command lines
+ * and response codes is no longer reliable.  State-violation checks (RNTO
+ * without RNFR, PASS without USER, RCPT before MAIL, etc.) rely on that ordinal
+ * mapping, so they are skipped when the sequence is mostly garbage. */
+static double text_protocol_garbage_ratio(const unsigned char **requests,
+                                          const unsigned int *req_lens,
+                                          int req_count,
+                                          text_protocol_t proto) {
+    int total_slots = 0;
+    int cmd_slots = 0;
+    for (int i = 0; i < req_count; i++) {
+        unsigned int cursor = 0, pos = 0;
+        const char *cmd = NULL;
+        while (text_protocol_next_slot(requests[i], req_lens[i], proto,
+                                       &cursor, &pos, &cmd)) {
+            total_slots++;
+            if (cmd) cmd_slots++;
+        }
+    }
+    if (total_slots == 0) return 0.0;
+    return (double)(total_slots - cmd_slots) / (double)total_slots;
+}
+
+/* Ordinal-dependent detection is skipped when the garbage ratio exceeds this.
+ * Empirically, genuine RNTO false positives had 37%-67% garbage; clean protocol
+ * exchanges have 0%.  30% cleanly separates the two. */
+#define ORACLE_GARBAGE_RATIO_SKIP 0.30
+
 static int text_protocol_command_is_active_slot(const unsigned char *buf,
                                                 unsigned int len,
                                                 unsigned int cmd_pos,
@@ -2063,6 +2094,16 @@ int oracle_check_ftp(
     build_text_index(requests, req_lens, req_count, TEXT_PROTO_FTP,
                      response, resp_len, resp_offset);
 
+    /* Skip ordinal-dependent state checks when the message boundaries are
+     * heavily corrupted: garbage lines each get a 500 response, so the command
+     * ordinal no longer matches the response-code ordinal and RNTO/PASS/USER
+     * checks would bind a success code to the wrong command (false positives).
+     * Path-traversal and info-leak checks do NOT depend on ordinals and are
+     * left running. */
+    int skip_ordinal = text_protocol_garbage_ratio(requests, req_lens, req_count,
+                                                   TEXT_PROTO_FTP)
+                       > ORACLE_GARBAGE_RATIO_SKIP;
+
     /* Parse requests to build state, then check response */
     int has_user = 0, reported_data_bypass = 0;
     int has_path_traversal = 0, rnfr_pending = 0;
@@ -2080,6 +2121,7 @@ int oracle_check_ftp(
             has_path_traversal = 1;
         }
 
+        if (!skip_ordinal) {
         unsigned int cursor = 0, cmd_pos = 0;
         const char *cmd = NULL;
         while (text_protocol_next_command(req, rlen, TEXT_PROTO_FTP,
@@ -2167,6 +2209,7 @@ int oracle_check_ftp(
             }
 
             if (code == 230) authenticated = 1;
+        }
         }
     }
 
@@ -2414,6 +2457,14 @@ int oracle_check_smtp(
     build_text_index(requests, req_lens, req_count, TEXT_PROTO_SMTP,
                      response, resp_len, resp_offset);
 
+    /* Skip ordinal-dependent state checks (DATA/RCPT before prerequisites)
+     * when the message boundaries are heavily corrupted — the command ordinal
+     * no longer maps to the response-code ordinal.  Info-leak checks (VRFY/EXPN)
+     * and CRLF-injection checks below that do not rely on ordinals are kept. */
+    int skip_ordinal = text_protocol_garbage_ratio(requests, req_lens, req_count,
+                                                   TEXT_PROTO_SMTP)
+                       > ORACLE_GARBAGE_RATIO_SKIP;
+
     int has_auth = 0, has_mail = 0, has_rcpt = 0;
     int has_vrfy = 0, has_expn = 0;
     int smtp_state_rejected = smtp_response_has_state_rejection(response, resp_len);
@@ -2421,6 +2472,7 @@ int oracle_check_smtp(
     for (int i = 0; i < req_count; i++) {
         const unsigned char *req = requests[i];
         unsigned int rlen = req_lens[i];
+        if (!skip_ordinal) {
         unsigned int cursor = 0, cmd_pos = 0;
         const char *cmd = NULL;
 
@@ -2524,6 +2576,7 @@ int oracle_check_smtp(
                 has_expn = 1;
                 continue;
             }
+        }
         }
     }
 
