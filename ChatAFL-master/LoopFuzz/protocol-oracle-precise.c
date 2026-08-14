@@ -725,15 +725,7 @@ static int text_protocol_response_slot_count(const unsigned char *buf,
     const char *cmd = NULL;
     int count = 0;
 
-    /* Count only *command* lines, not every non-empty line.  Response codes
-     * are produced per command (the AFLNet response buffer accumulates one
-     * response per message the server processed); fuzzer-mutated garbage lines
-     * that are glued into a single region do NOT each produce an independent
-     * response.  Counting them (as text_protocol_next_slot does) shifts the
-     * command->response ordinal mapping and makes the oracle bind a later
-     * success code (e.g. a 250 from MKD) to the wrong command (e.g. RNTO),
-     * manufacturing false state-violation candidates. */
-    while (text_protocol_next_command(buf, len, proto, &cursor, &pos, &cmd)) {
+    while (text_protocol_next_slot(buf, len, proto, &cursor, &pos, &cmd)) {
         (void)pos;
         (void)cmd;
         count++;
@@ -757,8 +749,8 @@ static int text_response_slot_count_before_pos(const unsigned char **requests,
 
     unsigned int cursor = 0, pos = 0;
     const char *cmd = NULL;
-    while (text_protocol_next_command(requests[region_idx], req_lens[region_idx],
-                                      proto, &cursor, &pos, &cmd)) {
+    while (text_protocol_next_slot(requests[region_idx], req_lens[region_idx],
+                                   proto, &cursor, &pos, &cmd)) {
         (void)cmd;
         if (pos >= cmd_pos) break;
         count++;
@@ -1907,12 +1899,8 @@ static void build_text_index(const unsigned char **requests,
     for (int r = 0; r < req_count && n < ORACLE_CMD_CAP; r++) {
         unsigned int cursor = 0, pos = 0;
         const char *cmd = NULL;
-        /* Index command lines only (see text_protocol_response_slot_count).
-         * The cumulative ordinal must match the per-command response-code
-         * ordering; counting garbage lines here shifts every later command's
-         * response lookup and manufactures false violations. */
-        while (n < ORACLE_CMD_CAP && text_protocol_next_command(requests[r], req_lens[r],
-                                                                proto, &cursor, &pos, &cmd)) {
+        while (n < ORACLE_CMD_CAP && text_protocol_next_slot(requests[r], req_lens[r],
+                                                             proto, &cursor, &pos, &cmd)) {
             g_slots[n].region_idx = r;
             g_slots[n].slot_pos = pos;
             g_slots[n].cmd = cmd;
