@@ -19,6 +19,15 @@ Similarly 1700 is for the example request in the seed enrichment
 #define HISTORY_PROMPT_LENGTH 1300
 #define EXAMPLE_SEQUENCE_PROMPT_LENGTH 1700
 
+/* Default model for chat_with_llm().  Overridable at runtime via the
+ * LLM_MODEL env var so a provider-side model retirement never again
+ * silently disables all LLM features (root cause of the Aug-17 regression:
+ * hardcoded "gpt-5.4-mini" was delisted by cctq.ai; it was re-listed on
+ * Aug-19 and restored as the default).  Before changing the default,
+ * verify the model is served by the endpoint:
+ *   curl -sS -H "Authorization: Bearer $KEY" https://www.cctq.ai/v1/models */
+#define LLM_DEFAULT_MODEL "gpt-5.4-mini"
+
 #define TEMPLATE_CONSISTENCY_COUNT 5
 
 // Maximum amount of retries for the state stall

@@ -902,7 +902,7 @@ static void mqtt_save_diff_report(const char *diff_type,
         (ecnt >= 2 && eps) ? eps[0].impl_name : "",
         (ecnt >= 2 && eps) ? "\n" : "");
 
-      char *llm_resp = chat_with_llm(prompt, "gpt-4o-mini", 1, 0.2);
+      char *llm_resp = chat_with_llm(prompt, LLM_DEFAULT_MODEL, 1, 0.2);
 
       if (llm_resp) {
         /* Save LLM verdict alongside the diff report */
@@ -2276,7 +2276,7 @@ void setup_llm_grammars()
   {
     klist_t(gram) *grammar_list = kl_init(gram);
 
-    char *templates_answer = chat_with_llm(templates_prompt, "gpt-4o-mini", GRAMMAR_RETRIES, 0.5);
+    char *templates_answer = chat_with_llm(templates_prompt, LLM_DEFAULT_MODEL, GRAMMAR_RETRIES, 0.5);
     llm_total_prompt_tokens += llm_last_prompt_tokens;
     llm_total_completion_tokens += llm_last_completion_tokens;
     if (templates_answer != NULL) llm_total_calls++;
@@ -2286,7 +2286,7 @@ void setup_llm_grammars()
     // printf("## Answer from LLM:\n %s\n", templates_answer);
     char *remaining_prompt = construct_prompt_for_remaining_templates(protocol_name, first_question, templates_answer);
     // printf("remaining prompt is:\n %s\n", remaining_prompt);
-    char *remaining_templates = chat_with_llm(remaining_prompt, "gpt-4o-mini", GRAMMAR_RETRIES, 0.5);
+    char *remaining_templates = chat_with_llm(remaining_prompt, LLM_DEFAULT_MODEL, GRAMMAR_RETRIES, 0.5);
     llm_total_prompt_tokens += llm_last_prompt_tokens;
     llm_total_completion_tokens += llm_last_completion_tokens;
     if (remaining_templates != NULL) llm_total_calls++;
@@ -12294,7 +12294,7 @@ AFLNET_REGIONS_SELECTION:;
              * so the delta measures ALL prompt-engineering improvements. */
             char *stall_prompt = construct_prompt_stall_original(
                 (char *)protocol_name, (char *)examples, (char *)history);
-            char *stall_resp = chat_with_llm(stall_prompt, "gpt-4o-mini", STALL_RETRIES, 1.2);
+            char *stall_resp = chat_with_llm(stall_prompt, LLM_DEFAULT_MODEL, STALL_RETRIES, 1.2);
             free(stall_prompt);
             if (stall_resp) {
               char *stall_msg = extract_stalled_message(stall_resp, strlen(stall_resp));

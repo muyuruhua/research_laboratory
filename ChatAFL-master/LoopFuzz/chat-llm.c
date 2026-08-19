@@ -66,15 +66,7 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
     /* Reset per-call token counters so a failed call yields 0. */
     llm_last_prompt_tokens = 0;
     llm_last_completion_tokens = 0;
-    char *url = NULL;
-    if (strcmp(model, "gpt-5.4") == 0) //https://www.cctq.ai/v1
-    {
-        url = "https://www.cctq.ai/v1/completions";
-    }
-    else
-    {
-        url = "https://www.cctq.ai/v1/chat/completions";
-    }
+    const char *url = "https://www.cctq.ai/v1/chat/completions";
     const char *api_key = getenv("KEY");
     if (!api_key || api_key[0] == '\0') {
         static int key_warning_shown = 0;
@@ -91,15 +83,22 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
     snprintf(auth_header, sizeof(auth_header), "Authorization: Bearer %s", api_key);
     char *content_header = "Content-Type: application/json";
     char *accept_header = "Accept: application/json";
+    /* Model sent to the API.  The `model` argument is kept for call-site
+     * compatibility, but the actual model name is resolved here:
+     *   1. LLM_MODEL env var  — survives provider-side model retirement
+     *      without a recompile (root cause of the Aug-17 regression: the
+     *      hardcoded "gpt-5.4-mini" was delisted by the provider and every
+     *      chat_with_llm() call returned an error, disabling grammar,
+     *      enrichment and plateau features for the whole campaign).
+     *   2. "gpt-5.4"/"gpt-5.4-mini" passed as model  — mapped to the default.
+     * Default LLM_DEFAULT_MODEL must exist on the endpoint; verify with:
+     *   curl -sS -H "Authorization: Bearer $KEY" https://www.cctq.ai/v1/models
+     */
+    const char *llm_model = getenv("LLM_MODEL");
+    if (!llm_model || llm_model[0] == '\0')
+        llm_model = LLM_DEFAULT_MODEL;
     char *data = NULL;
-    if (strcmp(model, "gpt-5.4") == 0)
-    {
-        asprintf(&data, "{\"model\": \"gpt-5.4\", \"prompt\": \"%s\", \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
-    }
-    else
-    {
-        asprintf(&data, "{\"model\": \"gpt-5.4-mini\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
-    }
+    asprintf(&data, "{\"model\": \"%s\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f}", llm_model, prompt, MAX_TOKENS, temperature);
     
     // DEBUG: Print request data for hypothesis system debugging
     if (strstr(prompt, "protocol") != NULL && strstr(prompt, "templates") != NULL) {
@@ -151,12 +150,9 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
                     const char *data;
 
                     // The answer begins with a newline character, so we remove it
-                    if (strcmp(model, "gpt-5.4") == 0)
-                    {
-                        json_object *jobj4 = json_object_object_get(first_choice, "text");
-                        data = json_object_get_string(jobj4);
-                    }
-                    else
+                    /* All calls now go through /v1/chat/completions; the
+                     * legacy /v1/completions "text" branch was removed
+                     * together with the hardcoded model names. */
                     {
                         json_object *jobj4 = json_object_object_get(first_choice, "message");
                         json_object *jobj5 = jobj4 ? json_object_object_get(jobj4, "content") : NULL;
@@ -188,15 +184,26 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
                 else
                 {
                     printf("Error response is: %s\n", chunk.memory);
-                    /* Detect authentication errors and abort immediately
-                     * instead of burning all retries on a bad key. */
-                    if (chunk.memory &&
-                        (strstr(chunk.memory, "无效的令牌") ||
-                         strstr(chunk.memory, "invalid_api_key") ||
-                         strstr(chunk.memory, "Unauthorized") ||
-                         strstr(chunk.memory, "401"))) {
-                        fprintf(stderr, "[LLM] Auth error detected — aborting retries. "
-                                        "Check your KEY env variable.\n");
+                    /* Detect fatal provider-side errors and abort immediately
+                     * instead of burning all retries (each retry sleeps 2 s
+                     * and re-sends the full prompt — pure waste when the
+                     * model does not exist on the endpoint). */
+                    int fatal_err = chunk.memory && (
+                        /* bad API key */
+                        strstr(chunk.memory, "无效的令牌") ||
+                        strstr(chunk.memory, "invalid_api_key") ||
+                        strstr(chunk.memory, "Unauthorized") ||
+                        strstr(chunk.memory, "401") ||
+                        /* delisted/unknown model — this exact signature
+                         * ("model_not_found"/"无可用渠道") silently disabled
+                         * all LLM features during the Aug-17 regression */
+                        strstr(chunk.memory, "model_not_found") ||
+                        strstr(chunk.memory, "无可用渠道") ||
+                        strstr(chunk.memory, "does not exist") ||
+                        strstr(chunk.memory, "model_not_exists"));
+                    if (fatal_err) {
+                        fprintf(stderr, "[LLM] Fatal error from provider (key or model: \"%s\") — aborting retries. "
+                                        "Check KEY / LLM_MODEL env variables.\n", llm_model);
                         free(chunk.memory);
                         if (data) free(data);
                         return NULL;
@@ -506,7 +513,7 @@ char *llm_handle_plateau(const char *protocol_name, const char *examples,
     json_object_put(messages_array);
     if (!prompt) return NULL;
 
-    char *resp = chat_with_llm(prompt, "gpt-5.4-mini", STALL_RETRIES, 1.2);
+    char *resp = chat_with_llm(prompt, LLM_DEFAULT_MODEL, STALL_RETRIES, 1.2);
     free(prompt);
     if (!resp) return NULL;
 
@@ -1660,7 +1667,7 @@ void get_protocol_message_types(char *state_prompt, khash_t(strSet) * states_set
 
     for (int i = 0; i < CONFIDENT_TIMES; i++)
     {
-        char *state_answer = chat_with_llm(state_prompt, "gpt-5.4-mini", MESSAGE_TYPE_RETRIES, 0.5);
+        char *state_answer = chat_with_llm(state_prompt, LLM_DEFAULT_MODEL, MESSAGE_TYPE_RETRIES, 0.5);
         if (state_answer == NULL)
             continue;
         // printf("## Answer from LLM:\n %s\n", state_answer);
@@ -2257,7 +2264,7 @@ char *enrich_sequence(char *sequence, khash_t(strSet) *missing_message_types, co
     free(content);
     free(missing_fields_seq);
 
-    char *response = chat_with_llm(prompt, "gpt-5.4-mini", ENRICHMENT_RETRIES, 0.5);
+    char *response = chat_with_llm(prompt, LLM_DEFAULT_MODEL, ENRICHMENT_RETRIES, 0.5);
 
     free(prompt);
 

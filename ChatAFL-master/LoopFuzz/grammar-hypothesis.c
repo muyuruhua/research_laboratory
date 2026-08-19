@@ -1516,7 +1516,7 @@ int generate_grammar_hypotheses(hypothesis_context_t *ctx, int max_hypotheses) {
     
     // Call LLM with structured prompt
     fprintf(stderr, "[DEBUG] Calling chat_with_llm(model=gpt-4o-mini, tries=3, temperature=0.3)...\n");
-    char *response = chat_with_llm(prompt, "gpt-4o-mini", 3, 0.3);  // Low temperature for consistency
+    char *response = chat_with_llm(prompt, LLM_DEFAULT_MODEL, 3, 0.3);  // Low temperature for consistency
     fprintf(stderr, "[DEBUG] chat_with_llm returned: %p\n", (void*)response);
     
     ck_free(prompt);
@@ -2523,7 +2523,7 @@ int refine_hypothesis_with_counterexamples(
     
     char *prompt = construct_hypothesis_refinement_prompt(hyp, ctx->protocol_name);
     
-    char *response = chat_with_llm(prompt, "gpt-4o-mini", 3, 0.3);
+    char *response = chat_with_llm(prompt, LLM_DEFAULT_MODEL, 3, 0.3);
     ck_free(prompt);
     
     if (!response) {
