@@ -61,6 +61,16 @@ uint64_t oracle_info_leak_count    = 0;
 uint64_t oracle_path_traversal_count = 0;
 uint64_t oracle_dos_count          = 0;
 
+/* Graded-gate telemetry (2026-08-17).  The legacy oracle has no garbage
+ * gate, so these stay at their init values; they exist so both ORACLE_SRC
+ * variants satisfy the protocol-oracle.h contract and fuzzer_stats can be
+ * emitted unconditionally. */
+int      oracle_gate_mode = 1;
+uint64_t oracle_ordinal_skips      = 0;
+uint64_t oracle_ordinal_downgrades = 0;
+uint64_t oracle_evidence_keeps     = 0;
+uint64_t oracle_framing_skips     = 0;
+
 /* Dedup bitmap */
 #define ORACLE_DEDUP_SIZE 4096
 static uint32_t oracle_dedup_bitmap[ORACLE_DEDUP_SIZE];

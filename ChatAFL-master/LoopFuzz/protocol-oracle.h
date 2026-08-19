@@ -316,4 +316,17 @@ extern uint64_t oracle_info_leak_count;
 extern uint64_t oracle_path_traversal_count;
 extern uint64_t oracle_dos_count;
 
+/* Graded-gate telemetry (2026-08-17 recall fix).
+ * oracle_gate_mode: 0=orig (binary 0.30 skip), 1=graded (default), 2=off.
+ * Counters let "0 violations" be diagnosable from fuzzer_stats alone:
+ * ordinal-skips counts executions whose ordinal state checks were fully
+ * skipped; ordinal-downgrades counts findings demoted MEDIUM->LOW by the
+ * graded gate; evidence-keeps counts MEDIUM+ findings that survived the
+ * gate on precise response-code evidence. */
+extern int       oracle_gate_mode;
+extern uint64_t  oracle_ordinal_skips;
+extern uint64_t  oracle_ordinal_downgrades;
+extern uint64_t  oracle_evidence_keeps;
+extern uint64_t  oracle_framing_skips;
+
 #endif /* __PROTOCOL_ORACLE_H */

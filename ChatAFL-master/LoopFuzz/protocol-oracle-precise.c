@@ -57,6 +57,45 @@ uint64_t oracle_path_traversal_count = 0;
 uint64_t oracle_dos_count          = 0;
 static uint64_t oracle_saved_reports = 0;
 
+/* Graded-gate state (2026-08-17 recall fix).
+ *
+ * Problem: the binary 0.30 garbage-ratio skip disabled ALL ordinal state
+ * checks on 73%-98% of real fuzzing inputs (measured on Aug-17 benchmark
+ * queues), so auth-bypass / RNTO / relay chain detectors went blind
+ * exactly on the fuzzer's exploration frontier, and MEDIUM+ candidates
+ * were silently dropped (verified: lightftp id:000415 RNTO-without-RNFR,
+ * evidence STRONG, garbage ratio 0.475).
+ *
+ * Fix — three-tier graded gate:
+ *   ratio <= 0.30 : run checks unchanged (matches orig behavior)
+ *   0.30 < ratio <= 0.70 : run checks; ordinal findings whose only
+ *              evidence is positional binding are demoted to LOW /
+ *              MODERATE; findings backed by a PRECISE response-code
+ *              match on the bound slot (PASS->230, RNTO->250,
+ *              DATA->354, RCPT->250/251, data-cmd->150/225/226)
+ *              keep full severity, because the slot<->response-code
+ *              binding stays aligned even on garbage-heavy inputs:
+ *              garbage command lines consume a 5xx response slot too,
+ *              so a success code bound to OUR command is objective
+ *              server-acceptance evidence, not an ordinal drift
+ *              artifact.
+ *   ratio > 0.70 : skip ordinal checks (matches orig behavior at
+ *              extreme corruption).
+ *
+ * The old binary behavior is the FP-suppression escape hatch via
+ * CHATAFL_ORACLE_GATE=orig; CHATAFL_ORACLE_GATE=off disables skipping
+ * entirely for ablation. */
+int      oracle_gate_mode = 1;   /* 0=orig 1=graded 2=off */
+uint64_t oracle_ordinal_skips     = 0;
+uint64_t oracle_ordinal_downgrades = 0;
+uint64_t oracle_evidence_keeps    = 0;
+uint64_t oracle_framing_skips     = 0;
+
+/* Set per oracle_check_* call by oracle_ordinal_gate(); read by
+ * oracle_add_violation() to apply the graded downgrade. */
+static int g_gate_skip_ordinal = 0;   /* skip ordinal checks entirely   */
+static int g_gate_downgrade    = 0;   /* demote ordinal-only MEDIUM+    */
+
 /* Dedup bitmap */
 #define ORACLE_DEDUP_SIZE 4096
 static uint32_t oracle_dedup_bitmap[ORACLE_DEDUP_SIZE];
@@ -96,6 +135,7 @@ static oracle_slot_t    g_slots[ORACLE_CMD_CAP];
 static int              g_slot_count = 0;
 static int              g_resp_codes[ORACLE_RESP_CAP];
 static int              g_resp_code_count = 0;
+static int              g_resp_code_found = 0;   /* raw codes found (pre-padding) */
 static int              g_text_index_valid = 0;
 
 typedef struct {
@@ -148,6 +188,21 @@ static void oracle_add_violation(oracle_result_t *result,
                                   const char *desc, const char *cve_ref,
                                   int req_idx) {
     if (result->violation_count >= ORACLE_MAX_VIOLATIONS) return;
+
+    /* Graded gate: on garbage-heavy inputs (0.30 < ratio <= 0.70) demote
+     * ordinal-position-dependent findings that lack precise response-code
+     * evidence (STRONG = exact code match on the bound slot).  STRONG-
+     * evidence findings keep full severity — a success code bound to the
+     * flagged command line is server-acceptance proof regardless of how
+     * much unrelated garbage surrounds it. */
+    if (g_gate_downgrade && severity >= ORACLE_SEV_MEDIUM &&
+        evidence_quality < ORACLE_EVIDENCE_STRONG) {
+        severity = ORACLE_SEV_LOW;
+        evidence_quality = ORACLE_EVIDENCE_MODERATE;
+        oracle_ordinal_downgrades++;
+    } else if (g_gate_downgrade && severity >= ORACLE_SEV_MEDIUM) {
+        oracle_evidence_keeps++;
+    }
 
     oracle_violation_t *v = &result->violations[result->violation_count];
     v->severity = severity;
@@ -789,6 +844,72 @@ static double text_protocol_garbage_ratio(const unsigned char **requests,
  * Empirically, genuine RNTO false positives had 37%-67% garbage; clean protocol
  * exchanges have 0%.  30% cleanly separates the two. */
 #define ORACLE_GARBAGE_RATIO_SKIP 0.30
+
+/* Graded-gate upper bound: beyond this ratio the sequence is treated as
+ * unbindable and ordinal checks are skipped regardless of gate mode. */
+#define ORACLE_GARBAGE_RATIO_HARD 0.70
+
+/* Resolve the per-execution ordinal gate.  Call once at the top of each
+ * oracle_check_{ftp,smtp}(), AFTER build_text_index().  Sets g_gate_skip_
+ * ordinal / g_gate_downgrade and maintains telemetry.  Two signals:
+ *
+ *   1. FRAMING CONSISTENCY (primary, objective): the slot model predicts
+ *      resp_offset + g_slot_count response codes.  If the server actually
+ *      emitted significantly fewer (g_resp_code_found), the line<->code
+ *      ordinal binding is provably broken from the first divergence on
+ *      (binary garbage regions merge lines; post-QUIT lines go unanswered).
+ *      Verified false positive: lightftp id:000415 (Aug-17) — 140 predicted
+ *      vs 56 actual codes; a neighboring command's 250 bound to "RNTO"
+ *      manufactured a STRONG MEDIUM finding that clean-session replay
+ *      disproves (RNTO -> 550).
+ *
+ *   2. GARBAGE RATIO (secondary, graded): as documented above.
+ *
+ * Behavior by mode: orig (0) = legacy binary 0.30 ratio skip only;
+ * graded (1) = framing + graded ratio (default); off (2) = never skip. */
+static void oracle_ordinal_gate(const unsigned char **requests,
+                                const unsigned int *req_lens,
+                                int req_count,
+                                text_protocol_t proto,
+                                int resp_offset) {
+    g_gate_skip_ordinal = 0;
+    g_gate_downgrade = 0;
+    if (oracle_gate_mode == 2) return;          /* off: never skip */
+
+    if (oracle_gate_mode == 1 && g_text_index_valid) {
+        int need = resp_offset + g_slot_count;
+        int shortfall = need - g_resp_code_found;
+        if (shortfall > 3) {
+            /* Binding provably divergent — skip ordinal checks. */
+            g_gate_skip_ordinal = 1;
+            oracle_ordinal_skips++;
+            oracle_framing_skips++;
+            return;
+        }
+        if (shortfall >= 1) {
+            /* Minor divergence (multiline/QUIT edge): check but demote. */
+            g_gate_downgrade = 1;
+        }
+    }
+
+    double ratio = text_protocol_garbage_ratio(requests, req_lens, req_count,
+                                               proto);
+    if (oracle_gate_mode == 0) {                /* orig: binary 0.30 skip */
+        if (ratio > ORACLE_GARBAGE_RATIO_SKIP) {
+            g_gate_skip_ordinal = 1;
+            oracle_ordinal_skips++;
+        }
+        return;
+    }
+    /* graded ratio tier (framing already handled above) */
+    if (!g_gate_skip_ordinal && ratio > ORACLE_GARBAGE_RATIO_HARD) {
+        g_gate_skip_ordinal = 1;
+        oracle_ordinal_skips++;
+    } else if (!g_gate_downgrade && !g_gate_skip_ordinal &&
+               ratio > ORACLE_GARBAGE_RATIO_SKIP) {
+        g_gate_downgrade = 1;                   /* check, but demote weak */
+    }
+}
 
 static int text_protocol_command_is_active_slot(const unsigned char *buf,
                                                 unsigned int len,
@@ -1950,6 +2071,7 @@ static void build_text_index(const unsigned char **requests,
     if (need > ORACLE_RESP_CAP) need = ORACLE_RESP_CAP;
     int found = extract_all_response_codes(response, resp_len, g_resp_codes, need);
     for (int k = found; k < need; k++) g_resp_codes[k] = -1;
+    g_resp_code_found = found;   /* raw count BEFORE -1 padding (framing check) */
     g_resp_code_count = need;
     g_text_index_proto = proto;
     g_text_index_valid = 1;
@@ -2094,15 +2216,11 @@ int oracle_check_ftp(
     build_text_index(requests, req_lens, req_count, TEXT_PROTO_FTP,
                      response, resp_len, resp_offset);
 
-    /* Skip ordinal-dependent state checks when the message boundaries are
-     * heavily corrupted: garbage lines each get a 500 response, so the command
-     * ordinal no longer matches the response-code ordinal and RNTO/PASS/USER
-     * checks would bind a success code to the wrong command (false positives).
-     * Path-traversal and info-leak checks do NOT depend on ordinals and are
-     * left running. */
-    int skip_ordinal = text_protocol_garbage_ratio(requests, req_lens, req_count,
-                                                   TEXT_PROTO_FTP)
-                       > ORACLE_GARBAGE_RATIO_SKIP;
+    /* Graded ordinal gate (2026-08-17): replaces the binary 0.30 skip that
+     * blinded state checks on 73-98% of frontier inputs.  See the graded-
+     * gate block above the telemetry counters for rationale. */
+    oracle_ordinal_gate(requests, req_lens, req_count, TEXT_PROTO_FTP, resp_offset);
+    int skip_ordinal = g_gate_skip_ordinal;
 
     /* Parse requests to build state, then check response */
     int has_user = 0, reported_data_bypass = 0;
@@ -2457,13 +2575,11 @@ int oracle_check_smtp(
     build_text_index(requests, req_lens, req_count, TEXT_PROTO_SMTP,
                      response, resp_len, resp_offset);
 
-    /* Skip ordinal-dependent state checks (DATA/RCPT before prerequisites)
-     * when the message boundaries are heavily corrupted — the command ordinal
-     * no longer maps to the response-code ordinal.  Info-leak checks (VRFY/EXPN)
-     * and CRLF-injection checks below that do not rely on ordinals are kept. */
-    int skip_ordinal = text_protocol_garbage_ratio(requests, req_lens, req_count,
-                                                   TEXT_PROTO_SMTP)
-                       > ORACLE_GARBAGE_RATIO_SKIP;
+    /* Graded ordinal gate (2026-08-17): replaces the binary 0.30 skip.
+     * Info-leak (VRFY/EXPN) and CRLF-injection checks below that do not
+     * rely on ordinals are unaffected either way. */
+    oracle_ordinal_gate(requests, req_lens, req_count, TEXT_PROTO_SMTP, resp_offset);
+    int skip_ordinal = g_gate_skip_ordinal;
 
     int has_auth = 0, has_mail = 0, has_rcpt = 0;
     int has_vrfy = 0, has_expn = 0;
@@ -3775,11 +3891,33 @@ int oracle_check_mqtt(
 void oracle_init(const char *protocol_name) {
     memset(oracle_dedup_bitmap, 0, sizeof(oracle_dedup_bitmap));
     oracle_saved_reports = 0;
+    oracle_ordinal_skips = 0;
+    oracle_ordinal_downgrades = 0;
+    oracle_evidence_keeps = 0;
+    oracle_framing_skips = 0;
+    g_gate_skip_ordinal = 0;
+    g_gate_downgrade = 0;
+
+    /* CHATAFL_ORACLE_GATE: orig (binary 0.30 skip) | graded (default) | off */
+    const char *gate_env = getenv("CHATAFL_ORACLE_GATE");
+    oracle_gate_mode = 1;
+    if (gate_env) {
+        if (strcasecmp(gate_env, "orig") == 0) oracle_gate_mode = 0;
+        else if (strcasecmp(gate_env, "off") == 0) oracle_gate_mode = 2;
+        else if (strcasecmp(gate_env, "graded") == 0) oracle_gate_mode = 1;
+    }
+
     oracle_initialized = 1;
     printf("[ORACLE] Initialized protocol-specific semantic oracle for: %s\n",
            protocol_name ? protocol_name : "unknown");
     printf("[ORACLE] Checking: auth-bypass, state-machine, info-leak, "
            "path-traversal, injection, DoS, smuggling\n");
+    printf("[ORACLE] Ordinal gate: %s (skips=%llu downgrades=%llu keeps=%llu)\n",
+           oracle_gate_mode == 0 ? "orig" :
+           oracle_gate_mode == 2 ? "off" : "graded",
+           (unsigned long long)oracle_ordinal_skips,
+           (unsigned long long)oracle_ordinal_downgrades,
+           (unsigned long long)oracle_evidence_keeps);
 }
 
 int oracle_is_new_violation(uint32_t pattern_hash) {

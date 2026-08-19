@@ -609,6 +609,7 @@ u8 socket_timeout = 0;
 u8 protocol_selected = 0;
 u8 terminate_child = 0;
 u8 child_force_killed = 0;  /* Fix-14a: set by send_over_network() SIGKILL escalation */
+u8 child_term_sent = 0;     /* Fix: SIGTERM sent to a live server (teardown in progress) */
 u8 corpus_read_or_sync = 0;
 u8 state_aware_mode = 0;
 u8 region_level_mutation = 0;
@@ -692,6 +693,79 @@ static u64 admission_forced_promoted = 0;
 /* Last common_fuzz_stuff() result, used by the LLM admission ledger. */
 static u8 last_common_fuzz_saved = 0;
 static u8 last_common_fuzz_fault = FAULT_NONE;
+
+/* Crash-channel recall fix (2026-08-17): teardown-crash candidates.
+ * run_target()'s child_term_sent branch demotes SIGTERM-time fatal
+ * signals to FAULT_NONE unless ASAN evidence is grepped from stderr.
+ * That recall fix (Aug-04 -> Aug-13 regression: 28+11 crashes -> 0) also
+ * swallowed genuine teardown-path bugs that race the SIGTERM (live555
+ * CVE-2019-7314 class) or whose daemonized stderr misses the capture
+ * file.  Instead of discarding, we persist bounded evidence for offline
+ * replay-based triage. */
+static u64 teardown_candidates      = 0;
+static u64 teardown_dedup_hits      = 0;
+#define TEARDOWN_DEDUP_SLOTS 256
+static u32 teardown_dedup_ring[TEARDOWN_DEDUP_SLOTS];
+static u32 teardown_dedup_count     = 0;
+/* Set by run_target() when a SIGTERM'd child dies on a fatal signal
+ * without recognized memory-error stderr; consumed (and cleared) by
+ * common_fuzz_stuff() which owns the triggering input buffer. */
+static u8  teardown_save_pending    = 0;
+
+/* Forward declaration: kl_messages is defined after the IPSM globals. */
+extern klist_t(lms) *kl_messages;
+
+/* Persist a teardown-crash candidate: raw input + length-prefixed replay
+ * sidecar (aflnet-replay compatible), deduplicated by signal+input hash.
+ * Called only from common_fuzz_stuff() right after run_target(). */
+static void teardown_persist_candidate(u8 *buf, u32 buflen) {
+  u32 th = kill_signal ? (u32)kill_signal : 1;
+  for (u32 ti = 0; ti < buflen; ti++)
+    th = ((th << 5) + th) ^ buf[ti];
+  if (th == 0) th = 1;
+
+  for (u32 ti = 0; ti < TEARDOWN_DEDUP_SLOTS; ti++)
+    if (teardown_dedup_ring[ti] == th) { teardown_dedup_hits++; return; }
+
+  teardown_dedup_ring[teardown_dedup_count++ % TEARDOWN_DEDUP_SLOTS] = th;
+  teardown_candidates++;
+
+  if (!out_dir) return;
+  u8 *tc_dir = alloc_printf("%s/teardown-crashes", out_dir);
+  if (!tc_dir) return;
+  if (mkdir((char *)tc_dir, 0700) && errno != EEXIST) { ck_free(tc_dir); return; }
+
+  u8 *tc_fn = alloc_printf("%s/sig:%02u,hash:%08x",
+                           tc_dir, (unsigned)kill_signal, th);
+  if (tc_fn) {
+    s32 tc_fd = open((char *)tc_fn, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (tc_fd >= 0) {
+      if (buflen > 0) ck_write(tc_fd, buf, buflen, tc_fn);
+      close(tc_fd);
+
+      /* Length-prefixed replay sidecar (same format the oracle writes),
+       * so aflnet-replay can reproduce the exact message sequence. */
+      u8 *tc_rp = alloc_printf("%s.request.replay", tc_fn);
+      if (tc_rp) {
+        s32 rf = open((char *)tc_rp, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+        if (rf >= 0) {
+          kliter_t(lms) *tci;
+          for (tci = kl_begin(kl_messages); tci != kl_end(kl_messages);
+               tci = kl_next(tci)) {
+            unsigned int msz = kl_val(tci)->msize;
+            if (write(rf, &msz, sizeof(msz)) != (ssize_t)sizeof(msz)) break;
+            if (msz > 0 &&
+                write(rf, kl_val(tci)->mdata, msz) != (ssize_t)msz) break;
+          }
+          close(rf);
+        }
+        ck_free(tc_rp);
+      }
+    }
+    ck_free(tc_fn);
+  }
+  ck_free(tc_dir);
+}
 
 /* Simple prompt-hash dedup table for plateau handler.
  * We store the last 64 prompt hashes (djb2) and skip LLM calls that
@@ -4394,9 +4468,22 @@ MP_MULTI_DONE:
     return 0;
 
   child_force_killed = 0;  /* Fix-14a: reset before each termination attempt */
+  child_term_sent = 0;     /* Fix: reset before each termination attempt */
 
-  if (terminate_child && (child_pid > 0))
-    kill(child_pid, SIGTERM);
+  if (terminate_child && (child_pid > 0)) {
+    /* Fix: only mark termination if the child is still alive.  A server
+     * that crashed during input processing is already gone (and reaped by
+     * the forkserver) by the time we get here — kill(pid,0) fails with
+     * ESRCH — so we leave child_term_sent clear and the signal we read
+     * afterwards is the genuine crash.  If the child IS alive, we are
+     * deliberately tearing it down; any fatal signal its shutdown path
+     * raises (e.g. kamailio handle_sigs() → shutdown_children() → abort())
+     * is a termination artifact, not a bug. */
+    if (kill(child_pid, 0) == 0) {
+      child_term_sent = 1;
+      kill(child_pid, SIGTERM);
+    }
+  }
 
   /* Fix-14: Bounded process-termination wait with SIGKILL escalation.
    *
@@ -6963,6 +7050,60 @@ EXP_ST void init_forkserver(char **argv)
   FATAL("Fork server handshake failed");
 }
 
+/* Fix: check whether the current exec's captured stderr contains an ASAN
+ * memory-error report.  /tmp/afl_stderr_capture is truncated before each
+ * exec (see run_target's O6-capture truncate), so it holds only the current
+ * exec's output.  A real memory bug (e.g. proftpd heap-use-after-free in the
+ * teardown path) prints "ERROR: AddressSanitizer" before aborting; a plain
+ * shutdown abort() (e.g. kamailio's shutdown_children()) does not — it only
+ * yields "AddressSanitizer:DEADLYSIGNAL".  Used to tell the two apart when a
+ * server dies with SIGABRT after we SIGTERM it. */
+static u8 stderr_has_asan_error(void) {
+
+  int fd = open("/tmp/afl_stderr_capture", O_RDONLY);
+  struct stat st;
+  off_t off = 0;
+  size_t len;
+  u8 *buf;
+  u8 found = 0;
+
+  if (fd < 0) return 0;
+  if (fstat(fd, &st) != 0 || st.st_size <= 0) { close(fd); return 0; }
+
+  /* Read at most the last 4 MiB (ASAN reports are <100 KB); bounds memory
+   * for chatty targets that spam stderr. */
+  if (st.st_size > (4 << 20)) off = st.st_size - (4 << 20);
+  len = (size_t)(st.st_size - off);
+
+  buf = ck_alloc(len + 1);
+  if (lseek(fd, off, SEEK_SET) == off) {
+    size_t total = 0;
+    ssize_t n;
+    while (total < len && (n = read(fd, buf + total, len - total)) > 0)
+      total += n;
+    buf[total] = 0;
+    /* Crash-channel recall fix (2026-08-17): the single "ERROR:
+     * AddressSanitizer" grep missed real memory bugs whose diagnostics
+     * surface differently — glibc malloc corruption, stack protector,
+     * assert failures, and ASAN's DEADLYSIGNAL-on-teardown path.  Each
+     * pattern below is objective memory-error evidence; a plain _exit()
+     * shutdown still matches none of them. */
+    found = (strstr((char *)buf, "ERROR: AddressSanitizer") != NULL ||
+             strstr((char *)buf, "AddressSanitizer:DEADLYSIGNAL") != NULL ||
+             strstr((char *)buf, "malloc(): ") != NULL ||
+             strstr((char *)buf, "free(): ") != NULL ||
+             strstr((char *)buf, "double free") != NULL ||
+             strstr((char *)buf, "stack smashing detected") != NULL ||
+             strstr((char *)buf, "__stack_chk_fail") != NULL ||
+             strstr((char *)buf, "Assertion failed") != NULL ||
+             strstr((char *)buf, "assertion failed") != NULL);
+  }
+  ck_free(buf);
+  close(fd);
+  return found;
+
+}
+
 /* Execute target application, monitoring for timeouts. Return status
    information. The called program will update trace_bits[]. */
 
@@ -7461,26 +7602,42 @@ static u8 run_target(char **argv, u32 timeout)
     {
       child_force_killed = 0;
       forced_kills++;
+      return FAULT_NONE;
+    }
 
-      /* O2: Defensive ASAN crash check during teardown window.
-       *
-       * When abort_on_error=1 (our default ASAN config), a real ASAN
-       * bug triggers SIGABRT *before* SIGKILL fires.  But if the
-       * ASAN handler itself is slow (deep stack, detect_stack_use_
-       * after_return=1), the 100ms grace period may expire and we
-       * SIGKILL while ASAN is still processing.  In that narrow
-       * window the bug would be masked.
-       *
-       * Mitigation: check if the waitpid status we'll read indicates
-       * a signal-kill (SIGABRT from ASAN) rather than our SIGKILL.
-       * If WIFSIGNALED && WTERMSIG == SIGABRT, treat as crash.
-       *
-       * Note: this is a rare edge case (ASAN handler taking >100ms)
-       * but covers a real false-negative risk. */
-      if (WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT) {
-        /* ASAN likely triggered during teardown — real crash */
+    /* Fix: a server we deliberately SIGTERM'd (terminate_child / -K mode)
+     * can raise a fatal signal during its own teardown — kamailio's
+     * handle_sigs() → shutdown_children() calls abort(), which surfaces
+     * here as SIGABRT.  That is a termination artifact, not an input-
+     * triggered vulnerability: child_term_sent is set by send_over_network()
+     * only when the child was still alive at SIGTERM time, which rules out
+     * a genuine crash (a real ASAN/SEGV crash happens while the child is
+     * still processing input, so it is already dead before we try to
+     * terminate it). */
+    if (child_term_sent) {
+      child_term_sent = 0;
+
+      /* A server we SIGTERM'd can die with SIGABRT in two very different
+       * ways: (a) a real ASAN memory error in its teardown path — e.g.
+       * proftpd's heap-use-after-free in pr_session_disconnect() — which
+       * prints "ERROR: AddressSanitizer" before aborting; or (b) a plain
+       * shutdown abort() — e.g. kamailio's shutdown_children() — which does
+       * not.  Only (a) is a real bug; (b) is a termination artifact. */
+      if (stderr_has_asan_error())
         return FAULT_CRASH;
-      }
+
+      /* Crash-channel recall fix (2026-08-17): demoting to FAULT_NONE here
+       * was the Aug-04 -> Aug-13 regression vector (28+11 crashes -> 0 on
+       * identical images/command lines).  A teardown-path memory bug races
+       * the SIGTERM: the child is mid-abort (alive for kill(pid,0)) while
+       * already dying from OUR input, and daemonized servers may route
+       * their stderr away from the capture file.  Mark the candidate here;
+       * common_fuzz_stuff() — which owns the mutated input buffer — then
+       * persists bounded, deduplicated evidence for offline replay triage
+       * (see teardown_persist_candidate).  Zero impact on coverage
+       * accounting: still FAULT_NONE, no queue pollution, at most one
+       * small sidecar per unique fault+input hash. */
+      teardown_save_pending = 1;
 
       return FAULT_NONE;
     }
@@ -9269,6 +9426,28 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           oracle_sample_rate,
           (unsigned long long)oracle_sample_skips);
 
+  /* Graded-gate telemetry (2026-08-17): makes "0 violations" diagnosable —
+   * ordinal_skips counts executions where ordinal state checks were fully
+   * disabled by the gate; downgrades/evidence_keeps explain how many
+   * findings the graded tier demoted vs kept on precise-code evidence.
+   * teardown_candidates counts SIGTERM-time fatal signals persisted for
+   * offline replay triage by the crash-channel recall fix. */
+  fprintf(f, "oracle_gate_mode       : %s\n"
+             "oracle_ordinal_skips   : %llu\n"
+             "oracle_ordinal_downgrades : %llu\n"
+             "oracle_evidence_keeps  : %llu\n"
+             "oracle_framing_skips   : %llu\n"
+             "teardown_candidates    : %llu\n"
+             "teardown_dedup_hits    : %llu\n",
+          oracle_gate_mode == 0 ? "orig" :
+          oracle_gate_mode == 2 ? "off" : "graded",
+          (unsigned long long)oracle_ordinal_skips,
+          (unsigned long long)oracle_ordinal_downgrades,
+          (unsigned long long)oracle_evidence_keeps,
+          (unsigned long long)oracle_framing_skips,
+          (unsigned long long)teardown_candidates,
+          (unsigned long long)teardown_dedup_hits);
+
   fclose(f);
 }
 
@@ -10635,6 +10814,16 @@ EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len)
 
   fault = run_target(argv, exec_tmout);
   last_common_fuzz_fault = fault;
+
+  /* Crash-channel recall fix (2026-08-17): run_target flagged a fatal
+   * signal during deliberate-SIGTERM teardown without recognized
+   * memory-error stderr.  Persist the candidate for offline replay
+   * triage here, where the triggering input buffer is in scope.
+   * Bounded by hash dedup; does not affect fault classification. */
+  if (teardown_save_pending) {
+    teardown_save_pending = 0;
+    teardown_persist_candidate(out_buf, len);
+  }
 
   /* Protocol-specific semantic oracle check.
    * Analyzes request-response pairs for security property violations
