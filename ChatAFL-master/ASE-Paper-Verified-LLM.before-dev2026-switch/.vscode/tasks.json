@@ -1,0 +1,76 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "compile-main-tex",
+			"type": "shell",
+			"command": "pdflatex",
+			"args": [
+				"-interaction=nonstopmode",
+				"main.tex"
+			],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"isBackground": false
+		},
+		{
+			"label": "rebuild-latex-with-bibtex",
+			"type": "shell",
+			"command": "bibtex",
+			"args": [
+				"main",
+				"&&",
+				"pdflatex",
+				"-interaction=nonstopmode",
+				"main.tex",
+				"&&",
+				"pdflatex",
+				"-interaction=nonstopmode",
+				"main.tex"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "rebuild-latex-with-bibtex",
+			"type": "shell",
+			"command": "bibtex main && pdflatex -interaction=nonstopmode main.tex && pdflatex -interaction=nonstopmode main.tex",
+			"isBackground": false
+		},
+		{
+			"label": "rebuild-bibliography",
+			"type": "shell",
+			"command": "bibtex",
+			"args": [
+				"main",
+				"&&",
+				"pdflatex",
+				"-interaction=nonstopmode",
+				"main.tex",
+				"&&",
+				"pdflatex",
+				"-interaction=nonstopmode",
+				"main.tex"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "rebuild-bibliography",
+			"type": "shell",
+			"command": "bibtex main && pdflatex -interaction=nonstopmode main.tex && pdflatex -interaction=nonstopmode main.tex",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "scan conference xlsx",
+			"type": "shell",
+			"command": "/Users/ketangchen/Documents/000_20260114dev/research_laboratory/.venv/bin/python",
+			"args": [
+				"/Users/ketangchen/Documents/000_20260114dev/research_laboratory/ChatAFL-master/ASE-Paper-Verified-LLM/.tmp_scan_excel.py"
+			],
+			"isBackground": false
+		}
+	]
+}

@@ -1,0 +1,41 @@
+{
+  // LaTeX Workshop: 固定根文件，避免多目录工作区下识别失败
+  "latex-workshop.latex.rootFile.useSubFile": false,
+  "latex-workshop.latex.rootFile.doNotPrompt": true,
+
+  // 构建 recipe：只用 pdflatex，跑两遍保证交叉引用
+  "latex-workshop.latex.recipes": [
+    {
+      "name": "pdflatex × 2",
+      "tools": ["pdflatex", "pdflatex"]
+    },
+    {
+      "name": "pdflatex (single)",
+      "tools": ["pdflatex"]
+    }
+  ],
+  "latex-workshop.latex.tools": [
+    {
+      "name": "pdflatex",
+      "command": "pdflatex",
+      "args": [
+        "-interaction=nonstopmode",
+        "-synctex=1",
+        "%DOC%"
+      ]
+    }
+  ],
+
+  // 构建后自动清理辅助文件
+  "latex-workshop.latex.autoClean.run": "onBuilt",
+  "latex-workshop.latex.clean.fileTypes": [
+    "*.aux", "*.bbl", "*.blg", "*.idx", "*.ind",
+    "*.lof", "*.lot", "*.out", "*.toc", "*.acn",
+    "*.acr", "*.alg", "*.glg", "*.glo", "*.gls",
+    "*.fls", "*.log", "*.fdb_latexmk", "*.snm",
+    "*.synctex.gz", "*.nav"
+  ],
+
+  // 保存时不自动构建（避免频繁编译）
+  "latex-workshop.latex.autoBuild.run": "never"
+}
