@@ -47,6 +47,7 @@
 #include "hypothesis-adapter.h"
 #include "mqtt-builder.h"
 #include "mqtt-generate.h"
+#include "attack-catalog.h"
 #include "mqtt-scheduler.h"
 #include "mp-driver.h"
 #include "mqtt-differential.h"
@@ -621,6 +622,11 @@ u32 uninteresting_times = 0;
 /* Track how much times we ask for breaking coverage plateau */
 u32 chat_times = 0;
 
+/* Stage 2 (attack catalog): CVE-pattern seed files written into in_dir by
+ * attack_enrich_seeds(); exported to fuzzer_stats.  0 when the
+ * CHATAFL_ATTACK_SEEDS gate is off (default). */
+u32 attack_seeds_written = 0;
+
 /* ============================================
  * MQTT-specific Enhancement Flags  (P1/P2)
  * ============================================ */
@@ -712,8 +718,22 @@ static u32 teardown_dedup_count     = 0;
  * common_fuzz_stuff() which owns the triggering input buffer. */
 static u8  teardown_save_pending    = 0;
 
+/* Stage-4 (2026-08-21): race-interest tally for teardown candidates.
+ * child_term_sent semantics (set only when the child was STILL ALIVE at
+ * SIGTERM time) mean a fatal signal from that window is either a shutdown
+ * artifact or a genuine teardown-path race.  Signals that plausibly mark
+ * the latter — SEGV, BUS, FPE, ABRT, ILL — get a `,race:1` filename tag
+ * plus this counter in fuzzer_stats, so triage can prioritize them
+ * without any change to execution or coverage behavior. */
+static u64 teardown_race_tagged     = 0;
+
 /* Forward declaration: kl_messages is defined after the IPSM globals. */
 extern klist_t(lms) *kl_messages;
+
+/* Forward declaration (A1, 2026-08-23): teardown_persist_candidate greps
+ * the stderr capture for memory-error evidence; the helper itself lives
+ * next to the other crash-path greps further down the file. */
+static u8 stderr_has_asan_error(void);
 
 /* Persist a teardown-crash candidate: raw input + length-prefixed replay
  * sidecar (aflnet-replay compatible), deduplicated by signal+input hash.
@@ -730,13 +750,23 @@ static void teardown_persist_candidate(u8 *buf, u32 buflen) {
   teardown_dedup_ring[teardown_dedup_count++ % TEARDOWN_DEDUP_SLOTS] = th;
   teardown_candidates++;
 
+  /* Stage-4: race-interest tag.  kill_signal here is the fatal signal the
+   * child raised while we were SIGTERMing it; {SEGV,BUS,FPE,ABRT,ILL} are
+   * the plausible teardown-race signatures (SIGPIPE/SIGTERM are the known
+   * artifacts).  Purely a filename suffix + counter — no behavior change. */
+  int race_tag = (kill_signal == SIGSEGV || kill_signal == SIGBUS ||
+                  kill_signal == SIGFPE  || kill_signal == SIGABRT ||
+                  kill_signal == SIGILL);
+  if (race_tag) teardown_race_tagged++;
+
   if (!out_dir) return;
   u8 *tc_dir = alloc_printf("%s/teardown-crashes", out_dir);
   if (!tc_dir) return;
   if (mkdir((char *)tc_dir, 0700) && errno != EEXIST) { ck_free(tc_dir); return; }
 
-  u8 *tc_fn = alloc_printf("%s/sig:%02u,hash:%08x",
-                           tc_dir, (unsigned)kill_signal, th);
+  u8 *tc_fn = alloc_printf("%s/sig:%02u,hash:%08x%s",
+                           tc_dir, (unsigned)kill_signal, th,
+                           race_tag ? ",race:1" : "");
   if (tc_fn) {
     s32 tc_fd = open((char *)tc_fn, O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (tc_fd >= 0) {
@@ -760,6 +790,32 @@ static void teardown_persist_candidate(u8 *buf, u32 buflen) {
           close(rf);
         }
         ck_free(tc_rp);
+      }
+
+      /* A1 (2026-08-23): ASAN/heap-error evidence sidecar.  stderr at this
+       * point holds the teardown-exec's output (run_target truncates
+       * /tmp/afl_stderr_capture before each exec, and the fork-server child
+       * inherits the fd — see O6-capture).  When the fatal signal carries a
+       * memory-error signature, keep the report next to the candidate so
+       * Stage-0 triage can upgrade "fatal, needs replay" to "fatal with
+       * memory-error evidence" without a re-run.  Plain shutdown aborts
+       * (kamailio class) match nothing and stay evidence-free.  Observer-
+       * side only: one bounded copy on an already-rare save path. */
+      if (stderr_has_asan_error()) {
+        u8 *tc_se = alloc_printf("%s.stderr.log", tc_fn);
+        if (tc_se) {
+          u8 *cp_cmd = alloc_printf(
+              "cp /tmp/afl_stderr_capture %s 2>/dev/null || true", tc_se);
+          if (cp_cmd) { system((char *)cp_cmd); ck_free(cp_cmd); }
+          ck_free(tc_se);
+        }
+        u8 *tc_al = alloc_printf("%s.asan.log", tc_fn);
+        if (tc_al) {
+          u8 *cp_cmd = alloc_printf("cp /tmp/asan.* %s 2>/dev/null || true",
+                                    tc_al);
+          if (cp_cmd) { system((char *)cp_cmd); ck_free(cp_cmd); }
+          ck_free(tc_al);
+        }
       }
     }
     ck_free(tc_fn);
@@ -6083,6 +6139,17 @@ static void enrich_testcases(void)
     u32 nv5 = mqtt_generate_v5_seeds(in_dir);
     OKF("MQTT v5 seeds: generated %u files", nv5);
   }
+
+  /* Stage 2 (attack catalog): CVE-pattern seed files for the active
+   * protocol, written through the same in_dir/read_testcases() admission
+   * channel as every other enrichment.  Gated by CHATAFL_ATTACK_SEEDS
+   * (default OFF); returns 0 without touching the filesystem when off. */
+  if (protocol_name) {
+    attack_seeds_written += attack_enrich_seeds(in_dir, protocol_name);
+    if (attack_seeds_written)
+      OKF("Attack catalog: %u CVE-pattern seed files written",
+          attack_seeds_written);
+  }
 }
 
 /* Read all testcases from the input directory, then queue them for testing.
@@ -9358,6 +9425,8 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           ablation_no_admission,
           admission_accounting_enabled);
 
+  fprintf(f, "attack_seeds_written : %u\n", attack_seeds_written);
+
   fprintf(f, "mp_multi_ok        : %u\n"
              "mp_multi_fallback  : %u\n"
              "mp_multi_hshake_fail : %u\n",
@@ -9438,7 +9507,8 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
              "oracle_evidence_keeps  : %llu\n"
              "oracle_framing_skips   : %llu\n"
              "teardown_candidates    : %llu\n"
-             "teardown_dedup_hits    : %llu\n",
+             "teardown_dedup_hits    : %llu\n"
+             "teardown_race_tagged   : %llu\n",
           oracle_gate_mode == 0 ? "orig" :
           oracle_gate_mode == 2 ? "off" : "graded",
           (unsigned long long)oracle_ordinal_skips,
@@ -9446,7 +9516,8 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)oracle_evidence_keeps,
           (unsigned long long)oracle_framing_skips,
           (unsigned long long)teardown_candidates,
-          (unsigned long long)teardown_dedup_hits);
+          (unsigned long long)teardown_dedup_hits,
+          (unsigned long long)teardown_race_tagged);
 
   fclose(f);
 }
@@ -16783,6 +16854,32 @@ int main(int argc, char **argv)
     if (oracle_sample_rate > 1)
       OKF("ORACLE: running on every %u-th execution (CHATAFL_ORACLE_SAMPLE_RATE=%u)",
           oracle_sample_rate, oracle_sample_rate);
+  }
+  /* Stage 2 (attack catalog): CVE-pattern seed injection, default OFF.
+   * Enabled with CHATAFL_ATTACK_SEEDS=1; per-protocol file cap defaults
+   * to 16 and can be overridden with CHATAFL_ATTACK_SEED_MAX.  Seeds go
+   * through the standard read_testcases() admission channel, so the
+   * coverage/scheduler machinery is untouched. */
+  {
+    const char *atk = getenv("CHATAFL_ATTACK_SEEDS");
+    const char *atk_cap = getenv("CHATAFL_ATTACK_SEED_MAX");
+    if (atk && *atk && strcmp(atk, "0") != 0)
+      OKF("ATTACK: CVE-pattern seed catalog ENABLED (CHATAFL_ATTACK_SEEDS=%s)",
+          atk);
+    if (atk_cap && *atk_cap)
+      OKF("ATTACK: seed file cap override (CHATAFL_ATTACK_SEED_MAX=%s)",
+          atk_cap);
+  }
+  /* Stage 3 (attack prompt): plateau CVE-pattern bias in chat-llm.c,
+   * default OFF.  Enabled with CHATAFL_ATTACK_PROMPT=1.  Purely additive
+   * prompt text; responses still go through the unchanged JSON validation
+   * and P/U/R/G admission.  (Read here for the banner only; chat-llm.c
+   * does its own lazy getenv.) */
+  {
+    const char *atkp = getenv("CHATAFL_ATTACK_PROMPT");
+    if (atkp && *atkp && strcmp(atkp, "0") != 0)
+      OKF("ATTACK: plateau CVE-pattern prompt bias ENABLED "
+          "(CHATAFL_ATTACK_PROMPT=%s)", atkp);
   }
   if (getenv("CHATAFL_NO_ADAPTIVE")) {
     ablation_no_adaptive = 1;
