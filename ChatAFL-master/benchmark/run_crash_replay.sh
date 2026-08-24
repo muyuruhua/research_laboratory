@@ -180,8 +180,20 @@ while IFS=$'\t' read -r RUN REL_FILE RACE KIND; do
 
   # Stage a flat, colon-free copy of the seed for the docker -v mount
   # (same trick replay_crash_universal.sh uses).
+  #
+  # Seed FORMAT matters: aflnet-replay reads a length-prefixed
+  # [u32 size][data]... packet file.  teardown-crashes candidates are the
+  # RAW fuzz buffer (ck_write(buf)) — replayable only via their
+  # .request.replay sidecar; replayable-violations markers are human-
+  # readable reports, also replayed via .request.replay.  replayable-crashes
+  # seeds are already length-prefixed (save_kl_messages_to_file,
+  # replay_enabled=1).  Prefer the sidecar when present, else the seed.
   STAGED_SEED="$RLOG_DIR/${RUN}_${TAG}.seed"
-  cp "$SEED" "$STAGED_SEED"
+  REPLAY_SRC="$SEED"
+  if [[ -f "$SEED.request.replay" ]]; then
+    REPLAY_SRC="$SEED.request.replay"
+  fi
+  cp "$REPLAY_SRC" "$STAGED_SEED"
 
   echo "[REPLAY] $RUN/$REL_FILE (${KIND}${RACE:+,race})"
   # One docker run per seed: inside, restart the target before each of the

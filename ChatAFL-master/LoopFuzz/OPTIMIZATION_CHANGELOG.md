@@ -521,3 +521,10 @@ Stage 0 分诊（EFF2）：P1=0 P2=1（run2 一个 havoc hang `id:000000,src:000
 ### 缺口 3（git 未落）：A1/A2 全部未提交
 
 - `run_crash_replay.sh` untracked、`vuln_triage.py`/`run_vuln_triage.sh` 仅空 blob 入 index、`afl-fuzz.c`（A1 代码）modified 未提交。已随本轮一并 commit（dev2026 分支）。
+
+## 2026-08-24：A2 种子格式 bug 修复（重放吃错格式 = 假阴性）
+
+- 根因：`aflnet-replay` 读**长度前缀** `[u32 size][data]...`（`fread(&size, 4)`），而 `run_crash_replay.sh` 原 stage 的是 `vuln_triage.csv` 的 `file` 裸候选——teardown-crashes 裸候选是原始 `buf`（`ck_write(buf)`，首 4 字节按 u32 LE 解析可达 1.4 GB → ck_alloc 失败/发垃圾），violation 裸文件是**人类可读报告**。正确重放源是 `<seed>.request.replay` 边车（`save_kl_messages_to_file` replay_enabled=1 写长度前缀）。
+- 修复：stage 时优先 `$SEED.request.replay`（存在则用之，否则回退裸 seed，兼容 replayable-crashes 那种本身即长度前缀的通道）。
+- 后果更正：修复前 Aug-19 smoke 的 HITS=0 是「种子根本没发出去」的假阴性，不是「不可重放」的证据。
+- 验证（Aug-23 批次完整 sweep，N=20）：bftpd 24 P1 + live555 9 P1 = 33 种子 × 20 = 660 次重放，全部 non-replayable（0 崩溃复现）；staged .seed 经 xxd 确认已是长度前缀。与 A1「0 内存错误边车」交叉印证：本批 teardown SIGABRT + RNTO violation 均非可复现漏洞。
