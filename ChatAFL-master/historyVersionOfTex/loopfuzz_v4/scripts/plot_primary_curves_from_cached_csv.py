@@ -44,7 +44,7 @@ TARGET_ORDER = [
 FUZZER_ORDER = ["aflnet", "chatafl", "loopfuzz"]
 FUZZER_LABEL = {
     "aflnet": "AFLNet",
-    "chatafl": "ChatAFL",
+    "chatafl": "Ctl. ChatAFL",
     "loopfuzz": "LoopFuzz",
 }
 
@@ -152,7 +152,7 @@ def plot_grid(trajectory_csv: Path, metric: str, out_dir: Path) -> None:
         if metric == "branch"
         else "primary_edge_exploration_curve"
     )
-    ylabel = r"Branch coverage ($b\_abs$)" if metric == "branch" else "IPSM edges"
+    ylabel = "Absolute branch coverage" if metric == "branch" else "IPSM edges"
 
     fig, axes = plt.subplots(3, 3, figsize=(8.1, 6.5), constrained_layout=True)
     axes_flat = axes.flatten()

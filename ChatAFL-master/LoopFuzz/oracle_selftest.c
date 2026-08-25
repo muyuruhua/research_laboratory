@@ -20,6 +20,7 @@
 #include "protocol-oracle.h"
 
 static int g_checks = 0;
+static int g_expect_failures = 0;
 
 static void run_check(const char *proto,
                       const unsigned char **reqs, const unsigned int *lens, int n,
@@ -32,6 +33,26 @@ static void run_check(const char *proto,
            proto, n, resp_len, v, r.max_severity, r.categories_hit);
     /* A MEDIUM+ violation without an associated request index is suspicious,
      * but we only care here about fast/slow equivalence, so just count. */
+}
+
+/* Attack-rule assertion helper: expect MIN_V..MAX_V violations whose
+ * category bitmask intersects WANT_CAT (0 = no category requirement).
+ * Prints PASS/FAIL per fixture and counts failures. */
+static void run_expect(const char *label,
+                       const char *proto,
+                       const unsigned char **reqs, const unsigned int *lens, int n,
+                       const unsigned char *resp, unsigned int resp_len,
+                       int min_v, int max_v, unsigned int want_cat) {
+    oracle_result_t r;
+    memset(&r, 0, sizeof(r));
+    int v = oracle_check(proto, reqs, lens, n, resp, resp_len, &r);
+    g_checks++;
+    int ok = (v >= min_v && v <= max_v);
+    if (ok && want_cat) ok = ((r.categories_hit & want_cat) != 0);
+    printf("  %-42s -> %d violations (sev=%d cat=0x%04x) %s\n",
+           label, v, r.max_severity, r.categories_hit,
+           ok ? "PASS" : "FAIL");
+    if (!ok) g_expect_failures++;
 }
 
 #define REGION_1 "USER anonymous\r\nPASS x\r\nLIST\r\nQUIT\r\n"
@@ -77,9 +98,203 @@ static void run_check(const char *proto,
 #define MQTT_SUBSCRIBE "\x82\x06\x00\x01\x00\x03a/b\x00"
 #define MQTT_RESP "\x20\x02\x00\x00\x40\x02\x00\x01\x90\x04\x00\x01\x00"
 
+/* ── Attack-rule fixtures (CHATAFL_ATTACK_ORACLE, 2026-08-20) ──
+ * One positive + two negatives per rule R1-R10. */
+
+/* R1: FTP filesystem command accepted without prior 230. */
+#define R1_POS_REGION "USER anon\r\nMKD /tmp/x\r\nQUIT\r\n"
+#define R1_POS_RESP \
+    "220 Welcome\r\n"      /* banner        */ \
+    "331 Password required\r\n" /* USER     */ \
+    "257 Created\r\n"      /* MKD — no 230  */ \
+    "221 Bye\r\n"
+/* Negative A: proper login precedes MKD. */
+#define R1_NEGA_REGION "USER u\r\nPASS p\r\nMKD /tmp/x\r\nQUIT\r\n"
+#define R1_NEGA_RESP \
+    "220 Welcome\r\n" \
+    "331 Password required\r\n" \
+    "230 Logged in\r\n" \
+    "257 Created\r\n" \
+    "221 Bye\r\n"
+/* Negative B: MKD rejected with 550. */
+#define R1_NEGB_REGION "USER anon\r\nMKD /tmp/x\r\nQUIT\r\n"
+#define R1_NEGB_RESP \
+    "220 Welcome\r\n" \
+    "331 Password required\r\n" \
+    "550 Permission denied\r\n" \
+    "221 Bye\r\n"
+
+/* R2: RNTO with deep traversal accepted with 250. */
+#define R2_POS_REGION "RNFR /tmp/a\r\nRNTO ../../../../tmp/b\r\nQUIT\r\n"
+#define R2_POS_RESP \
+    "220 Welcome\r\n" \
+    "350 Ready for RNTO\r\n" \
+    "250 Rename successful\r\n" \
+    "221 Bye\r\n"
+/* Negative A: shallow traversal (depth 1) — still caught by the pre-existing
+ * LOW traversal-accept rule, but NOT by R2 (needs depth >= 2 + 250). */
+#define R2_NEGA_REGION "RNFR /tmp/a\r\nRNTO ../b\r\nQUIT\r\n"
+#define R2_NEGA_RESP \
+    "220 Welcome\r\n" \
+    "350 Ready for RNTO\r\n" \
+    "250 Rename successful\r\n" \
+    "221 Bye\r\n"
+/* Negative B: deep traversal rejected. */
+#define R2_NEGB_REGION "RNFR /tmp/a\r\nRNTO ../../../../tmp/b\r\nQUIT\r\n"
+#define R2_NEGB_RESP \
+    "220 Welcome\r\n" \
+    "350 Ready for RNTO\r\n" \
+    "550 Permission denied\r\n" \
+    "221 Bye\r\n"
+
+/* R3: PLAY accepted before any SETUP (existing HIGH/STRONG rule).
+ * The PLAY request must NOT carry a Session header — the rule deliberately
+ * skips session-bearing PLAY (hijack hypothesis, not "before SETUP" proof). */
+#define R3_POS_REGION_1 "DESCRIBE rtsp://h/s RTSP/1.0\r\nCSeq: 1\r\n\r\n"
+#define R3_POS_REGION_2 "PLAY rtsp://h/s RTSP/1.0\r\nCSeq: 2\r\n\r\n"
+#define R3_POS_RESP \
+    "RTSP/1.0 200 OK\r\nCSeq: 1\r\n\r\n" \
+    "RTSP/1.0 200 OK\r\nCSeq: 2\r\nSession: 9\r\nRange: npt=0-\r\n\r\n"
+/* Negative A: SETUP precedes PLAY with matching session. */
+#define R3_NEGA_REGION_2 "SETUP rtsp://h/s RTSP/1.0\r\nCSeq: 1\r\nTransport: RTP/AVP;unicast\r\nSession: 9\r\n\r\nPLAY rtsp://h/s RTSP/1.0\r\nCSeq: 2\r\nSession: 9\r\n\r\n"
+#define R3_NEGA_RESP \
+    "RTSP/1.0 200 OK\r\nCSeq: 1\r\nSession: 9\r\nTransport: RTP/AVP;unicast\r\n\r\n" \
+    "RTSP/1.0 200 OK\r\nCSeq: 2\r\nSession: 9\r\nRange: npt=0-\r\n\r\n"
+/* Negative B: PLAY rejected with 454 (session not found). */
+#define R3_NEGB_RESP \
+    "RTSP/1.0 200 OK\r\nCSeq: 1\r\n\r\n" \
+    "RTSP/1.0 454 Session Not Found\r\nCSeq: 2\r\n\r\n"
+
+/* R4: forged Session accepted (two setup-issued sessions observed). */
+#define R4_POS_REGION_1 \
+    "SETUP rtsp://h/a RTSP/1.0\r\nCSeq: 1\r\nTransport: RTP/AVP\r\n\r\n" \
+    "SETUP rtsp://h/b RTSP/1.0\r\nCSeq: 2\r\nTransport: RTP/AVP\r\n\r\n"
+#define R4_POS_REGION_2 "PLAY rtsp://h/a RTSP/1.0\r\nCSeq: 3\r\nSession: 7777\r\n\r\n"
+#define R4_POS_RESP \
+    "RTSP/1.0 200 OK\r\nCSeq: 1\r\nSession: 111\r\nTransport: RTP/AVP\r\n\r\n" \
+    "RTSP/1.0 200 OK\r\nCSeq: 2\r\nSession: 222\r\nTransport: RTP/AVP\r\n\r\n" \
+    "RTSP/1.0 200 OK\r\nCSeq: 3\r\nSession: 7777\r\nRange: npt=0-\r\n\r\n"
+/* Negative A: only one setup-issued session (differential guard unmet). */
+#define R4_NEGA_REGION_1 "SETUP rtsp://h/a RTSP/1.0\r\nCSeq: 1\r\nTransport: RTP/AVP\r\n\r\n"
+#define R4_NEGA_RESP \
+    "RTSP/1.0 200 OK\r\nCSeq: 1\r\nSession: 111\r\nTransport: RTP/AVP\r\n\r\n" \
+    "RTSP/1.0 200 OK\r\nCSeq: 3\r\nSession: 7777\r\nRange: npt=0-\r\n\r\n"
+/* Negative B: PLAY uses an actually-issued session (111). */
+#define R4_NEGB_REGION_2 "PLAY rtsp://h/a RTSP/1.0\r\nCSeq: 3\r\nSession: 111\r\n\r\n"
+#define R4_NEGB_RESP \
+    "RTSP/1.0 200 OK\r\nCSeq: 1\r\nSession: 111\r\nTransport: RTP/AVP\r\n\r\n" \
+    "RTSP/1.0 200 OK\r\nCSeq: 2\r\nSession: 222\r\nTransport: RTP/AVP\r\n\r\n" \
+    "RTSP/1.0 200 OK\r\nCSeq: 3\r\nSession: 111\r\nRange: npt=0-\r\n\r\n"
+
+/* R5: traversal syntax in DESCRIBE URL accepted with 2xx (telemetry). */
+#define R5_POS_REGION "DESCRIBE rtsp://h/../../etc RTSP/1.0\r\nCSeq: 1\r\n\r\n"
+#define R5_POS_RESP "RTSP/1.0 200 OK\r\nCSeq: 1\r\nContent-Length: 0\r\n\r\n"
+/* Negative A: plain URL. */
+#define R5_NEGA_REGION "DESCRIBE rtsp://h/s RTSP/1.0\r\nCSeq: 1\r\n\r\n"
+/* Negative B: traversal rejected. */
+#define R5_NEGB_RESP "RTSP/1.0 404 Not Found\r\nCSeq: 1\r\n\r\n"
+
+/* R6: SIP 401 challenge, then credential-less INVITE gets 200. */
+#define R6_POS_REGION_1 "INVITE sip:a@h SIP/2.0\r\nCSeq: 1 INVITE\r\nVia: SIP/2.0/UDP h:5060\r\n\r\n"
+#define R6_POS_REGION_2 "INVITE sip:b@h SIP/2.0\r\nCSeq: 2 INVITE\r\nVia: SIP/2.0/UDP h:5060\r\n\r\n"
+#define R6_POS_RESP \
+    "SIP/2.0 401 Unauthorized\r\nCSeq: 1 INVITE\r\nWWW-Authenticate: Digest\r\n\r\n" \
+    "SIP/2.0 200 OK\r\nCSeq: 2 INVITE\r\n\r\n"
+/* Negative A: INVITE carries credentials. */
+#define R6_NEGA_REGION_2 "INVITE sip:b@h SIP/2.0\r\nCSeq: 2 INVITE\r\nAuthorization: Digest x\r\nVia: SIP/2.0/UDP h:5060\r\n\r\n"
+/* Negative B: no 401/407 challenge anywhere. */
+#define R6_NEGB_RESP \
+    "SIP/2.0 200 OK\r\nCSeq: 1 INVITE\r\n\r\n" \
+    "SIP/2.0 200 OK\r\nCSeq: 2 INVITE\r\n\r\n"
+
+/* R7: malformed Via accepted with 200. */
+#define R7_POS_REGION "INVITE sip:a@h SIP/2.0\r\nCSeq: 1 INVITE\r\nVia: xx\r\n\r\n"
+#define R7_POS_RESP "SIP/2.0 200 OK\r\nCSeq: 1 INVITE\r\n\r\n"
+/* Negative A: well-formed Via. */
+#define R7_NEGA_REGION "INVITE sip:a@h SIP/2.0\r\nCSeq: 1 INVITE\r\nVia: SIP/2.0/UDP h:5060\r\n\r\n"
+/* Negative B: malformed Via but server rejects with 400. */
+#define R7_NEGB_RESP "SIP/2.0 400 Bad Via\r\nCSeq: 1 INVITE\r\n\r\n"
+
+/* R8: SMTP 530 auth-required challenge, then MAIL FROM 250 without AUTH. */
+#define R8_POS_REGION "EHLO x\r\nMAIL FROM:<a@b.c>\r\nQUIT\r\n"
+#define R8_POS_RESP \
+    "220 mail ESMTP\r\n" \
+    "530 authentication required\r\n" \
+    "250 OK\r\n" \
+    "221 Bye\r\n"
+/* Negative A: AUTH 235 precedes MAIL. */
+#define R8_NEGA_REGION "EHLO x\r\nAUTH PLAIN d\r\nMAIL FROM:<a@b.c>\r\nQUIT\r\n"
+#define R8_NEGA_RESP \
+    "220 mail ESMTP\r\n" \
+    "250 x\r\n" \
+    "235 ok\r\n" \
+    "250 OK\r\n" \
+    "221 Bye\r\n"
+/* Negative B: no auth-required challenge. */
+#define R8_NEGB_RESP \
+    "220 mail ESMTP\r\n" \
+    "250 x\r\n" \
+    "250 OK\r\n" \
+    "221 Bye\r\n"
+
+/* R9: broker delivers a $SYS-topic PUBLISH. */
+#define R9_POS_RESP \
+    "\x20\x02\x00\x00"              /* CONNACK accept            */ \
+    "\x30\x11\x00\x0a$SYS/broker"   /* PUBLISH $SYS/broker       */ \
+    "hello"
+/* Negative A: ordinary topic delivered. */
+#define R9_NEGA_RESP \
+    "\x20\x02\x00\x00" \
+    "\x30\x0c\x00\x03a/bhello"
+/* Negative B: $SYS in a CONNECT payload only — no delivery. */
+#define R9_NEGB_REGION_2 "\x82\x08\x00\x01\x00\x05$SYS/\x00"
+
+/* R10: broker delivers the same QoS 2 pid twice.
+ * Remaining-length must count EVERYTHING after the RL varint:
+ * topic-len(2) + topic(5) + pid(2) + payload(7) = 16 = 0x10. */
+#define R10_POS_RESP \
+    "\x20\x02\x00\x00"              /* CONNACK accept                 */ \
+    "\x34\x10\x00\x05topic\x00\x07payload" /* QoS2 PUBLISH pid=7       */ \
+    "\x34\x10\x00\x05topic\x00\x07payload" /* duplicate QoS2 pid=7     */
+/* Negative A: two different QoS 2 pids. */
+#define R10_NEGA_RESP \
+    "\x20\x02\x00\x00" \
+    "\x34\x10\x00\x05topic\x00\x07payload" \
+    "\x34\x10\x00\x05topic\x00\x08payload"
+/* Negative B: same topic repeated but QoS 0 (no pid semantics). */
+#define R10_NEGB_RESP \
+    "\x20\x02\x00\x00" \
+    "\x30\x0c\x00\x05topicpayload" \
+    "\x30\x0c\x00\x05topicpayload"
+
+/* CL-conflict tightening fixtures (forked-daapd EFF-batch FP audit).
+ * Positive: two CLs with genuinely different values, accepted with 2xx. */
+#define CL_POS_REGION \
+    "GET /x HTTP/1.1\r\nHost: a\r\nContent-Length: 5\r\nContent-Length: 999\r\n\r\n"
+#define CL_POS_RESP \
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi"
+/* Negative A: the audited FP shape — "0" + binary junk + embedded GET inside
+ * the first CL value (splicing artifact), second CL clean "0".  All numeric
+ * values agree; server 200s the valid prefix.  Must NOT fire. */
+#define CL_NEGA_REGION \
+    "GET /server-info HTTP/1.1\r\nHost: a\r\nContent-Length: 0\x00\x01\x00\x00GET /api/search HTTP/1.1\r\nContent-Length: 0\r\n\r\n"
+#define CL_NEGA_RESP \
+    "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nok"
+/* Negative B: mangled value ("Content-Length:set=0 HTTP/1.1" carries no
+ * digits) plus a clean CL 0 — and the response window contains a 400 for the
+ * malformed tail, so even the numeric path must be rejected.  Must NOT fire. */
+#define CL_NEGB_REGION \
+    "GET / HTTP/1.1\r\nHost: a\r\nContent-Length:set=0 HTTP/1.1\r\nContent-Length: 0\r\n\r\n"
+#define CL_NEGB_RESP \
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi" \
+    "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n"
+
 int main(void) {
     const unsigned char *reqs[8];
     unsigned int lens[8];
+
+    /* Attack rules are env-gated in the oracle; enable for this driver. */
+    setenv("CHATAFL_ATTACK_ORACLE", "1", 1);
 
     oracle_init("FTP");
 
@@ -125,7 +340,181 @@ int main(void) {
     reqs[0] = (const unsigned char *)HTTP_REGION_1; lens[0] = sizeof(HTTP_REGION_1)-1;
     run_check("DAAP", reqs, lens, 1, (const unsigned char *)HTTP_RESP, sizeof(HTTP_RESP)-1);
 
+    /* ── Attack-rule fixtures: R1-R10, one positive + two negatives each ── */
+    printf("== ATTACK RULES (CHATAFL_ATTACK_ORACLE=1) ==\n");
+
+    printf("  -- R1 FTP unauth filesystem command --\n");
+    reqs[0] = (const unsigned char *)R1_POS_REGION; lens[0] = sizeof(R1_POS_REGION)-1;
+    run_expect("R1 pos: MKD 257 no 230", "FTP", reqs, lens, 1,
+               (const unsigned char *)R1_POS_RESP, sizeof(R1_POS_RESP)-1,
+               1, 16, ORACLE_CAT_AUTH_BYPASS);
+    reqs[0] = (const unsigned char *)R1_NEGA_REGION; lens[0] = sizeof(R1_NEGA_REGION)-1;
+    run_expect("R1 negA: login precedes MKD", "FTP", reqs, lens, 1,
+               (const unsigned char *)R1_NEGA_RESP, sizeof(R1_NEGA_RESP)-1,
+               0, 0, 0);
+    reqs[0] = (const unsigned char *)R1_NEGB_REGION; lens[0] = sizeof(R1_NEGB_REGION)-1;
+    run_expect("R1 negB: MKD 550", "FTP", reqs, lens, 1,
+               (const unsigned char *)R1_NEGB_RESP, sizeof(R1_NEGB_RESP)-1,
+               0, 0, 0);
+
+    printf("  -- R2 FTP RNTO deep traversal --\n");
+    reqs[0] = (const unsigned char *)R2_POS_REGION; lens[0] = sizeof(R2_POS_REGION)-1;
+    run_expect("R2 pos: RNTO depth4 250", "FTP", reqs, lens, 1,
+               (const unsigned char *)R2_POS_RESP, sizeof(R2_POS_RESP)-1,
+               1, 16, ORACLE_CAT_PATH_TRAVERSAL);
+    reqs[0] = (const unsigned char *)R2_NEGA_REGION; lens[0] = sizeof(R2_NEGA_REGION)-1;
+    run_expect("R2 negA: depth1", "FTP", reqs, lens, 1,
+               (const unsigned char *)R2_NEGA_RESP, sizeof(R2_NEGA_RESP)-1,
+               1, 16, ORACLE_CAT_PATH_TRAVERSAL);
+    reqs[0] = (const unsigned char *)R2_NEGB_REGION; lens[0] = sizeof(R2_NEGB_REGION)-1;
+    run_expect("R2 negB: 550", "FTP", reqs, lens, 1,
+               (const unsigned char *)R2_NEGB_RESP, sizeof(R2_NEGB_RESP)-1,
+               0, 0, 0);
+
+    printf("  -- R3 RTSP PLAY before SETUP (existing rule) --\n");
+    reqs[0] = (const unsigned char *)R3_POS_REGION_1; lens[0] = sizeof(R3_POS_REGION_1)-1;
+    reqs[1] = (const unsigned char *)R3_POS_REGION_2; lens[1] = sizeof(R3_POS_REGION_2)-1;
+    run_expect("R3 pos: PLAY no SETUP 200", "RTSP", reqs, lens, 2,
+               (const unsigned char *)R3_POS_RESP, sizeof(R3_POS_RESP)-1,
+               1, 16, ORACLE_CAT_STATE_VIOLATION);
+    reqs[0] = (const unsigned char *)R3_POS_REGION_1; lens[0] = sizeof(R3_POS_REGION_1)-1;
+    reqs[1] = (const unsigned char *)R3_NEGA_REGION_2; lens[1] = sizeof(R3_NEGA_REGION_2)-1;
+    run_expect("R3 negA: SETUP precedes PLAY", "RTSP", reqs, lens, 2,
+               (const unsigned char *)R3_NEGA_RESP, sizeof(R3_NEGA_RESP)-1,
+               0, 0, 0);
+    reqs[0] = (const unsigned char *)R3_POS_REGION_1; lens[0] = sizeof(R3_POS_REGION_1)-1;
+    reqs[1] = (const unsigned char *)R3_POS_REGION_2; lens[1] = sizeof(R3_POS_REGION_2)-1;
+    run_expect("R3 negB: PLAY 454", "RTSP", reqs, lens, 2,
+               (const unsigned char *)R3_NEGB_RESP, sizeof(R3_NEGB_RESP)-1,
+               0, 0, 0);
+
+    printf("  -- R4 RTSP forged Session --\n");
+    reqs[0] = (const unsigned char *)R4_POS_REGION_1; lens[0] = sizeof(R4_POS_REGION_1)-1;
+    reqs[1] = (const unsigned char *)R4_POS_REGION_2; lens[1] = sizeof(R4_POS_REGION_2)-1;
+    run_expect("R4 pos: forged Session 200", "RTSP", reqs, lens, 2,
+               (const unsigned char *)R4_POS_RESP, sizeof(R4_POS_RESP)-1,
+               1, 16, ORACLE_CAT_AUTH_BYPASS);
+    reqs[0] = (const unsigned char *)R4_NEGA_REGION_1; lens[0] = sizeof(R4_NEGA_REGION_1)-1;
+    reqs[1] = (const unsigned char *)R4_POS_REGION_2; lens[1] = sizeof(R4_POS_REGION_2)-1;
+    run_expect("R4 negA: one issued session", "RTSP", reqs, lens, 2,
+               (const unsigned char *)R4_NEGA_RESP, sizeof(R4_NEGA_RESP)-1,
+               0, 0, 0);
+    reqs[0] = (const unsigned char *)R4_POS_REGION_1; lens[0] = sizeof(R4_POS_REGION_1)-1;
+    reqs[1] = (const unsigned char *)R4_NEGB_REGION_2; lens[1] = sizeof(R4_NEGB_REGION_2)-1;
+    run_expect("R4 negB: issued Session 111", "RTSP", reqs, lens, 2,
+               (const unsigned char *)R4_NEGB_RESP, sizeof(R4_NEGB_RESP)-1,
+               0, 0, 0);
+
+    printf("  -- R5 RTSP URL traversal telemetry --\n");
+    reqs[0] = (const unsigned char *)R5_POS_REGION; lens[0] = sizeof(R5_POS_REGION)-1;
+    run_expect("R5 pos: ../.. accepted", "RTSP", reqs, lens, 1,
+               (const unsigned char *)R5_POS_RESP, sizeof(R5_POS_RESP)-1,
+               1, 16, ORACLE_CAT_PATH_TRAVERSAL);
+    reqs[0] = (const unsigned char *)R5_NEGA_REGION; lens[0] = sizeof(R5_NEGA_REGION)-1;
+    run_expect("R5 negA: plain URL", "RTSP", reqs, lens, 1,
+               (const unsigned char *)R5_POS_RESP, sizeof(R5_POS_RESP)-1,
+               0, 0, 0);
+    reqs[0] = (const unsigned char *)R5_POS_REGION; lens[0] = sizeof(R5_POS_REGION)-1;
+    run_expect("R5 negB: 404", "RTSP", reqs, lens, 1,
+               (const unsigned char *)R5_NEGB_RESP, sizeof(R5_NEGB_RESP)-1,
+               0, 0, 0);
+
+    printf("  -- R6 SIP auth challenge then unauth INVITE 200 --\n");
+    reqs[0] = (const unsigned char *)R6_POS_REGION_1; lens[0] = sizeof(R6_POS_REGION_1)-1;
+    reqs[1] = (const unsigned char *)R6_POS_REGION_2; lens[1] = sizeof(R6_POS_REGION_2)-1;
+    run_expect("R6 pos: 401 then 200", "SIP", reqs, lens, 2,
+               (const unsigned char *)R6_POS_RESP, sizeof(R6_POS_RESP)-1,
+               1, 16, ORACLE_CAT_AUTH_BYPASS);
+    reqs[0] = (const unsigned char *)R6_POS_REGION_1; lens[0] = sizeof(R6_POS_REGION_1)-1;
+    reqs[1] = (const unsigned char *)R6_NEGA_REGION_2; lens[1] = sizeof(R6_NEGA_REGION_2)-1;
+    run_expect("R6 negA: INVITE has creds", "SIP", reqs, lens, 2,
+               (const unsigned char *)R6_POS_RESP, sizeof(R6_POS_RESP)-1,
+               0, 0, 0);
+    reqs[0] = (const unsigned char *)R6_POS_REGION_1; lens[0] = sizeof(R6_POS_REGION_1)-1;
+    reqs[1] = (const unsigned char *)R6_POS_REGION_2; lens[1] = sizeof(R6_POS_REGION_2)-1;
+    run_expect("R6 negB: no challenge", "SIP", reqs, lens, 2,
+               (const unsigned char *)R6_NEGB_RESP, sizeof(R6_NEGB_RESP)-1,
+               0, 0, 0);
+
+    printf("  -- R7 SIP malformed Via --\n");
+    reqs[0] = (const unsigned char *)R7_POS_REGION; lens[0] = sizeof(R7_POS_REGION)-1;
+    run_expect("R7 pos: Via:xx 200", "SIP", reqs, lens, 1,
+               (const unsigned char *)R7_POS_RESP, sizeof(R7_POS_RESP)-1,
+               1, 16, 0);
+    reqs[0] = (const unsigned char *)R7_NEGA_REGION; lens[0] = sizeof(R7_NEGA_REGION)-1;
+    run_expect("R7 negA: valid Via", "SIP", reqs, lens, 1,
+               (const unsigned char *)R7_POS_RESP, sizeof(R7_POS_RESP)-1,
+               0, 0, 0);
+    reqs[0] = (const unsigned char *)R7_POS_REGION; lens[0] = sizeof(R7_POS_REGION)-1;
+    run_expect("R7 negB: 400", "SIP", reqs, lens, 1,
+               (const unsigned char *)R7_NEGB_RESP, sizeof(R7_NEGB_RESP)-1,
+               0, 0, 0);
+
+    printf("  -- R8 SMTP MAIL despite 530 --\n");
+    reqs[0] = (const unsigned char *)R8_POS_REGION; lens[0] = sizeof(R8_POS_REGION)-1;
+    run_expect("R8 pos: 530 then 250", "SMTP", reqs, lens, 1,
+               (const unsigned char *)R8_POS_RESP, sizeof(R8_POS_RESP)-1,
+               1, 16, ORACLE_CAT_AUTH_BYPASS);
+    reqs[0] = (const unsigned char *)R8_NEGA_REGION; lens[0] = sizeof(R8_NEGA_REGION)-1;
+    run_expect("R8 negA: AUTH 235 first", "SMTP", reqs, lens, 1,
+               (const unsigned char *)R8_NEGA_RESP, sizeof(R8_NEGA_RESP)-1,
+               0, 0, 0);
+    reqs[0] = (const unsigned char *)R8_POS_REGION; lens[0] = sizeof(R8_POS_REGION)-1;
+    run_expect("R8 negB: no challenge", "SMTP", reqs, lens, 1,
+               (const unsigned char *)R8_NEGB_RESP, sizeof(R8_NEGB_RESP)-1,
+               0, 0, 0);
+
+    printf("  -- R9 MQTT $SYS delivery --\n");
+    reqs[0] = (const unsigned char *)MQTT_CONNECT; lens[0] = sizeof(MQTT_CONNECT)-1;
+    run_expect("R9 pos: $SYS delivered", "MQTT", reqs, lens, 1,
+               (const unsigned char *)R9_POS_RESP, sizeof(R9_POS_RESP)-1,
+               1, 16, ORACLE_CAT_ISOLATION);
+    run_expect("R9 negA: ordinary topic", "MQTT", reqs, lens, 1,
+               (const unsigned char *)R9_NEGA_RESP, sizeof(R9_NEGA_RESP)-1,
+               0, 0, 0);
+    reqs[0] = (const unsigned char *)R9_NEGB_REGION_2; lens[0] = sizeof(R9_NEGB_REGION_2)-1;
+    run_expect("R9 negB: $SYS only in request", "MQTT", reqs, lens, 1,
+               (const unsigned char *)R9_NEGA_RESP, sizeof(R9_NEGA_RESP)-1,
+               0, 0, 0);
+
+    printf("  -- R10 MQTT duplicate QoS2 pid --\n");
+    reqs[0] = (const unsigned char *)MQTT_CONNECT; lens[0] = sizeof(MQTT_CONNECT)-1;
+    run_expect("R10 pos: pid 7 twice", "MQTT", reqs, lens, 1,
+               (const unsigned char *)R10_POS_RESP, sizeof(R10_POS_RESP)-1,
+               1, 16, ORACLE_CAT_REPLAY);
+    run_expect("R10 negA: distinct pids", "MQTT", reqs, lens, 1,
+               (const unsigned char *)R10_NEGA_RESP, sizeof(R10_NEGA_RESP)-1,
+               0, 0, 0);
+    run_expect("R10 negB: QoS0 repeats", "MQTT", reqs, lens, 1,
+               (const unsigned char *)R10_NEGB_RESP, sizeof(R10_NEGB_RESP)-1,
+               0, 0, 0);
+
+    /* CL-conflict rule tightening (forked-daapd EFF-batch FP audit): the
+     * malformed-CL path must not fire when the trailing junk embeds a request
+     * line (mutation artifact) or when the whole value is mangled — and the
+     * 400-rejection check must scan ALL response blocks, not just the nth. */
+    printf("  -- CL-conflict tightening (daapd FP audit) --\n");
+    reqs[0] = (const unsigned char *)CL_POS_REGION; lens[0] = sizeof(CL_POS_REGION)-1;
+    run_expect("CL pos: 5 vs 999 accepted", "HTTP", reqs, lens, 1,
+               (const unsigned char *)CL_POS_RESP, sizeof(CL_POS_RESP)-1,
+               1, 16, ORACLE_CAT_SMUGGLING);
+    reqs[0] = (const unsigned char *)CL_NEGA_REGION; lens[0] = sizeof(CL_NEGA_REGION)-1;
+    run_expect("CL negA: artifact GET in value", "HTTP", reqs, lens, 1,
+               (const unsigned char *)CL_NEGA_RESP, sizeof(CL_NEGA_RESP)-1,
+               0, 0, 0);
+    reqs[0] = (const unsigned char *)CL_NEGB_REGION; lens[0] = sizeof(CL_NEGB_REGION)-1;
+    run_expect("CL negB: mangled value + 400", "HTTP", reqs, lens, 1,
+               (const unsigned char *)CL_NEGB_RESP, sizeof(CL_NEGB_RESP)-1,
+               0, 0, 0);
+
     printf("\nORACLE SELF-TEST PASSED: %d oracle_check() executions, "
            "fast==slow on every path.\n", g_checks);
+    if (g_expect_failures) {
+        printf("ORACLE SELF-TEST FAILED: %d attack-rule expectation(s) "
+               "not met.\n", g_expect_failures);
+        return 1;
+    }
+    printf("All %d attack-rule fixtures met their expectations.\n",
+           33);
     return 0;
 }

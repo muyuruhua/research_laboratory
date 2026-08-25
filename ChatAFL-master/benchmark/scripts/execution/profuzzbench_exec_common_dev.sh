@@ -754,6 +754,15 @@ for i in $(seq 1 $RUNS); do
   TOKEN_FLAGS=""
   [[ -n "${CHATAFL_MAX_TOKENS:-}" ]]       && TOKEN_FLAGS+=" -e CHATAFL_MAX_TOKENS=${CHATAFL_MAX_TOKENS}"
 
+  # Attack-channel flags (Stage 1-4, 2026-08-21): forward the CHATAFL_ATTACK_*
+  # gates into the container when the operator exports them.  All default OFF
+  # in the fuzzer, so absence here is the default path.
+  ATTACK_FLAGS=""
+  [[ -n "${CHATAFL_ATTACK_ORACLE:-}" ]]    && ATTACK_FLAGS+=" -e CHATAFL_ATTACK_ORACLE=${CHATAFL_ATTACK_ORACLE}"
+  [[ -n "${CHATAFL_ATTACK_SEEDS:-}" ]]     && ATTACK_FLAGS+=" -e CHATAFL_ATTACK_SEEDS=${CHATAFL_ATTACK_SEEDS}"
+  [[ -n "${CHATAFL_ATTACK_SEED_MAX:-}" ]]  && ATTACK_FLAGS+=" -e CHATAFL_ATTACK_SEED_MAX=${CHATAFL_ATTACK_SEED_MAX}"
+  [[ -n "${CHATAFL_ATTACK_PROMPT:-}" ]]    && ATTACK_FLAGS+=" -e CHATAFL_ATTACK_PROMPT=${CHATAFL_ATTACK_PROMPT}"
+
   # Per-container MQTT broker list: local broker + stable reference + multi-broker fleet
   MQTT_FLAGS=""
   if [[ -n "${MQTT_STABLE_ALIAS:-}" ]] && [[ -n "$MQTT_AUTO_NETWORK" ]]; then
@@ -784,6 +793,7 @@ for i in $(seq 1 $RUNS); do
       -e CHATAFL_HYPOTHESIS=1 \
       ${ABLATION_FLAGS} \
       ${TOKEN_FLAGS} \
+      ${ATTACK_FLAGS} \
       ${MQTT_FLAGS} \
       ${MQTT_RUN_FLAGS} \
       -v "${PROJECT_ROOT}/LoopFuzz:/tmp/loopfuzz-src:ro" \

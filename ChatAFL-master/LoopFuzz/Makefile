@@ -96,6 +96,9 @@ mp-driver-mqtt.o: mp-driver-mqtt.c mp-driver.h mqtt-builder.h $(COMM_HDR)
 mqtt-generate.o: mqtt-generate.c mqtt-generate.h $(COMM_HDR)
 	$(CC) $(CFLAGS) -c mqtt-generate.c -o mqtt-generate.o
 
+attack-catalog.o: attack-catalog.c attack-catalog.h $(COMM_HDR)
+	$(CC) $(CFLAGS) -c attack-catalog.c -o attack-catalog.o
+
 mqtt-scheduler.o: mqtt-scheduler.c mqtt-scheduler.h mqtt-generate.h $(COMM_HDR)
 	$(CC) $(CFLAGS) -c mqtt-scheduler.c -o mqtt-scheduler.o
 
@@ -119,8 +122,8 @@ endif
 protocol-oracle.o: $(ORACLE_SRC) protocol-oracle.h $(COMM_HDR)
 	$(CC) $(CFLAGS) -c $(ORACLE_SRC) -o protocol-oracle.o
 
-afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet.o aflnet.h chat-llm.o chat-llm.h grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o llm-validator.o mqtt-builder.o mp-driver-mqtt.o mqtt-generate.o mqtt-scheduler.o mqtt-differential.o mqtt-race.o protocol-oracle.o | test_x86
-	$(CC) $(CFLAGS) $@.c aflnet.o chat-llm.o grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o llm-validator.o mqtt-builder.o mp-driver-mqtt.o mqtt-generate.o mqtt-scheduler.o mqtt-differential.o mqtt-race.o protocol-oracle.o -o $@ $(LDFLAGS) -lcurl -ljson-c -lpcre2-8 -lpthread
+afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet.o aflnet.h chat-llm.o chat-llm.h grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o llm-validator.o mqtt-builder.o mp-driver-mqtt.o mqtt-generate.o mqtt-scheduler.o mqtt-differential.o mqtt-race.o protocol-oracle.o attack-catalog.o | test_x86
+	$(CC) $(CFLAGS) $@.c aflnet.o chat-llm.o grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o llm-validator.o mqtt-builder.o mp-driver-mqtt.o mqtt-generate.o mqtt-scheduler.o mqtt-differential.o mqtt-race.o protocol-oracle.o attack-catalog.o -o $@ $(LDFLAGS) -lcurl -ljson-c -lpcre2-8 -lpthread
 
 afl-replay: afl-replay.c $(COMM_HDR) aflnet.o aflnet.h | test_x86
 	$(CC) $(CFLAGS) $@.c aflnet.o -o $@ $(LDFLAGS)

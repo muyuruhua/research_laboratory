@@ -1,0 +1,178 @@
+<title>LoopFuzz 覆盖率跨批次对比</title>
+<style>
+  :root { color-scheme: light; }
+  .viz-root {
+    --surface-1: #fcfcfb; --page: #f9f9f7;
+    --text-1: #0b0b0b; --text-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
+    --s1: #2a78d6; --s2: #eb6834;
+    background: var(--page); color: var(--text-1);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 28px 32px 40px; max-width: 1080px; margin: 0 auto;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark; --surface-1: #1a1a19; --page: #0d0d0d;
+      --text-1: #ffffff; --text-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+      --s1: #3987e5; --s2: #d95926;
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark; --surface-1: #1a1a19; --page: #0d0d0d;
+    --text-1: #ffffff; --text-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+    --s1: #3987e5; --s2: #d95926;
+  }
+  h1 { font-size: 19px; font-weight: 650; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--text-2); font-size: 13px; margin: 0 0 22px; line-height: 1.5; }
+  .panel { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+           padding: 18px 18px 8px; margin-bottom: 18px; }
+  .panel h2 { font-size: 14px; font-weight: 620; margin: 0 0 2px; }
+  .panel .hint { font-size: 12px; color: var(--muted); margin: 0 0 10px; }
+  .legend { display: flex; gap: 18px; font-size: 12px; color: var(--text-2); margin: 0 0 10px; }
+  .legend .sw { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+  svg { display: block; width: 100%; height: auto; }
+  svg text { font-family: inherit; }
+  .axis-label { fill: var(--muted); font-size: 11px; }
+  .x-label { fill: var(--text-2); font-size: 11.5px; }
+  .ref-label { fill: var(--muted); font-size: 10.5px; }
+  .grid-line { stroke: var(--grid); stroke-width: 1; }
+  .ref-line { stroke: var(--axis); stroke-width: 1.2; stroke-dasharray: 4 3; }
+  .bar { stroke: var(--surface-1); stroke-width: 2; }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; margin-top: 6px; }
+  th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--grid); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--text-2); font-weight: 600; font-size: 11.5px; }
+  td.subj { font-weight: 600; color: var(--text-1); }
+  td .val { color: var(--text-2); }
+  .group { border-bottom: 2px solid var(--axis); }
+  td, th { font-variant-numeric: tabular-nums; }
+  .foot { color: var(--muted); font-size: 11.5px; margin-top: 14px; line-height: 1.6; }
+  .tip { position: absolute; pointer-events: none; background: var(--text-1); color: var(--surface-1);
+         font-size: 12px; padding: 6px 9px; border-radius: 6px; opacity: 0; transition: opacity .08s;
+         white-space: nowrap; box-shadow: 0 2px 10px rgba(0,0,0,.2); }
+</style>
+
+<div class="viz-root">
+  <h1>LoopFuzz 覆盖率跨批次对比</h1>
+  <p class="sub">Aug-23_20-10-19 批次（9 subject × 3 run，各 ~290 min）。条形为相对 Aug-19 基线的百分比（Aug-19 = 100），虚线为基线。两批之间基本贴线 = 覆盖率平台期。</p>
+
+  <div class="panel" id="panel-babs">
+    <h2>b_abs（分支命中数）· 相对 Aug-19 基线</h2>
+    <div class="legend"><span><span class="sw" style="background:var(--s1)"></span>Aug-22 EFF</span><span><span class="sw" style="background:var(--s2)"></span>Aug-23</span></div>
+    <div class="hint">悬停条形查看精确值；表见下方原始数值</div>
+    <div id="chart-babs"></div>
+  </div>
+
+  <div class="panel" id="panel-edges">
+    <h2>edges（边数）· 相对 Aug-19 基线</h2>
+    <div class="legend"><span><span class="sw" style="background:var(--s1)"></span>Aug-22 EFF</span><span><span class="sw" style="background:var(--s2)"></span>Aug-23</span></div>
+    <div class="hint">悬停条形查看精确值；表见下方原始数值</div>
+    <div id="chart-edges"></div>
+  </div>
+
+  <div class="panel">
+    <h2>原始数值（3 run 均值）</h2>
+    <table id="raw-table"></table>
+  </div>
+
+  <p class="foot">说明：b_abs / edges 取每 subject 3 个 run 的均值。Aug-22 列对应各 subject 的 EFF 批次（proftpd 取 EFF2）。基线 Aug-19_23-16-33。偏离最大的三处：pure-ftpd b_abs −11.5%、proftpd edges −14.6%、lighttpd1 edges +20%（后者是低边数目标上的小绝对波动）。</p>
+</div>
+<div class="tip" id="tip"></div>
+
+<script>
+(function(){
+  var subjects = ["bftpd","exim","forked-daapd","kamailio","lightftp","lighttpd1","live555","proftpd","pure-ftpd"];
+  var data = {
+    babs: {
+      a22: [102.8, 99.8, 103.3, 101.0, 100.0, 103.9, 99.4, 108.8, 97.7],
+      a23: [103.6, 101.2, 99.1, 98.6, 100.0, 101.5, 98.9, 102.2, 88.5]
+    },
+    edges: {
+      a22: [99.2, 98.8, 105.2, 114.4, 100.0, 130.4, 93.4, 95.7, 101.1],
+      a23: [99.7, 102.1, 102.1, 99.7, 96.4, 119.8, 100.3, 85.3, 100.7]
+    }
+  };
+  var raw = {
+    babs: {
+      a19: [472,3672,2338,9854,71,1990,3070,4944,1117],
+      a22: [485,3665,2415,9952,71,2068,3053,5378,1092],
+      a23: [489,3716,2318,9714,71,2020,3035,5051,988]
+    },
+    edges: {
+      a19: [197,108,19,109,187,22,155,247,240],
+      a22: [196,107,20,125,187,28,145,237,243],
+      a23: [197,110,20,109,180,26,156,211,242]
+    }
+  };
+  var label = { babs: "b_abs", edges: "edges" };
+
+  function makeChart(container, key){
+    var lo = 80, hi = 135;               // index domain
+    var W = 960, H = 300;
+    var ml = 46, mr = 14, mt = 16, mb = 52;
+    var pw = W - ml - mr, ph = H - mt - mb;
+    var n = subjects.length;
+    function Y(v){ return mt + (hi - v) / (hi - lo) * ph; }
+
+    var svg = '<svg viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" role="img">';
+    // gridlines + y labels
+    var ticks = [80,90,100,110,120,130];
+    ticks.forEach(function(t){
+      svg += '<line class="grid-line" x1="'+ml+'" y1="'+Y(t)+'" x2="'+(W-mr)+'" y2="'+Y(t)+'"/>';
+      svg += '<text class="axis-label" x="'+(ml-8)+'" y="'+(Y(t)+4)+'" text-anchor="end">'+t+'</text>';
+    });
+    // baseline at 100
+    svg += '<line class="ref-line" x1="'+ml+'" y1="'+Y(100)+'" x2="'+(W-mr)+'" y2="'+Y(100)+'"/>';
+    svg += '<text class="ref-label" x="'+(W-mr)+'" y="'+(Y(100)-6)+'" text-anchor="end">Aug-19 = 100</text>';
+
+    var gw = pw / n;
+    var bw = Math.min(26, gw*0.30);
+    var gap = 4;
+    subjects.forEach(function(s, i){
+      var cx = ml + gw*i + gw/2;
+      var x1 = cx - bw - gap/2;
+      var x2 = cx + gap/2;
+      var v1 = data[key].a22[i], v2 = data[key].a23[i];
+      svg += '<rect class="bar" data-s="'+s+'" data-b="Aug-22" data-v="'+v1.toFixed(1)+'" x="'+x1.toFixed(1)+'" y="'+Y(v1).toFixed(1)+'" width="'+bw+'" height="'+Math.max(0,(Y(100)-Y(v1))).toFixed(1)+'" fill="var(--s1)" rx="3"/>';
+      svg += '<rect class="bar" data-s="'+s+'" data-b="Aug-23" data-v="'+v2.toFixed(1)+'" x="'+x2.toFixed(1)+'" y="'+Y(v2).toFixed(1)+'" width="'+bw+'" height="'+Math.max(0,(Y(100)-Y(v2))).toFixed(1)+'" fill="var(--s2)" rx="3"/>';
+      svg += '<text class="x-label" x="'+cx+'" y="'+(H-34)+'" text-anchor="middle">'+s+'</text>';
+    });
+    svg += '<text class="axis-label" x="'+(W-mr)+'" y="'+(H-6)+'" text-anchor="end">index (Aug-19 = 100)</text>';
+    svg += '</svg>';
+    container.innerHTML = svg;
+  }
+
+  makeChart(document.getElementById("chart-babs"), "babs");
+  makeChart(document.getElementById("chart-edges"), "edges");
+
+  // raw table
+  var tbl = '<thead><tr><th>subject</th><th colspan="3">b_abs（Aug-19 / Aug-22 / Aug-23）</th><th></th><th colspan="3">edges（Aug-19 / Aug-22 / Aug-23）</th></tr></thead><tbody>';
+  subjects.forEach(function(s, i){
+    tbl += '<tr><td class="subj">'+s+'</td>';
+    ["a19","a22","a23"].forEach(function(k){ tbl += '<td>'+raw.babs[k][i]+'</td>'; });
+    tbl += '<td class="group"></td>';
+    ["a19","a22","a23"].forEach(function(k){ tbl += '<td>'+raw.edges[k][i]+'</td>'; });
+    tbl += '</tr>';
+  });
+  tbl += '</tbody>';
+  document.getElementById("raw-table").innerHTML = tbl;
+
+  // tooltip
+  var tip = document.getElementById("tip");
+  document.addEventListener("mousemove", function(e){
+    var t = e.target;
+    if(t.classList && t.classList.contains("bar")){
+      var v = t.getAttribute("data-v");
+      tip.textContent = t.getAttribute("data-s") + " · " + t.getAttribute("data-b") + " · " + v + "% (vs Aug-19)";
+      tip.style.opacity = 1;
+      tip.style.left = (e.clientX + 12) + "px";
+      tip.style.top = (e.clientY - 10) + "px";
+    } else {
+      tip.style.opacity = 0;
+    }
+  });
+  document.addEventListener("mouseleave", function(){ tip.style.opacity = 0; });
+})();
+</script>

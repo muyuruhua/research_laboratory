@@ -96,6 +96,22 @@ uint64_t oracle_framing_skips     = 0;
 static int g_gate_skip_ordinal = 0;   /* skip ordinal checks entirely   */
 static int g_gate_downgrade    = 0;   /* demote ordinal-only MEDIUM+    */
 
+/* CHATAFL_ATTACK_ORACLE (2026-08-20): gate for the attack-pattern oracle
+ * rules R1-R10 (CVE-pattern checks from papers/漏洞发现经验).  Default OFF
+ * so default behavior is bit-identical to the pre-change oracle; enable
+ * explicitly with CHATAFL_ATTACK_ORACLE=1.  Lazy getenv cache following the
+ * CHATAFL_ORACLE_GATE precedent in oracle_init(). */
+static int attack_oracle_enabled(void) {
+    static int cached = -1;
+    if (cached < 0) {
+        const char *env = getenv("CHATAFL_ATTACK_ORACLE");
+        cached = (env && (atoi(env) == 1 || strcasecmp(env, "on") == 0 ||
+                          strcasecmp(env, "yes") == 0 ||
+                          strcasecmp(env, "true") == 0)) ? 1 : 0;
+    }
+    return cached;
+}
+
 /* Dedup bitmap */
 #define ORACLE_DEDUP_SIZE 4096
 static uint32_t oracle_dedup_bitmap[ORACLE_DEDUP_SIZE];
@@ -1099,6 +1115,7 @@ static int content_length_values_conflict(const unsigned char *buf,
     size_t hlen = strlen(header_name);
     int seen = 0;
     int invalid = 0;
+    int invalid_all_artifact = 1; /* every malformed CL is a mutation artifact */
     unsigned long long first = 0;
     unsigned int last_cl_line_end = 0;
     int have_last = 0;
@@ -1131,6 +1148,7 @@ static int content_length_values_conflict(const unsigned char *buf,
                     if (has_blank) {
                         seen = 0;
                         invalid = 0;
+                        invalid_all_artifact = 1;
                         first = 0;
                     }
                 }
@@ -1138,6 +1156,9 @@ static int content_length_values_conflict(const unsigned char *buf,
                 while (j < len && (buf[j] == ' ' || buf[j] == '\t')) j++;
                 if (j >= len || !isdigit(buf[j])) {
                     invalid = 1;
+                    /* No digits at all (e.g. "Content-Length:set=0 HTTP/1.1"):
+                     * a fuzzer-mangled header line, not a smuggling attempt. */
+                    invalid_all_artifact = 0;
                 } else {
                     unsigned long long val = 0;
                     while (j < len && isdigit(buf[j])) {
@@ -1150,8 +1171,29 @@ static int content_length_values_conflict(const unsigned char *buf,
                         j++;
                     }
                     while (j < len && (buf[j] == ' ' || buf[j] == '\t')) j++;
-                    if (j < len && buf[j] != '\r' && buf[j] != '\n')
+                    if (j < len && buf[j] != '\r' && buf[j] != '\n') {
                         invalid = 1;
+                        /* Digits followed by junk that embeds a request line
+                         * (e.g. "Content-Length: 0\x00\x01\x00\x00GET /api/...")
+                         * is a mutation artifact: the splicer grafted a second
+                         * request into the CL value.  Plain junk with no
+                         * request-line signature may still be a real attempt. */
+                        unsigned int k = j;
+                        int embedded_req = 0;
+                        while (k + 5 < len && buf[k] != '\n') k++;
+                        for (unsigned int m = j; m < k + 1 && m + 5 < len; m++) {
+                            if (buf[m] < 0x20 && buf[m] != '\t' &&
+                                ((strncasecmp((const char *)buf + m + 1, "GET ", 4) == 0) ||
+                                 (strncasecmp((const char *)buf + m + 1, "POST ", 5) == 0) ||
+                                 (strncasecmp((const char *)buf + m + 1, "HEAD ", 5) == 0) ||
+                                 (strncasecmp((const char *)buf + m + 1, "PUT ", 4) == 0) ||
+                                 (strncasecmp((const char *)buf + m + 1, "DELETE ", 7) == 0))) {
+                                embedded_req = 1;
+                                break;
+                            }
+                        }
+                        if (!embedded_req) invalid_all_artifact = 0;
+                    }
                     if (!seen) {
                         first = val;
                     } else if (val != first) {
@@ -1172,7 +1214,14 @@ static int content_length_values_conflict(const unsigned char *buf,
         if (i < len) i++;
     }
 
-    return invalid && seen > 0;
+    /* Only the "genuinely conflicting numeric values" path returns 1 above.
+     * The malformed-CL path now requires that at least one malformed CL line
+     * is NOT explainable as a mutation artifact (embedded request line in the
+     * value, or a value-less mangled header).  Audit reference: forked-daapd
+     * EFF batch FP — every CL value was literally "0" and the second CL was
+     * a spliced-in "GET ..." request; the server correctly 400'd the garbage
+     * and replay showed no desync. */
+    return invalid && seen > 0 && !invalid_all_artifact;
 }
 
 /* Check whether a single HTTP request (one headers block, delimited by a
@@ -2326,6 +2375,33 @@ int oracle_check_ftp(
                 }
             }
 
+            /* R1 (CHATAFL_ATTACK_ORACLE): unauthenticated state-change
+             * command accepted.  Complements the sensitive-data check above
+             * (150/225/226 only): this catches the 250/257 success shape on
+             * filesystem-mutating commands (MKD/RMD/DELE/RNFR/CWD) and on
+             * data commands whose success surfaced as 250.  Evidence is the
+             * exact success code bound to this command's response slot plus
+             * the absence of any prior 230 login — same server-issued-evidence
+             * model as the PASS/RNTO checks. */
+            if (attack_oracle_enabled() &&
+                !reported_data_bypass && ftp_cmd_is_filesystem(cmd)) {
+                int prior_login = authenticated ||
+                    text_prior_response_code_range_before_command(
+                        requests, req_lens, req_count, response, resp_len,
+                        i, cmd_pos, TEXT_PROTO_FTP, resp_offset, 230, 230);
+                if (!prior_login &&
+                    text_command_line_is_clean(req, rlen, cmd_pos) &&
+                    (code == 250 || code == 257)) {
+                    oracle_add_violation(result, ORACLE_SEV_MEDIUM,
+                        ORACLE_CAT_AUTH_BYPASS,
+                        ORACLE_EVIDENCE_STRONG,
+                        "FTP: Filesystem command accepted without authentication "
+                        "(no prior 230)",
+                        "CVE-2024-42645", i);
+                    reported_data_bypass = 1;
+                }
+            }
+
             if (code == 230) authenticated = 1;
         }
         }
@@ -2360,6 +2436,49 @@ int oracle_check_ftp(
                         "FTP: Traversal syntax accepted by filesystem command (manual replay required)",
                         "N/A", i);
                     i = req_count;  /* One finding is enough */
+                    break;
+                }
+            }
+        }
+    }
+
+    /* R2 (CHATAFL_ATTACK_ORACLE): RNTO with traversal payload accepted.
+     * Distinct from the LOW traversal-accept check above: this requires an
+     * RNTO/RNFR rename destination whose path escapes with depth >= 2 AND
+     * the bound response slot is 250, which proves the server executed the
+     * rename to the traversal destination. */
+    if (attack_oracle_enabled() && resp_len > 0) {
+        for (int i = 0; i < req_count; i++) {
+            const unsigned char *req = requests[i];
+            unsigned int rlen = req_lens[i];
+            unsigned int cursor = 0, cmd_pos = 0;
+            const char *cmd = NULL;
+            while (text_protocol_next_command(req, rlen, TEXT_PROTO_FTP,
+                                              &cursor, &cmd_pos, &cmd)) {
+                if (!ftp_cmd_is_rnto(cmd)) continue;
+                unsigned int span = line_span_len(req, rlen, cmd_pos);
+                if (!span_has_traversal_syntax(req + cmd_pos, span)) continue;
+                if (!text_command_line_is_clean(req, rlen, cmd_pos)) continue;
+
+                int depth = 0;
+                unsigned int off = cmd_pos, end = cmd_pos + span;
+                while (off + 2 < end) {
+                    if (req[off] == '.' && req[off + 1] == '.') depth++;
+                    off++;
+                }
+                if (depth < 2) continue;
+
+                int code = text_response_code_for_command(requests, req_lens,
+                    req_count, response, resp_len, i, cmd_pos, TEXT_PROTO_FTP,
+                    resp_offset);
+                if (code == 250) {
+                    oracle_add_violation(result, ORACLE_SEV_MEDIUM,
+                        ORACLE_CAT_PATH_TRAVERSAL,
+                        ORACLE_EVIDENCE_MODERATE,
+                        "FTP: RNTO rename destination with deep traversal "
+                        "accepted by server",
+                        "N/A", i);
+                    i = req_count;  /* one finding is enough */
                     break;
                 }
             }
@@ -2657,6 +2776,27 @@ int oracle_check_smtp(
 
             if (smtp_cmd_is_mail(cmd)) {
                 unsigned int span = line_span_len(req, rlen, cmd_pos);
+
+                /* R8 (CHATAFL_ATTACK_ORACLE): auth-required bypass.  The
+                 * server itself demanded authentication (530 "authentication
+                 * required" observed anywhere in the conversation), yet this
+                 * MAIL FROM with no prior successful AUTH (235) was accepted
+                 * with 250.  The 530 challenge is server-issued evidence, so
+                 * this is not the circular "no auth configured" pattern
+                 * removed 2026-07-04. */
+                if (attack_oracle_enabled() &&
+                    !has_auth && code == 250 &&
+                    text_command_line_is_clean(req, rlen, cmd_pos) &&
+                    response_has_phrase(response, resp_len,
+                                        "authentication required")) {
+                    oracle_add_violation(result, ORACLE_SEV_MEDIUM,
+                        ORACLE_CAT_AUTH_BYPASS,
+                        ORACLE_EVIDENCE_MODERATE,
+                        "SMTP: MAIL FROM accepted despite 530 auth-required "
+                        "challenge and no AUTH 235",
+                        NULL, i);
+                }
+
                 if (smtp_path_has_bare_crlf(req + cmd_pos, span) &&
                     code == 250 &&
                     !response_has_phrase(response, resp_len,
@@ -3017,7 +3157,129 @@ int oracle_check_rtsp(
     }
 
     /* PLAY/RECORD-without-SETUP checks are integrated in the per-request loop
-     * above using method-local CSeq extraction and response-side SETUP proof. */
+     * above using method-local CSeq extraction and response-side SETUP proof.
+     * R3 (PLAY-before-SETUP) is the existing HIGH/STRONG check above —
+     * the attack-oracle gate does NOT duplicate it. */
+
+    /* R4/R5 (CHATAFL_ATTACK_ORACLE) — forged Session and URL traversal.
+     * Both need CSeq-unique response binding (mandated by the 2026-08 index
+     * architecture) and only use server-issued evidence. */
+    if (attack_oracle_enabled()) {
+
+    /* R4: method accepted (2xx) with a Session header that the server never
+     * issued.  Differential self-guard: collect every Session value the
+     * server issued in 2xx SETUP responses; only when >= 2 distinct
+     * setup-issued sessions were observed do we have differential proof the
+     * server issues non-guessable tokens, making acceptance of an unknown
+     * one reportable.  (With 1 observed session, "different token" could be
+     * an unrelated session from forkserver state; with 0, we cannot prove
+     * the server issues tokens at all.) */
+    {
+        const unsigned char *issued[8];
+        unsigned int issued_len[8];
+        int issued_count = 0;
+        for (int b = 0; b < g_rtsp_block_count && issued_count < 8; b++) {
+            if (!g_rtsp_index_valid) break;
+            if (!code_is_2xx(g_rtsp_blocks[b].code)) continue;
+            const unsigned char *blk = response + g_rtsp_blocks[b].offset;
+            unsigned int blk_len = g_rtsp_blocks[b].len;
+            if (!ci_memmem(blk, blk_len, "Transport:", 10)) continue;  /* SETUP-shaped */
+            const unsigned char *sid = NULL;
+            unsigned int sid_len = 0;
+            if (!parse_header_token(blk, blk_len, "Session", &sid, &sid_len))
+                continue;
+            int dup = 0;
+            for (int k = 0; k < issued_count; k++) {
+                if (issued_len[k] == sid_len &&
+                    memcmp(issued[k], sid, sid_len) == 0) { dup = 1; break; }
+            }
+            if (!dup) { issued[issued_count] = sid; issued_len[issued_count] = sid_len; issued_count++; }
+        }
+        if (issued_count >= 2) {
+            for (int i = 0; i < req_count; i++) {
+                const unsigned char *req = requests[i];
+                unsigned int rlen = req_lens[i];
+                unsigned int cursor = 0, cseq = 0, pos = 0;
+                while (rtsp_next_any_method_cseq_pos(req, rlen, &cursor,
+                                                     &cseq, &pos)) {
+                    const unsigned char *sid = NULL;
+                    unsigned int sid_len = 0;
+                    if (!rtsp_method_session(req, rlen, pos, &sid, &sid_len))
+                        continue;
+                    if (rtsp_request_cseq_occurrences(requests, req_lens,
+                                                      req_count, cseq) != 1)
+                        continue;
+
+                    int known = 0;
+                    for (int k = 0; k < issued_count; k++) {
+                        if (issued_len[k] == sid_len &&
+                            memcmp(issued[k], sid, sid_len) == 0) { known = 1; break; }
+                    }
+                    if (known) continue;
+
+                    const unsigned char *blk = NULL;
+                    unsigned int blk_len = 0;
+                    int code = -1;
+                    if (!rtsp_response_block_by_cseq_unique(response, resp_len,
+                            cseq, &blk, &blk_len, &code))
+                        continue;
+                    if (!code_is_2xx(code)) continue;
+
+                    oracle_add_violation(result, ORACLE_SEV_MEDIUM,
+                        ORACLE_CAT_AUTH_BYPASS | ORACLE_CAT_STATE_VIOLATION,
+                        ORACLE_EVIDENCE_MODERATE,
+                        "RTSP: Method accepted with Session token never issued "
+                        "by server (forged-session candidate)",
+                        NULL, i);
+                    /* one finding per conversation is enough */
+                    i = req_count;
+                    break;
+                }
+                if (i >= req_count) break;
+            }
+        }
+    }
+
+    /* R5: traversal syntax in a DESCRIBE/SETUP request URL accepted with 2xx.
+     * Telemetry only (LOW/HEURISTIC): a 200 does not prove out-of-root access
+     * without leaked content, but it selects interesting replays. */
+    {
+        static const char *const r5_methods[] = { "DESCRIBE ", "SETUP " };
+        int r5_done = 0;
+        for (int m = 0; m < 2 && !r5_done; m++) {
+            for (int i = 0; i < req_count && !r5_done; i++) {
+                const unsigned char *req = requests[i];
+                unsigned int rlen = req_lens[i];
+                unsigned int cursor = 0, cseq = 0, pos = 0;
+                while (!r5_done &&
+                       rtsp_next_method_cseq_pos(req, rlen, r5_methods[m],
+                                                 &cursor, &cseq, &pos)) {
+                    if (rtsp_request_cseq_occurrences(requests, req_lens,
+                                                      req_count, cseq) != 1)
+                        continue;
+                    unsigned int blk_len = rtsp_method_block_len(req, rlen, pos);
+                    if (!span_has_traversal_syntax(req + pos, blk_len)) continue;
+                    if (!rtsp_method_line_is_valid_request(req, rlen, pos,
+                                                           r5_methods[m]))
+                        continue;
+
+                    int code = extract_rtsp_response_code_by_cseq(response,
+                                                                  resp_len, cseq);
+                    if (code_is_2xx(code)) {
+                        oracle_add_violation(result, ORACLE_SEV_LOW,
+                            ORACLE_CAT_PATH_TRAVERSAL,
+                            ORACLE_EVIDENCE_HEURISTIC,
+                            "RTSP: Traversal syntax in DESCRIBE/SETUP URL "
+                            "accepted (telemetry, manual replay required)",
+                            "N/A", i);
+                        r5_done = 1;
+                    }
+                }
+            }
+        }
+    }
+
+    }  /* attack_oracle_enabled() */
 
     /* ── Optimized patterns from 协议漏洞汇总.xlsx ── */
 
@@ -3105,20 +3367,211 @@ int oracle_check_rtsp(
  * 4. INJECTION: Header injection via CRLF in display names
  */
 
+/* ── SIP-specific helpers (CHATAFL_ATTACK_ORACLE, 2026-08-20) ──
+ *
+ * The RTSP index/binder helpers hard-code the "RTSP/" status-line tag and
+ * the RTSP method set, so they cannot see SIP traffic ("SIP/2.0" status
+ * lines, INVITE/REGISTER/... methods).  These local companions mirror the
+ * RTSP single-pass shapes with SIP tokens and NEVER touch the shared
+ * g_rtsp_* index state (which the ORACLE_SELF_TEST cross-check pins to the
+ * RTSP slow path). */
+
+#define ORACLE_SIP_BLOCKS 64
+
+typedef struct {
+    unsigned int offset;       /* offset of the status line in response */
+    unsigned int len;          /* block length (status line .. next block) */
+    int          code;
+    unsigned int cseq;
+    int          has_cseq;
+} oracle_sip_block_t;
+
+static int sip_line_starts_method(const unsigned char *buf, unsigned int len,
+                                  unsigned int off) {
+    return command_boundary_ok(buf, len, off, "INVITE ") ||
+           command_boundary_ok(buf, len, off, "REGISTER ") ||
+           command_boundary_ok(buf, len, off, "OPTIONS ") ||
+           command_boundary_ok(buf, len, off, "BYE ") ||
+           command_boundary_ok(buf, len, off, "ACK ") ||
+           command_boundary_ok(buf, len, off, "CANCEL ") ||
+           command_boundary_ok(buf, len, off, "MESSAGE ") ||
+           command_boundary_ok(buf, len, off, "SUBSCRIBE ") ||
+           command_boundary_ok(buf, len, off, "NOTIFY ") ||
+           command_boundary_ok(buf, len, off, "INFO ") ||
+           command_boundary_ok(buf, len, off, "PRACK ") ||
+           command_boundary_ok(buf, len, off, "UPDATE ") ||
+           command_boundary_ok(buf, len, off, "PUBLISH ") ||
+           command_boundary_ok(buf, len, off, "REFER ");
+}
+
+static unsigned int sip_method_block_end(const unsigned char *req,
+                                         unsigned int len, unsigned int pos) {
+    unsigned int end = len;
+    unsigned int i = pos;
+    while (i < len) {
+        i = text_next_line_start(req, len, text_line_raw_end(req, len, i));
+        unsigned int line_start = i;
+        if (line_start > pos && line_start < len &&
+            sip_line_starts_method(req, len, line_start)) {
+            end = line_start;
+            break;
+        }
+    }
+    return end;
+}
+
+/* Walk SIP method blocks in one request region, yielding each block that
+ * carries a parseable CSeq (mirror of rtsp_next_method_cseq_pos). */
+static int sip_next_method_cseq_pos(const unsigned char *req, unsigned int len,
+                                    const char *method, unsigned int *cursor,
+                                    unsigned int *cseq,
+                                    unsigned int *method_pos) {
+    unsigned int i = cursor ? *cursor : 0;
+
+    while (i < len) {
+        i = text_skip_line_breaks(req, len, i);
+        if (i >= len) break;
+
+        unsigned int line_start = i;
+        unsigned int next = text_next_line_start(req, len,
+            text_line_raw_end(req, len, i));
+
+        if (command_boundary_ok(req, len, line_start, method)) {
+            unsigned int block_end = sip_method_block_end(req, len, line_start);
+            if (cursor) *cursor = (block_end > line_start) ? block_end : next;
+            if (parse_header_uint(req + line_start, block_end - line_start,
+                                  "CSeq", cseq)) {
+                if (method_pos) *method_pos = line_start;
+                return 1;
+            }
+            i = (block_end > line_start) ? block_end : next;
+            continue;
+        }
+
+        i = next;
+    }
+
+    if (cursor) *cursor = len;
+    return 0;
+}
+
+static int sip_next_any_method_cseq_pos(const unsigned char *req,
+                                        unsigned int len,
+                                        unsigned int *cursor,
+                                        unsigned int *cseq,
+                                        unsigned int *method_pos) {
+    unsigned int i = cursor ? *cursor : 0;
+
+    while (i < len) {
+        i = text_skip_line_breaks(req, len, i);
+        if (i >= len) break;
+
+        unsigned int line_start = i;
+        unsigned int next = text_next_line_start(req, len,
+            text_line_raw_end(req, len, i));
+
+        if (sip_line_starts_method(req, len, line_start)) {
+            unsigned int block_end = sip_method_block_end(req, len, line_start);
+            if (cursor) *cursor = (block_end > line_start) ? block_end : next;
+            if (parse_header_uint(req + line_start, block_end - line_start,
+                                  "CSeq", cseq)) {
+                if (method_pos) *method_pos = line_start;
+                return 1;
+            }
+            i = (block_end > line_start) ? block_end : next;
+            continue;
+        }
+
+        i = next;
+    }
+
+    if (cursor) *cursor = len;
+    return 0;
+}
+
+/* How many SIP method blocks across the whole conversation echo this CSeq —
+ * the uniqueness guard that makes CSeq-unique response binding safe. */
+static int sip_request_cseq_occurrences(const unsigned char **requests,
+                                        const unsigned int *req_lens,
+                                        int req_count,
+                                        unsigned int want_cseq) {
+    int count = 0;
+
+    for (int i = 0; i < req_count; i++) {
+        unsigned int cursor = 0, cseq = 0, pos = 0;
+        while (sip_next_any_method_cseq_pos(requests[i], req_lens[i],
+                                            &cursor, &cseq, &pos)) {
+            (void)pos;
+            if (cseq == want_cseq) count++;
+        }
+    }
+    return count;
+}
+
+/* Single pass over the response building an index of "SIP/2.0 <code>"
+ * status blocks (mirror of build_rtsp_block_index with the SIP tag). */
+static int build_sip_block_index(const unsigned char *resp, unsigned int len,
+                                 oracle_sip_block_t *blocks, int max_blocks) {
+    int count = 0;
+    unsigned int i = 0;
+    while (i < len && count < max_blocks) {
+        if ((i == 0 || resp[i-1] == '\n') &&
+            ci_memmem(resp + i, (len - i < 8) ? len - i : 8, "SIP/", 4)) {
+            unsigned int j = i;
+            while (j < len && resp[j] != ' ') j++;
+            if (++j + 2 >= len) {
+                while (i < len && resp[i] != '\n') i++;
+                if (i < len) i++;
+                continue;
+            }
+            if (!isdigit(resp[j]) || !isdigit(resp[j+1]) || !isdigit(resp[j+2])) {
+                while (i < len && resp[i] != '\n') i++;
+                if (i < len) i++;
+                continue;
+            }
+            int code = (resp[j] - '0') * 100 +
+                       (resp[j+1] - '0') * 10 +
+                       (resp[j+2] - '0');
+            unsigned int block_start = i;
+            unsigned int block_end = len;
+            unsigned int k = i + 1;
+            while (k + 4 < len) {
+                while (k < len && resp[k] != '\n') k++;
+                if (k < len) k++;
+                if (k + 4 < len &&
+                    ci_memmem(resp + k, (len - k < 8) ? len - k : 8, "SIP/", 4)) {
+                    block_end = k;
+                    break;
+                }
+            }
+            unsigned int cseq = 0;
+            int has_cseq = parse_header_uint(resp + block_start,
+                                             block_end - block_start,
+                                             "CSeq", &cseq);
+            blocks[count].offset = block_start;
+            blocks[count].len = block_end - block_start;
+            blocks[count].code = code;
+            blocks[count].cseq = cseq;
+            blocks[count].has_cseq = has_cseq;
+            count++;
+            i = block_end;
+            continue;
+        }
+        while (i < len && resp[i] != '\n') i++;
+        if (i < len) i++;
+    }
+    return count;
+}
+
 int oracle_check_sip(
     const unsigned char **requests, const unsigned int *req_lens,
     int req_count, const unsigned char *response, unsigned int resp_len,
     oracle_result_t *result) {
 
     reset_proto_state();
-    (void)requests;
-    (void)req_lens;
-    (void)req_count;
-    (void)response;
-    (void)resp_len;
 
     /* =========================================================================
-     * SIP Oracle — Structural Limitations
+     * SIP Oracle — Structural Limitations (2026-07-04, still binding)
      * =========================================================================
      *
      * The SIP oracle cannot produce reliable security findings without:
@@ -3172,7 +3625,121 @@ int oracle_check_sip(
      *   - Use CSeq-based response matching for ALL per-request checks
      *   - Verify response codes (2xx = server accepted) for all findings
      *   - Reference CVEs for the ACTUAL Kamailio target, not other products
-     * ========================================================================= */
+     * =========================================================================
+     *
+     * R6/R7 (CHATAFL_ATTACK_ORACLE, 2026-08-20) implement the mandate above
+     * rather than violating it:
+     *   - The auth check (R6) fires ONLY on server-issued evidence: the
+     *     server itself sent a 401/407 challenge earlier in the conversation
+     *     (proving auth IS configured and active), and then accepted a
+     *     credential-less INVITE with 200.  When auth is not configured the
+     *     server never issues 401/407, so R6 stays silent — exactly the
+     *     configuration-dependence the removal note demanded.
+     *   - Both rules use CSeq-unique response matching (a SIP response
+     *     block is bound to the request only when its CSeq is echoed and
+     *     unique across the conversation), so forking / 1xx slot shifts
+     *     cannot misbind evidence.
+     *   - No CVE is referenced (no Kamailio-specific CVE applies); findings
+     *     describe the observable deviation.
+     */
+
+    if (!attack_oracle_enabled()) {
+        (void)requests; (void)req_lens; (void)req_count;
+        (void)response; (void)resp_len;
+        return result->violation_count;
+    }
+
+    /* SIP status lines are "SIP/2.0 <code> ..." — the shared RTSP index only
+     * recognizes "RTSP/" tags, so build a local SIP block index (the RTSP
+     * helpers above remain untouched for RTSP traffic). */
+    oracle_sip_block_t sip_blocks[ORACLE_SIP_BLOCKS];
+    int sip_block_count = build_sip_block_index(response, resp_len,
+                                                sip_blocks, ORACLE_SIP_BLOCKS);
+
+    /* Layer 1 (R6): did the server issue a 401/407 auth challenge at all?
+     * This is the server-issued proof that authentication is configured. */
+    int server_challenged_auth = 0;
+    for (int b = 0; b < sip_block_count; b++) {
+        int code = sip_blocks[b].code;
+        if (code == 401 || code == 407) { server_challenged_auth = 1; break; }
+    }
+
+    for (int i = 0; i < req_count; i++) {
+        const unsigned char *req = requests[i];
+        unsigned int rlen = req_lens[i];
+
+        unsigned int cursor = 0, cseq = 0, pos = 0;
+        while (sip_next_method_cseq_pos(req, rlen, "INVITE ",
+                                        &cursor, &cseq, &pos)) {
+            if (sip_request_cseq_occurrences(requests, req_lens,
+                                             req_count, cseq) != 1)
+                continue;
+            unsigned int blk_len = sip_method_block_end(req, rlen, pos) - pos;
+
+            const unsigned char *blk = NULL;
+            unsigned int resp_blk_len = 0;
+            int code = -1;
+            {
+                /* CSeq-unique binding against the local SIP index. */
+                int matches = 0;
+                const unsigned char *found = NULL;
+                unsigned int found_len = 0;
+                int found_code = -1;
+                for (int k = 0; k < sip_block_count; k++) {
+                    if (sip_blocks[k].has_cseq && sip_blocks[k].cseq == cseq) {
+                        matches++;
+                        found = response + sip_blocks[k].offset;
+                        found_len = sip_blocks[k].len;
+                        found_code = sip_blocks[k].code;
+                    }
+                }
+                if (matches != 1) continue;
+                blk = found;
+                resp_blk_len = found_len;
+                code = found_code;
+            }
+            (void)blk; (void)resp_blk_len;
+
+            /* R6: server demanded auth earlier, then accepted THIS
+             * credential-less INVITE with 200. */
+            if (server_challenged_auth && code == 200 &&
+                !ci_memmem(req + pos, blk_len, "Authorization:", 14) &&
+                !ci_memmem(req + pos, blk_len, "Proxy-Authorization:", 20)) {
+                oracle_add_violation(result, ORACLE_SEV_MEDIUM,
+                    ORACLE_CAT_AUTH_BYPASS,
+                    ORACLE_EVIDENCE_MODERATE,
+                    "SIP: INVITE without credentials accepted after server "
+                    "issued 401/407 challenge",
+                    NULL, i);
+            }
+
+            /* R7: structurally malformed Via header accepted with 200.
+             * RFC 3261 §20.7: Via = "Via" HCOLON via-parm *(COMMA via-parm),
+             * via-parm = sent-protocol LWS sent-by *( SEMI via-params ).
+             * Flag only the two unambiguous malformations observable on the
+             * wire: an empty value after "Via:" or a value with no SIP/xxx
+             * version token.  LOW — a proxy may accept and fix up Via. */
+            const unsigned char *via = NULL;
+            unsigned int via_len = 0;
+            if (code == 200 &&
+                parse_header_token(req + pos, blk_len, "Via", &via, &via_len)) {
+                /* parse_header_token stops at ';', ' ' or CRLF — an empty
+                 * value fails parse (j <= start), so a successful parse with
+                 * len < 4 or no "SIP" version token means a bare garbage
+                 * token the parser still bound to the header. */
+                int has_version = ci_memmem(via, via_len, "SIP/", 4) != NULL ||
+                                  ci_memmem(via, via_len, "sip/", 4) != NULL;
+                if (via_len < 4 || !has_version) {
+                    oracle_add_violation(result, ORACLE_SEV_LOW,
+                        ORACLE_CAT_STATE_VIOLATION,
+                        ORACLE_EVIDENCE_MODERATE,
+                        "SIP: INVITE with malformed Via header accepted "
+                        "(low-confidence context)",
+                        NULL, i);
+                }
+            }
+        }
+    }
 
     return result->violation_count;
 }
@@ -3380,8 +3947,29 @@ int oracle_check_http(
             int code = -1;
             extract_http_style_nth_response_block(response, resp_len, i,
                 &resp_block, &resp_block_len, &code);
-            if (code >= 200 && code < 300 &&
-                !response_has_phrase(resp_block, resp_block_len, "400 Bad Request")) {
+            /* A malformed request typically makes the server answer the valid
+             * prefix with 2xx and the garbage tail with 400 — TWO responses on
+             * the wire, which shifts every later nth-block index.  Reject the
+             * candidate whenever ANY response block in the captured window is
+             * a 400 (the server demonstrably rejects the malformed framing). */
+            int any_400 = response_has_phrase(resp_block, resp_block_len,
+                                              "400 Bad Request");
+            if (!any_400 && resp_len > 0) {
+                int bn = 0;
+                const unsigned char *b = NULL;
+                unsigned int bl = 0;
+                int bc = -1;
+                while (extract_http_style_nth_response_block(response, resp_len,
+                                                             bn, &b, &bl, &bc)) {
+                    if (bc == 400 ||
+                        response_has_phrase(b, bl, "400 Bad Request")) {
+                        any_400 = 1;
+                        break;
+                    }
+                    bn++;
+                }
+            }
+            if (code >= 200 && code < 300 && !any_400) {
                 oracle_add_violation(result, ORACLE_SEV_MEDIUM,
                     ORACLE_CAT_SMUGGLING,
                     ORACLE_EVIDENCE_MODERATE,
@@ -3880,6 +4468,114 @@ int oracle_check_mqtt(
      * random mutation — oracle "discovers" these as replay attacks.
      * Circular detection.  Additionally, PUBLISH and SUBSCRIBE packet
      * ID spaces are independent per MQTT spec. */
+
+    /* ── Attack-pattern rules (CHATAFL_ATTACK_ORACLE, 2026-08-20) ──
+     *
+     * Both rules below are strictly response-side: they key on what the
+     * BROKER sent, never on request-side patterns the fuzzer created —
+     * the exact discipline the 2026-07-04 removals above demand.
+     *
+     * R9: the broker DELIVERED a PUBLISH whose topic is in the $SYS
+     *      hierarchy.  The removed request-side rule fired on the fuzzer
+     *      subscribing to $SYS; this one fires only when the broker
+     *      actually hands $SYS telemetry to the client — evidence of an
+     *      isolation failure on the broker side (acl__check_dollar()
+     *      should gate delivery).  HEURISTIC: without knowing the broker's
+     *      ACL config a legitimate local monitoring client is
+     *      indistinguishable, so this is telemetry for manual triage.
+     *
+     * R10: the broker delivered the SAME QoS 2 packet identifier twice
+     *      (two PUBLISH packets, QoS bits = 0b0010..0b0011 dup/qos
+     *      encoding, same 2-byte packet id in the variable header).
+     *      QoS 2 is exactly-once (§4.3): the receiver MUST NOT see the
+     *      same pid twice.  The removed request-side rule fired on the
+     *      client re-using ids; this one fires on the broker violating
+     *      exactly-once delivery — a response-side state-machine fault
+     *      the fuzzer cannot manufacture.
+     */
+    if (attack_oracle_enabled()) {
+        for (int pk = 0; pk < g_mqtt_pkt_count; pk++) {
+            if (!g_mqtt_index_valid) break;
+
+            unsigned int off = g_mqtt_pkts[pk].offset;
+            unsigned int rl = (unsigned int)g_mqtt_pkts[pk].rem_len;
+            unsigned int hdr = off + 1;
+            /* step over the (already decoded) remaining-length bytes */
+            unsigned int rl_bytes = 0;
+            (void)mqtt_decode_remaining_length(response + off + 1,
+                                               resp_len - off - 1, &rl_bytes);
+            hdr += rl_bytes;
+            if (rl < 2 || hdr + 2 > resp_len) continue;
+            if (g_mqtt_pkts[pk].pkt_type != 3) continue; /* PUBLISH */
+
+            unsigned int topic_len = (response[hdr] << 8) | response[hdr + 1];
+            if (hdr + 2 + topic_len > resp_len) continue;
+
+            /* R9: broker-delivered $SYS topic. */
+            if (topic_len >= 5 &&
+                response[hdr + 2] == '$' &&
+                (response[hdr + 3] == 'S' || response[hdr + 3] == 's') &&
+                (response[hdr + 4] == 'Y' || response[hdr + 4] == 'y') &&
+                (response[hdr + 5] == 'S' || response[hdr + 5] == 's')) {
+                oracle_add_violation(result, ORACLE_SEV_MEDIUM,
+                    ORACLE_CAT_INFO_LEAK | ORACLE_CAT_ISOLATION,
+                    ORACLE_EVIDENCE_HEURISTIC,
+                    "MQTT: Broker delivered a $SYS-topic PUBLISH to the client "
+                    "(isolation telemetry, manual ACL triage required)",
+                    "N/A", -1);
+                break;
+            }
+
+            /* R10: broker duplicate QoS 2 delivery — collect (pid, qos)
+             * from every delivered QoS>0 PUBLISH and flag exact repeats. */
+            {
+                uint8_t qos = (g_mqtt_pkts[pk].first_byte >> 1) & 0x03;
+                if (qos > 0) {
+                    unsigned int pid_off = hdr + 2 + topic_len;
+                    if (qos == 2 && pid_off + 2 <= resp_len &&
+                        rl >= 2 + topic_len + 2) {
+                        uint16_t pid = (response[pid_off] << 8)
+                                     | response[pid_off + 1];
+                        if (pid != 0) {
+                            for (int q = 0; q < pk; q++) {
+                                if (g_mqtt_pkts[q].pkt_type != 3) continue;
+                                uint8_t qos_q =
+                                    (g_mqtt_pkts[q].first_byte >> 1) & 0x03;
+                                if (qos_q != 2) continue;
+                                unsigned int off_q = g_mqtt_pkts[q].offset;
+                                unsigned int hdr_q = off_q + 1;
+                                unsigned int rl_b_q = 0;
+                                (void)mqtt_decode_remaining_length(
+                                    response + off_q + 1,
+                                    resp_len - off_q - 1, &rl_b_q);
+                                hdr_q += rl_b_q;
+                                if (hdr_q + 2 > resp_len) continue;
+                                unsigned int tl_q =
+                                    (response[hdr_q] << 8) | response[hdr_q + 1];
+                                unsigned int pid_off_q = hdr_q + 2 + tl_q;
+                                if ((unsigned int)g_mqtt_pkts[q].rem_len <
+                                    2 + tl_q + 2) continue;
+                                if (pid_off_q + 2 > resp_len) continue;
+                                uint16_t pid_q = (response[pid_off_q] << 8)
+                                               | response[pid_off_q + 1];
+                                if (pid_q == pid) {
+                                    oracle_add_violation(result,
+                                        ORACLE_SEV_MEDIUM,
+                                        ORACLE_CAT_STATE_VIOLATION |
+                                        ORACLE_CAT_REPLAY,
+                                        ORACLE_EVIDENCE_MODERATE,
+                                        "MQTT: Broker delivered duplicate QoS 2 "
+                                        "packet id (exactly-once violation)",
+                                        "N/A", -1);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     return result->violation_count;
 }

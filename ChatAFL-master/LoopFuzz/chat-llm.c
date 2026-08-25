@@ -412,6 +412,64 @@ static const ProtocolFormatConstraint PLATEAU_FORMAT_CONSTRAINTS[] = {
     {NULL, NULL}
 };
 
+/* Stage-3 (CHATAFL_ATTACK_PROMPT, 2026-08-21): per-protocol vulnerability
+ * patterns distilled from papers/漏洞发现经验 (papers/ChatAFLBugDetect.txt
+ * Table VII / MBFuzzerBugDetect.txt / vulnerabilities.txt, 11 CVEs).
+ * Injected into the plateau prompt ONLY when the gate is on, as an extra
+ * bias paragraph next to the Fix-23 format constraint.  The output path is
+ * unchanged: responses still flow through the same JSON validation and
+ * P/U/R/G admission, so a bad suggestion is dropped exactly like any other
+ * plateau candidate.  Total ≤200 tokens per protocol. */
+typedef struct { const char *name; const char *patterns; } ProtocolVulnPattern;
+static const ProtocolVulnPattern PLATEAU_VULN_PATTERNS[] = {
+    {"RTSP",
+     "**RTSP BUG PATTERNS TO TRY (from real CVEs):**\n"
+     "- PLAY then PAUSE then PLAY on a live session; then TEARDOWN and send more data\n"
+     "- Repeat SETUP on the SAME stream with different client_port values\n"
+     "- DESCRIBE with nested/deep URLs like rtsp://host/a/../a/../track1\n"
+     "- SETUP with malformed Transport headers: unbalanced quotes, duplicate modes, ssrc= overflow\n"
+     "- Large RTP interleaved frames: $<channel><big-length> after PLAY\n"},
+    {"FTP",
+     "**FTP BUG PATTERNS TO TRY (from real CVEs):**\n"
+     "- CWD into very long paths (1000+ chars), deep ../ chains, then PWD/LIST\n"
+     "- RNFR then RNTO with ../ traversal targets\n"
+     "- State changes (DELE/MKD/STOR) immediately after a failed login sequence\n"},
+    {"SIP",
+     "**SIP BUG PATTERNS TO TRY (from real CVEs):**\n"
+     "- INVITE with nested/duplicated Via or From headers (branch= repetition)\n"
+     "- CANCEL and BYE for unknown Call-IDs; ACK with mismatched CSeq\n"
+     "- SUBSCRIBE/NOTIFY without prior REGISTER or auth\n"},
+    {"SMTP",
+     "**SMTP BUG PATTERNS TO TRY (from real CVEs):**\n"
+     "- AUTH PLAIN/LOGIN with oversized base64 blobs (1000+ chars)\n"
+     "- MAIL FROM/RCPT TO with oversized local parts and nested <> paths\n"
+     "- RSET mid-DATA; BDAT chunks with mismatched sizes\n"},
+    {"MQTT",
+     "**MQTT BUG PATTERNS TO TRY (from real CVEs):**\n"
+     "- Subscribe then publish on a 200+ char topic; same for $shared/group/ topics\n"
+     "- Persistent sessions: CONNECT CleanSession=0, SUBSCRIBE, DISCONNECT, reconnect, RESUBSCRIBE\n"
+     "- Subscribe to $SYS/# and +/+/+ wildcards; retained publish on delivery\n"
+     "- QoS 2 duplicate PUBREL with the same PacketId\n"},
+    {"DAAP",
+     "**DAAP BUG PATTERNS TO TRY:**\n"
+     "- Reuse stale session-id after /logout; revision-number jumps and wraparounds\n"
+     "- Very long database/playlist id query strings\n"},
+    {NULL, NULL}
+};
+
+/* Lazy getenv cache mirroring attack_oracle_enabled() in
+ * protocol-oracle-precise.c. */
+static int attack_prompt_enabled(void) {
+    static int cached = -1;
+    if (cached < 0) {
+        const char *env = getenv("CHATAFL_ATTACK_PROMPT");
+        cached = (env && (atoi(env) == 1 || strcasecmp(env, "on") == 0 ||
+                          strcasecmp(env, "yes") == 0 ||
+                          strcasecmp(env, "true") == 0)) ? 1 : 0;
+    }
+    return cached;
+}
+
 char *llm_handle_plateau(const char *protocol_name, const char *examples,
                          const char *history, const char *state_ctx) {
     if (!protocol_name) return NULL;
@@ -422,6 +480,19 @@ char *llm_handle_plateau(const char *protocol_name, const char *examples,
         if (strcasecmp(protocol_name, PLATEAU_FORMAT_CONSTRAINTS[ci].name) == 0) {
             proto_constraint = PLATEAU_FORMAT_CONSTRAINTS[ci].constraint;
             break;
+        }
+    }
+
+    /* Stage-3 (CHATAFL_ATTACK_PROMPT): look up per-protocol CVE-pattern bias.
+     * Injected next to the Fix-23 constraint so both land in the high-attention
+     * region; the output path below is untouched. */
+    const char *vuln_patterns = "";
+    if (attack_prompt_enabled()) {
+        for (int ci = 0; PLATEAU_VULN_PATTERNS[ci].name != NULL; ci++) {
+            if (strcasecmp(protocol_name, PLATEAU_VULN_PATTERNS[ci].name) == 0) {
+                vuln_patterns = PLATEAU_VULN_PATTERNS[ci].patterns;
+                break;
+            }
         }
     }
 
@@ -467,6 +538,7 @@ char *llm_handle_plateau(const char *protocol_name, const char *examples,
         "**Communication History (most recent interactions):**\n\"\"\"%s\"\"\"\n\n"
         "**Example Request Formats:**\n%s\n\n"
         "%s"  /* Fix-23: per-protocol format constraint injected here */
+        "%s"  /* Stage-3: CVE bug-pattern bias (CHATAFL_ATTACK_PROMPT) */
         "**Your Task:** Choose ONE strategy and return ONLY valid JSON:\n\n"
         "Strategy A - Send a new specific request:\n"
         "  {\"analysis\":\"...\", \"suggested_request\":\"EXACT_CMD\\r\\n\"}\n\n"
@@ -494,6 +566,7 @@ char *llm_handle_plateau(const char *protocol_name, const char *examples,
         history ? history : "",
         examples ? examples : "",
         proto_constraint,    /* Fix-23: inject protocol-specific format constraint */
+        vuln_patterns,       /* Stage-3: inject CVE-pattern bias when gated on */
         mqtt_state_hint);
     free(state_section);
     if (!raw_prompt) return NULL;
