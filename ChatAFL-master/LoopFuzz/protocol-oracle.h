@@ -328,5 +328,8 @@ extern uint64_t  oracle_ordinal_skips;
 extern uint64_t  oracle_ordinal_downgrades;
 extern uint64_t  oracle_evidence_keeps;
 extern uint64_t  oracle_framing_skips;
+extern uint64_t  oracle_framing_defect_skips;   /* execs with partial-trust binding */
+extern uint64_t  oracle_untrusted_slots;        /* slots masked by trust limit */
+extern uint64_t  oracle_embedded_method_skips;  /* RTSP non-first-line method skips */
 
 #endif /* __PROTOCOL_ORACLE_H */

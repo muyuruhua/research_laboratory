@@ -1,0 +1,36 @@
+=== PROTOCOL ORACLE DEVIATION REPORT ===
+NOTE: This is a candidate for manual triage, NOT a confirmed finding.
+The oracle detects protocol-level behavioural deviations;
+exploitability depends on server configuration and deployment context.
+Time: 1787634660
+Report ID: 5
+Unique Pattern Count At Save: 1
+Violations: 1
+Max Severity: 3
+Categories: 0x0004
+Full Request File: /home/ckt/Documents/000_2026_test_dev/research_laboratory/.e1smoke/out_legacy/replayable-violations/id:000005,sev:3,cat:0004.request.bin (saved)
+Full Replay File: /home/ckt/Documents/000_2026_test_dev/research_laboratory/.e1smoke/out_legacy/replayable-violations/id:000005,sev:3,cat:0004.request.replay (saved)
+Full Request Messages: 4
+Full Request Bytes: 31
+Full Request FNV1a32: 0x7e3a2720
+Full Response File: /home/ckt/Documents/000_2026_test_dev/research_laboratory/.e1smoke/out_legacy/replayable-violations/id:000005,sev:3,cat:0004.response.bin (saved)
+Full Response Bytes: 47
+Full Response FNV1a32: 0x3b01034f
+
+--- Violation 1 ---
+Severity: 3
+Category: 0x0004
+Evidence Quality: 3 (STRONG — precise response-code match)
+Description: FTP: RNTO without prior RNFR accepted by server
+Request Index: 0
+Pattern Hash: 0x9ef0cdb9
+
+=== REQUEST DATA PREVIEW (31/31 bytes) ===
+RNTO ../../evil
+USER fuzzing
+
+=== RESPONSE DATA PREVIEW (47/47 bytes) ===
+220 smoke FTP ready
+250 renamed
+331 User ok
+

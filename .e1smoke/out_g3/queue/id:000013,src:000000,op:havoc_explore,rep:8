@@ -1,0 +1,16 @@
+RETR deepfile
+PORT 127,0,0,1,178,255
+R
+USER ubuER 
+USER ubuER 
+USER ubuER 
+USER ubuER 
+GG deep_a
+PASS ubuntu
+TYPE I
+PORT 127,0,0,1,178,255
+STOR deepfile
+ABOR
+RETR deepfile
+ABOR
+QUIT

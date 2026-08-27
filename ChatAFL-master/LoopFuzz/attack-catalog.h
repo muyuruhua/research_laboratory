@@ -43,4 +43,17 @@ typedef struct {
  * CHATAFL_ATTACK_SEED_MAX cap. */
 unsigned int attack_enrich_seeds(const char *seed_dir, const char *protocol);
 
+/* DSE-fix (2026-08-25): render deep-state sequence templates (pause/play
+ * toggles, teardown-reuse, file lifecycles, ...) as attack_deep_*.raw
+ * files through the same admission channel.  Gated by
+ * CHATAFL_DEEP_STATE_EXPLORE (default ON), cap CHATAFL_DEEP_STATE_SEED_MAX
+ * (default 6).  DAAP maps to the HTTP template. */
+unsigned int deep_state_enrich_seeds(const char *seed_dir, const char *protocol);
+
+/* P0-2 (2026-08-25): byte anchors of attack-seed payloads that must
+ * survive havoc.  Fills up to 4 pointers into patterns_out and returns
+ * the count (0 when the protocol has no registered patterns). */
+unsigned int attack_payload_patterns(const char *protocol,
+                                     const char *patterns_out[4]);
+
 #endif /* __ATTACK_CATALOG_H__ */

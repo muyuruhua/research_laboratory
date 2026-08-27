@@ -1,0 +1,36 @@
+=== PROTOCOL ORACLE DEVIATION REPORT ===
+NOTE: This is a candidate for manual triage, NOT a confirmed finding.
+The oracle detects protocol-level behavioural deviations;
+exploitability depends on server configuration and deployment context.
+Time: 1787634930
+Report ID: 49
+Unique Pattern Count At Save: 1
+Violations: 1
+Max Severity: 4
+Categories: 0x0005
+Full Request File: /home/ckt/Documents/000_2026_test_dev/research_laboratory/.e1smoke/out_hang/replayable-violations/id:000049,sev:4,cat:0005.request.bin (saved)
+Full Replay File: /home/ckt/Documents/000_2026_test_dev/research_laboratory/.e1smoke/out_hang/replayable-violations/id:000049,sev:4,cat:0005.request.replay (saved)
+Full Request Messages: 3
+Full Request Bytes: 8
+Full Request FNV1a32: 0x1f8c227d
+Full Response File: /home/ckt/Documents/000_2026_test_dev/research_laboratory/.e1smoke/out_hang/replayable-violations/id:000049,sev:4,cat:0005.response.bin (saved)
+Full Response Bytes: 43
+Full Response FNV1a32: 0xfa12e29e
+
+--- Violation 1 ---
+Severity: 4
+Category: 0x0005
+Evidence Quality: 3 (STRONG ‚Äî precise response-code match)
+Description: FTP: PASS accepted without USER (auth state bypass)
+CVE Pattern: CVE-2024-42644
+Request Index: 1
+Pattern Hash: 0x6b40de34
+
+=== REQUEST DATA PREVIEW (8/8 bytes) ===
+USER xç
+
+=== RESPONSE DATA PREVIEW (43/43 bytes) ===
+220 hang smoke ready
+502 unknown
+230 ok
+

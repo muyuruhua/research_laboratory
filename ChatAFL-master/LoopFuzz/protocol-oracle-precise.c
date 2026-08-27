@@ -90,6 +90,9 @@ uint64_t oracle_ordinal_skips     = 0;
 uint64_t oracle_ordinal_downgrades = 0;
 uint64_t oracle_evidence_keeps    = 0;
 uint64_t oracle_framing_skips     = 0;
+uint64_t oracle_framing_defect_skips = 0;   /* execs with partial-trust binding */
+uint64_t oracle_untrusted_slots     = 0;   /* slots masked by the trust limit */
+uint64_t oracle_embedded_method_skips = 0;  /* RTSP non-first-line method */
 
 /* Set per oracle_check_* call by oracle_ordinal_gate(); read by
  * oracle_add_violation() to apply the graded downgrade. */
@@ -883,6 +886,110 @@ static double text_protocol_garbage_ratio(const unsigned char **requests,
  *
  * Behavior by mode: orig (0) = legacy binary 0.30 ratio skip only;
  * graded (1) = framing + graded ratio (default); off (2) = never skip. */
+/* Binding-hardening (2026-08-25, refined same day): RFC CRLF framing
+ * integrity via a per-slot TRUST LIMIT instead of a whole-sequence skip.
+ *
+ * Ordinal binding assumes one request line per message and one reply per
+ * line.  Three mutation shapes break that model — but only from the defect
+ * point onward; slots BEFORE the defect keep reliable bindings:
+ *   - a message NOT ending in CRLF: the server merges its last line with
+ *     the next message's first line and answers the merged line once
+ *     (bftpd Aug-25 FP) → replies shift from that message's last slot;
+ *   - a bare LF inside a message: our slot tokenizer splits a phantom
+ *     line the server never saw (exim Aug-25 FP) → shift from that line;
+ *   - AUTH followed by further lines: the server may consume them as the
+ *     SASL continuation (RFC 4954), one reply for two slots (exim FP) →
+ *     shift from the line after AUTH (crossing into the next message
+ *     when AUTH ends its own message).
+ * g_binding_trust_limit = cumulative slot ordinal at which bindings
+ * become unreliable (-1 = whole sequence trusted).  Lookups for slots at
+ * or past the limit return -1, so ordinal-dependent rules simply cannot
+ * fire on untrusted positions — a LOCAL skip that recovers the false
+ * negatives the earlier whole-sequence gate suppressed. */
+static int g_binding_trust_limit = -1;
+
+/* CRLF framing defect: byte offset in `b` (length l) from which server
+ * line-framing may diverge from our slot model, or -1 when intact. */
+static int text_msg_framing_defect_at(const unsigned char *b, unsigned int l) {
+    if (l == 0) return -1;
+    if (l < 2 || b[l - 1] != '\n' || b[l - 2] != '\r') return 0;
+    for (unsigned int k = 0; k < l; k++)
+        if (b[k] == '\n' && (k == 0 || b[k - 1] != '\r')) return (int)k;
+    return -1;
+}
+
+/* Compute g_binding_trust_limit from the per-message defects, using the
+ * slot ordinals recorded in g_slots.  Must run AFTER the slot walk in
+ * build_text_index(). */
+static void compute_binding_trust_limit(const unsigned char **requests,
+                                        const unsigned int *req_lens,
+                                        int req_count) {
+    g_binding_trust_limit = -1;
+    int pending_cross_msg = 0;   /* previous message ended on an AUTH line */
+
+    for (int i = 0; i < req_count; i++) {
+        int defect = text_msg_framing_defect_at(requests[i], req_lens[i]);
+
+        if (pending_cross_msg) {
+            /* AUTH continuation may consume this message's first line. */
+            for (int k = 0; k < g_slot_count; k++) {
+                if (g_slots[k].region_idx == i) {
+                    g_binding_trust_limit = g_slots[k].cum_slot;
+                    return;
+                }
+            }
+            continue;   /* empty message: keep pending for the next one */
+        }
+
+        if (defect == 0) {
+            /* unterminated (or leading bare-LF): conservatively untrust
+             * from this message's last slot onward (the merged line) */
+            int last = -1;
+            for (int k = 0; k < g_slot_count; k++)
+                if (g_slots[k].region_idx == i) last = g_slots[k].cum_slot;
+            if (last >= 0) { g_binding_trust_limit = last; return; }
+            continue;   /* no slots here: later message handled on its own */
+        }
+        if (defect > 0) {
+            /* bare LF mid-message: untrust from the first phantom slot */
+            for (int k = 0; k < g_slot_count; k++) {
+                if ((g_slots[k].region_idx == i &&
+                     g_slots[k].slot_pos > (unsigned int)defect) ||
+                    g_slots[k].region_idx > i) {
+                    g_binding_trust_limit = g_slots[k].cum_slot;
+                    return;
+                }
+            }
+            return;   /* defect but no slots past it: nothing to mask */
+        }
+
+        /* framing intact: AUTH-continuation ambiguity within the message */
+        int auth_slot = -1, auth_is_last = 1;
+        for (int k = 0; k < g_slot_count; k++) {
+            if (g_slots[k].region_idx != i) continue;
+            if (g_slots[k].cmd &&
+                strncasecmp(g_slots[k].cmd, "AUTH", 4) == 0 &&
+                auth_slot < 0)
+                auth_slot = g_slots[k].cum_slot;
+            if (auth_slot >= 0 && g_slots[k].region_idx == i &&
+                g_slots[k].cum_slot > auth_slot) {
+                auth_is_last = 0;
+                g_binding_trust_limit = g_slots[k].cum_slot;
+                return;
+            }
+        }
+        if (auth_slot >= 0 && auth_is_last) {
+            /* AUTH ends its message: continuation may cross the boundary */
+            int next = -1;
+            for (int k = 0; k < g_slot_count; k++)
+                if (g_slots[k].region_idx > i) { next = g_slots[k].cum_slot; break; }
+            if (next >= 0) { g_binding_trust_limit = next; return; }
+            pending_cross_msg = 1;   /* empty/absent next message: no mask */
+            /* AUTH in final message with no following slots: nothing to mask */
+        }
+    }
+}
+
 static void oracle_ordinal_gate(const unsigned char **requests,
                                 const unsigned int *req_lens,
                                 int req_count,
@@ -968,6 +1075,8 @@ static int text_response_code_for_command_slow(const unsigned char **requests,
 
     int command_ordinal = text_response_slot_count_before_pos(requests, req_lens,
         req_count, region_idx, cmd_pos, proto);
+    if (g_binding_trust_limit >= 0 && command_ordinal >= g_binding_trust_limit)
+        return -1;                           /* slot past framing defect */
     return extract_nth_response_code(response, resp_len,
                                      resp_offset + command_ordinal);
 }
@@ -994,6 +1103,9 @@ static int text_response_code_for_command(const unsigned char **requests,
             if (g_slots[k].region_idx == region_idx &&
                 g_slots[k].slot_pos == cmd_pos) {
                 if (!g_slots[k].cmd) return -1;  /* not an active command slot */
+                if (g_binding_trust_limit >= 0 &&
+                    g_slots[k].cum_slot >= g_binding_trust_limit)
+                    return -1;               /* slot past framing defect */
                 int idx = resp_offset + g_slots[k].cum_slot;
                 if (idx < 0 || idx >= g_resp_code_count) return -1;
 #ifdef ORACLE_SELF_TEST
@@ -1478,6 +1590,20 @@ static int rtsp_request_cseq_occurrences(const unsigned char **requests,
         }
     }
     return count;
+}
+
+/* Binding-hardening (2026-08-25): a bound method must be the FIRST
+ * request line of its message.  Mutation can merge two requests into one
+ * message (Aug-25 live555 FP: an embedded second "PLAY" line shared the
+ * message with a corrupted SETUP; its CSeq uniquely matched the SETUP's
+ * 201 Created reply and every downstream guard ran on the wrong block).
+ * An embedded method's response ownership is ambiguous by construction —
+ * skip it; genuine requests always start their own message. */
+static int rtsp_pos_is_first_request_line(const unsigned char *req,
+                                          unsigned int len,
+                                          unsigned int pos) {
+    unsigned int i = text_skip_line_breaks(req, len, 0);
+    return (i == pos);
 }
 
 static int rtsp_method_session(const unsigned char *req, unsigned int len,
@@ -2024,6 +2150,7 @@ static int span_has_traversal_syntax(const unsigned char *buf,
 
 /* Reset protocol state for new execution */
 static void reset_proto_state(void) {
+    g_binding_trust_limit = -1;
     memset(&proto_state, 0, sizeof(proto_state));
 }
 
@@ -2124,6 +2251,32 @@ static void build_text_index(const unsigned char **requests,
     g_resp_code_count = need;
     g_text_index_proto = proto;
     g_text_index_valid = 1;
+
+    /* Per-slot trust limit (binding hardening, refined): mask only the
+     * slots at/after the framing defect instead of skipping the whole
+     * sequence.  Telemetry: executions with a limit, and slots masked. */
+    compute_binding_trust_limit(requests, req_lens, req_count);
+    if (g_binding_trust_limit >= 0) {
+        oracle_framing_defect_skips++;   /* exec with partial-trust binding */
+        for (int k = 0; k < g_slot_count; k++)
+            if (g_slots[k].cum_slot >= g_binding_trust_limit)
+                oracle_untrusted_slots++;
+    }
+
+#ifdef ORACLE_DEBUG_SLOTS
+    if (getenv("ORACLE_DEBUG_SLOTS")) {
+        fprintf(stderr, "[slots] proto=%d slots=%d codes_found=%d offset=%d\ncodes:",
+                (int)proto, g_slot_count, found, resp_offset);
+        for (int k = 0; k < g_resp_code_count && k < 40; k++)
+            fprintf(stderr, " %d", g_resp_codes[k]);
+        fprintf(stderr, "\n");
+        for (int k = 0; k < g_slot_count; k++)
+            fprintf(stderr, "  slot r=%d pos=%u cum=%d cmd=%s\n",
+                    g_slots[k].region_idx, g_slots[k].slot_pos,
+                    g_slots[k].cum_slot,
+                    g_slots[k].cmd ? g_slots[k].cmd : "(garbage)");
+    }
+#endif
 }
 
 /* Build the HTTP/DAAP response-block index in one pass. */
@@ -3055,6 +3208,10 @@ int oracle_check_rtsp(
             if (rtsp_request_cseq_occurrences(requests, req_lens,
                                               req_count, play_cseq) != 1)
                 continue;
+            if (!rtsp_pos_is_first_request_line(req, rlen, play_pos)) {
+                oracle_embedded_method_skips++;
+                continue;
+            }
 
             const unsigned char *play_block = NULL;
             unsigned int play_block_len = 0;
@@ -3076,6 +3233,20 @@ int oracle_check_rtsp(
             int prior_setup_request = rtsp_prior_setup_request_accepted(
                 requests, req_lens, req_count, response, resp_len,
                 i, play_pos, NULL, 0);
+#ifdef ORACLE_DEBUG_SLOTS
+            fprintf(stderr, "[rtsp-play] i=%d cseq=%u occ=%d sess=%d "
+                    "prior=%d any=%d preq=%d valid=%d code=%d play_succ=%d\n",
+                    i, play_cseq,
+                    rtsp_request_cseq_occurrences(requests, req_lens,
+                                                  req_count, play_cseq),
+                    play_session ? 1 : 0, prior_setup, any_prior_setup,
+                    prior_setup_request,
+                    rtsp_method_line_is_valid_request(req, rlen, play_pos,
+                                                      "PLAY "),
+                    play_code,
+                    rtsp_block_is_play_success(play_block, play_block_len,
+                                               play_code));
+#endif
             if (!prior_setup && !any_prior_setup &&
                 !prior_setup_request &&
                 rtsp_method_line_is_valid_request(req, rlen, play_pos, "PLAY ") &&
@@ -3099,6 +3270,10 @@ int oracle_check_rtsp(
             if (rtsp_request_cseq_occurrences(requests, req_lens,
                                               req_count, record_cseq) != 1)
                 continue;
+            if (!rtsp_pos_is_first_request_line(req, rlen, record_pos)) {
+                oracle_embedded_method_skips++;
+                continue;
+            }
 
             const unsigned char *record_block = NULL;
             unsigned int record_block_len = 0;

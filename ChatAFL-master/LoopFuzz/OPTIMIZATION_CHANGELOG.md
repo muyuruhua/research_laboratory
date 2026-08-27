@@ -528,3 +528,106 @@ Stage 0 分诊（EFF2）：P1=0 P2=1（run2 一个 havoc hang `id:000000,src:000
 - 修复：stage 时优先 `$SEED.request.replay`（存在则用之，否则回退裸 seed，兼容 replayable-crashes 那种本身即长度前缀的通道）。
 - 后果更正：修复前 Aug-19 smoke 的 HITS=0 是「种子根本没发出去」的假阴性，不是「不可重放」的证据。
 - 验证（Aug-23 批次完整 sweep，N=20）：bftpd 24 P1 + live555 9 P1 = 33 种子 × 20 = 660 次重放，全部 non-replayable（0 崩溃复现）；staged .seed 经 xxd 确认已是长度前缀。与 A1「0 内存错误边车」交叉印证：本批 teardown SIGABRT + RNTO violation 均非可复现漏洞。
+
+## 2026-08-25：E1 oracle 证据排水 + E2a hang 证据边车（v2 方案 P0）
+
+背景：Aug-24 批次延续零有效漏洞；v2 根因分析（LOOPFUZZ_VULN_OPTIMIZATION_PROPOSAL_V2.md）确认第一根因是 2026-08-21 已实证的"1ms 轮询窗口饿死 oracle"——10 条已验证正确的攻击型规则被喂不上证据。本次实现 v2 P0 两项，全部观察侧/保存路径，不触碰覆盖反馈、调度、变异、forkserver。
+
+### E1：oracle-evidence drain（afl-fuzz.c）
+
+- 挂钩：单 fd 发送路径 `HANDLE_RESPONSES` 的最终排水，drain 启用时窗口由 1ms 换为 `CHATAFL_ORACLE_DRAIN_MS`（默认 0=legacy；>1000 钳制），每执行一次、`messages_sent>0` 前提、多出字节记入末消息 response_bytes 段（语义正确归属）。
+- 敏感过滤：`CHATAFL_ORACLE_DRAIN_SENSITIVE_ONLY=1`（默认）按协议命令表仅对末条为鉴权/状态变更命令的执行排水；USER 故意排除（响应即时，排水只亏吞吐）。MQTT 按固定头包类型（CONNECT/PUBLISH/SUBSCRIBE/UNSUBSCRIBE）。
+- 遥测：fuzzer_stats 新增 oracle_drain_ms/sensitive_only/execs/bytes + hang_evidence_saved。
+- 透传：profuzzbench_exec_common_dev.sh ATTACK_FLAGS 块新增三变量（drain/sensitive_only/hang_evidence）。
+
+### E1 冒烟证据（.e1smoke/，插桩冒烟服务器 PASS 延迟 20ms，45s×2 臂）
+
+- legacy：drain_execs=0（门控行为正确）、2331 execs、27 violations；drain=25ms：drain_execs=976、drain_bytes=34160（≈35B/exec=「230 Login successful\r\n」+「250 renamed\r\n」，legacy 全丢——.response.bin hex 对比：legacy 缺 230，drain 臂完整）、violations 1824。
+- 代价实测（最坏情形负载）：execs 2331→992/45s（该负载所有执行均以敏感命令结尾）。真实目标税额待 A/B。
+
+### E2a：hang 证据边车（afl-fuzz.c FAULT_TMOUT 保存分支）
+
+- `<seed>.hang.meta`：协议、exec/hang tmout、total_execs、children rusage（utime/stime/maxrss）、命令序列（64×12 字符）、响应尾 4KB hex。gate CHATAFL_HANG_EVIDENCE（默认开）。.request.replay/.asan.log/.stderr.log 由既有通用块覆盖。
+- 验证：编译零警告；oracle_selftest 43/43 + 33 attack 夹具不牵连。live FAULT_TMOUT 合成触发未成（Fix-14c teardown 200ms SIGKILL 先于 itimer + SO_SNDTIMEO=1ms 的组合使合成停顿难以入 FAULT_TMOUT 分类；多组时序窗口未命中）——留 benchmark 真实易 hang 目标（exim/forked-daapd Aug-24 各 16/3 个 P2）首批验证。
+
+### 顺带修复
+
+- 未提交 RAE/CAR 代码的 `classify_crash` 先用后定义编译错误（make 失败）——补前置声明，恢复可构建。
+
+### 验证门（下一批）
+
+run_dev 命令带 5 变量（drain=25 + hang_evidence + 3 attack 开关）；判据：banner「drain ENABLED」、oracle_drain_execs>0、pure-ftpd drain_bytes 显著>0、R2 类 live violation 落盘、覆盖对照 Aug-24/Aug-19 过 b_abs≤2%/edges≤5% 门。
+
+## 2026-08-25（下午）：探索侧 P0——DSE 存根修复 + havoc payload guard
+
+背景：探索侧严谨审计（证据驱动）发现两个 P0 缺陷：(1) v1 的 DSE plateau 钩子是存根——只打日志从不生成/注入序列（代码注释自认"简化版：仅日志记录"），已知竞态触发序列无定向供给；(2) 2026-08-21 pure-ftpd 证据——130 个含 RNTO 的队列条目中仅原始种子保留 "../.."，havoc 系统性摧毁攻击 payload。两项修复均为"只加不改"，不触碰覆盖反馈/调度/变异主体/forkserver。
+
+### P0-1：deep-state 序列种子（attack-catalog.c + afl-fuzz.c）
+
+- attack-catalog.c 新增 8 模式（RTSP×3：pause-play 连击/teardown 后复用会话/double-pause；FTP×2：文件生命周期/ABOR 数据通道竞态；SMTP×1：RSET 重用；SIP×1：BYE 后 re-INVITE；HTTP×1：资源生命周期，DAAP 映射 HTTP）。
+- `deep_state_enrich_seeds()` 走与 CVE 种子完全相同的 in_dir/read_testcases 准入通道（该通道已被 2×2×290min A/B 硬门与 9×3 批证明不扰动 b_abs/edges）。文件名 attack_deep_*（guard/分诊统一对待）。
+- gate CHATAFL_DEEP_STATE_EXPLORE 默认开（与 attack 种子 A/B 通过后的默认姿态一致），cap CHATAFL_DEEP_STATE_SEED_MAX=6。
+- plateau 存根替换为真实遥测（checkpoint 计数）；fuzzer_stats 新增 deep_state_seeds_written。
+- 验证：make 零警告；冒烟 FTP 75s——deep_state_seeds_written=2，in_dir 文件 xxd 验证消息完整渲染（106/119B）。
+
+### P0-2：havoc payload guard（afl-fuzz.c fuzz_one）
+
+- havoc 阶段 init（每 fuzz_one 一次）：attack_* 条目按协议锚点表在 pristine in_buf 中定位 payload 锚点（≤4 个）。
+- 执行前恢复：锚点区间被变异破坏则从 in_buf 拷回；temp_len != len（insert/delete/clone）跳过——结构变异威力不减。非 attack 条目完全等价旧行为。
+- 锚点表（attack_payload_patterns）：FTP {"../..","abcdefgh"}、RTSP {"000022B8","../"}、MQTT {"$SYS/","$share/"}。
+- gate CHATAFL_PAYLOAD_GUARD 默认开；fuzzer_stats 新增 payload_guard_restores。
+- 验证：单锚点种子（"CWD abcdefgh/xyz"）75s 双臂——ON restores=7 / OFF=0（门控正确）。发现并确认 M2/M3 状态窗口语义：guard 按执行缓冲工作，锚点进入窗口即生效（冒烟中 len=13 即首窗口只含 USER 的证据）。
+- 注意：debug 期间发现的 q→queue_cur 修正与 %llu 格式修正已包含；get_deep_state_templates 改由遥测引用（消 unused 警告）。
+
+### benchmark 透传
+
+profuzzbench_exec_common_dev.sh ATTACK_FLAGS 块新增 CHATAFL_DEEP_STATE_EXPLORE / CHATAFL_DEEP_STATE_SEED_MAX / CHATAFL_PAYLOAD_GUARD（显式 =0 透传供 A/B 关臂）。
+
+### oracle_selftest
+
+43/43 + 33 attack 夹具全绿（源码仅动 attack-catalog 与 afl-fuzz 探索/保存路径，oracle 无改动）。
+
+## 2026-08-25（晚）：oracle 绑定层加固——Aug-25 批次三 FP 根因修复
+
+背景：Aug-25_14-34-13 批次（E1 首批 live）产出 3 个 violation，逐一审计全部为误报（含此前被误判为"真实命中"的 bftpd RNTO——bftpd 6.1 源码证明 RNTO 无 RNFR 只可能回 503/451，fuzzing.patch 未触及 rename 逻辑）。三 FP 离线确定性复现（/tmp/fp_repro 喂 .request.replay+.response.bin）后定位出三个互不相同的绑定层根因：
+
+### 根因与修复（protocol-oracle-precise.c，纯观察侧）
+
+| FP | 根因 | 修复 |
+|----|------|------|
+| bftpd RNTO→250 | msg10 二进制垃圾无 \r\n 结尾，服务器将其与 RNTO 合并成一行只回一个 500；oracle"1 消息=1 行"槽位模型破产，XCUP 的 250 左移绑给 RNTO | 分帧完整性硬门：消息缺 CRLF 结尾或含裸 LF → 序数绑定不可信 → 跳过序数检查（text_sequence_framing_intact → oracle_ordinal_gate 硬跳过） |
+| exim RCPT→250(排队250) | msg2/msg3 的 AUTH PLAIN 载荷内嵌行分隔（tokenizer 切出 11 槽 vs 服务器 9 次交换）；服务器把 AUTH 后续行吞为 SASL 续行（一次回复） | 同门扩展：AUTH 命令后同消息还有后续行 → RFC 4954 续行歧义 → 跳过（干净多命令消息不受影响——所有 TP 夹具即此形状） |
+| live555 PLAY→201 | 变异把 SETUP+PLAY 合并进一条消息（内嵌第二请求行），PLAY 的 CSeq=5 唯一命中 SETUP 的 201 Created+Session+RTP-Info 块；Session 头被打成 Ses\xbfion 使复用护栏失明 | RTSP 首行绑定护栏：方法必须是其消息的第一请求行，内嵌方法不绑（rtsp_pos_is_first_request_line，接入 PLAY/RECORD 循环） |
+
+### 验证
+
+- 三 FP 离线复现全部归零（FTP/SMTP/RTSP violations=0/0/0）。
+- oracle_selftest：47 次 oracle_check 全绿（+4），37 攻击夹具全 PASS（+4 新增 BH1-BH4 永久回归夹具，即三个真实 FP 的最小化复刻），fast==slow 交叉校验全绿——所有 TP（R1-R10 正例）保持触发。
+- make afl-fuzz 零错误零警告；新遥测 oracle_framing_defect_skips / oracle_embedded_method_skips 导出 fuzzer_stats。
+- 顺带修复：#ifdef ORACLE_DEBUG_SLOTS 调试设施保留（生产构建零成本），供未来绑定问题定位。
+
+### 定位方法论（可复用）
+
+violation 落盘 ≠ 漏洞：本批 3/3 误报全部靠"离线复现器 + 源码级核对 + 响应全文对齐"三步定案。绑定层加固后，下一批的 violation 信噪比才足以直接进人工分诊队列。
+
+## 2026-08-26：漏报面回收——分帧门局部化 + guard 概率放行 + 屏蔽遥测
+
+背景：上轮"零误报"姿态的代价审计确认两处真实漏报面：① 分帧硬门整序列跳过 FTP/SMTP 63-91% 检查（缺陷消息之前的可信绑定也被吞）；② payload guard 冻结锚点原地变异。本轮在不回退零误报的前提下回收。
+
+### 1. 分帧门 → 逐槽信任限（protocol-oracle-precise.c）
+
+- text_sequence_framing_intact 整序列判定废弃，改为 compute_binding_trust_limit：按缺陷类型计算首个不可信槽的累计序数——消息缺 CRLF 结尾→该消息最后槽；消息内裸 LF→幻影槽起；AUTH 后同消息续行→AUTH 下一槽（AUTH 为消息末槽时跨界到下一消息首槽）。
+- text_response_code_for_command（fast+slow 双路径一致，selftest fast==slow 保持）对 cum_slot ≥ 限值的查询返回 -1——规则在不可信位置自然不触发，缺陷之前的槽位照常判定。
+- 效果：缺陷消息之前的真实命中不再被吞。BH5 夹具（早期 RNTO 真实 250 + 后置无结尾垃圾消息）从"硬门吞掉"变为"正常触发"（3 violations 含 PATH_TRAVERSAL）。
+- oracle_ordinal_gate 移除硬跳过块；oracle_framing_defect_skips 语义改为"带部分信任限的执行数"；新增 oracle_untrusted_slots（被屏蔽槽位总数）导出 fuzzer_stats——漏报面从"不可见"变为"可量化观测"。
+
+### 2. payload guard 10% 概率放行（afl-fuzz.c）
+
+havoc 恢复循环 UR(10)==0（10% 迭代）不恢复锚点——锚点字节变异（更深穿越/会话混淆变体）重新可被探索，90% 迭代仍保护 CVE 形状。
+
+### 验证
+
+- oracle_selftest：48 检查全绿（+1），38 夹具全 PASS（+BH5），fast==slow 无回退；BH1-BH4（三个真实 FP）保持归零。
+- 三个 Aug-25 真实 FP 离线复现（新二进制）仍 0/0/0。
+- make afl-fuzz 零警告；RTSP 首行门维持原样（本就按方法实例局部生效）。
+- 遗留：pure-ftpd 排水↔IPSM 状态归属仲裁（CHATAFL_ORACLE_DRAIN_MS=0 vs 25 A/B）与 hang 通道 E2b 仍未做，见 v2 提案。

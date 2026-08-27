@@ -1,0 +1,13 @@
+USEER ubEEEEEuntu
+STOR deepfile
+RETR deepfile
+PASS ubuntu
+G>ëÅDCWD /tmp
+PASS ubuntu
+TYPE I
+PORT 127,0,0,1,178,255
+STOR deepfile
+ABOR
+RETR deepfile
+ABOR
+QUIT

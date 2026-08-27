@@ -507,6 +507,107 @@ int main(void) {
                (const unsigned char *)CL_NEGB_RESP, sizeof(CL_NEGB_RESP)-1,
                0, 0, 0);
 
+    /* ── Binding-hardening regression (Aug-25 batch FPs, 2026-08-25) ──
+     * Three live-batch false positives, minimized.  Each reproduces the
+     * exact root cause fixed by the framing-integrity gate (CRLF defects,
+     * AUTH-continuation ambiguity) and the RTSP first-line binding guard. */
+
+    /* FP1 bftpd: unterminated binary message merges with RNTO at the
+     * server; XCUP's 250 shifts onto the RNTO slot.  Must NOT fire. */
+    {
+        static const unsigned char fp1_m1[] = "USER ubuntu\r\n";
+        static const unsigned char fp1_m2[] = { 'X', 0x80, 0x00, 0x00, 0x00, 0x14 };
+        static const unsigned char fp1_m3[] = "RNTO renamed_test\r\n";
+        static const unsigned char fp1_m4[] = "XCUP\r\n";
+        static const unsigned char fp1_resp[] =
+            "220 bftpd ready\r\n331 Password please\r\n500 Unknown\r\n"
+            "250 OK\r\n257 /\" is cwd\r\n";
+        reqs[0] = fp1_m1; lens[0] = sizeof(fp1_m1) - 1;
+        reqs[1] = fp1_m2; lens[1] = sizeof(fp1_m2);
+        reqs[2] = fp1_m3; lens[2] = sizeof(fp1_m3) - 1;
+        reqs[3] = fp1_m4; lens[3] = sizeof(fp1_m4) - 1;
+        run_expect("BH1: unterminated msg merge (bftpd FP)", "FTP",
+                   reqs, lens, 4, fp1_resp, sizeof(fp1_resp) - 1, 0, 0, 0);
+    }
+
+    /* FP2a exim: AUTH line followed by another line in the same message —
+     * server consumed it as SASL continuation, one reply for two slots;
+     * MAIL bound to 354, queue-250 onto RCPT.  Must NOT fire. */
+    {
+        static const unsigned char fp2_m1[] = "EHLO x\r\n";
+        static const unsigned char fp2_m2[] =
+            "AUTH PLAIN abcdefgh\r\nGHJUNKLINE\r\n";
+        static const unsigned char fp2_m3[] = "MAIL FROM:<a@b.c>\r\n";
+        static const unsigned char fp2_m4[] = "RCPT TO:<c@d.e>\r\n";
+        static const unsigned char fp2_m5[] = "QUIT\r\n";
+        static const unsigned char fp2_resp[] =
+            "220 mail ESMTP\r\n250-x\r\n250 HELP\r\n"
+            "503 AUTH command used when not advertised\r\n"
+            "250 OK\r\n251 Accepted\r\n221 Bye\r\n";
+        reqs[0] = fp2_m1; lens[0] = sizeof(fp2_m1) - 1;
+        reqs[1] = fp2_m2; lens[1] = sizeof(fp2_m2) - 1;
+        reqs[2] = fp2_m3; lens[2] = sizeof(fp2_m3) - 1;
+        reqs[3] = fp2_m4; lens[3] = sizeof(fp2_m4) - 1;
+        reqs[4] = fp2_m5; lens[4] = sizeof(fp2_m5) - 1;
+        run_expect("BH2: AUTH continuation shift (exim FP)", "SMTP",
+                   reqs, lens, 5, fp2_resp, sizeof(fp2_resp) - 1, 0, 0, 0);
+    }
+
+    /* FP2b exim (bare-LF variant): embedded bare \n creates a phantom
+     * slot the server never saw.  Must NOT fire. */
+    {
+        static const unsigned char fp2b_m1[] = "EHLO x\r\n";
+        static const unsigned char fp2b_m2[] = "AUTH PLAIN abc\nDEF\r\n";
+        static const unsigned char fp2b_m3[] = "MAIL FROM:<a@b.c>\r\n";
+        static const unsigned char fp2b_m4[] = "RCPT TO:<c@d.e>\r\n";
+        static const unsigned char fp2b_resp[] =
+            "220 m\r\n250 h\r\n503 no auth\r\n250 OK\r\n251 ok\r\n";
+        reqs[0] = fp2b_m1; lens[0] = sizeof(fp2b_m1) - 1;
+        reqs[1] = fp2b_m2; lens[1] = sizeof(fp2b_m2) - 1;
+        reqs[2] = fp2b_m3; lens[2] = sizeof(fp2b_m3) - 1;
+        reqs[3] = fp2b_m4; lens[3] = sizeof(fp2b_m4) - 1;
+        run_expect("BH3: bare-LF phantom slot (exim FP)", "SMTP",
+                   reqs, lens, 4, fp2b_resp, sizeof(fp2b_resp) - 1, 0, 0, 0);
+    }
+
+    /* FP3 live555: mutation merged SETUP (corrupted CSeq header) and a
+     * second embedded PLAY line into one message; the PLAY's CSeq
+     * uniquely matched the SETUP's 201 Created + Session + RTP-Info
+     * block, and its Session header was corrupted so the session-reuse
+     * guard could not see it.  Embedded methods must not bind. */
+    {
+        static const unsigned char fp3_m1[] =
+            "SETUP rtsp://127.0.0.1:8554/a/track1 RTSP/1.0\r\n"
+            "CSmq: 3\r\nTransport: RTP/AVP;unicast\r\n\r\n"
+            "PLAY rtsp://127.0.0.1:8554/b/ RTSP/1.0\r\nCSeq: 5\r\n"
+            "Ses\xbfion: 000022B8\r\nRange: npt=0-\r\n\r\n";
+        static const unsigned char fp3_resp[] =
+            "RTSP/1.0 200 OK\r\nCSeq: 1\r\n\r\n"
+            "RTSP/1.0 201 OK\r\nCSeq: 5\r\nSession: 000022B8\r\n"
+            "RTP-Info: url=rtsp://127.0.0.1:8554/b/\r\n\r\n";
+        reqs[0] = fp3_m1; lens[0] = sizeof(fp3_m1) - 1;
+        run_expect("BH4: embedded 2nd method (live555 FP)", "RTSP",
+                   reqs, lens, 1, fp3_resp, sizeof(fp3_resp) - 1, 0, 0, 0);
+    }
+
+    /* BH5 (FN recovery): a GENUINE R2 hit in the trusted prefix of a
+     * sequence whose LATER message carries a framing defect.  The old
+     * whole-sequence gate suppressed this; the per-slot trust limit must
+     * keep the early RNTO binding live and the rule firing. */
+    {
+        static const unsigned char fp5_m1[] = "USER u\r\n";
+        static const unsigned char fp5_m2[] = "RNTO ../../evil\r\n";
+        static const unsigned char fp5_m3[] = { 'J', 'U', 'N', 'K', 0x01, 0x02 };
+        static const unsigned char fp5_resp[] =
+            "220 bftpd ready\r\n331 pw\r\n250 OK renamed\r\n500 junk\r\n";
+        reqs[0] = fp5_m1; lens[0] = sizeof(fp5_m1) - 1;
+        reqs[1] = fp5_m2; lens[1] = sizeof(fp5_m2) - 1;
+        reqs[2] = fp5_m3; lens[2] = sizeof(fp5_m3);
+        run_expect("BH5: FN recovery, trusted prefix fires", "FTP",
+                   reqs, lens, 3, fp5_resp, sizeof(fp5_resp) - 1,
+                   1, 16, ORACLE_CAT_PATH_TRAVERSAL);
+    }
+
     printf("\nORACLE SELF-TEST PASSED: %d oracle_check() executions, "
            "fast==slow on every path.\n", g_checks);
     if (g_expect_failures) {
@@ -515,6 +616,6 @@ int main(void) {
         return 1;
     }
     printf("All %d attack-rule fixtures met their expectations.\n",
-           33);
+           38);
     return 0;
 }

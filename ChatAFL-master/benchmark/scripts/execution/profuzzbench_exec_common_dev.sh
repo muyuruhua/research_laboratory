@@ -763,6 +763,19 @@ for i in $(seq 1 $RUNS); do
   [[ -n "${CHATAFL_ATTACK_SEED_MAX:-}" ]]  && ATTACK_FLAGS+=" -e CHATAFL_ATTACK_SEED_MAX=${CHATAFL_ATTACK_SEED_MAX}"
   [[ -n "${CHATAFL_ATTACK_PROMPT:-}" ]]    && ATTACK_FLAGS+=" -e CHATAFL_ATTACK_PROMPT=${CHATAFL_ATTACK_PROMPT}"
 
+  # E1/E2a (2026-08-25): oracle-evidence drain + hang evidence sidecar.
+  # Forwarded on the same docker run line via ${ATTACK_FLAGS} below.
+  [[ -n "${CHATAFL_ORACLE_DRAIN_MS:-}" ]] && ATTACK_FLAGS+=" -e CHATAFL_ORACLE_DRAIN_MS=${CHATAFL_ORACLE_DRAIN_MS}"
+  [[ -n "${CHATAFL_ORACLE_DRAIN_SENSITIVE_ONLY:-}" ]] && ATTACK_FLAGS+=" -e CHATAFL_ORACLE_DRAIN_SENSITIVE_ONLY=${CHATAFL_ORACLE_DRAIN_SENSITIVE_ONLY}"
+  [[ -n "${CHATAFL_HANG_EVIDENCE:-}" ]]   && ATTACK_FLAGS+=" -e CHATAFL_HANG_EVIDENCE=${CHATAFL_HANG_EVIDENCE}"
+
+  # P0-1/P0-2 (2026-08-25, exploration side): deep-state sequence seeds +
+  # havoc payload guard.  Both default ON in the fuzzer; forwarding the
+  # explicit =0 forms lets A/B arms disable them without code changes.
+  [[ -n "${CHATAFL_DEEP_STATE_EXPLORE:-}" ]] && ATTACK_FLAGS+=" -e CHATAFL_DEEP_STATE_EXPLORE=${CHATAFL_DEEP_STATE_EXPLORE}"
+  [[ -n "${CHATAFL_DEEP_STATE_SEED_MAX:-}" ]] && ATTACK_FLAGS+=" -e CHATAFL_DEEP_STATE_SEED_MAX=${CHATAFL_DEEP_STATE_SEED_MAX}"
+  [[ -n "${CHATAFL_PAYLOAD_GUARD:-}" ]] && ATTACK_FLAGS+=" -e CHATAFL_PAYLOAD_GUARD=${CHATAFL_PAYLOAD_GUARD}"
+
   # Per-container MQTT broker list: local broker + stable reference + multi-broker fleet
   MQTT_FLAGS=""
   if [[ -n "${MQTT_STABLE_ALIAS:-}" ]] && [[ -n "$MQTT_AUTO_NETWORK" ]]; then

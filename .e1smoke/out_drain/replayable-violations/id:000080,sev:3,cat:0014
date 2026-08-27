@@ -1,0 +1,45 @@
+=== PROTOCOL ORACLE DEVIATION REPORT ===
+NOTE: This is a candidate for manual triage, NOT a confirmed finding.
+The oracle detects protocol-level behavioural deviations;
+exploitability depends on server configuration and deployment context.
+Time: 1787634723
+Report ID: 80
+Unique Pattern Count At Save: 3
+Violations: 2
+Max Severity: 3
+Categories: 0x0014
+Full Request File: /home/ckt/Documents/000_2026_test_dev/research_laboratory/.e1smoke/out_drain/replayable-violations/id:000080,sev:3,cat:0014.request.bin (saved)
+Full Replay File: /home/ckt/Documents/000_2026_test_dev/research_laboratory/.e1smoke/out_drain/replayable-violations/id:000080,sev:3,cat:0014.request.replay (saved)
+Full Request Messages: 3
+Full Request Bytes: 14
+Full Request FNV1a32: 0x11372445
+Full Response File: /home/ckt/Documents/000_2026_test_dev/research_laboratory/.e1smoke/out_drain/replayable-violations/id:000080,sev:3,cat:0014.response.bin (saved)
+Full Response Bytes: 69
+Full Response FNV1a32: 0x80687572
+
+--- Violation 1 ---
+Severity: 3
+Category: 0x0004
+Evidence Quality: 3 (STRONG — precise response-code match)
+Description: FTP: RNTO without prior RNFR accepted by server
+Request Index: 2
+Pattern Hash: 0x9ef0cdb9
+
+--- Violation 2 ---
+Severity: 3
+Category: 0x0010
+Evidence Quality: 2 (MODERATE — response-code range + position verified)
+Description: FTP: RNTO rename destination with deep traversal accepted by server
+CVE Pattern: N/A
+Request Index: 2
+Pattern Hash: 0x0c53eab5
+
+=== REQUEST DATA PREVIEW (14/14 bytes) ===
+USER fuzzhng
+
+=== RESPONSE DATA PREVIEW (69/69 bytes) ===
+220 smoke FTP ready
+331 User ok
+230 Login successful
+250 renamed
+

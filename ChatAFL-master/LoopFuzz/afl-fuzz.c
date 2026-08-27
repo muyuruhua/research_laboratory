@@ -485,6 +485,30 @@ u32 mqtt_cluster_broker_count = 0;
 static u32 oracle_sample_rate = 1;
 static u64 oracle_sample_skips = 0;         /* executions skipped by sampling */
 
+/* E1 (2026-08-25): oracle-evidence drain.  The per-message response poll
+ * window (poll_wait_msecs, default 1 ms) systematically misses slow server
+ * replies — pure-ftpd's PASS handling takes ~20 ms, so 230/2xx/5xx codes
+ * after auth/state-changing commands never reach the oracle (evidence:
+ * 2026-08-21 pure-ftpd R2 positive-control triad).  The final drain in the
+ * single-fd send path is widened to oracle_drain_ms for executions whose
+ * last message is oracle-sensitive, feeding the already-verified R1-R10
+ * rules.  Observer-side only: the extra bytes are appended after all
+ * coverage feedback was collected, so trace_bits and the scheduler are
+ * untouched.  Default 0 = exact legacy behavior. */
+static u32 oracle_drain_ms          = 0;    /* CHATAFL_ORACLE_DRAIN_MS */
+static u8  oracle_drain_sensitive_only = 1; /* CHATAFL_ORACLE_DRAIN_SENSITIVE_ONLY */
+static u64 oracle_drain_execs       = 0;    /* executions where drain was applied */
+static u64 oracle_drain_bytes       = 0;    /* extra evidence bytes captured */
+
+/* E2a (2026-08-25): hang evidence sidecar.  Fault-TMOUT saves already carry
+ * .asan.log/.stderr.log/.request.replay via the generic post-switch block;
+ * what is missing is hang-specific diagnostics (command sequence, response
+ * tail, rusage, tmout context) that let Stage-0 triage classify the hang
+ * as CPU-spin vs IO-wait resource exhaustion without a re-run.  Default 1:
+ * pure save-path addition on an already-rare event. */
+static u8  hang_evidence_enabled    = 1;    /* CHATAFL_HANG_EVIDENCE (0 disables) */
+static u64 hang_evidence_saved      = 0;    /* .hang.meta files written */
+
 u32 mqtt_cluster_unique_signatures = 0;
 u8 mqtt_cluster_diverged = 0;
 static u8 mqtt_cluster_probe_logged = 0;
@@ -627,6 +651,22 @@ u32 chat_times = 0;
  * CHATAFL_ATTACK_SEEDS gate is off (default). */
 u32 attack_seeds_written = 0;
 
+/* DSE-fix (2026-08-25): deep-state sequence seed files written into
+ * in_dir by deep_state_enrich_seeds(); exported to fuzzer_stats.
+ * Gate CHATAFL_DEEP_STATE_EXPLORE defaults ON — same admission channel
+ * and posture as the attack catalog. */
+u32 deep_state_seeds_written = 0;
+
+/* P0-2 payload guard (2026-08-25): restores havoc-corrupted payload
+ * anchors (traversal strings, RTSP session tokens, $SYS topics) on
+ * attack_/deep_ queue entries right before execution, from the pristine
+ * in_buf.  Off-length iterations (insert/delete/clone happened) skip the
+ * restore, so structural exploration is untouched.  Evidence base:
+ * 2026-08-21 pure-ftpd — only the pristine seed kept "../.." among 130
+ * RNTO queue entries. */
+static u8  payload_guard_enabled  = 1;   /* CHATAFL_PAYLOAD_GUARD=0 off */
+static u64 payload_guard_restores = 0;   /* ranges restored */
+
 /* ============================================
  * MQTT-specific Enhancement Flags  (P1/P2)
  * ============================================ */
@@ -727,6 +767,240 @@ static u8  teardown_save_pending    = 0;
  * without any change to execution or coverage behavior. */
 static u64 teardown_race_tagged     = 0;
 
+/* ============================================
+ * Phase 1: Race-Aware Execution (RAE)
+ * ============================================
+ *
+ * 竞态感知执行模式 - 通过受控的时序变异提高竞态类漏洞触发概率。
+ *
+ * 环境变量控制:
+ *   CHATAFL_RACE_MODE=1          - 启用竞态感知模式
+ *   CHATAFL_RACE_DELAY_MIN=1000  - 最小延迟（微秒）
+ *   CHATAFL_RACE_DELAY_MAX=10000 - 最大延迟（微秒）
+ *   CHATAFL_RACE_REPEAT=3        - 每种子重放次数
+ * ============================================ */
+static u8 race_mode_enabled         = 0;  /* 竞态模式开关 */
+static u32 race_delay_min           = 1000;  /* 最小延迟（微秒） */
+static u32 race_delay_max           = 10000; /* 最大延迟（微秒） */
+static u32 race_repeat_count        = 3;  /* 重放次数 */
+static u64 race_delay_injected      = 0;  /* 延迟注入统计 */
+static u64 race_execs_total         = 0;  /* 竞态模式总执行数 */
+
+/* ============================================
+ * Phase 1: Crash Attribution Refinement (CAR)
+ * ============================================
+ *
+ * 崩溃归因细化 - 精确区分真实内存错误与 teardown 伪影。
+ *
+ * 崩溃分类:
+ *   CRASH_UNKNOWN         - 未知类型
+ *   CRASH_CONFIRMED_ASAN  - ASAN 报告确认
+ *   CRASH_GLIBC_ASSERTION - glibc 断言
+ *   CRASH_SIGPIPE_ARTIFACT - SIGPIPE 伪影
+ *   CRASH_TEARDOWN_RACE   - teardown 竞态
+ *   CRASH_TIMEOUT_HANG    - 超时挂起
+ *   CRASH_ORACLE_VIOLATION - Oracle 违规
+ * ============================================ */
+typedef enum {
+  CRASH_UNKNOWN = 0,
+  CRASH_CONFIRMED_ASAN,
+  CRASH_GLIBC_ASSERTION,
+  CRASH_SIGPIPE_ARTIFACT,
+  CRASH_TEARDOWN_RACE,
+  CRASH_TIMEOUT_HANG,
+  CRASH_ORACLE_VIOLATION
+} crash_category_t;
+
+/* 崩溃分类统计 */
+static u64 crash_cat_counts[7] = {0};
+
+/* ============================================
+ * Phase 1: Deep State Exploration (DSE)
+ * ============================================
+ *
+ * 深层状态强制探索 - 强制探索协议深层状态机。
+ *
+ * 环境变量控制:
+ *   CHATAFL_DEEP_STATE_EXPLORE=1 - 启用深层状态探索
+ *   CHATAFL_DEEP_STATE_PERIOD=100 - 强制探索周期（execs）
+ * ============================================ */
+static u8 deep_state_enabled        = 0;  /* 深层状态探索开关 */
+static u32 deep_state_period        = 100; /* 强制探索周期 */
+static u64 deep_state_forced_count  = 0;  /* 强制探索次数统计 */
+static u64 deep_state_last_exec     = 0;  /* 上次强制探索的 exec 计数 */
+
+/* 协议深层状态模板 */
+static const char* rtsp_deep_states[] = {
+  "SETUP,PLAY,PAUSE,PLAY",        /* 已知 UAR 触发序列 */
+  "SETUP,PLAY,PAUSE,PAUSE",       /* 重复 PAUSE */
+  "SETUP,SETUP,PLAY",             /* 重复 SETUP（已知 UAF） */
+  "OPTIONS,DESCRIBE,SETUP,PLAY,TEARDOWN,PLAY", /* 越界状态转换 */
+  NULL
+};
+
+static const char* ftp_deep_states[] = {
+  "USER,PASS,CWD,MKD,RMD",        /* 深层文件操作 */
+  "USER,PASS,CWD,LONGPATH_CMD",   /* 路径溢出序列 */
+  "USER,PASS,PORT,STOR,ABOR",     /* 数据通道操作 */
+  NULL
+};
+
+static const char* smtp_deep_states[] = {
+  "EHLO,MAIL,RCPT,DATA,QUIT",     /* 标准 SMTP 序列 */
+  "EHLO,MAIL,RCPT,DATA,LONGDATA", /* 长数据注入 */
+  NULL
+};
+
+/* ============================================
+ * Phase 1: 竞态敏感消息识别
+ * ============================================ */
+static u8 is_race_sensitive_message(const u8 *msg, u32 msg_len, const char *proto) {
+  if (!msg || !msg_len || !proto) return 0;
+
+  /* RTSP 竞态敏感消息 */
+  if (strcasecmp(proto, "RTSP") == 0) {
+    /* PAUSE 消息 - 已知 UAR 触发点 */
+    if (msg_len >= 5 && strncasecmp((char*)msg, "PAUSE", 5) == 0) return 1;
+    /* PLAY 消息 - PAUSE→PLAY 序列 */
+    if (msg_len >= 4 && strncasecmp((char*)msg, "PLAY", 4) == 0) return 1;
+    /* SETUP 消息 - 重复 SETUP 触发 UAF */
+    if (msg_len >= 5 && strncasecmp((char*)msg, "SETUP", 5) == 0) return 1;
+  }
+
+  /* FTP 竞态敏感消息 */
+  if (strcasecmp(proto, "FTP") == 0) {
+    /* CWD 在深层状态中可能触发缓冲区溢出 */
+    if (msg_len >= 3 && strncasecmp((char*)msg, "CWD", 3) == 0) return 1;
+    /* 长路径命令 */
+    if (msg_len >= 100) return 1;
+  }
+
+  return 0;
+}
+
+/* Declared again below; needed here before the E1 helper. */
+extern char *protocol_name;
+extern klist_t(lms) *kl_messages;
+
+/* ============================================
+ * E1 (2026-08-25): oracle-sensitive message filter.
+ * Commands whose server response is evidence for the R1-R10 attack-oracle
+ * rules: authentication, state transitions, authorization-relevant writes.
+ * When CHATAFL_ORACLE_DRAIN_SENSITIVE_ONLY=1 (default), the widened final
+ * drain is applied only when the LAST message of the execution matches,
+ * bounding the throughput tax to a fraction of executions.  Text protocols
+ * are matched by command prefix; MQTT by fixed-header packet type.
+ * ============================================ */
+static u8 is_oracle_sensitive_message(const u8 *msg, u32 msg_len, const char *proto) {
+  if (!msg || msg_len == 0 || !proto) return 0;
+
+  /* FTP: auth + state-changing + authorization-relevant commands (R1/R2).
+   * USER is deliberately excluded: its 3xx reply is immediate everywhere,
+   * so widening the drain after USER only costs throughput. */
+  if (strcasecmp(proto, "FTP") == 0) {
+    static const char *ftp_cmds[] = { "PASS", "ACCT", "CWD", "CDUP",
+                                      "DELE", "MKD",  "RMD",  "RNFR", "RNTO",
+                                      "STOR", "RETR", "APPE", "SITE", NULL };
+    for (int i = 0; ftp_cmds[i]; i++)
+      if (msg_len >= strlen(ftp_cmds[i]) &&
+          strncasecmp((char *)msg, ftp_cmds[i], strlen(ftp_cmds[i])) == 0)
+        return 1;
+    return 0;
+  }
+
+  /* RTSP: session/transport state transitions (R3/R4/R5) */
+  if (strcasecmp(proto, "RTSP") == 0) {
+    static const char *rtsp_cmds[] = { "DESCRIBE", "SETUP", "PLAY", "PAUSE",
+                                       "TEARDOWN", "SET_PARAMETER",
+                                       "GET_PARAMETER", NULL };
+    for (int i = 0; rtsp_cmds[i]; i++)
+      if (msg_len >= strlen(rtsp_cmds[i]) &&
+          strncasecmp((char *)msg, rtsp_cmds[i], strlen(rtsp_cmds[i])) == 0)
+        return 1;
+    return 0;
+  }
+
+  /* SMTP: auth + envelope transitions (R8) */
+  if (strcasecmp(proto, "SMTP") == 0) {
+    static const char *smtp_cmds[] = { "AUTH", "MAIL", "RCPT", "DATA",
+                                       "STARTTLS", "VRFY", NULL };
+    for (int i = 0; smtp_cmds[i]; i++)
+      if (msg_len >= strlen(smtp_cmds[i]) &&
+          strncasecmp((char *)msg, smtp_cmds[i], strlen(smtp_cmds[i])) == 0)
+        return 1;
+    return 0;
+  }
+
+  /* SIP: dialog/register state transitions (R6/R7) */
+  if (strcasecmp(proto, "SIP") == 0) {
+    static const char *sip_cmds[] = { "REGISTER", "INVITE", "SUBSCRIBE",
+                                      "NOTIFY", "BYE", "CANCEL", "REFER",
+                                      "PUBLISH", NULL };
+    for (int i = 0; sip_cmds[i]; i++)
+      if (msg_len >= strlen(sip_cmds[i]) &&
+          strncasecmp((char *)msg, sip_cmds[i], strlen(sip_cmds[i])) == 0)
+        return 1;
+    return 0;
+  }
+
+  /* HTTP/DAAP: methods that mutate or authorize (smuggling family) */
+  if (strcasecmp(proto, "HTTP") == 0 || strcasecmp(proto, "DAAP") == 0) {
+    static const char *http_cmds[] = { "GET", "POST", "PUT", "DELETE",
+                                       "PATCH", NULL };
+    for (int i = 0; http_cmds[i]; i++)
+      if (msg_len >= strlen(http_cmds[i]) &&
+          strncasecmp((char *)msg, http_cmds[i], strlen(http_cmds[i])) == 0)
+        return 1;
+    return 0;
+  }
+
+  /* MQTT: binary — CONNECT(1), PUBLISH(3), SUBSCRIBE(8), UNSUBSCRIBE(10)
+   * are the R9/R10 evidence carriers (fixed-header byte 1, high nibble). */
+  if (strcasecmp(proto, "MQTT") == 0) {
+    if (msg_len >= 1) {
+      u8 pkt_type = (msg[0] >> 4) & 0x0F;
+      if (pkt_type == 1 || pkt_type == 3 || pkt_type == 8 || pkt_type == 10)
+        return 1;
+    }
+    return 0;
+  }
+
+  return 0;
+}
+
+/* True when the last message in the current kl_messages sequence is
+ * oracle-sensitive.  kl_messages holds the full merged sequence for this
+ * execution and the send loop walks it head→tail, so the element before
+ * kl_end is the last message sent. */
+static u8 last_message_oracle_sensitive(void) {
+  kliter_t(lms) *it, *last = NULL;
+  if (!kl_messages) return 0;
+  for (it = kl_begin(kl_messages); it != kl_end(kl_messages); it = kl_next(it))
+    last = it;
+  if (!last || !kl_val(last) || !kl_val(last)->mdata) return 0;
+  return is_oracle_sensitive_message((const u8 *)kl_val(last)->mdata,
+                                     (u32)kl_val(last)->msize,
+                                     (const char *)protocol_name);
+}
+
+
+/* ============================================
+ * Phase 1: 深层状态模板获取
+ * ============================================ */
+static const char** get_deep_state_templates(const char *protocol) {
+  if (!protocol) return NULL;
+
+  if (strcasecmp(protocol, "RTSP") == 0) {
+    return rtsp_deep_states;
+  } else if (strcasecmp(protocol, "FTP") == 0) {
+    return ftp_deep_states;
+  } else if (strcasecmp(protocol, "SMTP") == 0) {
+    return smtp_deep_states;
+  }
+
+  return NULL;
+}
+
 /* Forward declaration: kl_messages is defined after the IPSM globals. */
 extern klist_t(lms) *kl_messages;
 
@@ -735,10 +1009,20 @@ extern klist_t(lms) *kl_messages;
  * next to the other crash-path greps further down the file. */
 static u8 stderr_has_asan_error(void);
 
+/* Forward declaration (CAR): classify_crash() is defined with the other
+ * crash-path helpers below its first use in teardown_persist_candidate. */
+static crash_category_t classify_crash(u8 *buf, u32 buflen, int signal);
+
 /* Persist a teardown-crash candidate: raw input + length-prefixed replay
  * sidecar (aflnet-replay compatible), deduplicated by signal+input hash.
  * Called only from common_fuzz_stuff() right after run_target(). */
 static void teardown_persist_candidate(u8 *buf, u32 buflen) {
+  /* Phase 1 (CAR): 崩溃分类统计 */
+  crash_category_t cat = classify_crash(buf, buflen, kill_signal);
+  if (cat < 7) {
+    crash_cat_counts[cat]++;
+  }
+
   u32 th = kill_signal ? (u32)kill_signal : 1;
   for (u32 ti = 0; ti < buflen; ti++)
     th = ((th << 5) + th) ^ buf[ti];
@@ -1500,6 +1784,19 @@ static void mqtt_probe_cluster_differences(void) {
     setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout));
 
     for (it = kl_begin(kl_messages); it != kl_end(kl_messages); it = kl_next(it)) {
+      /* Phase 1 (RAE): 在竞态敏感消息前注入受控延迟 */
+      if (race_mode_enabled && is_race_sensitive_message(kl_val(it)->mdata, kl_val(it)->msize, protocol_name)) {
+        u32 delay_us = race_delay_min + (rand() % (race_delay_max - race_delay_min));
+        usleep(delay_us);
+        race_delay_injected++;
+        race_execs_total++;
+        if (race_execs_total % 100 == 0) {
+          fprintf(stderr, "[RAE] Injected %llu delays total (current: %u us before %.*s)\n",
+                  (unsigned long long)race_delay_injected, delay_us,
+                  (int)kl_val(it)->msize, (char*)kl_val(it)->mdata);
+        }
+      }
+
       if (net_send(sockfd, timeout, kl_val(it)->mdata, kl_val(it)->msize) != kl_val(it)->msize) {
         break;
       }
@@ -1881,6 +2178,20 @@ static int mqtt_exec_one_broker_mp(const mp_driver_t *mp_drv,
       }
       continue;
     }
+
+    /* Phase 1 (RAE): 在竞态敏感消息前注入受控延迟 */
+    if (race_mode_enabled && is_race_sensitive_message(m->mdata, m->msize, protocol_name)) {
+      u32 delay_us = race_delay_min + (rand() % (race_delay_max - race_delay_min));
+      usleep(delay_us);
+      race_delay_injected++;
+      race_execs_total++;
+      if (race_execs_total % 100 == 0) {
+        fprintf(stderr, "[RAE] Injected %llu delays total (current: %u us before %.*s)\n",
+                (unsigned long long)race_delay_injected, delay_us,
+                (int)m->msize, (char*)m->mdata);
+      }
+    }
+
     int n = net_send(target_fd, timeout, m->mdata, m->msize);
 
     if (collect_primary) {
@@ -4164,6 +4475,19 @@ int send_over_network()
       /* MQTT: fix remaining_length before sending */
       if (mqtt_fix_length_enabled) mqtt_fix_message_length(m);
 
+      /* Phase 1 (RAE): 在竞态敏感消息前注入受控延迟 */
+      if (race_mode_enabled && is_race_sensitive_message(m->mdata, m->msize, protocol_name)) {
+        u32 delay_us = race_delay_min + (rand() % (race_delay_max - race_delay_min));
+        usleep(delay_us);
+        race_delay_injected++;
+        race_execs_total++;
+        if (race_execs_total % 100 == 0) {
+          fprintf(stderr, "[RAE] Injected %llu delays total (current: %u us before %.*s)\n",
+                  (unsigned long long)race_delay_injected, delay_us,
+                  (int)m->msize, (char*)m->mdata);
+        }
+      }
+
       n = net_send(target_fd, timeout, m->mdata, m->msize);
       messages_sent++;
       response_bytes = (u32 *)ck_realloc(response_bytes, messages_sent * sizeof(u32));
@@ -4428,7 +4752,35 @@ MP_SINGLE_FD_FALLBACK:
 
 HANDLE_RESPONSES:
 
-    net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size);
+    /* E1 (2026-08-25): oracle-evidence drain.  Legacy behavior drains the
+     * socket for poll_wait_msecs (1 ms) here; slow replies to auth/state-
+     * changing commands (pure-ftpd PASS ~20 ms) fall outside that window
+     * and the attack-oracle never sees the 2xx/5xx codes it needs.  When
+     * CHATAFL_ORACLE_DRAIN_MS is set and the last message sent is oracle-
+     * sensitive (or the sensitive filter is disabled), widen this final
+     * drain to oracle_drain_ms instead.  One bounded poll per execution —
+     * coverage feedback (trace_bits) was already collected inside the
+     * message loop, so this only feeds the oracle's evidence stream.
+     * Drained bytes are attributed to the last message via response_bytes
+     * below, which is exactly where a slow 2xx/5xx belongs. */
+    {
+      u32 e1_final_wait = poll_wait_msecs;
+      u8  e1_drain_now  = (oracle_drain_ms > 0 && messages_sent > 0 &&
+                           (!oracle_drain_sensitive_only ||
+                            last_message_oracle_sensitive()));
+      u32 e1_before     = response_buf_size;
+
+      if (e1_drain_now) e1_final_wait = oracle_drain_ms;
+
+      net_recv(sockfd, timeout, (int)e1_final_wait,
+               &response_buf, &response_buf_size);
+
+      if (e1_drain_now) {
+        oracle_drain_execs++;
+        if (response_buf_size > e1_before)
+          oracle_drain_bytes += (response_buf_size - e1_before);
+      }
+    }
 
     if (messages_sent > 0 && response_bytes != NULL)
     {
@@ -6149,6 +6501,13 @@ static void enrich_testcases(void)
     if (attack_seeds_written)
       OKF("Attack catalog: %u CVE-pattern seed files written",
           attack_seeds_written);
+    /* DSE-fix (2026-08-25): deep-state sequence seeds through the same
+     * admission channel — replaces the v1 plateau stub that only logged.
+     * Additive-only injection; coverage-accounted like every seed. */
+    deep_state_seeds_written += deep_state_enrich_seeds(in_dir, protocol_name);
+    if (deep_state_seeds_written)
+      OKF("Deep-state catalog: %u sequence seed files written",
+          deep_state_seeds_written);
   }
 }
 
@@ -7169,6 +7528,36 @@ static u8 stderr_has_asan_error(void) {
   close(fd);
   return found;
 
+}
+
+/* ============================================
+ * Phase 1: 崩溃分类函数
+ * ============================================ */
+static crash_category_t classify_crash(u8 *buf, u32 buflen, int signal) {
+  /* 1. 检查 ASAN 证据 */
+  if (stderr_has_asan_error()) {
+    return CRASH_CONFIRMED_ASAN;
+  }
+
+  /* 2. 检查 SIGPIPE 伪影 */
+  if (signal == SIGPIPE) {
+    return CRASH_SIGPIPE_ARTIFACT;
+  }
+
+  /* 3. 检查竞态标记 */
+  if (signal == SIGSEGV || signal == SIGBUS ||
+      signal == SIGFPE || signal == SIGABRT ||
+      signal == SIGILL) {
+    return CRASH_TEARDOWN_RACE;
+  }
+
+  /* 4. 检查 glibc 断言（已在 stderr_has_asan_error 中覆盖） */
+  if (signal == SIGABRT) {
+    /* SIGABRT 可能来自 glibc 断言或其他 abort */
+    return CRASH_GLIBC_ASSERTION;
+  }
+
+  return CRASH_UNKNOWN;
 }
 
 /* Execute target application, monitoring for timeouts. Return status
@@ -9060,6 +9449,79 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
 
     last_hang_time = get_cur_time();
 
+    /* E2a (2026-08-25): hang diagnostics sidecar.  The generic post-switch
+     * block already saves .request.replay/.asan.log/.stderr.log for this
+     * candidate; .hang.meta adds what those cannot carry: the command
+     * sequence that led into the hang, the response tail, and children
+     * rusage — enough for Stage-0 triage to classify CPU-spin vs IO-wait
+     * resource exhaustion without a re-run.  Save-path only, fires once
+     * per unique hang; gated by CHATAFL_HANG_EVIDENCE=0 to disable. */
+    if (hang_evidence_enabled && fn) {
+      u8 *hm_fn = alloc_printf("%s.hang.meta", fn);
+      if (hm_fn) {
+        FILE *hm = fopen((char *)hm_fn, "w");
+        if (hm) {
+          struct rusage ru;
+          kliter_t(lms) *hit;
+          u32 hmsg = 0;
+
+          memset(&ru, 0, sizeof(ru));
+          getrusage(RUSAGE_CHILDREN, &ru);
+
+          fprintf(hm, "# LoopFuzz hang evidence (E2a)\n");
+          fprintf(hm, "time_epoch      : %llu\n",
+                  (unsigned long long)get_cur_time());
+          fprintf(hm, "protocol        : %s\n",
+                  protocol_name ? protocol_name : "(none)");
+          fprintf(hm, "exec_tmout_ms   : %u\n", exec_tmout);
+          fprintf(hm, "hang_tmout_ms   : %u\n", hang_tmout);
+          fprintf(hm, "total_execs     : %llu\n",
+                  (unsigned long long)total_execs);
+          fprintf(hm, "children_utime_s: %ld.%06ld\n",
+                  ru.ru_utime.tv_sec, ru.ru_utime.tv_usec);
+          fprintf(hm, "children_stime_s: %ld.%06ld\n",
+                  ru.ru_stime.tv_sec, ru.ru_stime.tv_usec);
+          fprintf(hm, "children_maxrss_kb : %ld\n", ru.ru_maxrss);
+
+          fprintf(hm, "messages_sent   : %u\n", messages_sent);
+          fprintf(hm, "command_sequence:\n");
+          if (kl_messages) {
+            for (hit = kl_begin(kl_messages);
+                 hit != kl_end(kl_messages) && hmsg < 64;
+                 hit = kl_next(hit), hmsg++) {
+              message_t *hm_msg = kl_val(hit);
+              fprintf(hm, "  %02u: ", hmsg);
+              if (hm_msg && hm_msg->mdata && hm_msg->msize > 0) {
+                u32 hc, hmax = hm_msg->msize < 12 ? hm_msg->msize : 12;
+                for (hc = 0; hc < hmax; hc++) {
+                  u8 c = (u8)hm_msg->mdata[hc];
+                  if (isprint(c) && c != '\r' && c != '\n')
+                    fputc(c, hm);
+                  else
+                    break;
+                }
+              }
+              fputc('\n', hm);
+            }
+          }
+
+          fprintf(hm, "response_size   : %u\n", response_buf_size);
+          fprintf(hm, "response_tail_hex:\n");
+          if (response_buf && response_buf_size > 0) {
+            u32 hs, hstart = response_buf_size > 4096
+                                 ? response_buf_size - 4096 : 0;
+            for (hs = hstart; hs < response_buf_size; hs++)
+              fprintf(hm, "%02x", (u8)response_buf[hs]);
+            fputc('\n', hm);
+          }
+
+          fclose(hm);
+          hang_evidence_saved++;
+        }
+        ck_free(hm_fn);
+      }
+    }
+
     break;
 
   case FAULT_CRASH:
@@ -9426,6 +9888,9 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           admission_accounting_enabled);
 
   fprintf(f, "attack_seeds_written : %u\n", attack_seeds_written);
+  fprintf(f, "deep_state_seeds_written : %u\n", deep_state_seeds_written);
+  fprintf(f, "payload_guard_restores : %llu\n",
+          (unsigned long long)payload_guard_restores);
 
   fprintf(f, "mp_multi_ok        : %u\n"
              "mp_multi_fallback  : %u\n"
@@ -9495,6 +9960,21 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           oracle_sample_rate,
           (unsigned long long)oracle_sample_skips);
 
+  /* E1/E2a telemetry (2026-08-25): drain execs/bytes quantify both the
+   * throughput tax (execs × drain window) and the evidence gained —
+   * oracle_drain_bytes ≈ 0 across a batch reproduces the 2026-08-21
+   * finding that the 1 ms poll window starves the attack oracle. */
+  fprintf(f, "oracle_drain_ms         : %u\n"
+             "oracle_drain_sensitive_only : %u\n"
+             "oracle_drain_execs      : %llu\n"
+             "oracle_drain_bytes      : %llu\n"
+             "hang_evidence_saved     : %llu\n",
+          oracle_drain_ms,
+          oracle_drain_sensitive_only,
+          (unsigned long long)oracle_drain_execs,
+          (unsigned long long)oracle_drain_bytes,
+          (unsigned long long)hang_evidence_saved);
+
   /* Graded-gate telemetry (2026-08-17): makes "0 violations" diagnosable —
    * ordinal_skips counts executions where ordinal state checks were fully
    * disabled by the gate; downgrades/evidence_keeps explain how many
@@ -9506,6 +9986,9 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
              "oracle_ordinal_downgrades : %llu\n"
              "oracle_evidence_keeps  : %llu\n"
              "oracle_framing_skips   : %llu\n"
+             "oracle_framing_defect_skips : %llu\n"
+             "oracle_untrusted_slots  : %llu\n"
+             "oracle_embedded_method_skips : %llu\n"
              "teardown_candidates    : %llu\n"
              "teardown_dedup_hits    : %llu\n"
              "teardown_race_tagged   : %llu\n",
@@ -9515,9 +9998,58 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)oracle_ordinal_downgrades,
           (unsigned long long)oracle_evidence_keeps,
           (unsigned long long)oracle_framing_skips,
+          (unsigned long long)oracle_framing_defect_skips,
+          (unsigned long long)oracle_untrusted_slots,
+          (unsigned long long)oracle_embedded_method_skips,
           (unsigned long long)teardown_candidates,
           (unsigned long long)teardown_dedup_hits,
           (unsigned long long)teardown_race_tagged);
+
+  /* ============================================
+   * Phase 1: Race-Aware Execution (RAE) Statistics
+   * ============================================ */
+  fprintf(f, "race_mode_enabled  : %u\n"
+             "race_delay_injected : %llu\n"
+             "race_execs_total    : %llu\n"
+             "race_delay_min      : %u\n"
+             "race_delay_max      : %u\n"
+             "race_repeat_count   : %u\n",
+          race_mode_enabled,
+          (unsigned long long)race_delay_injected,
+          (unsigned long long)race_execs_total,
+          race_delay_min,
+          race_delay_max,
+          race_repeat_count);
+
+  /* ============================================
+   * Phase 1: Crash Attribution Refinement (CAR) Statistics
+   * ============================================ */
+  fprintf(f, "crash_cat_unknown    : %llu\n"
+             "crash_cat_confirmed_asan : %llu\n"
+             "crash_cat_glibc_assertion : %llu\n"
+             "crash_cat_sigpipe_artifact : %llu\n"
+             "crash_cat_teardown_race : %llu\n"
+             "crash_cat_timeout_hang : %llu\n"
+             "crash_cat_oracle_violation : %llu\n",
+          (unsigned long long)crash_cat_counts[CRASH_UNKNOWN],
+          (unsigned long long)crash_cat_counts[CRASH_CONFIRMED_ASAN],
+          (unsigned long long)crash_cat_counts[CRASH_GLIBC_ASSERTION],
+          (unsigned long long)crash_cat_counts[CRASH_SIGPIPE_ARTIFACT],
+          (unsigned long long)crash_cat_counts[CRASH_TEARDOWN_RACE],
+          (unsigned long long)crash_cat_counts[CRASH_TIMEOUT_HANG],
+          (unsigned long long)crash_cat_counts[CRASH_ORACLE_VIOLATION]);
+
+  /* ============================================
+   * Phase 1: Deep State Exploration (DSE) Statistics
+   * ============================================ */
+  fprintf(f, "deep_state_enabled   : %u\n"
+             "deep_state_forced    : %llu\n"
+             "deep_state_period    : %u\n"
+             "deep_state_last_exec : %llu\n",
+          deep_state_enabled,
+          (unsigned long long)deep_state_forced_count,
+          deep_state_period,
+          (unsigned long long)deep_state_last_exec);
 
   fclose(f);
 }
@@ -12082,6 +12614,24 @@ AFLNET_REGIONS_SELECTION:;
       periodic_hypothesis_refinement();
     }
 
+    /* DSE-fix (2026-08-25): the v1 block here was a stub — it logged a
+     * template name but never generated or injected anything.  The real
+     * injection now happens at startup via deep_state_enrich_seeds()
+     * (attack-deep_*.raw through the standard admission channel).  This
+     * checkpoint only records that the plateau was reached with DSE
+     * active, keeping the counter meaningful for fuzzer_stats. */
+    if (deep_state_enabled && total_execs - deep_state_last_exec >= deep_state_period) {
+      const char **dse_tpl = get_deep_state_templates(protocol_name);
+      unsigned int dse_tpl_n = 0;
+      if (dse_tpl)
+        while (dse_tpl[dse_tpl_n]) dse_tpl_n++;
+      deep_state_forced_count++;
+      deep_state_last_exec = total_execs;
+      fprintf(stderr, "[DSE] plateau checkpoint #%llu — %u startup sequence seeds admitted (%u templates registered)\n",
+              (unsigned long long)deep_state_forced_count,
+              deep_state_seeds_written, dse_tpl_n);
+    }
+
     fprintf(stderr, "[plateau-trigger] Triggering LLM (growth_rate=%.2f, threshold=%u, chat_times=%u)\n",
             edges_growth_rate, adaptive_plateau_threshold, chat_times);
 
@@ -13888,6 +14438,27 @@ havoc_stage:;
 
   havoc_queued = queued_paths;
 
+  /* P0-2 payload guard init: for attack_/deep_ seeds, locate the
+   * registered payload anchors ONCE against the pristine in_buf.  The
+   * restore itself happens right before common_fuzz_stuff below. */
+  u32 guard_off[4], guard_len[4];
+  u32 guard_count = 0;
+  if (payload_guard_enabled && protocol_name && queue_cur && queue_cur->fname) {
+    const char *gp[4];
+    unsigned int gn = attack_payload_patterns(protocol_name, gp);
+    if (gn > 0 && strstr(queue_cur->fname, "attack_")) {
+      for (unsigned int gi = 0; gi < gn && guard_count < 4; gi++) {
+        u32 plen = (u32)strlen(gp[gi]);
+        if (!plen || len < plen) continue;
+        u8 *hit = (u8 *)memmem(in_buf, len, gp[gi], plen);
+        if (hit) {
+          guard_off[guard_count]  = (u32)(hit - in_buf);
+          guard_len[guard_count++] = plen;
+        }
+      }
+    }
+  }
+
   /* We essentially just do several thousand runs (depending on perf_score)
      where we take the input file and make random stacked tweaks. */
 
@@ -14670,6 +15241,26 @@ havoc_stage:;
         break;
       }
 
+      }
+    }
+
+    /* P0-2 payload guard: restore havoc-corrupted payload anchors from
+     * the pristine in_buf before executing.  Only applies when this
+     * iteration kept the original length (insert/delete/clone ops shift
+     * offsets — those iterations run unguarded so structural mutations
+     * keep their full power).  Mutations outside the anchors are kept:
+     * the guard concentrates exploration on the seed's structural bytes
+     * instead of letting it be wasted corrupting the trigger payload. */
+    if (guard_count && temp_len == len && UR(10)) {
+      /* FN-recovery (2026-08-26): UR(10)==0 (10% of iterations) leaves the
+       * anchor mutated so anchor-byte variants still get explored. */
+      for (u32 gi = 0; gi < guard_count; gi++) {
+        if (memcmp(out_buf + guard_off[gi], in_buf + guard_off[gi],
+                   guard_len[gi]) != 0) {
+          memcpy(out_buf + guard_off[gi], in_buf + guard_off[gi],
+                 guard_len[gi]);
+          payload_guard_restores++;
+        }
       }
     }
 
@@ -16855,6 +17446,36 @@ int main(int argc, char **argv)
       OKF("ORACLE: running on every %u-th execution (CHATAFL_ORACLE_SAMPLE_RATE=%u)",
           oracle_sample_rate, oracle_sample_rate);
   }
+  /* E1/E2a (2026-08-25): oracle-evidence drain + hang evidence gates.
+   * CHATAFL_ORACLE_DRAIN_MS widens the final response drain (default off,
+   * 10-25 ms covers pure-ftpd-class auth latencies); the sensitive-only
+   * filter bounds the throughput tax to executions ending in an
+   * auth/state-changing command.  CHATAFL_HANG_EVIDENCE=0 disables the
+   * .hang.meta sidecar (default on — save-path only). */
+  {
+    const char *od = getenv("CHATAFL_ORACLE_DRAIN_MS");
+    if (od && *od) {
+      u32 drain = (u32)atoi(od);
+      if (drain > 1000) drain = 1000;   /* hard cap: never stall the loop */
+      oracle_drain_ms = drain;
+    }
+    const char *so = getenv("CHATAFL_ORACLE_DRAIN_SENSITIVE_ONLY");
+    if (so && *so && strcmp(so, "0") == 0) oracle_drain_sensitive_only = 0;
+    const char *he = getenv("CHATAFL_HANG_EVIDENCE");
+    if (he && *he && strcmp(he, "0") == 0) hang_evidence_enabled = 0;
+    /* P0-2 payload guard: default ON, only affects attack_/deep_ queue
+     * entries (restore-before-execute on payload anchors). */
+    const char *pg = getenv("CHATAFL_PAYLOAD_GUARD");
+    if (pg && *pg && strcmp(pg, "0") == 0) payload_guard_enabled = 0;
+    if (!payload_guard_enabled)
+      OKF("PAYLOAD-GUARD: disabled (CHATAFL_PAYLOAD_GUARD=0)");
+    if (oracle_drain_ms > 0)
+      OKF("ORACLE: response-evidence drain ENABLED "
+          "(CHATAFL_ORACLE_DRAIN_MS=%u, sensitive_only=%u)",
+          oracle_drain_ms, oracle_drain_sensitive_only);
+    if (!hang_evidence_enabled)
+      OKF("HANG: evidence sidecar DISABLED (CHATAFL_HANG_EVIDENCE=0)");
+  }
   /* Stage 2 (attack catalog): CVE-pattern seed injection, default OFF.
    * Enabled with CHATAFL_ATTACK_SEEDS=1; per-protocol file cap defaults
    * to 16 and can be overridden with CHATAFL_ATTACK_SEED_MAX.  Seeds go
@@ -16919,6 +17540,53 @@ int main(int argc, char **argv)
     if ((adm_log_env && strcmp(adm_log_env, "0") != 0) || ablation_no_admission) {
       admission_accounting_enabled = 1;
       OKF("Admission accounting ENABLED");
+    }
+  }
+
+  /* ============================================
+   * Phase 1: Race-Aware Execution (RAE) Configuration
+   * ============================================ */
+  {
+    const char *race_env = getenv("CHATAFL_RACE_MODE");
+    if (race_env && strcmp(race_env, "0") != 0) {
+      race_mode_enabled = 1;
+      OKF("RAE: Race-Aware Execution ENABLED (CHATAFL_RACE_MODE=%s)", race_env);
+
+      const char *delay_min = getenv("CHATAFL_RACE_DELAY_MIN");
+      if (delay_min && *delay_min) {
+        race_delay_min = (u32)atoi(delay_min);
+      }
+
+      const char *delay_max = getenv("CHATAFL_RACE_DELAY_MAX");
+      if (delay_max && *delay_max) {
+        race_delay_max = (u32)atoi(delay_max);
+      }
+
+      const char *repeat = getenv("CHATAFL_RACE_REPEAT");
+      if (repeat && *repeat) {
+        race_repeat_count = (u32)atoi(repeat);
+      }
+
+      OKF("RAE: delay range %u-%u us, repeat count %u",
+          race_delay_min, race_delay_max, race_repeat_count);
+    }
+  }
+
+  /* ============================================
+   * Phase 1: Deep State Exploration (DSE) Configuration
+   * ============================================ */
+  {
+    const char *dse_env = getenv("CHATAFL_DEEP_STATE_EXPLORE");
+    if (dse_env && strcmp(dse_env, "0") != 0) {
+      deep_state_enabled = 1;
+      OKF("DSE: Deep State Exploration ENABLED (CHATAFL_DEEP_STATE_EXPLORE=%s)", dse_env);
+
+      const char *period = getenv("CHATAFL_DEEP_STATE_PERIOD");
+      if (period && *period) {
+        deep_state_period = (u32)atoi(period);
+      }
+
+      OKF("DSE: force period every %u execs", deep_state_period);
     }
   }
 

@@ -1,0 +1,13 @@
+CWD abcdefgh/x†z
+STOR deepfildefgh/x†z
+STOR deepfR de deepfile
+STOR deepfildefgh/x†z
+STOR deepfR de deepfile
+PASS ubuntu
+TYPE I
+PORT 127,0,0,1,178,255
+STOR deepfile
+ABOR
+RETR deepfile
+ABOR
+QUIT

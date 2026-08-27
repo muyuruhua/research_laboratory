@@ -660,6 +660,211 @@ static unsigned int patch_oversized_rtp(unsigned char *buf,
 }
 
 /* ------------------------------------------------------------------ */
+/* Deep-state sequence patterns (DSE-fix, 2026-08-25)                  */
+/*                                                                    */
+/* The v1 DSE plateau hook was a stub: it logged a template name but   */
+/* never generated or injected anything, so the known race-trigger     */
+/* sequences (PAUSE->PLAY toggles, post-TEARDOWN PLAY, deep FTP file   */
+/* ops) had no directed supply.  These patterns render the deep-state  */
+/* templates as seed files through the SAME proven in_dir /            */
+/* read_testcases() admission channel as the CVE patterns above —      */
+/* additive-only, coverage-accounted, auto-deprioritized when they     */
+/* add no edges.  Files are named attack_deep_* so the payload guard   */
+/* and Stage-0 triage treat them uniformly.                            */
+/* Gated by CHATAFL_DEEP_STATE_EXPLORE (default ON), cap via           */
+/* CHATAFL_DEEP_STATE_SEED_MAX (default 6).                            */
+/* ------------------------------------------------------------------ */
+
+static int deep_state_enabled(void) {
+  static int cached = -1;
+  if (cached < 0) {
+    const char *env = getenv("CHATAFL_DEEP_STATE_EXPLORE");
+    cached = (env && atoi(env) == 0) ? 0 : 1;   /* default ON */
+  }
+  return cached;
+}
+
+static unsigned int deep_state_seed_cap(void) {
+  static int cached = -1;
+  if (cached < 0) {
+    const char *env = getenv("CHATAFL_DEEP_STATE_SEED_MAX");
+    cached = (env && atoi(env) > 0) ? atoi(env) : 6;
+  }
+  return (unsigned int)cached;
+}
+
+/* RTSP: rapid PAUSE/PLAY toggles — the UAR window widens with each
+ * session-state reversal; distinct from the single-PAUSE CVE seed. */
+static const attack_msg_step_t pat_deep_rtsp_toggle[] = {
+  {"OPTIONS * RTSP/1.0\r\nCSeq: 1\r\n\r\n", NULL, NULL, 0, 1},
+  {"DESCRIBE rtsp://127.0.0.1:8554/mp3AudioTest RTSP/1.0\r\nCSeq: 2\r\n\r\n", NULL, NULL, 0, 1},
+  {"SETUP rtsp://127.0.0.1:8554/mp3AudioTest/track1 RTSP/1.0\r\nCSeq: 3\r\nTransport: RTP/AVP;unicast;client_port=38784-38785\r\n\r\n", NULL, NULL, 0, 1},
+  {"PLAY rtsp://127.0.0.1:8554/mp3AudioTest/ RTSP/1.0\r\nCSeq: 4\r\nSession: 000022B8\r\n\r\n", NULL, NULL, 0, 1},
+  {"PAUSE rtsp://127.0.0.1:8554/mp3AudioTest/ RTSP/1.0\r\nCSeq: 5\r\nSession: 000022B8\r\n\r\n", NULL, NULL, 0, 1},
+  {"PLAY rtsp://127.0.0.1:8554/mp3AudioTest/ RTSP/1.0\r\nCSeq: 6\r\nSession: 000022B8\r\n\r\n", NULL, NULL, 0, 1},
+  {"PAUSE rtsp://127.0.0.1:8554/mp3AudioTest/ RTSP/1.0\r\nCSeq: 7\r\nSession: 000022B8\r\n\r\n", NULL, NULL, 0, 1},
+  {"PLAY rtsp://127.0.0.1:8554/mp3AudioTest/ RTSP/1.0\r\nCSeq: 8\r\nSession: 000022B8\r\n\r\n", NULL, NULL, 0, 1},
+};
+
+/* RTSP: TEARDOWN then reuse the dead session (logic/state shape —
+ * distinct from the interleaved-frame teardown-then-send CVE seed). */
+static const attack_msg_step_t pat_deep_rtsp_dead_session[] = {
+  {"OPTIONS * RTSP/1.0\r\nCSeq: 1\r\n\r\n", NULL, NULL, 0, 1},
+  {"DESCRIBE rtsp://127.0.0.1:8554/mp3AudioTest RTSP/1.0\r\nCSeq: 2\r\n\r\n", NULL, NULL, 0, 1},
+  {"SETUP rtsp://127.0.0.1:8554/mp3AudioTest/track1 RTSP/1.0\r\nCSeq: 3\r\nTransport: RTP/AVP;unicast;client_port=38784-38785\r\n\r\n", NULL, NULL, 0, 1},
+  {"PLAY rtsp://127.0.0.1:8554/mp3AudioTest/ RTSP/1.0\r\nCSeq: 4\r\nSession: 000022B8\r\n\r\n", NULL, NULL, 0, 1},
+  {"TEARDOWN rtsp://127.0.0.1:8554/mp3AudioTest/ RTSP/1.0\r\nCSeq: 5\r\nSession: 000022B8\r\n\r\n", NULL, NULL, 0, 1},
+  {"PLAY rtsp://127.0.0.1:8554/mp3AudioTest/ RTSP/1.0\r\nCSeq: 6\r\nSession: 000022B8\r\n\r\n", NULL, NULL, 0, 1},
+  {"DESCRIBE rtsp://127.0.0.1:8554/mp3AudioTest RTSP/1.0\r\nCSeq: 7\r\n\r\n", NULL, NULL, 0, 1},
+};
+
+/* RTSP: PAUSE after PAUSE (double-pause state reversal). */
+static const attack_msg_step_t pat_deep_rtsp_double_pause[] = {
+  {"OPTIONS * RTSP/1.0\r\nCSeq: 1\r\n\r\n", NULL, NULL, 0, 1},
+  {"DESCRIBE rtsp://127.0.0.1:8554/mp3AudioTest RTSP/1.0\r\nCSeq: 2\r\n\r\n", NULL, NULL, 0, 1},
+  {"SETUP rtsp://127.0.0.1:8554/mp3AudioTest/track1 RTSP/1.0\r\nCSeq: 3\r\nTransport: RTP/AVP;unicast;client_port=38784-38785\r\n\r\n", NULL, NULL, 0, 1},
+  {"PLAY rtsp://127.0.0.1:8554/mp3AudioTest/ RTSP/1.0\r\nCSeq: 4\r\nSession: 000022B8\r\n\r\n", NULL, NULL, 0, 1},
+  {"PAUSE rtsp://127.0.0.1:8554/mp3AudioTest/ RTSP/1.0\r\nCSeq: 5\r\nSession: 000022B8\r\n\r\n", NULL, NULL, 0, 1},
+  {"PAUSE rtsp://127.0.0.1:8554/mp3AudioTest/ RTSP/1.0\r\nCSeq: 6\r\nSession: 000022B8\r\n\r\n", NULL, NULL, 0, 1},
+  {"PLAY rtsp://127.0.0.1:8554/mp3AudioTest/ RTSP/1.0\r\nCSeq: 7\r\nSession: 000022B8\r\n\r\n", NULL, NULL, 0, 1},
+};
+
+/* FTP: deep authenticated file-state lifecycle. */
+static const attack_msg_step_t pat_deep_ftp_file_lifecycle[] = {
+  {"USER ubuntu\r\n", NULL, NULL, 0, 1},
+  {"PASS ubuntu\r\n", NULL, NULL, 0, 1},
+  {"CWD /tmp\r\n", NULL, NULL, 0, 1},
+  {"MKD deep_a\r\n", NULL, NULL, 0, 1},
+  {"CWD deep_a\r\n", NULL, NULL, 0, 1},
+  {"MKD deep_b\r\n", NULL, NULL, 0, 1},
+  {"CWD deep_b\r\n", NULL, NULL, 0, 1},
+  {"PWD\r\n", NULL, NULL, 0, 1},
+  {"CDUP\r\n", NULL, NULL, 0, 1},
+  {"RMD deep_b\r\n", NULL, NULL, 0, 1},
+  {"RMD deep_a\r\n", NULL, NULL, 0, 1},
+};
+
+/* FTP: data-channel abort mid-sequence (ABOR race shape). */
+static const attack_msg_step_t pat_deep_ftp_abor[] = {
+  {"USER ubuntu\r\n", NULL, NULL, 0, 1},
+  {"PASS ubuntu\r\n", NULL, NULL, 0, 1},
+  {"TYPE I\r\n", NULL, NULL, 0, 1},
+  {"PORT 127,0,0,1,178,255\r\n", NULL, NULL, 0, 1},
+  {"STOR deepfile\r\n", NULL, NULL, 0, 1},
+  {"ABOR\r\n", NULL, NULL, 0, 1},
+  {"RETR deepfile\r\n", NULL, NULL, 0, 1},
+  {"ABOR\r\n", NULL, NULL, 0, 1},
+  {"QUIT\r\n", NULL, NULL, 0, 1},
+};
+
+/* SMTP: mid-session RSET then re-MAIL (auth/session state reuse). */
+static const attack_msg_step_t pat_deep_smtp_rset_reuse[] = {
+  {"EHLO client\r\n", NULL, NULL, 0, 1},
+  {"MAIL FROM:<a@local>\r\n", NULL, NULL, 0, 1},
+  {"RCPT TO:<b@local>\r\n", NULL, NULL, 0, 1},
+  {"DATA\r\n", NULL, NULL, 0, 1},
+  {"RSET\r\n", NULL, NULL, 0, 1},
+  {"MAIL FROM:<c@local>\r\n", NULL, NULL, 0, 1},
+  {"RCPT TO:<d@local>\r\n", NULL, NULL, 0, 1},
+  {"RSET\r\n", NULL, NULL, 0, 1},
+  {"QUIT\r\n", NULL, NULL, 0, 1},
+};
+
+/* SIP: dialog re-INVITE after BYE (session reuse state shape). */
+static const attack_msg_step_t pat_deep_sip_reinvite[] = {
+  {"REGISTER sip:33@127.0.0.1:5060 SIP/2.0\r\nVia: SIP/2.0/UDP 127.0.0.1:5061;branch=z9hG4bK-d1\r\nFrom: <sip:33@127.0.0.1>;tag=d1\r\nTo: <sip:33@127.0.0.1>\r\nCall-ID: deep-1@127.0.0.1\r\nCSeq: 1 REGISTER\r\nContact: <sip:33@127.0.0.1:5061>\r\nMax-Forwards: 70\r\nContent-Length: 0\r\n\r\n", NULL, NULL, 0, 1},
+  {"INVITE sip:34@127.0.0.1:5060 SIP/2.0\r\nVia: SIP/2.0/UDP 127.0.0.1:5061;branch=z9hG4bK-d2\r\nFrom: <sip:33@127.0.0.1>;tag=d2\r\nTo: <sip:34@127.0.0.1>\r\nCall-ID: deep-2@127.0.0.1\r\nCSeq: 2 INVITE\r\nContact: <sip:33@127.0.0.1:5061>\r\nMax-Forwards: 70\r\nContent-Length: 0\r\n\r\n", NULL, NULL, 0, 1},
+  {"BYE sip:34@127.0.0.1:5060 SIP/2.0\r\nVia: SIP/2.0/UDP 127.0.0.1:5061;branch=z9hG4bK-d3\r\nFrom: <sip:33@127.0.0.1>;tag=d2\r\nTo: <sip:34@127.0.0.1>\r\nCall-ID: deep-2@127.0.0.1\r\nCSeq: 3 BYE\r\nMax-Forwards: 70\r\nContent-Length: 0\r\n\r\n", NULL, NULL, 0, 1},
+  {"INVITE sip:34@127.0.0.1:5060 SIP/2.0\r\nVia: SIP/2.0/UDP 127.0.0.1:5061;branch=z9hG4bK-d4\r\nFrom: <sip:33@127.0.0.1>;tag=d2\r\nTo: <sip:34@127.0.0.1>\r\nCall-ID: deep-2@127.0.0.1\r\nCSeq: 4 INVITE\r\nContact: <sip:33@127.0.0.1:5061>\r\nMax-Forwards: 70\r\nContent-Length: 0\r\n\r\n", NULL, NULL, 0, 1},
+};
+
+/* HTTP/DAAP: resource lifecycle (read/read/delete/read). */
+static const attack_msg_step_t pat_deep_http_lifecycle[] = {
+  {"GET /databases/1/items HTTP/1.1\r\nHost: localhost\r\n\r\n", NULL, NULL, 0, 1},
+  {"GET /databases/1/items?query=a HTTP/1.1\r\nHost: localhost\r\n\r\n", NULL, NULL, 0, 1},
+  {"DELETE /databases/1/items/1 HTTP/1.1\r\nHost: localhost\r\n\r\n", NULL, NULL, 0, 1},
+  {"GET /databases/1/items/1 HTTP/1.1\r\nHost: localhost\r\n\r\n", NULL, NULL, 0, 1},
+  {"GET /databases/1/items HTTP/1.1\r\nHost: localhost\r\n\r\n", NULL, NULL, 0, 1},
+};
+
+static const attack_pattern_t deep_patterns[] = {
+  { "deep_rtsp_toggle", "RTSP", "deep-state/pause-play-toggle",
+    pat_deep_rtsp_toggle, ATTACK_ARRAY_CNT(pat_deep_rtsp_toggle), 1 },
+  { "deep_rtsp_dead_session", "RTSP", "deep-state/teardown-reuse",
+    pat_deep_rtsp_dead_session, ATTACK_ARRAY_CNT(pat_deep_rtsp_dead_session), 1 },
+  { "deep_rtsp_double_pause", "RTSP", "deep-state/double-pause",
+    pat_deep_rtsp_double_pause, ATTACK_ARRAY_CNT(pat_deep_rtsp_double_pause), 1 },
+  { "deep_ftp_file_lifecycle", "FTP", "deep-state/file-lifecycle",
+    pat_deep_ftp_file_lifecycle, ATTACK_ARRAY_CNT(pat_deep_ftp_file_lifecycle), 1 },
+  { "deep_ftp_abor", "FTP", "deep-state/data-abort",
+    pat_deep_ftp_abor, ATTACK_ARRAY_CNT(pat_deep_ftp_abor), 1 },
+  { "deep_smtp_rset_reuse", "SMTP", "deep-state/rset-reuse",
+    pat_deep_smtp_rset_reuse, ATTACK_ARRAY_CNT(pat_deep_smtp_rset_reuse), 1 },
+  { "deep_sip_reinvite", "SIP", "deep-state/reinvite-after-bye",
+    pat_deep_sip_reinvite, ATTACK_ARRAY_CNT(pat_deep_sip_reinvite), 1 },
+  { "deep_http_lifecycle", "HTTP", "deep-state/resource-lifecycle",
+    pat_deep_http_lifecycle, ATTACK_ARRAY_CNT(pat_deep_http_lifecycle), 1 },
+};
+
+unsigned int deep_state_enrich_seeds(const char *seed_dir, const char *protocol) {
+  if (!deep_state_enabled()) return 0;
+  if (!seed_dir || !protocol) return 0;
+
+  unsigned int count = 0;
+  unsigned int cap = deep_state_seed_cap();
+  static unsigned char seed_buf[ATTACK_SEED_MAX];
+
+  for (unsigned int p = 0;
+       p < ATTACK_ARRAY_CNT(deep_patterns) && count < cap; p++) {
+    const attack_pattern_t *pat = &deep_patterns[p];
+    if (strcasecmp(pat->protocol, protocol) != 0 &&
+        !(strcasecmp(protocol, "DAAP") == 0 &&
+          strcasecmp(pat->protocol, "HTTP") == 0))
+      continue;
+
+    unsigned int len = build_text_seed(pat, 0, seed_buf, sizeof(seed_buf));
+    if (!len) continue;
+    if (write_seed_file(seed_dir, pat->id, 0, seed_buf, len))
+      count++;
+  }
+
+  if (count)
+    fprintf(stderr, "[+] deep-state seed generation (%s): %u files\n",
+            protocol, count);
+  return count;
+}
+
+/* ------------------------------------------------------------------ */
+/* Payload patterns for the havoc payload guard (P0-2, 2026-08-25)    */
+/*                                                                    */
+/* Short, grep-cheap byte anchors whose corruption by havoc destroys  */
+/* an attack seed's trigger semantics: traversal payloads, the RTSP   */
+/* session token (without it PAUSE/PLAY never re-enters the session   */
+/* path), and the MQTT $SYS topic.  Evidence (2026-08-21 pure-ftpd):  */
+/* only the pristine seed kept "../.." among 130 RNTO queue entries.  */
+/* ------------------------------------------------------------------ */
+
+unsigned int attack_payload_patterns(const char *protocol,
+                                     const char *patterns_out[4]) {
+  static const char *ftp_pats[]  = { "../..", "abcdefgh", NULL };
+  static const char *rtsp_pats[] = { "000022B8", "../", NULL };
+  static const char *mqtt_pats[] = { "$SYS/", "$share/", NULL };
+  unsigned int n = 0;
+
+  if (!protocol || !patterns_out) return 0;
+  for (unsigned int k = 0; k < 4; k++) patterns_out[k] = NULL;
+
+  const char **pats = NULL;
+  if (strcasecmp(protocol, "FTP") == 0) pats = ftp_pats;
+  else if (strcasecmp(protocol, "RTSP") == 0) pats = rtsp_pats;
+  else if (strcasecmp(protocol, "MQTT") == 0) pats = mqtt_pats;
+
+  if (!pats) return 0;
+  for (; pats[n] && n < 4; n++) patterns_out[n] = pats[n];
+  return n;
+}
+
+/* ------------------------------------------------------------------ */
 /* Public entry                                                        */
 /* ------------------------------------------------------------------ */
 
