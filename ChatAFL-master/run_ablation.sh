@@ -14,6 +14,12 @@
 #   wo_all, wo_hypothesis, full, wo_admission, wo_refinement, wo_frontier,
 #   wo_adaptive, wo_state_prompt, adaptive_full,
 #   fixed150, fixed200, fixed300, fixed512
+# Paper-v2 因果 arm 组（2026-09 新增，对应论文 §七 5-arm 矩阵）：
+#   direct         = arm C（CHATAFL_NO_ADMISSION=1，parseable→durable）
+#   gated_fixed    = arm D（证据门控+两级队列，固定 state policy）——别名 of full
+#   calibrated     = arm E（D + CHATAFL_CALIBRATION=1 后验调度）
+#   wo_calibration = arm D 显式别名（D vs E 单变量对照的另一半）
+#   cal_gamma099 / cal_gamma100 = γ∈{0.99,1.0} 敏感性（论文 §五.3，冻结后仅此两档）
 #   多个用逗号分隔，如: --groups full,wo_adaptive,wo_all
 #   --groups 覆盖 PRESET 参数，不修改任何预设函数（开闭原则）
 #
@@ -137,7 +143,10 @@ run_queued_groups() {
               CHATAFL_NO_REFINEMENT CHATAFL_NO_FRONTIER \
               CHATAFL_NO_ADAPTIVE CHATAFL_NO_STATE_PROMPT \
               CHATAFL_NO_ADMISSION \
-              CHATAFL_ADMISSION_LOG CHATAFL_ABLATION_THRESHOLD TIMESTAMP
+              CHATAFL_ADMISSION_LOG CHATAFL_ABLATION_THRESHOLD TIMESTAMP \
+              CHATAFL_CALIBRATION CHATAFL_CAL_GAMMA CHATAFL_CAL_EPSILON \
+              CHATAFL_PROVISIONAL_BUDGET CHATAFL_PROVISIONAL_TTL_MS \
+              CHATAFL_PROVISIONAL_MAX_LIVE CHATAFL_EVENT_LOG
 
         if [[ -n "$vars" ]]; then
           IFS=',' read -ra ASSIGN <<< "$vars"
@@ -152,7 +161,7 @@ run_queued_groups() {
         export TIMESTAMP="ablation_${label}_$(date +%Y%m%dT%H%M%S)"
 
         echo "[ABLATION:${label}] 启动 → ablation/results-${TARGET}_${TIMESTAMP}/"
-        echo "  HYP=${CHATAFL_HYPOTHESIS:-1} NO_REF=${CHATAFL_NO_REFINEMENT:-0} NO_FRONT=${CHATAFL_NO_FRONTIER:-0} NO_ADAPT=${CHATAFL_NO_ADAPTIVE:-0} NO_SP=${CHATAFL_NO_STATE_PROMPT:-0} NO_ADM=${CHATAFL_NO_ADMISSION:-0} ADM_LOG=${CHATAFL_ADMISSION_LOG:-0} THR=${CHATAFL_ABLATION_THRESHOLD:-adaptive}"
+        echo "  HYP=${CHATAFL_HYPOTHESIS:-1} NO_REF=${CHATAFL_NO_REFINEMENT:-0} NO_FRONT=${CHATAFL_NO_FRONTIER:-0} NO_ADAPT=${CHATAFL_NO_ADAPTIVE:-0} NO_SP=${CHATAFL_NO_STATE_PROMPT:-0} NO_ADM=${CHATAFL_NO_ADMISSION:-0} ADM_LOG=${CHATAFL_ADMISSION_LOG:-0} THR=${CHATAFL_ABLATION_THRESHOLD:-adaptive} CAL=${CHATAFL_CALIBRATION:-0} GAMMA=${CHATAFL_CAL_GAMMA:-0.995} PROV_BUDGET=${CHATAFL_PROVISIONAL_BUDGET:-64}"
 
         cd "$BASE_DIR" || exit 1
         ./run_dev.sh "$RUNS" "$TIMEOUT" "$TARGET" loopfuzz
@@ -222,9 +231,33 @@ launch_custom_groups() {
         valid+=("$name")
         queue_group "$name" ""
         ;;
-      wo_admission)
+      wo_admission|direct)
+        # arm C (loopfuzz-direct): parseable 候选直接 durable 队列
         valid+=("$name")
-        queue_group "wo_admission" "CHATAFL_NO_ADMISSION=1"
+        queue_group "$name" "CHATAFL_NO_ADMISSION=1"
+        ;;
+      gated_fixed|wo_calibration)
+        # arm D (loopfuzz-gated-fixed): 证据门控 + provisional 两级队列 +
+        # 固定 state policy（full 的显式别名，用于 D vs E 单变量对照）
+        valid+=("$name")
+        queue_group "$name" ""
+        ;;
+      calibrated)
+        # arm E (loopfuzz-gated-calibrated): = D + 在线后验调度（唯一差异）
+        valid+=("$name")
+        queue_group "calibrated" "CHATAFL_CALIBRATION=1"
+        ;;
+      cal_gamma099)
+        valid+=("$name")
+        queue_group "$name" \
+          "CHATAFL_CALIBRATION=1" \
+          "CHATAFL_CAL_GAMMA=0.99"
+        ;;
+      cal_gamma100)
+        valid+=("$name")
+        queue_group "$name" \
+          "CHATAFL_CALIBRATION=1" \
+          "CHATAFL_CAL_GAMMA=1.0"
         ;;
       wo_refinement)
         valid+=("$name")
@@ -257,6 +290,9 @@ launch_custom_groups() {
         echo "          wo_all, wo_hypothesis, full, wo_admission, wo_refinement, wo_frontier,"
         echo "          wo_adaptive, wo_state_prompt, adaptive_full,"
         echo "          fixed150, fixed200, fixed300, fixed512"
+        echo "        Paper-v2 因果 arm 组:"
+        echo "          direct(=C), gated_fixed|wo_calibration(=D), calibrated(=E),"
+        echo "          cal_gamma099, cal_gamma100 (γ 敏感性)"
         ;;
     esac
   done

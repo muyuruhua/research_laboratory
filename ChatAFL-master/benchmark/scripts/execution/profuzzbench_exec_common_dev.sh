@@ -751,8 +751,23 @@ for i in $(seq 1 $RUNS); do
   [[ -n "${CHATAFL_ADMISSION_LOG}" ]]      && ABLATION_FLAGS+=" -e CHATAFL_ADMISSION_LOG=${CHATAFL_ADMISSION_LOG}"
   [[ -n "${CHATAFL_ABLATION_THRESHOLD}" ]] && ABLATION_FLAGS+=" -e CHATAFL_ABLATION_THRESHOLD=${CHATAFL_ABLATION_THRESHOLD}"
 
+  # Evidence-controller v2 (paper §五/§七): calibration arm switch and
+  # two-tier admission parameters.  Absence = fuzzer defaults (arm D,
+  # γ=0.995, ε=0.1, provisional budget=64, TTL=30 s).
+  [[ -n "${CHATAFL_CALIBRATION:-}" ]]          && ABLATION_FLAGS+=" -e CHATAFL_CALIBRATION=${CHATAFL_CALIBRATION}"
+  [[ -n "${CHATAFL_CAL_GAMMA:-}" ]]            && ABLATION_FLAGS+=" -e CHATAFL_CAL_GAMMA=${CHATAFL_CAL_GAMMA}"
+  [[ -n "${CHATAFL_CAL_EPSILON:-}" ]]          && ABLATION_FLAGS+=" -e CHATAFL_CAL_EPSILON=${CHATAFL_CAL_EPSILON}"
+  [[ -n "${CHATAFL_PROVISIONAL_BUDGET:-}" ]]   && ABLATION_FLAGS+=" -e CHATAFL_PROVISIONAL_BUDGET=${CHATAFL_PROVISIONAL_BUDGET}"
+  [[ -n "${CHATAFL_PROVISIONAL_TTL_MS:-}" ]]   && ABLATION_FLAGS+=" -e CHATAFL_PROVISIONAL_TTL_MS=${CHATAFL_PROVISIONAL_TTL_MS}"
+  [[ -n "${CHATAFL_PROVISIONAL_MAX_LIVE:-}" ]] && ABLATION_FLAGS+=" -e CHATAFL_PROVISIONAL_MAX_LIVE=${CHATAFL_PROVISIONAL_MAX_LIVE}"
+  [[ -n "${CHATAFL_EVENT_LOG:-}" ]]            && ABLATION_FLAGS+=" -e CHATAFL_EVENT_LOG=${CHATAFL_EVENT_LOG}"
+  [[ -n "${CHATAFL_GIT_COMMIT:-}" ]]           && ABLATION_FLAGS+=" -e CHATAFL_GIT_COMMIT=${CHATAFL_GIT_COMMIT}"
+  [[ -n "${CHATAFL_TARGET_NAME:-}" ]]          && ABLATION_FLAGS+=" -e CHATAFL_TARGET_NAME=${CHATAFL_TARGET_NAME}"
+
   TOKEN_FLAGS=""
   [[ -n "${CHATAFL_MAX_TOKENS:-}" ]]       && TOKEN_FLAGS+=" -e CHATAFL_MAX_TOKENS=${CHATAFL_MAX_TOKENS}"
+  [[ -n "${CHATAFL_TOP_P:-}" ]]            && TOKEN_FLAGS+=" -e CHATAFL_TOP_P=${CHATAFL_TOP_P}"
+  [[ -n "${CHATAFL_TOKEN_CAP:-}" ]]        && TOKEN_FLAGS+=" -e CHATAFL_TOKEN_CAP=${CHATAFL_TOKEN_CAP}"
 
   # Attack-channel flags (Stage 1-4, 2026-08-21): forward the CHATAFL_ATTACK_*
   # gates into the container when the operator exports them.  All default OFF
@@ -804,6 +819,7 @@ for i in $(seq 1 $RUNS); do
       -e KEY="${KEY}" \
       -e LLM_MODEL="${LLM_MODEL:-gpt-5.4-mini}" \
       -e CHATAFL_HYPOTHESIS=1 \
+      -e CHATAFL_TARGET_NAME="${DOCIMAGE}" \
       ${ABLATION_FLAGS} \
       ${TOKEN_FLAGS} \
       ${ATTACK_FLAGS} \

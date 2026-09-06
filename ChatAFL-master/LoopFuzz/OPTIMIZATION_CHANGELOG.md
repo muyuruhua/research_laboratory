@@ -1,6 +1,36 @@
 # LoopFuzz 优化实现说明
 
 ## 优化日期
+2026年9月2日 — Evidence Controller v2（论文对齐改造）
+
+详见 `EVIDENCE_CONTROLLER.md`。按 `C_two_papers/first_paper.md` 完成四项核心改造：
+
+1. **G_code / G_state 拆分**（§三.3）：`admission_evaluate()` 将代码覆盖证据
+   （bitmap/native/favored）与 IPSM 状态机新颖性分开判定、分开记录；
+   `admission-events.jsonl` 增加 `g_code_pass` / `g_state_pass` / `disposition`
+   （reject / provisional / durable）与 pre/post IPSM & code 计数。
+2. **两级队列**（§四）：provisional 条目预算默认 64 次 descendant 变异或
+   30 s TTL；首个 descendant code gain 晋升 durable，预算耗尽/TTL 到期
+   过期并从语料目录删除（`provisional-events.jsonl` 全程审计）。
+   admission 默认即 execute-before-promote（arm D）；`CHATAFL_NO_ADMISSION=1`
+   为 direct 反事实（arm C）。
+3. **在线校准**（§五）：新模块 `evidence-cal.c/h`（纯逻辑 + `evidence_selftest`
+   单测）。每个 state-selection episode（选状态→选种子→一个能量周期）结算
+   reward=是否发现新 code edge（与 IPSM novelty 独立），discounted
+   Beta-Bernoulli 更新（γ=0.995）；arm E（`CHATAFL_CALIBRATION=1`）用
+   Thompson 采样替换固定 p_s<0.005 penalty：Score=Frontier·[ε+(1−ε)θ̃]，ε=0.1。
+   `state-episodes.jsonl` 全部记录 pre-update 预测（无信息泄漏）。
+4. **审计日志与公平性**（§九/§十）：六类 append-only JSONL（run-config /
+   candidate / admission / provisional / state-episodes / bug）；
+   chat-llm 增加 `CHATAFL_TOP_P` / `CHATAFL_MAX_TOKENS` 统一采样配置并落盘；
+   候选级 prompt_hash / reply_hash / token 关联。`run_ablation.sh` 新增
+   `direct` / `gated_fixed` / `calibrated` / `cal_gamma099/100` 因果 arm 组；
+   离线指标工具 `../evidence_report.py`（Precision@H、Brier、ECE、reliability
+   bins、disposition 分布）。
+
+---
+
+## 优化日期
 2026年2月19日
 
 ## 实现的优化
@@ -631,3 +661,144 @@ havoc 恢复循环 UR(10)==0（10% 迭代）不恢复锚点——锚点字节变
 - 三个 Aug-25 真实 FP 离线复现（新二进制）仍 0/0/0。
 - make afl-fuzz 零警告；RTSP 首行门维持原样（本就按方法实例局部生效）。
 - 遗留：pure-ftpd 排水↔IPSM 状态归属仲裁（CHATAFL_ORACLE_DRAIN_MS=0 vs 25 A/B）与 hang 通道 E2b 仍未做，见 v2 提案。
+
+---
+
+## 优化日期
+2026年9月3日 — 证据链加固（triage 反馈）
+
+1. **hang 种子 0 字节修复**：hang 在首条消息完成前触发时
+   （`messages_sent=0`），`save_kl_messages_to_file` 的 `max_count` 上限
+   会写出空文件，精确变异体丢失、hang 类发现不可重放（2026-09-03
+   forked-daapd UAF 因此无法精确重放）。现在回退保存完整暂存消息序列，
+   链表为空时再回退写原始变异缓冲。
+2. **teardown 候选写入 bug-events.jsonl**：`teardown_persist_candidate`
+   补发 `bug_log_event("teardown", ...)`（签名 `teardown:sig:NN[:race]`），
+   使 triage disposition 可与六类日志机读 join（此前只存在边车文件里）。
+
+---
+
+## 修复日期
+2026-09-05 — 严谨修复轮（oracle 误报 + exit-134 台账）
+
+1. **oracle 槽位失配弃权（protocol-oracle-precise.c）**：bftpd 把超长命令行
+   截成多条 500 时，响应码数 > 槽位模型预测数，逐位绑定整体漂移，制造了
+   9 条"RNTO without RNFR"误报（Sep-04，重放已否决）。修复：
+   `build_text_index` 以 `need+1` 探测提取，`found > expected` 即判定
+   对齐失配 → 掩码全部槽位绑定（该次执行状态规则弃权）+
+   `oracle_align_mismatch_skips` 计数（fuzzer_stats 可见）。
+2. **SIGABRT/SIGBUS 台账钩子（afl-fuzz.c）**：glibc 堆检查中止（exit 134，
+   Sep-03 forked-daapd 2/9）此前无标签。钩子严格异步信号安全
+   （open/write 字面量，无 malloc），写 `out_dir/heap-corruption.marker`
+   后恢复默认处置（退出码保持 134 可见），launch ledger 获得机读终止原因
+   （论文 §十四.3 预定义基础设施失败）。注：标记 cwd 相对路径，主循环
+   运行于 out_dir；根因（混合分配器latent腐蚀）未除，此为可观测性修复。
+
+### 验证（2026-09-05）
+- `evidence_selftest` 全过；`oracle_selftest` 48 检查 + 38 attack fixture 全过
+  （历史误报护栏 BH1-BH5 未回退）。
+- 定向回归 4/4：R1 Sep-04 误报会话精确重构 → 0 违规+弃权触发；
+  R2 PASS-no-USER 真阳性仍报；R3 干净 RNFR/RNTO 不误伤；R4 失配+真阳性
+  形状 → 保守弃权。
+- 端到端（真实 fuzzer、bftpd 容器、误报种子入语料）：3,667 execs，
+  **0 violations**（修复前同种子 7-19 条）、`oracle_align_mismatch_skips=116`、
+  violations 目录为空。
+- forked-daapd 冒烟（HTTP/DAAP 路径）：干净退出、arm/episode/日志正常、
+  teardown 通道正常。
+
+---
+
+## 实现日期
+2026-09-05（续）— Oracle 影子层（方案 B：带标签保留弃权信息）
+
+### 设计
+对齐失配会话的**判决继续抑制**（不回退零误报保证），但证据按
+teardown-crashes 的 demote-but-persist 哲学落盘，使弃权通道的假阴性率
+可离线度量（论文 §十一.3 shadow validation 思想）：
+
+- `protocol-oracle-precise.c/.h`：`oracle_last_abstained()` +
+  `oracle_last_{slot_count,code_count,expected_codes}()` 查询 API；
+- `afl-fuzz.c`：`oracle_persist_abstained()` —— FNV-1a 哈希去重
+  （256 槽环）+ 唯一存档上限 64，落盘 `out_dir/oracle-abstained/
+  abstain:%06llu,slots%d,found%d{.request.replay,.response.bin,.meta}`；
+  bug-events.jsonl 记 `kind=oracle_abstained`；
+  fuzzer_stats 新增 `oracle_abstained_saved/_dedup_hits`；
+- 挂接条件 = `oracle_last_abstained()`（与低严重度 nviol 无关，
+  首版 `nviol==0` 条件被端到端数据证伪并修正）。
+
+### 验证
+- 定向回归 6/6（新增 R5 弃权 API 断言、R6 干净会话不置位）；
+- oracle_selftest 48+38 全过、evidence_selftest 全过、全量重编译零新警告；
+- 端到端（bftpd 容器、真实误报种子）：判决 0、弃权 81 次、
+  **64 份会话存档落盘**（cap+dedup 生效）、bug-events 事件可机读；
+- **FN 抽样闭环**：10 份存档逐会话重启服务器、逐消息重放建立真实
+  逐消息响应码绑定、重估 PASS-no-USER / RNTO-no-RNFR 规则：
+  **10/10 clean，潜在 FN=0**——本样本下弃权代价为 0（与预期一致，
+  因失配源于服务器截断行为而非漏掉真实违规）。
+- 工具留档：`/tmp/fpseed/fn_sample_one.py`（可对任意批次
+  oracle-abstained/ 重跑 FN 抽样）。
+
+---
+
+## 修复日期
+2026-09-06 — Sep-05 批次工程发现修复
+
+1. **run-config start 事件移至 enrichment 之前**（afl-fuzz.c）：原位置在
+   banner 之后、enrichment 之后——Sep-05 实测 bftpd enrichment 耗时 25 分钟，
+   该阶段死亡会丢失整个 run 的配置记录。新位置 = ablation/env 块之后
+   （arm 字段已定）+ setup_dirs 之后（out_dir 存在）+ setup_llm_grammars
+   之前（任何 LLM 网络调用之前）；另补 protocol_selected==0 边缘路径。
+   验证：容器实测 start 写入时刻与进程启动时刻差 = **0ms**（enrichment
+   之前完成），arm 字段完整。
+2. **episode 记账竞态对账字段**（afl-fuzz.c）：SIGKILL 终止时 JSONL 已追加
+   最终 episode 但周期性 stats 快照差一步（Sep-05 bftpd_3：62 vs 61）。
+   两个真相源不可根除竞态，改为在 fuzzer_stats 增加
+   `cal_episodes_jsonl : %llu`（JSONL 行数）对账字段：正常终止时两值
+   相等；非正常终止时 jsonl ≥ stats，差值本身即为诊断信号（消费者可
+   机读检测）。验证：6 分钟容器实测两字段相等（4=4）。
+
+---
+
+## 修复日期
+2026-09-06 — Sep-06 批次 oracle 裸 CR 幻影槽位误报
+
+### 根因
+消息含裸 `\r`（无 `\n` 跟随）时，槽位切分器把 `\r` 当行终止符，
+切出一个幻影槽位——但服务器（bftpd 逐消息重放验证）对整个消息只回
+一个响应码。幻影槽位把后续响应码整体偏移，RNTO slot 绑到了本属于
+后面消息的 250 → 误报 "RNTO without prior RNFR accepted"。
+
+### 修复
+`text_msg_framing_defect_at()`：裸 `\r` 不跟 `\n` → 标记为 framing
+defect（返回位置），使 trust limit 从该位置起掩码幻影槽位。共享
+helper（`text_is_line_break` / `text_line_raw_end` /
+`text_next_line_start`）保持原样（曾尝试修改导致 4 个 attack fixture
+回退+slotdbg 死循环，三次迭代后全部回退，确认最小修改面 = 仅
+framing defect 检测器）。
+
+### 验证
+- oracle_selftest 48+38 全过（零回退）
+- 定向回归 7/7（新增 R7 = Sep-06 误报会话精确重构 → v=0, abst=0）
+- evidence_selftest 全过
+- 全量重编译零错误
+
+---
+
+## 修复日期
+2026-09-06（续）— stderr 边车 NUL 填充（最大 404MB/边车）
+
+### 根因
+forkserver 子进程 fd 2 指向 /tmp/afl_stderr_capture，位置指针随历史写入
+单调递增。父进程 `truncate(path, 0)` 清文件内容但**不重置子进程 fd 位置**
+——下次 stderr 写入落到旧偏移，0 到旧偏移之间变成 NUL sparse hole。
+CPU 密集型 hang（39-94 秒）内累积足够写入 → 404MB NUL 文件。
+
+### 修复
+新增 `copy_stderr_stripped()` 替换全部 3 处 `system("cp ...")` 边车写入：
+读取 capture 文件 → 扫描跳过前导 NUL 字节 → 仅写非 NUL 内容到目标。
+零 NUL 前缀时行为与原 cp 等价；全 NUL 时输出空文件（证据价值为零，
+磁盘成本从 404MB 降到 0B）。
+
+### 验证
+- 全量重编译零错误
+- evidence_selftest 全过

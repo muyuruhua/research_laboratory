@@ -1,0 +1,643 @@
+Failed to create secure directory (/root/.config/pulse): Permission denied
+==================
+WARNING: ThreadSanitizer: data race (pid=105)
+  Read of size 8 at 0x000000ffd960 by thread T4:
+    #0 listener_notify /home/ubuntu/owntone-server/src/listener.c (forked-daapd+0x52135a)
+    #1 status_update_impl /home/ubuntu/owntone-server/src/player.c:390:3 (forked-daapd+0x505749)
+    #2 device_add /home/ubuntu/owntone-server/src/player.c:1373:3 (forked-daapd+0x5047e1)
+    #3 command_cb_async /home/ubuntu/owntone-server/src/commands.c:62:14 (forked-daapd+0x521b1b)
+    #4 command_cb /home/ubuntu/owntone-server/src/commands.c:136:7 (forked-daapd+0x5215bd)
+    #5 <null> <null> (libevent-2.1.so.7+0x20fdd)
+
+  Previous write of size 8 at 0x000000ffd960 by main thread:
+    #0 listener_add /home/ubuntu/owntone-server/src/listener.c:48:17 (forked-daapd+0x521259)
+    #1 dacp_init /home/ubuntu/owntone-server/src/httpd_dacp.c:2971:3 (forked-daapd+0x4e598a)
+    #2 httpd_init /home/ubuntu/owntone-server/src/httpd.c:1678:9 (forked-daapd+0x4dd34d)
+    #3 main /home/ubuntu/owntone-server/src/main.c:813:9 (forked-daapd+0x4bbd3e)
+
+  Location is global 'listener_list' of size 8 at 0x000000ffd960 (forked-daapd+0x000000ffd960)
+
+  Thread T4 'player' (tid=113, running) created by main thread at:
+    #0 pthread_create <null> (forked-daapd+0x42e7ab)
+    #1 player_init /home/ubuntu/owntone-server/src/player.c:3604:9 (forked-daapd+0x504e30)
+    #2 main /home/ubuntu/owntone-server/src/main.c:803:9 (forked-daapd+0x4bbd13)
+
+SUMMARY: ThreadSanitizer: data race /home/ubuntu/owntone-server/src/listener.c in listener_notify
+==================
+==================
+WARNING: ThreadSanitizer: data race (pid=105)
+  Read of size 8 at 0x000000ffd960 by thread T2:
+    #0 listener_notify /home/ubuntu/owntone-server/src/listener.c (forked-daapd+0x52135a)
+    #1 initscan /home/ubuntu/owntone-server/src/library.c (forked-daapd+0x4d7769)
+    #2 library /home/ubuntu/owntone-server/src/library.c:805:3 (forked-daapd+0x4d736b)
+
+  Previous write of size 8 at 0x000000ffd960 by main thread:
+    #0 listener_add /home/ubuntu/owntone-server/src/listener.c:48:17 (forked-daapd+0x521259)
+    #1 dacp_init /home/ubuntu/owntone-server/src/httpd_dacp.c:2971:3 (forked-daapd+0x4e598a)
+    #2 httpd_init /home/ubuntu/owntone-server/src/httpd.c:1678:9 (forked-daapd+0x4dd34d)
+    #3 main /home/ubuntu/owntone-server/src/main.c:813:9 (forked-daapd+0x4bbd3e)
+
+  Location is global 'listener_list' of size 8 at 0x000000ffd960 (forked-daapd+0x000000ffd960)
+
+  Thread T2 'library' (tid=111, running) created by main thread at:
+    #0 pthread_create <null> (forked-daapd+0x42e7ab)
+    #1 library_init /home/ubuntu/owntone-server/src/library.c:849:3 (forked-daapd+0x4d723b)
+    #2 main /home/ubuntu/owntone-server/src/main.c:793:9 (forked-daapd+0x4bbced)
+
+SUMMARY: ThreadSanitizer: data race /home/ubuntu/owntone-server/src/listener.c in listener_notify
+==================
+==================
+WARNING: ThreadSanitizer: data race (pid=105)
+  Read of size 2 at 0x7b080001c7a8 by thread T4:
+    #0 listener_notify /home/ubuntu/owntone-server/src/listener.c:90:34 (forked-daapd+0x52138a)
+    #1 status_update_impl /home/ubuntu/owntone-server/src/player.c:390:3 (forked-daapd+0x505749)
+    #2 device_add /home/ubuntu/owntone-server/src/player.c:1373:3 (forked-daapd+0x5047e1)
+    #3 command_cb_async /home/ubuntu/owntone-server/src/commands.c:62:14 (forked-daapd+0x521b1b)
+    #4 command_cb /home/ubuntu/owntone-server/src/commands.c:136:7 (forked-daapd+0x5215bd)
+    #5 <null> <null> (libevent-2.1.so.7+0x20fdd)
+
+  Previous write of size 8 at 0x7b080001c7a8 by main thread:
+    #0 malloc <null> (forked-daapd+0x42cee4)
+    #1 listener_add /home/ubuntu/owntone-server/src/listener.c:40:32 (forked-daapd+0x52120d)
+    #2 dacp_init /home/ubuntu/owntone-server/src/httpd_dacp.c:2971:3 (forked-daapd+0x4e598a)
+    #3 httpd_init /home/ubuntu/owntone-server/src/httpd.c:1678:9 (forked-daapd+0x4dd34d)
+    #4 main /home/ubuntu/owntone-server/src/main.c:813:9 (forked-daapd+0x4bbd3e)
+
+  Location is heap block of size 24 at 0x7b080001c7a0 allocated by main thread:
+    #0 malloc <null> (forked-daapd+0x42cee4)
+    #1 listener_add /home/ubuntu/owntone-server/src/listener.c:40:32 (forked-daapd+0x52120d)
+    #2 dacp_init /home/ubuntu/owntone-server/src/httpd_dacp.c:2971:3 (forked-daapd+0x4e598a)
+    #3 httpd_init /home/ubuntu/owntone-server/src/httpd.c:1678:9 (forked-daapd+0x4dd34d)
+    #4 main /home/ubuntu/owntone-server/src/main.c:813:9 (forked-daapd+0x4bbd3e)
+
+  Thread T4 'player' (tid=113, running) created by main thread at:
+    #0 pthread_create <null> (forked-daapd+0x42e7ab)
+    #1 player_init /home/ubuntu/owntone-server/src/player.c:3604:9 (forked-daapd+0x504e30)
+    #2 main /home/ubuntu/owntone-server/src/main.c:803:9 (forked-daapd+0x4bbd13)
+
+SUMMARY: ThreadSanitizer: data race /home/ubuntu/owntone-server/src/listener.c:90:34 in listener_notify
+==================
+==================
+WARNING: ThreadSanitizer: data race (pid=105)
+  Read of size 2 at 0x7b080001c7a8 by thread T2:
+    #0 listener_notify /home/ubuntu/owntone-server/src/listener.c:90:34 (forked-daapd+0x52138a)
+    #1 initscan /home/ubuntu/owntone-server/src/library.c (forked-daapd+0x4d7769)
+    #2 library /home/ubuntu/owntone-server/src/library.c:805:3 (forked-daapd+0x4d736b)
+
+  Previous write of size 8 at 0x7b080001c7a8 by main thread:
+    #0 malloc <null> (forked-daapd+0x42cee4)
+    #1 listener_add /home/ubuntu/owntone-server/src/listener.c:40:32 (forked-daapd+0x52120d)
+    #2 dacp_init /home/ubuntu/owntone-server/src/httpd_dacp.c:2971:3 (forked-daapd+0x4e598a)
+    #3 httpd_init /home/ubuntu/owntone-server/src/httpd.c:1678:9 (forked-daapd+0x4dd34d)
+    #4 main /home/ubuntu/owntone-server/src/main.c:813:9 (forked-daapd+0x4bbd3e)
+
+  Location is heap block of size 24 at 0x7b080001c7a0 allocated by main thread:
+    #0 malloc <null> (forked-daapd+0x42cee4)
+    #1 listener_add /home/ubuntu/owntone-server/src/listener.c:40:32 (forked-daapd+0x52120d)
+    #2 dacp_init /home/ubuntu/owntone-server/src/httpd_dacp.c:2971:3 (forked-daapd+0x4e598a)
+    #3 httpd_init /home/ubuntu/owntone-server/src/httpd.c:1678:9 (forked-daapd+0x4dd34d)
+    #4 main /home/ubuntu/owntone-server/src/main.c:813:9 (forked-daapd+0x4bbd3e)
+
+  Thread T2 'library' (tid=111, running) created by main thread at:
+    #0 pthread_create <null> (forked-daapd+0x42e7ab)
+    #1 library_init /home/ubuntu/owntone-server/src/library.c:849:3 (forked-daapd+0x4d723b)
+    #2 main /home/ubuntu/owntone-server/src/main.c:793:9 (forked-daapd+0x4bbced)
+
+SUMMARY: ThreadSanitizer: data race /home/ubuntu/owntone-server/src/listener.c:90:34 in listener_notify
+==================
+==================
+WARNING: ThreadSanitizer: data race (pid=105)
+  Read of size 8 at 0x7b080001c7b0 by thread T2:
+    #0 listener_notify /home/ubuntu/owntone-server/src/listener.c (forked-daapd+0x521378)
+    #1 initscan /home/ubuntu/owntone-server/src/library.c (forked-daapd+0x4d7769)
+    #2 library /home/ubuntu/owntone-server/src/library.c:805:3 (forked-daapd+0x4d736b)
+
+  Previous write of size 8 at 0x7b080001c7b0 by main thread:
+    #0 malloc <null> (forked-daapd+0x42cee4)
+    #1 listener_add /home/ubuntu/owntone-server/src/listener.c:40:32 (forked-daapd+0x52120d)
+    #2 dacp_init /home/ubuntu/owntone-server/src/httpd_dacp.c:2971:3 (forked-daapd+0x4e598a)
+    #3 httpd_init /home/ubuntu/owntone-server/src/httpd.c:1678:9 (forked-daapd+0x4dd34d)
+    #4 main /home/ubuntu/owntone-server/src/main.c:813:9 (forked-daapd+0x4bbd3e)
+
+  Location is heap block of size 24 at 0x7b080001c7a0 allocated by main thread:
+    #0 malloc <null> (forked-daapd+0x42cee4)
+    #1 listener_add /home/ubuntu/owntone-server/src/listener.c:40:32 (forked-daapd+0x52120d)
+    #2 dacp_init /home/ubuntu/owntone-server/src/httpd_dacp.c:2971:3 (forked-daapd+0x4e598a)
+    #3 httpd_init /home/ubuntu/owntone-server/src/httpd.c:1678:9 (forked-daapd+0x4dd34d)
+    #4 main /home/ubuntu/owntone-server/src/main.c:813:9 (forked-daapd+0x4bbd3e)
+
+  Thread T2 'library' (tid=111, running) created by main thread at:
+    #0 pthread_create <null> (forked-daapd+0x42e7ab)
+    #1 library_init /home/ubuntu/owntone-server/src/library.c:849:3 (forked-daapd+0x4d723b)
+    #2 main /home/ubuntu/owntone-server/src/main.c:793:9 (forked-daapd+0x4bbced)
+
+SUMMARY: ThreadSanitizer: data race /home/ubuntu/owntone-server/src/listener.c in listener_notify
+==================
+==================
+WARNING: ThreadSanitizer: data race (pid=105)
+  Read of size 8 at 0x7b080001c7a0 by thread T4:
+    #0 listener_notify /home/ubuntu/owntone-server/src/listener.c:91:12 (forked-daapd+0x52139c)
+    #1 status_update_impl /home/ubuntu/owntone-server/src/player.c:390:3 (forked-daapd+0x505749)
+    #2 device_add /home/ubuntu/owntone-server/src/player.c:1373:3 (forked-daapd+0x5047e1)
+    #3 command_cb_async /home/ubuntu/owntone-server/src/commands.c:62:14 (forked-daapd+0x521b1b)
+    #4 command_cb /home/ubuntu/owntone-server/src/commands.c:136:7 (forked-daapd+0x5215bd)
+    #5 <null> <null> (libevent-2.1.so.7+0x20fdd)
+
+  Previous write of size 8 at 0x7b080001c7a0 by main thread:
+    #0 malloc <null> (forked-daapd+0x42cee4)
+    #1 listener_add /home/ubuntu/owntone-server/src/listener.c:40:32 (forked-daapd+0x52120d)
+    #2 dacp_init /home/ubuntu/owntone-server/src/httpd_dacp.c:2971:3 (forked-daapd+0x4e598a)
+    #3 httpd_init /home/ubuntu/owntone-server/src/httpd.c:1678:9 (forked-daapd+0x4dd34d)
+    #4 main /home/ubuntu/owntone-server/src/main.c:813:9 (forked-daapd+0x4bbd3e)
+
+  Location is heap block of size 24 at 0x7b080001c7a0 allocated by main thread:
+    #0 malloc <null> (forked-daapd+0x42cee4)
+    #1 listener_add /home/ubuntu/owntone-server/src/listener.c:40:32 (forked-daapd+0x52120d)
+    #2 dacp_init /home/ubuntu/owntone-server/src/httpd_dacp.c:2971:3 (forked-daapd+0x4e598a)
+    #3 httpd_init /home/ubuntu/owntone-server/src/httpd.c:1678:9 (forked-daapd+0x4dd34d)
+    #4 main /home/ubuntu/owntone-server/src/main.c:813:9 (forked-daapd+0x4bbd3e)
+
+  Thread T4 'player' (tid=113, running) created by main thread at:
+    #0 pthread_create <null> (forked-daapd+0x42e7ab)
+    #1 player_init /home/ubuntu/owntone-server/src/player.c:3604:9 (forked-daapd+0x504e30)
+    #2 main /home/ubuntu/owntone-server/src/main.c:803:9 (forked-daapd+0x4bbd13)
+
+SUMMARY: ThreadSanitizer: data race /home/ubuntu/owntone-server/src/listener.c:91:12 in listener_notify
+==================
+==================
+WARNING: ThreadSanitizer: data race (pid=105)
+  Read of size 4 at 0x000000ffbf00 by thread T4:
+    #0 dacp_playstatus_update_handler /home/ubuntu/owntone-server/src/httpd_dacp.c:795:23 (forked-daapd+0x4e5d2b)
+    #1 listener_notify /home/ubuntu/owntone-server/src/listener.c:91:2 (forked-daapd+0x5213a1)
+    #2 status_update_impl /home/ubuntu/owntone-server/src/player.c:390:3 (forked-daapd+0x505749)
+    #3 device_add /home/ubuntu/owntone-server/src/player.c:1373:3 (forked-daapd+0x5047e1)
+    #4 command_cb_async /home/ubuntu/owntone-server/src/commands.c:62:14 (forked-daapd+0x521b1b)
+    #5 command_cb /home/ubuntu/owntone-server/src/commands.c:136:7 (forked-daapd+0x5215bd)
+    #6 <null> <null> (libevent-2.1.so.7+0x20fdd)
+
+  Previous write of size 4 at 0x000000ffbf00 by main thread:
+    #0 dacp_init /home/ubuntu/owntone-server/src/httpd_dacp.c:2917:14 (forked-daapd+0x4e5869)
+    #1 httpd_init /home/ubuntu/owntone-server/src/httpd.c:1678:9 (forked-daapd+0x4dd34d)
+    #2 main /home/ubuntu/owntone-server/src/main.c:813:9 (forked-daapd+0x4bbd3e)
+
+  Location is global 'update_efd' of size 4 at 0x000000ffbf00 (forked-daapd+0x000000ffbf00)
+
+  Thread T4 'player' (tid=113, running) created by main thread at:
+    #0 pthread_create <null> (forked-daapd+0x42e7ab)
+    #1 player_init /home/ubuntu/owntone-server/src/player.c:3604:9 (forked-daapd+0x504e30)
+    #2 main /home/ubuntu/owntone-server/src/main.c:803:9 (forked-daapd+0x4bbd13)
+
+SUMMARY: ThreadSanitizer: data race /home/ubuntu/owntone-server/src/httpd_dacp.c:795:23 in dacp_playstatus_update_handler
+==================
+==================
+WARNING: ThreadSanitizer: data race (pid=105)
+  Read of size 8 at 0x7ba0000042d0 by thread T4:
+    #0 eventfd_write <null> (forked-daapd+0x45af98)
+    #1 dacp_playstatus_update_handler /home/ubuntu/owntone-server/src/httpd_dacp.c:795:9 (forked-daapd+0x4e5d3b)
+    #2 listener_notify /home/ubuntu/owntone-server/src/listener.c:91:2 (forked-daapd+0x5213a1)
+    #3 status_update_impl /home/ubuntu/owntone-server/src/player.c:390:3 (forked-daapd+0x505749)
+    #4 device_add /home/ubuntu/owntone-server/src/player.c:1373:3 (forked-daapd+0x5047e1)
+    #5 command_cb_async /home/ubuntu/owntone-server/src/commands.c:62:14 (forked-daapd+0x521b1b)
+    #6 command_cb /home/ubuntu/owntone-server/src/commands.c:136:7 (forked-daapd+0x5215bd)
+    #7 <null> <null> (libevent-2.1.so.7+0x20fdd)
+
+  Previous write of size 8 at 0x7ba0000042d0 by main thread:
+    #0 eventfd <null> (forked-daapd+0x4328d8)
+    #1 dacp_init /home/ubuntu/owntone-server/src/httpd_dacp.c:2917:16 (forked-daapd+0x4e585d)
+    #2 httpd_init /home/ubuntu/owntone-server/src/httpd.c:1678:9 (forked-daapd+0x4dd34d)
+    #3 main /home/ubuntu/owntone-server/src/main.c:813:9 (forked-daapd+0x4bbd3e)
+
+  Location is file descriptor 45 created by main thread at:
+    #0 eventfd <null> (forked-daapd+0x4328d8)
+    #1 dacp_init /home/ubuntu/owntone-server/src/httpd_dacp.c:2917:16 (forked-daapd+0x4e585d)
+    #2 httpd_init /home/ubuntu/owntone-server/src/httpd.c:1678:9 (forked-daapd+0x4dd34d)
+    #3 main /home/ubuntu/owntone-server/src/main.c:813:9 (forked-daapd+0x4bbd3e)
+
+  Thread T4 'player' (tid=113, running) created by main thread at:
+    #0 pthread_create <null> (forked-daapd+0x42e7ab)
+    #1 player_init /home/ubuntu/owntone-server/src/player.c:3604:9 (forked-daapd+0x504e30)
+    #2 main /home/ubuntu/owntone-server/src/main.c:803:9 (forked-daapd+0x4bbd13)
+
+SUMMARY: ThreadSanitizer: data race (/home/ubuntu/owntone-server/src/forked-daapd+0x45af98) in eventfd_write
+==================
+DAAP query(1) : lexer error 3 :
+	 at offset 0, near '@' :
+	@iconswe¹font./api/
+DAAP query(1) : lexer error 3 :
+	 at offset 1, near 'i' :
+	iconswe¹font./api/o
+DAAP query(1) : lexer error 3 :
+	 at offset 2, near 'c' :
+	conswe¹font./api/ou
+DAAP query(1) : lexer error 3 :
+	 at offset 3, near 'o' :
+	onswe¹font./api/out
+DAAP query(1) : lexer error 3 :
+	 at offset 4, near 'n' :
+	nswe¹font./api/outp
+DAAP query(1) : lexer error 3 :
+	 at offset 5, near 's' :
+	swe¹font./api/outpu
+DAAP query(1) : lexer error 1 :
+	Unexpected character at offset 7, near 'w' :
+	we¹font./api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 9, near char(0XB9) :
+	¹font./api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 10, near 'f' :
+	font./api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 11, near 'o' :
+	ont./api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 12, near 'n' :
+	nt./api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 13, near 't' :
+	t./api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 14, near '.' :
+	./api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 15, near '/' :
+	/api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 16, near 'a' :
+	api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 17, near 'p' :
+	pi/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 18, near 'i' :
+	i/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 19, near '/' :
+	/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 20, near 'o' :
+	outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 21, near 'u' :
+	utputs
+DAAP query(1) : lexer error 3 :
+	 at offset 22, near 't' :
+	tputs
+DAAP query(1) : lexer error 3 :
+	 at offset 23, near 'p' :
+	puts
+DAAP query(1) : lexer error 3 :
+	 at offset 24, near 'u' :
+	uts
+DAAP query(1) : lexer error 3 :
+	 at offset 25, near 't' :
+	ts
+DAAP query(1) : lexer error 3 :
+	 at offset 26, near 's' :
+	s
+-end of input-(1)  : error 3 : , at offset 0, at <EOF> : cannot match to any predicted input...
+SMARTPL expression(1) : lexer error 1 :
+	Unexpected character at offset 37, near char(0XEE) :
+	î and media_kind is 
+SMARTPL expression(1) : lexer error 3 :
+	 at offset 70, near 't' :
+	trank_count > 3 orde
+SMARTPL expression(1) : lexer error 1 :
+	Unexpected character at offset 74, near 'k' :
+	k_count > 3 order by
+SMARTPL expression(1) : lexer error 3 :
+	 at offset 76, near 'c' :
+	count > 3 order by t
+SMARTPL expression(1) : lexer error 3 :
+	 at offset 77, near 'o' :
+	ount > 3 order by ti
+SMARTPL expression(1) : lexer error 1 :
+	Unexpected character at offset 79, near 'n' :
+	nt > 3 order by time
+SMARTPL expression(1)  : error 3 : , at offset 26
+    near [Index: 8 (Start: 82075-Stop: 82075) ='8', type<19> Line: 1 LinePos:26]
+     : cannot match to any predicted input...
+SMARTPL expression(1)  : error 3 : , at offset 81
+    near [Index: 23 (Start: 82130-Stop: 82130) ='>', type<20> Line: 1 LinePos:81]
+     : cannot match to any predicted input...
+DAAP query(1) : lexer error 3 :
+	 at offset 0, near '@' :
+	@iconswe¹font./api/
+DAAP query(1) : lexer error 3 :
+	 at offset 1, near 'i' :
+	iconswe¹font./api/o
+DAAP query(1) : lexer error 3 :
+	 at offset 2, near 'c' :
+	conswe¹font./api/ou
+DAAP query(1) : lexer error 3 :
+	 at offset 3, near 'o' :
+	onswe¹font./api/out
+DAAP query(1) : lexer error 3 :
+	 at offset 4, near 'n' :
+	nswe¹font./api/outp
+DAAP query(1) : lexer error 3 :
+	 at offset 5, near 's' :
+	swe¹font./api/outpu
+DAAP query(1) : lexer error 1 :
+	Unexpected character at offset 7, near 'w' :
+	we¹font./api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 9, near char(0XB9) :
+	¹font./api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 10, near 'f' :
+	font./api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 11, near 'o' :
+	ont./api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 12, near 'n' :
+	nt./api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 13, near 't' :
+	t./api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 14, near '.' :
+	./api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 15, near '/' :
+	/api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 16, near 'a' :
+	api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 17, near 'p' :
+	pi/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 18, near 'i' :
+	i/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 19, near '/' :
+	/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 20, near 'o' :
+	outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 21, near 'u' :
+	utputs
+DAAP query(1) : lexer error 3 :
+	 at offset 22, near 't' :
+	tputs
+DAAP query(1) : lexer error 3 :
+	 at offset 23, near 'p' :
+	puts
+DAAP query(1) : lexer error 3 :
+	 at offset 24, near 'u' :
+	uts
+DAAP query(1) : lexer error 3 :
+	 at offset 25, near 't' :
+	ts
+DAAP query(1) : lexer error 3 :
+	 at offset 26, near 's' :
+	s
+-end of input-(1)  : error 3 : , at offset 0, at <EOF> : cannot match to any predicted input...
+SMARTPL expression(1) : lexer error 1 :
+	Unexpected character at offset 37, near char(0XEE) :
+	î and media_kind is 
+SMARTPL expression(1) : lexer error 3 :
+	 at offset 70, near 't' :
+	trank_count > 3 orde
+SMARTPL expression(1) : lexer error 1 :
+	Unexpected character at offset 74, near 'k' :
+	k_count > 3 order by
+SMARTPL expression(1) : lexer error 3 :
+	 at offset 76, near 'c' :
+	count > 3 order by t
+SMARTPL expression(1) : lexer error 3 :
+	 at offset 77, near 'o' :
+	ount > 3 order by ti
+SMARTPL expression(1) : lexer error 1 :
+	Unexpected character at offset 79, near 'n' :
+	nt > 3 order by time
+SMARTPL expression(1)  : error 3 : , at offset 26
+    near [Index: 8 (Start: 82075-Stop: 82075) ='8', type<19> Line: 1 LinePos:26]
+     : cannot match to any predicted input...
+SMARTPL expression(1)  : error 3 : , at offset 81
+    near [Index: 23 (Start: 82130-Stop: 82130) ='>', type<20> Line: 1 LinePos:81]
+     : cannot match to any predicted input...
+DAAP query(1) : lexer error 3 :
+	 at offset 0, near '@' :
+	@iconswe¹font./api/
+DAAP query(1) : lexer error 3 :
+	 at offset 1, near 'i' :
+	iconswe¹font./api/o
+DAAP query(1) : lexer error 3 :
+	 at offset 2, near 'c' :
+	conswe¹font./api/ou
+DAAP query(1) : lexer error 3 :
+	 at offset 3, near 'o' :
+	onswe¹font./api/out
+DAAP query(1) : lexer error 3 :
+	 at offset 4, near 'n' :
+	nswe¹font./api/outp
+DAAP query(1) : lexer error 3 :
+	 at offset 5, near 's' :
+	swe¹font./api/outpu
+DAAP query(1) : lexer error 1 :
+	Unexpected character at offset 7, near 'w' :
+	we¹font./api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 9, near char(0XB9) :
+	¹font./api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 10, near 'f' :
+	font./api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 11, near 'o' :
+	ont./api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 12, near 'n' :
+	nt./api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 13, near 't' :
+	t./api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 14, near '.' :
+	./api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 15, near '/' :
+	/api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 16, near 'a' :
+	api/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 17, near 'p' :
+	pi/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 18, near 'i' :
+	i/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 19, near '/' :
+	/outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 20, near 'o' :
+	outputs
+DAAP query(1) : lexer error 3 :
+	 at offset 21, near 'u' :
+	utputs
+DAAP query(1) : lexer error 3 :
+	 at offset 22, near 't' :
+	tputs
+DAAP query(1) : lexer error 3 :
+	 at offset 23, near 'p' :
+	puts
+DAAP query(1) : lexer error 3 :
+	 at offset 24, near 'u' :
+	uts
+DAAP query(1) : lexer error 3 :
+	 at offset 25, near 't' :
+	ts
+DAAP query(1) : lexer error 3 :
+	 at offset 26, near 's' :
+	s
+-end of input-(1)  : error 3 : , at offset 0, at <EOF> : cannot match to any predicted input...
+SMARTPL expression(1) : lexer error 1 :
+	Unexpected character at offset 37, near char(0XEE) :
+	î and media_kind is 
+SMARTPL expression(1) : lexer error 3 :
+	 at offset 70, near 't' :
+	trank_count > 3 orde
+SMARTPL expression(1) : lexer error 1 :
+	Unexpected character at offset 74, near 'k' :
+	k_count > 3 order by
+SMARTPL expression(1) : lexer error 3 :
+	 at offset 76, near 'c' :
+	count > 3 order by t
+SMARTPL expression(1) : lexer error 3 :
+	 at offset 77, near 'o' :
+	ount > 3 order by ti
+SMARTPL expression(1) : lexer error 1 :
+	Unexpected character at offset 79, near 'n' :
+	nt > 3 order by time
+SMARTPL expression(1)  : error 3 : , at offset 26
+    near [Index: 8 (Start: 82075-Stop: 82075) ='8', type<19> Line: 1 LinePos:26]
+     : cannot match to any predicted input...
+SMARTPL expression(1)  : error 3 : , at offset 81
+    near [Index: 23 (Start: 82130-Stop: 82130) ='>', type<20> Line: 1 LinePos:81]
+     : cannot match to any predicted input...
+==================
+WARNING: ThreadSanitizer: lock-order-inversion (potential deadlock) (pid=105)
+  Cycle in lock order graph: M105 (0x7b0c00000ae0) => M114 (0x7b0c00001050) => M105
+
+  Mutex M114 acquired here while holding mutex M105 in main thread:
+    #0 pthread_mutex_lock <null> (forked-daapd+0x44bb76)
+    #1 <null> <null> (libdbus-1.so.3+0x116fa)
+    #2 main /home/ubuntu/owntone-server/src/main.c:742:9 (forked-daapd+0x4bbbb0)
+
+    Hint: use TSAN_OPTIONS=second_deadlock_stack=1 to get more informative warning message
+
+  Mutex M105 acquired here while holding mutex M114 in main thread:
+    #0 pthread_mutex_lock <null> (forked-daapd+0x44bb76)
+    #1 <null> <null> (libdbus-1.so.3+0x2a382)
+    #2 main /home/ubuntu/owntone-server/src/main.c:924:3 (forked-daapd+0x4bbe91)
+
+SUMMARY: ThreadSanitizer: lock-order-inversion (potential deadlock) (/home/ubuntu/owntone-server/src/forked-daapd+0x44bb76) in pthread_mutex_lock
+==================
+==================
+WARNING: ThreadSanitizer: data race (pid=105)
+  Write of size 1 at 0x000000ffd988 by main thread:
+    #0 websocket_deinit /home/ubuntu/owntone-server/src/websocket.c:428:15 (forked-daapd+0x521fe7)
+    #1 httpd_deinit /home/ubuntu/owntone-server/src/httpd.c:1890:3 (forked-daapd+0x4ddc8b)
+    #2 main /home/ubuntu/owntone-server/src/main.c:940:3 (forked-daapd+0x4bbf0d)
+
+  Previous read of size 1 at 0x000000ffd988 by thread T5:
+    #0 websocket /home/ubuntu/owntone-server/src/websocket.c:326:10 (forked-daapd+0x521ee3)
+
+  Location is global 'ws_exit' of size 1 at 0x000000ffd988 (forked-daapd+0x000000ffd988)
+
+  Thread T5 (tid=115, running) created by main thread at:
+    #0 pthread_create <null> (forked-daapd+0x42e7ab)
+    #1 websocket_init /home/ubuntu/owntone-server/src/websocket.c:411:9 (forked-daapd+0x521dd2)
+    #2 httpd_init /home/ubuntu/owntone-server/src/httpd.c:1711:9 (forked-daapd+0x4dd381)
+    #3 main /home/ubuntu/owntone-server/src/main.c:813:9 (forked-daapd+0x4bbd3e)
+
+SUMMARY: ThreadSanitizer: data race /home/ubuntu/owntone-server/src/websocket.c:428:15 in websocket_deinit
+==================
+==================
+WARNING: ThreadSanitizer: data race (pid=105)
+  Write of size 8 at 0x7b080001cd48 by main thread:
+    #0 free <null> (forked-daapd+0x42d538)
+    #1 listener_remove /home/ubuntu/owntone-server/src/listener.c:78:3 (forked-daapd+0x521320)
+    #2 deinit /home/ubuntu/owntone-server/src/inputs/pipe.c:1078:7 (forked-daapd+0x50b107)
+    #3 input_deinit /home/ubuntu/owntone-server/src/input.c:938:9 (forked-daapd+0x509630)
+    #4 player_deinit /home/ubuntu/owntone-server/src/player.c:3650:3 (forked-daapd+0x505559)
+    #5 main /home/ubuntu/owntone-server/src/main.c:944:3 (forked-daapd+0x4bbf28)
+
+  Previous read of size 2 at 0x7b080001cd48 by thread T2:
+    #0 listener_notify /home/ubuntu/owntone-server/src/listener.c:90:34 (forked-daapd+0x52138a)
+    #1 initscan /home/ubuntu/owntone-server/src/library.c (forked-daapd+0x4d7769)
+    #2 library /home/ubuntu/owntone-server/src/library.c:805:3 (forked-daapd+0x4d736b)
+
+  Thread T2 'library' (tid=111, running) created by main thread at:
+    #0 pthread_create <null> (forked-daapd+0x42e7ab)
+    #1 library_init /home/ubuntu/owntone-server/src/library.c:849:3 (forked-daapd+0x4d723b)
+    #2 main /home/ubuntu/owntone-server/src/main.c:793:9 (forked-daapd+0x4bbced)
+
+SUMMARY: ThreadSanitizer: data race (/home/ubuntu/owntone-server/src/forked-daapd+0x42d538) in free
+==================
+==================
+WARNING: ThreadSanitizer: data race (pid=105)
+  Write of size 8 at 0x7b080001cd50 by main thread:
+    #0 free <null> (forked-daapd+0x42d538)
+    #1 listener_remove /home/ubuntu/owntone-server/src/listener.c:78:3 (forked-daapd+0x521320)
+    #2 deinit /home/ubuntu/owntone-server/src/inputs/pipe.c:1078:7 (forked-daapd+0x50b107)
+    #3 input_deinit /home/ubuntu/owntone-server/src/input.c:938:9 (forked-daapd+0x509630)
+    #4 player_deinit /home/ubuntu/owntone-server/src/player.c:3650:3 (forked-daapd+0x505559)
+    #5 main /home/ubuntu/owntone-server/src/main.c:944:3 (forked-daapd+0x4bbf28)
+
+  Previous read of size 8 at 0x7b080001cd50 by thread T2:
+    #0 listener_notify /home/ubuntu/owntone-server/src/listener.c (forked-daapd+0x521378)
+    #1 initscan /home/ubuntu/owntone-server/src/library.c (forked-daapd+0x4d7769)
+    #2 library /home/ubuntu/owntone-server/src/library.c:805:3 (forked-daapd+0x4d736b)
+
+  Thread T2 'library' (tid=111, running) created by main thread at:
+    #0 pthread_create <null> (forked-daapd+0x42e7ab)
+    #1 library_init /home/ubuntu/owntone-server/src/library.c:849:3 (forked-daapd+0x4d723b)
+    #2 main /home/ubuntu/owntone-server/src/main.c:793:9 (forked-daapd+0x4bbced)
+
+SUMMARY: ThreadSanitizer: data race (/home/ubuntu/owntone-server/src/forked-daapd+0x42d538) in free
+==================
+==================
+WARNING: ThreadSanitizer: data race (pid=105)
+  Write of size 1 at 0x000000ffc238 by main thread:
+    #0 input_deinit /home/ubuntu/owntone-server/src/input.c:941:21 (forked-daapd+0x50963c)
+    #1 player_deinit /home/ubuntu/owntone-server/src/player.c:3650:3 (forked-daapd+0x505559)
+    #2 main /home/ubuntu/owntone-server/src/main.c:944:3 (forked-daapd+0x4bbf28)
+
+  Previous write of size 1 at 0x000000ffc238 by thread T3:
+    #0 input /home/ubuntu/owntone-server/src/input.c:643:21 (forked-daapd+0x50956a)
+
+  Location is global 'input_initialized' of size 1 at 0x000000ffc238 (forked-daapd+0x000000ffc238)
+
+  Thread T3 'input' (tid=112, running) created by main thread at:
+    #0 pthread_create <null> (forked-daapd+0x42e7ab)
+    #1 input_init /home/ubuntu/owntone-server/src/input.c:898:9 (forked-daapd+0x50935e)
+    #2 player_init /home/ubuntu/owntone-server/src/player.c:3597:9 (forked-daapd+0x504e13)
+    #3 main /home/ubuntu/owntone-server/src/main.c:803:9 (forked-daapd+0x4bbd13)
+
+SUMMARY: ThreadSanitizer: data race /home/ubuntu/owntone-server/src/input.c:941:21 in input_deinit
+==================
+==================
+WARNING: ThreadSanitizer: data race (pid=105)
+  Write of size 1 at 0x000000ffc120 by main thread:
+    #0 worker_deinit /home/ubuntu/owntone-server/src/worker.c:216:17 (forked-daapd+0x507f64)
+    #1 main /home/ubuntu/owntone-server/src/main.c:956:3 (forked-daapd+0x4bbf80)
+
+  Previous write of size 1 at 0x000000ffc120 by thread T1:
+    #0 worker /home/ubuntu/owntone-server/src/worker.c:118:17 (forked-daapd+0x507eea)
+
+  Location is global 'g_initialized' of size 1 at 0x000000ffc120 (forked-daapd+0x000000ffc120)
+
+  Thread T1 'worker' (tid=110, running) created by main thread at:
+    #0 pthread_create <null> (forked-daapd+0x42e7ab)
+    #1 worker_init /home/ubuntu/owntone-server/src/worker.c:186:9 (forked-daapd+0x507ddf)
+    #2 main /home/ubuntu/owntone-server/src/main.c:773:9 (forked-daapd+0x4bbc7b)
+
+SUMMARY: ThreadSanitizer: data race /home/ubuntu/owntone-server/src/worker.c:216:17 in worker_deinit
+==================
+ThreadSanitizer: reported 14 warnings

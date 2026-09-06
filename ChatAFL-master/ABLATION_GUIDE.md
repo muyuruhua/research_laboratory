@@ -26,6 +26,28 @@
 | **wo_adaptive** | 需求4 自适应阈值 | `NO_ADAPTIVE=1`, `THRESHOLD=512` |
 | **wo_state_prompt** | 需求4 状态感知 prompt | `NO_STATE_PROMPT=1` |
 
+### Paper-v2 因果 arm 组（2026-09 新增）
+
+对应论文《When Protocol States Mislead》§七 的 5-arm 矩阵（A=aflnet、
+B=chatafl 为既有 fuzzer，C/D/E 为 LoopFuzz 内 arm）：
+
+| 组名 | = 论文 arm | 与相邻 arm 的唯一差异 | 环境变量 |
+|------|-----------|---------------------|---------|
+| **direct** | C (loopfuzz-direct) | parseable 候选直接 durable 队列 | `NO_ADMISSION=1`（= wo_admission 别名） |
+| **gated_fixed** / **full** | D (loopfuzz-gated-fixed) | C + execute-before-promote + provisional 两级队列 + 固定 state policy | （默认，无开关） |
+| **calibrated** | E (loopfuzz-gated-calibrated) | D + 在线后验调度（固定 penalty → Thompson 校准） | `CALIBRATION=1` |
+| **wo_calibration** | D 显式别名 | — | （无开关，语义自述组名） |
+| **cal_gamma099 / cal_gamma100** | E 的 γ 敏感性 | 仅 γ ∈ {0.99, 1.0}（默认 0.995） | `CALIBRATION=1`, `CAL_GAMMA=…` |
+
+关键因果比较：**D vs C** 隔离 admission 收益；**E vs D** 隔离 calibration
+收益（二者 prompt/LLM 输出/trigger/repair 配置完全一致，仅调度项不同）。
+运行：
+
+```bash
+sudo -E ./run_ablation.sh bftpd 1 1580 -g direct,gated_fixed,calibrated
+sudo -E ./run_ablation.sh bftpd 1 1580 -g calibrated,cal_gamma099,cal_gamma100
+```
+
 ### 各组回答的问题
 
 ```
@@ -73,9 +95,14 @@ full − wo_xxx < 0  →  该策略存在负交互，需调整协调机制
 | `CHATAFL_NO_FRONTIER=1` | 关闭 frontier bonus（低出度状态 2×~4× 能量加成）+ error penalty（错误响应扣分） |
 | `CHATAFL_NO_ADAPTIVE=1` | 关闭自适应 plateau 阈值，锁定为固定值 |
 | `CHATAFL_NO_STATE_PROMPT=1` | 关闭状态感知 prompt，退化到 ChatAFL 原始简单 prompt |
-| `CHATAFL_NO_ADMISSION=1` | 关闭 LLM request 的运行时增益 admission gate；schema-valid 候选即使无原生 gain 也强制入队 |
+| `CHATAFL_NO_ADMISSION=1` | 关闭 LLM request 的运行时增益 admission gate；schema-valid 候选即使无原生 gain 也强制入队（= 论文 arm C loopfuzz-direct） |
 | `CHATAFL_ABLATION_THRESHOLD=N` | 当 `NO_ADAPTIVE=1` 时指定固定阈值。建议显式设置 |
-| `CHATAFL_MAX_TOKENS=N` | 仅用于 ChatAFL token fairness；默认 2048，设为 4096 得到 `ChatAFL+4096` |
+| `CHATAFL_MAX_TOKENS=N` | 仅用于 ChatAFL token fairness；默认 2048，设为 4096 得到 `ChatAFL+4096`；LoopFuzz 侧也作为 LLM max_tokens 采样参数生效 |
+| `CHATAFL_TOP_P=N` | LLM top_p 采样参数（默认 1.0），所有调用统一，写入 run-config.jsonl |
+| `CHATAFL_CALIBRATION=1` | 论文 arm E：在线状态效用后验调度（Thompson 采样），替换 arm D 的固定 p_s<0.005 penalty |
+| `CHATAFL_CAL_GAMMA` / `CHATAFL_CAL_EPSILON` | 校准超参 γ（默认 0.995）/ ε（默认 0.1），pilot 后冻结 |
+| `CHATAFL_PROVISIONAL_BUDGET/TTL_MS/MAX_LIVE` | 两级队列 provisional 预算（默认 64 次变异 / 30000 ms / 上限 64 存活） |
+| `CHATAFL_EVENT_LOG=0` | 关闭全部 JSONL 事件日志（run-config/candidate/admission/provisional/state-episodes/bug） |
 
 ### 开关依赖关系
 

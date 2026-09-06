@@ -33,6 +33,17 @@ typedef struct {
   /* Fix-19: Acceptability enhancement fields */
   u8  error_hint;             /* 0=unknown, 1=likely-error (structural), 2=confirmed-productive (behavioral override) */
   double productivity;        /* paths_discovered / (selected_times + 1.0), cached */
+  /* Online calibration (paper §五): per-state code-productivity posterior
+   * θ_s ~ Beta(cal_alpha, cal_beta), discounted updates + Thompson sampling.
+   * The controller calibrates the instrumental utility of a response-derived
+   * state proxy; it does NOT recover the server's semantic state. */
+  double cal_alpha;           /* posterior α, init 1.0 */
+  double cal_beta;            /* posterior β, init 1.0 */
+  u32 cal_episodes;           /* completed state-selection episodes */
+  u32 cal_episode_rewards;    /* episodes that produced new code coverage */
+  double last_sampled_theta;  /* Thompson sample used in last FAVOR selection (−1 = n/a) */
+  double last_frontier_score; /* frontier component of last selection score */
+  double last_selection_score;/* final selection score of last selection */
 } state_info_t;
 
 enum {

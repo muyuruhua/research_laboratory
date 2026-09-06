@@ -92,6 +92,18 @@ uint64_t oracle_evidence_keeps    = 0;
 uint64_t oracle_framing_skips     = 0;
 uint64_t oracle_framing_defect_skips = 0;   /* execs with partial-trust binding */
 uint64_t oracle_untrusted_slots     = 0;   /* slots masked by the trust limit */
+uint64_t oracle_align_mismatch_skips = 0;  /* execs where server emitted more response codes than the slot model (binding unreliable; abstain) */
+/* Shadow-tier query (2026-09-05): lets the caller learn that the most recent
+ * oracle_check() abstained due to alignment mismatch, plus the numbers that
+ * triggered it, so the session evidence can be persisted (oracle-abstained/)
+ * for offline false-negative measurement instead of being silently dropped. */
+static int g_last_abstained = 0;
+static int g_last_slots = 0, g_last_found = 0, g_last_expected = 0;
+
+int oracle_last_abstained(void) { return g_last_abstained; }
+int oracle_last_slot_count(void) { return g_last_slots; }
+int oracle_last_code_count(void) { return g_last_found; }
+int oracle_last_expected_codes(void) { return g_last_expected; }
 uint64_t oracle_embedded_method_skips = 0;  /* RTSP non-first-line method */
 
 /* Set per oracle_check_* call by oracle_ordinal_gate(); read by
@@ -913,8 +925,15 @@ static int g_binding_trust_limit = -1;
 static int text_msg_framing_defect_at(const unsigned char *b, unsigned int l) {
     if (l == 0) return -1;
     if (l < 2 || b[l - 1] != '\n' || b[l - 2] != '\r') return 0;
-    for (unsigned int k = 0; k < l; k++)
+    for (unsigned int k = 0; k < l; k++) {
         if (b[k] == '\n' && (k == 0 || b[k - 1] != '\r')) return (int)k;
+        /* 2026-09-06: bare '\r' NOT followed by '\n' — the slot walker
+         * will split a phantom slot after it, but servers treat the whole
+         * line as one command (bftpd verified: "RMD x\rRNTO y\r\n" →
+         * ONE response).  Mark as a framing defect so the trust limit
+         * masks slots from the phantom onward. */
+        if (b[k] == '\r' && k + 1 < l && b[k + 1] != '\n') return (int)k;
+    }
     return -1;
 }
 
@@ -2242,10 +2261,29 @@ static void build_text_index(const unsigned char **requests,
      * codes (the banner plus one code per response-consuming slot).  extract_all_
      * response_codes returns the number of slots actually present; entries beyond
      * that are padded with -1 so lookups return the same -1 that
-     * extract_nth_response_code() would have returned. */
-    int need = resp_offset + g_slot_count;
+     * extract_nth_response_code() would have returned.
+     *
+     * Alignment-mismatch detection (2026-09-05): extract MORE than needed so a
+     * server that emits extra responses (e.g. bftpd truncating an overlong
+     * command line into several 500 replies) is visible.  If the raw count
+     * exceeds the slot model's prediction, the positional binding is unknown
+     * from some point onward; the 1:1 request-slot -> response-code assumption
+     * the state rules rely on is broken, so we mask ALL bindings for this
+     * execution (abstain) instead of reporting garbage (observed as 9 false
+     * "RNTO without prior RNFR" violations on 2026-09-04, replay-refuted). */
+    int expected = resp_offset + g_slot_count;
+    int need = expected;
     if (need > ORACLE_RESP_CAP) need = ORACLE_RESP_CAP;
-    int found = extract_all_response_codes(response, resp_len, g_resp_codes, need);
+    int extract_cap = need + 1;                 /* one extra probe */
+    if (extract_cap > ORACLE_RESP_CAP) extract_cap = ORACLE_RESP_CAP;
+    int found = extract_all_response_codes(response, resp_len, g_resp_codes, extract_cap);
+    int align_mismatch = (found > expected);    /* server emitted more codes
+                                                 * than the slot model predicts */
+    if (align_mismatch) oracle_align_mismatch_skips++;
+    g_last_abstained  = align_mismatch ? 1 : 0;
+    g_last_slots      = g_slot_count;
+    g_last_found      = found;
+    g_last_expected   = expected;
     for (int k = found; k < need; k++) g_resp_codes[k] = -1;
     g_resp_code_found = found;   /* raw count BEFORE -1 padding (framing check) */
     g_resp_code_count = need;
@@ -2255,7 +2293,16 @@ static void build_text_index(const unsigned char **requests,
     /* Per-slot trust limit (binding hardening, refined): mask only the
      * slots at/after the framing defect instead of skipping the whole
      * sequence.  Telemetry: executions with a limit, and slots masked. */
-    compute_binding_trust_limit(requests, req_lens, req_count);
+    if (align_mismatch) {
+        /* Slot model says `expected` codes; server emitted more.  Positional
+         * binding is unreliable for EVERY slot (the shift point is unknown),
+         * so mask all bindings: code lookups return -1 and the state rules
+         * abstain for this execution. */
+        g_binding_trust_limit = 0;
+        oracle_untrusted_slots += g_slot_count;
+    } else {
+        compute_binding_trust_limit(requests, req_lens, req_count);
+    }
     if (g_binding_trust_limit >= 0) {
         oracle_framing_defect_skips++;   /* exec with partial-trust binding */
         for (int k = 0; k < g_slot_count; k++)
@@ -4857,6 +4904,7 @@ int oracle_check(
 
     memset(result, 0, sizeof(oracle_result_t));
     oracle_total_checks++;
+    g_last_abstained = 0; g_last_slots = 0; g_last_found = 0; g_last_expected = 0;
 
     int violations = 0;
 

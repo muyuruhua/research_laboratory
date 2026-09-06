@@ -75,6 +75,13 @@ aflnet.o: aflnet.c aflnet.h $(COMM_HDR)
 chat-llm.o: chat-llm.c chat-llm.h $(COMM_HDR)
 	$(CC) $(CFLAGS) -c -o $@ chat-llm.c
 
+evidence-cal.o: evidence-cal.c evidence-cal.h
+	$(CC) $(CFLAGS) -c -o $@ evidence-cal.c
+
+# Unit checks for the pure calibration/disposition math (no fuzzer deps).
+evidence_selftest: evidence_selftest.c evidence-cal.c evidence-cal.h
+	$(CC) $(CFLAGS) -o $@ evidence_selftest.c evidence-cal.c -lm
+
 grammar-hypothesis.o: grammar-hypothesis.c grammar-hypothesis.h $(COMM_HDR)
 	$(CC) $(CFLAGS) -c grammar-hypothesis.c -o grammar-hypothesis.o
 
@@ -122,8 +129,8 @@ endif
 protocol-oracle.o: $(ORACLE_SRC) protocol-oracle.h $(COMM_HDR)
 	$(CC) $(CFLAGS) -c $(ORACLE_SRC) -o protocol-oracle.o
 
-afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet.o aflnet.h chat-llm.o chat-llm.h grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o llm-validator.o mqtt-builder.o mp-driver-mqtt.o mqtt-generate.o mqtt-scheduler.o mqtt-differential.o mqtt-race.o protocol-oracle.o attack-catalog.o | test_x86
-	$(CC) $(CFLAGS) $@.c aflnet.o chat-llm.o grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o llm-validator.o mqtt-builder.o mp-driver-mqtt.o mqtt-generate.o mqtt-scheduler.o mqtt-differential.o mqtt-race.o protocol-oracle.o attack-catalog.o -o $@ $(LDFLAGS) -lcurl -ljson-c -lpcre2-8 -lpthread
+afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet.o aflnet.h chat-llm.o chat-llm.h grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o llm-validator.o mqtt-builder.o mp-driver-mqtt.o mqtt-generate.o mqtt-scheduler.o mqtt-differential.o mqtt-race.o protocol-oracle.o attack-catalog.o evidence-cal.o | test_x86
+	$(CC) $(CFLAGS) $@.c aflnet.o chat-llm.o grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o llm-validator.o mqtt-builder.o mp-driver-mqtt.o mqtt-generate.o mqtt-scheduler.o mqtt-differential.o mqtt-race.o protocol-oracle.o attack-catalog.o evidence-cal.o -o $@ $(LDFLAGS) -lcurl -ljson-c -lpcre2-8 -lpthread
 
 afl-replay: afl-replay.c $(COMM_HDR) aflnet.o aflnet.h | test_x86
 	$(CC) $(CFLAGS) $@.c aflnet.o -o $@ $(LDFLAGS)

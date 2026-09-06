@@ -330,6 +330,17 @@ extern uint64_t  oracle_evidence_keeps;
 extern uint64_t  oracle_framing_skips;
 extern uint64_t  oracle_framing_defect_skips;   /* execs with partial-trust binding */
 extern uint64_t  oracle_untrusted_slots;        /* slots masked by trust limit */
+extern uint64_t  oracle_align_mismatch_skips;   /* execs with response/slot count mismatch (abstained) */
+
+/* Shadow tier (2026-09-05): the most recent oracle_check()'s abstention state.
+ * oracle_last_abstained()==1 means binding was masked for the whole session
+ * (server emitted more response codes than the slot model predicted); the
+ * session's verdicts were suppressed.  Persist the evidence and measure the
+ * false-negative rate offline instead of trusting or dropping blindly. */
+int oracle_last_abstained(void);
+int oracle_last_slot_count(void);
+int oracle_last_code_count(void);
+int oracle_last_expected_codes(void);
 extern uint64_t  oracle_embedded_method_skips;  /* RTSP non-first-line method skips */
 
 #endif /* __PROTOCOL_ORACLE_H */

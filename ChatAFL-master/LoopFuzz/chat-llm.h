@@ -86,6 +86,14 @@ void chat_llm_global_init(void);
 /* Must be called once after all LLM calls are done */
 void chat_llm_global_cleanup(void);
 
+/* Auditable LLM configuration (paper §九): resolve CHATAFL_TOP_P /
+ * CHATAFL_MAX_TOKENS / LLM_MODEL once; getters expose the effective
+ * values for run-config.jsonl. */
+void        chat_llm_apply_sampling_env(void);
+double      llm_active_top_p(void);
+int         llm_active_max_tokens(void);
+const char *llm_active_model(void);
+
 /* Per-call token usage filled by chat_with_llm().
  * __thread: safe for concurrent enrichment worker threads.
  * In the forked plateau-handler child, TLS works normally. */

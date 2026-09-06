@@ -46,7 +46,11 @@ static size_t chat_with_llm_helper(void *contents, size_t size, size_t nmemb, vo
 static int is_garbage_response(const char *response, size_t len);
 
 /* --- curl global lifecycle (call once from main thread) --- */
-void chat_llm_global_init(void)  { curl_global_init(CURL_GLOBAL_DEFAULT); }
+void chat_llm_apply_sampling_env(void); /* defined below */
+void chat_llm_global_init(void)  {
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+    chat_llm_apply_sampling_env();
+}
 void chat_llm_global_cleanup(void) { curl_global_cleanup(); }
 
 /* Per-call token usage — populated from the API "usage" object.
@@ -56,6 +60,39 @@ void chat_llm_global_cleanup(void) { curl_global_cleanup(); }
  * normally (single-threaded child). */
 __thread unsigned long long llm_last_prompt_tokens     = 0;
 __thread unsigned long long llm_last_completion_tokens = 0;
+
+/* ── Auditable LLM configuration (paper §九: matched configs) ──────
+ * Sampling parameters are resolved once from the environment so every
+ * call uses identical settings, and run-config.jsonl can record them
+ * via the getters below. */
+static double llm_cfg_top_p     = 1.0;
+static int    llm_cfg_max_tokens = MAX_TOKENS;
+static char   llm_cfg_model[128] = {0};
+
+double llm_active_top_p(void)     { return llm_cfg_top_p; }
+int    llm_active_max_tokens(void){ return llm_cfg_max_tokens; }
+const char *llm_active_model(void) {
+    if (llm_cfg_model[0]) return llm_cfg_model;
+    const char *m = getenv("LLM_MODEL");
+    return (m && *m) ? m : LLM_DEFAULT_MODEL;
+}
+
+void chat_llm_apply_sampling_env(void) {
+    const char *tp = getenv("CHATAFL_TOP_P");
+    if (tp && *tp) {
+        double v = atof(tp);
+        if (v > 0.0 && v <= 1.0) llm_cfg_top_p = v;
+    }
+    const char *mt = getenv("CHATAFL_MAX_TOKENS");
+    if (mt && *mt) {
+        int v = atoi(mt);
+        if (v > 0 && v <= 32768) llm_cfg_max_tokens = v;
+    }
+    const char *m = getenv("LLM_MODEL");
+    if (m && *m) {
+        snprintf(llm_cfg_model, sizeof(llm_cfg_model), "%s", m);
+    }
+}
 
 char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
 {
@@ -97,8 +134,13 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
     const char *llm_model = getenv("LLM_MODEL");
     if (!llm_model || llm_model[0] == '\0')
         llm_model = LLM_DEFAULT_MODEL;
+    /* top_p / max_tokens were resolved once in chat_llm_global_init() (the
+     * enrichment worker threads call this function concurrently, so env
+     * parsing must not happen per-call).  All calls in a campaign share
+     * identical sampling parameters (paper §九). */
     char *data = NULL;
-    asprintf(&data, "{\"model\": \"%s\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f}", llm_model, prompt, MAX_TOKENS, temperature);
+    asprintf(&data, "{\"model\": \"%s\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f, \"top_p\": %f}",
+             llm_active_model(), prompt, llm_cfg_max_tokens, temperature, llm_cfg_top_p);
     
     // DEBUG: Print request data for hypothesis system debugging
     if (strstr(prompt, "protocol") != NULL && strstr(prompt, "templates") != NULL) {
