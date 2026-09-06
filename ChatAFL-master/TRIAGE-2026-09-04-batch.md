@@ -100,3 +100,59 @@ bftpd run_3 的 episode 记账差异（jsonl=62 vs stats=61）诊断为 docker
 SIGKILL（exit 137）终止时 JSONL 已追加最终 episode 但周期性 stats 快照
 未及更新——非确定性终止下的记账竞态，暴露 run-config start 事件位于
 enrichment 之后的放置缺陷（enrichment 阶段崩溃会丢失 run-config）。
+
+---
+
+# 附录 2：Sep-06_17-38-37 批次（8/9 target，24 runs，~5h each）
+
+## 优化生效验证（24/24）
+
+| 项 | 结果 |
+|---|---|
+| arm + episode 记账 | 24/24 全等（含 cal_episodes_jsonl 对账字段） |
+| oracle 弃权 | FTP/SMTP 全触发（proftpd 17,669 最高）；lighttpd1/live555/fd=0 ✓ |
+| 影子层 | 24 runs 全部有 oracle-abstained/ 存档（FTP/SMTP 系达 64 上限） |
+| hang 0 字节 | 9 个 hang 种子全部非零（704B-10884B） |
+| Hot Replay | **本批不包含**（fuzzer_commit c8e5975b3 不含 hot_replay 代码） |
+| stderr NUL 修复 | **本批不包含**（同上） |
+| 裸 CR 幻影槽位修复 | **本批不包含**（同上） |
+
+## 信号严判（按"能复现异常/违反业务属性"标准）
+
+### live555 "PLAY before SETUP accepted" (sev=4, STRONG) → **误报**
+
+重放验证（5 组对照实验）：
+- 干净服务器 → 直接 PLAY → 454（正确拒绝）×3
+- DESCRIBE 后 PLAY (无 SETUP) → 454（正确拒绝）
+- SETUP 后用正确 Session PLAY → 202（正常）
+- 假 Session DEADBEEF → 454（正确拒绝）
+
+**误报根因**：种子中 Session:000022B8 恰好 = live555 确定性 session
+counter 的第一个分配值。oracle 只看消息序数（PLAY 在 SETUP 前），不知道
+session 在服务器端实际有效。**live555 全部测试中正确拒绝了无效 PLAY。**
+
+### forked-daapd "Conflicting Content-Length" (sev=3, MODERATE) → **非违规**
+
+第一个 CL 值 "0ibrary:track:2..." 非纯数字 = 无效头。HTTP 语义：无效
+CL 应被忽略 → 取有效的 CL=0。服务器返回 200（web fallback）。不存在
+两个有效 CL 值的冲突 → 不构成请求走私风险。
+
+### hang ×9（forked-daapd 5 + proftpd 4）→ **全部非漏洞**
+
+与前批同类：forked-daapd msgs=0 CPU≈0（等待态），proftpd CPU 30-77s
+（CPU 密集型慢执行）。全部种子非零可重放。
+
+### teardown ×50 → **全部非漏洞**（同前根因）
+
+### 崩溃：0
+
+## 本批结论：零漏洞。两条 oracle 判决经重放/协议分析均否决。
+
+## 新发现的 oracle 认知盲区（登记）
+
+live555 案例揭示：oracle 的 RTSP 规则假设 Session ID 需要与 SETUP
+建立的 session 匹配，但不知道 live555 使用确定性 session counter
+（每次启动分配相同 ID）。当种子中的 Session 值恰好命中 counter 值时，
+即使消息序数显示 "PLAY before SETUP"，session 实际上有效。
+修复方向：RTSP 规则需检查 Session ID 是否在之前消息的 SETUP 响应中
+被分配过（而非仅检查序数）。

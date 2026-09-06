@@ -897,6 +897,159 @@ static void copy_stderr_stripped(const char *dst) {
   close(out_fd);
 }
 
+
+/* Forward declarations for hot replay (defined at heap_abort_marker level) */
+static void bug_log_event(const char *kind, const char *fname,
+                          const char *signature, const char *detail);
+static u64 get_cur_time(void);
+EXP_ST u8 common_fuzz_stuff(char **argv, u8 *out_buf, u32 len);
+
+
+/* ══════════════════════════════════════════════════════════════════
+ * Hot Replay (2026-09-06): immediate in-context reproduction verification
+ *
+ * When a unique crash/hang is detected, the BEST time to try reproducing
+ * it is NOW — the forkserver is alive, the target's accumulated state
+ * (memory layout, connection pools, thread scheduling) is closest to what
+ * produced the signal.  Cold replay hours later loses all of that.
+ *
+ * This function re-executes the exact input buffer via the same network
+ * pipeline (common_fuzz_stuff) and counts how many replays produce the
+ * same fault signal.  Results go to <seed>.replay.meta — a machine-
+ * readable reproduction score that downstream triage can trust.
+ *
+ * Cost: 3 extra execs per UNIQUE signal (not per execution). With ~1
+ * unique signal per 30K+ execs, overhead is negligible. */
+#define HOT_REPLAY_ATTEMPTS 3
+
+static void hot_replay_verify(char **argv, u8 *buf, u32 len,
+                              u8 original_fault, const char *kind,
+                              const char *seed_fn) {
+  if (!argv || !buf || !len || !seed_fn) return;
+  if (stop_soon) return;
+
+  u8 same_signal = 0;
+  u8 faults[HOT_REPLAY_ATTEMPTS];
+
+  /* Save state that common_fuzz_stuff will perturb */
+  u32 saved_uninteresting = uninteresting_times;
+  u64 saved_execs = total_execs;
+
+  for (int i = 0; i < HOT_REPLAY_ATTEMPTS; i++) {
+    if (stop_soon) break;
+    u8 ret = common_fuzz_stuff(argv, buf, len);
+    (void)ret;
+    faults[i] = last_common_fuzz_fault;
+    if (last_common_fuzz_fault == original_fault) same_signal++;
+  }
+
+  /* Restore perturbed state so the main loop continues cleanly */
+  uninteresting_times = saved_uninteresting;
+  /* total_execs includes the 3 verification execs — keep them (honest
+   * accounting) but note the offset in the sidecar */
+
+  /* Context snapshot at detection time */
+  u64 now_ms = get_cur_time();
+  u64 campaign_ms = now_ms > start_time ? now_ms - start_time : 0;
+
+  /* Write .replay.meta sidecar */
+  u8 *meta_fn = alloc_printf("%s.replay.meta", seed_fn);
+  if (meta_fn) {
+    FILE *m = fopen((char *)meta_fn, "w");
+    if (m) {
+      fprintf(m,
+          "kind=%s\n"
+          "original_fault=%u\n"
+          "attempts=%d\n"
+          "same_signal=%u\n"
+          "reproduction_rate=%u/%d\n"
+          "faults=",
+          kind, original_fault, HOT_REPLAY_ATTEMPTS, same_signal,
+          same_signal, HOT_REPLAY_ATTEMPTS);
+      for (int i = 0; i < HOT_REPLAY_ATTEMPTS; i++)
+        fprintf(m, "%s%u", i ? "," : "", faults[i]);
+      fprintf(m,
+          "\n"
+          "detection_execs=%llu\n"
+          "campaign_time_ms=%llu\n"
+          "queue_cycle=%u\n"
+          "queued_paths=%u\n"
+          "execs_per_sec_note=see_fuzzer_stats\n"
+          "context_note=hot_replay_in_forkserver_context\n",
+          (unsigned long long)saved_execs,
+          (unsigned long long)campaign_ms,
+          queue_cycle, queued_paths);
+      fclose(m);
+    }
+    ck_free(meta_fn);
+  }
+
+  /* Also log to bug-events for machine-readable join */
+  char detail[128];
+  snprintf(detail, sizeof(detail),
+           "hot_replay: %u/%d same signal (fault=%u)",
+           same_signal, HOT_REPLAY_ATTEMPTS, original_fault);
+  bug_log_event(kind, (char *)seed_fn, "hot_replay", detail);
+}
+
+/* Context snapshot: capture /proc state at signal detection time.
+ * Gives offline analysts the runtime context that pure input replay
+ * cannot reconstruct (memory usage, thread count, fd pressure). */
+static void context_snapshot(const char *seed_fn) {
+  if (!seed_fn) return;
+  u8 *fn = alloc_printf("%s.ctx.snapshot", seed_fn);
+  if (!fn) return;
+  FILE *f = fopen((char *)fn, "w");
+  if (!f) { ck_free(fn); return; }
+
+  u64 now_ms = get_cur_time();
+  fprintf(f, "# LoopFuzz context snapshot (detection time)\n");
+  fprintf(f, "timestamp_ms=%llu\n", (unsigned long long)now_ms);
+  fprintf(f, "campaign_elapsed_ms=%llu\n",
+          (unsigned long long)(now_ms > start_time ? now_ms - start_time : 0));
+  fprintf(f, "total_execs=%llu\n", (unsigned long long)total_execs);
+  fprintf(f, "queue_cycle=%u\n", queue_cycle);
+  fprintf(f, "queued_paths=%u\n", queued_paths);
+  fprintf(f, "pending_favored=%u\n", pending_favored);
+  fprintf(f, "unique_crashes=%llu\n", (unsigned long long)unique_crashes);
+  fprintf(f, "unique_hangs=%llu\n", (unsigned long long)unique_hangs);
+  fprintf(f, "unique_tmouts=%llu\n", (unsigned long long)unique_tmouts);
+  fprintf(f, "forkserver_pid=%d\n", forksrv_pid);
+  fprintf(f, "exec_tmout=%u\n", exec_tmout);
+
+  /* /proc self status (bounded: first 20 lines) */
+  FILE *pf = fopen("/proc/self/status", "r");
+  if (pf) {
+    char line[256]; int n = 0;
+    fprintf(f, "\n# /proc/self/status (first 20 lines)\n");
+    while (n < 20 && fgets(line, sizeof(line), pf)) {
+      fputs(line, f); n++;
+    }
+    fclose(pf);
+  }
+
+  /* System load */
+  fprintf(f, "\n# /proc/loadavg\n");
+  pf = fopen("/proc/loadavg", "r");
+  if (pf) {
+    char line[128];
+    if (fgets(line, sizeof(line), pf)) fputs(line, f);
+    fclose(pf);
+  }
+
+  /* Memory info (bounded) */
+  fprintf(f, "\n# /proc/meminfo (first 5 lines)\n");
+  pf = fopen("/proc/meminfo", "r");
+  if (pf) {
+    char line[256]; int n = 0;
+    while (n < 5 && fgets(line, sizeof(line), pf)) { fputs(line, f); n++; }
+    fclose(pf);
+  }
+
+  fclose(f);
+  ck_free(fn);
+}
+
 static void heap_abort_marker(int sig) {
   int fd = open("heap-corruption.marker",
                 O_WRONLY | O_CREAT | O_TRUNC, 0600);
@@ -1402,6 +1555,7 @@ typedef struct {
 
 /* Forward declarations for functions used in mqtt_save_diff_report */
 static u64 get_cur_time(void);
+
 static u32 count_non_255_bytes(u8 *mem);
 /* Forward declaration: kl_messages is defined at ~line 1654 after IPSM globals */
 extern klist_t(lms) *kl_messages;
@@ -4268,6 +4422,7 @@ struct queue_entry *choose_seed(u32 target_state_id, u8 mode)
 }
 
 static u64 get_cur_time(void);
+
 
 /* Update state-aware variables */
 void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
@@ -10379,6 +10534,23 @@ static u8 save_if_interesting(char **argv, void *mem, u32 len, u8 fault)
       u8 *stderr_fn = alloc_printf("%s.stderr.log", fn);
       copy_stderr_stripped((char *)stderr_fn);
       ck_free(stderr_fn);
+    }
+
+    /* Hot Replay (2026-09-06): immediately re-execute the input in this
+     * exact forkserver context to measure reproducibility while the
+     * state that produced the signal is still live.  Also snapshot the
+     * execution context for offline analysis. */
+    /* 2026-09-07 fix: the original condition `keeping && fault != FAULT_NONE`
+     * never fired because `keeping` is only set inside `fault == crash_mode`
+     * (== FAULT_NONE in normal mode), which is skipped for both FAULT_TMOUT
+     * and FAULT_CRASH.  Use `fn` (the saved seed path) instead — it is set
+     * by the FAULT_TMOUT / keep_as_crash paths above when a unique hang or
+     * crash seed is actually persisted. */
+    if (fn && *fn && strcmp((char *)fn, "") != 0 && fault != FAULT_NONE) {
+      hot_replay_verify(argv, mem, len, fault,
+                        fault == FAULT_TMOUT ? "hang" : "crash",
+                        (char *)fn);
+      context_snapshot((char *)fn);
     }
   }
 

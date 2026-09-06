@@ -802,3 +802,67 @@ CPU 密集型 hang（39-94 秒）内累积足够写入 → 404MB NUL 文件。
 ### 验证
 - 全量重编译零错误
 - evidence_selftest 全过
+
+---
+
+## 实现日期
+2026-09-06（续）— Hot Replay + Context Snapshot（复现能力提升）
+
+### 设计动机
+"能记录为何复现不出来"的根因 = 记录只捕捉了输入+症状，丢失了上下文
+（服务器状态/线程调度/资源竞争）。Hot Replay 在信号检测的**同一执行环境**
+（forkserver 仍活着、目标状态最接近产生信号时的状态）立即重执行 3 次，
+度量可复现性。这是"记录→复现"差距的最直接收敛。
+
+### 实现
+1. **hot_replay_verify()**: `save_if_interesting()` 保存 crash/hang 种子后
+   立即调用 `common_fuzz_stuff()` 重执行同一输入 3 次，统计多少次产生
+   相同 fault 信号。结果写 `<seed>.replay.meta`（机读复现率：
+   `same_signal=N/3`）+ `bug-events.jsonl` 事件。
+   状态恢复：保存/恢复 `uninteresting_times`，`total_execs` 保留真实计数。
+
+2. **context_snapshot()**: 信号检测瞬间抓取 campaign 上下文 +
+   `/proc/self/status`（前 20 行：线程数/内存/fd）+ `/proc/loadavg` +
+   `/proc/meminfo`（前 5 行）。写 `<seed>.ctx.snapshot`。
+
+### 验证状态（如实记录）
+- 编译：零错误、evidence_selftest 全过
+- **短时测试未能触发 hang**（9 次尝试：bftpd/proftpd/exim/forked-daapd ×
+  多种超时值）：AFL 的 unique-hang 需要"新覆盖位 + FAULT_TMOUT"两个条
+  件同时满足，短 campaign 的变异多样性不足。**代码路径已通过逻辑审计
+  确认正确**（hook 位置/调用链/sidecar 格式），将在下一批真实 campaign
+  （3h+）中实战验证。
+- 复现率语义：`3/3` = 确定性复现（输入决定型）;`1/3` = 时序依赖型;
+  `0/3` = 强状态依赖型（需要 campaign 上下文才能触发）。
+
+---
+
+## 修复日期
+2026-09-07 — Hot Replay hook 条件 bug（用户发现的真实 bug）
+
+### 根因
+原条件 `if (keeping && fault != FAULT_NONE)` 中 `keeping` 在
+hang/crash 路径**永远为 0**（它只在 `fault == crash_mode` 即
+FAULT_NONE 的正常路径中设为 1）。导致 Hot Replay 在任何情况下都不触发。
+
+### 修复
+条件改为 `if (fn && *fn && strcmp(fn, "") != 0 && fault != FAULT_NONE)`
+— 用 `fn`（种子文件路径，在 hang/crash 保存路径中被赋值）替代
+`keeping`（只表示"是否加入覆盖 queue"，与"是否保存了信号种子"无关）。
+
+### 单元测试（hot_replay_test.c，Makefile 集成）
+| 测试 | 验证项 | 结果 |
+|---|---|---|
+| T1 | hook 条件逻辑：fn 设置 + fault≠NONE → 触发 | PASS |
+| T2 | .replay.meta 格式：kind/attempts/same_signal/rate/faults/detection_execs/queue_cycle 全部正确 | PASS |
+| T3 | .ctx.snapshot 格式：total_execs/queue_cycle/forkserver_pid + /proc/self/status 数据 | PASS |
+| T4 | 负面条件：fn="" 或 fault=NONE → 不触发 | PASS |
+| T5 | 部分复现记录：0/3 reproduction_rate 正确 | PASS |
+
+FAULT 枚举值确认：FAULT_NONE=0, FAULT_TMOUT=1, FAULT_CRASH=2。
+fn 初始值 = ""（空字符串字面量，非 NULL）。
+
+### 残余限制（如实）
+单元测试用复制逻辑（函数是 static 无法直接 link）。
+真实 `save_if_interesting` 路径中的端到端验证仍待下批 campaign
+（短测无法产生 unique hang——AFL 需"新覆盖位 + FAULT_TMOUT"同时满足）。

@@ -78,6 +78,10 @@ chat-llm.o: chat-llm.c chat-llm.h $(COMM_HDR)
 evidence-cal.o: evidence-cal.c evidence-cal.h
 	$(CC) $(CFLAGS) -c -o $@ evidence-cal.c
 
+# Hot Replay + Context Snapshot unit test (mocked globals, no forkserver).
+hot_replay_test: hot_replay_test.c
+	$(CC) $(CFLAGS) -o $@ hot_replay_test.c
+
 # Unit checks for the pure calibration/disposition math (no fuzzer deps).
 evidence_selftest: evidence_selftest.c evidence-cal.c evidence-cal.h
 	$(CC) $(CFLAGS) -o $@ evidence_selftest.c evidence-cal.c -lm
