@@ -78,6 +78,29 @@ chat-llm.o: chat-llm.c chat-llm.h $(COMM_HDR)
 evidence-cal.o: evidence-cal.c evidence-cal.h
 	$(CC) $(CFLAGS) -c -o $@ evidence-cal.c
 
+mutation-ops.o: mutation-ops.c mutation-ops.h
+	$(CC) $(CFLAGS) -c -o $@ mutation-ops.c
+
+# ASAN builds of the mutation-contract tests. The T12/T13 fixtures allocate
+# EXACTLY buf_cap bytes, so any write past cap is a hard heap-buffer-overflow
+# (this is the 2026-09-07 early-exit root cause class).
+asan_tests: cve_mutation_test.c mutation_engine_test.c mutation-ops.c mutation-ops.h
+	$(CC) -O1 -g -fsanitize=address -D_GNU_SOURCE -o cve_mutation_test_asan cve_mutation_test.c mutation-ops.c
+	$(CC) -O1 -g -fsanitize=address -D_GNU_SOURCE -o mutation_engine_test_asan mutation_engine_test.c mutation-ops.c
+	./cve_mutation_test_asan && ./mutation_engine_test_asan
+
+# CVE-targeted strategies test — links the REAL mutation-ops.o (2026-09-07).
+cve_mutation_test: cve_mutation_test.c mutation-ops.o mutation-ops.h
+	$(CC) $(CFLAGS) -D_GNU_SOURCE -o $@ cve_mutation_test.c mutation-ops.o
+
+# Protocol-Aware Mutation Engine test — links the REAL mutation-ops.o.
+mutation_engine_test: mutation_engine_test.c mutation-ops.o mutation-ops.h
+	$(CC) $(CFLAGS) -D_GNU_SOURCE -o $@ mutation_engine_test.c mutation-ops.o
+
+# Attack catalog deep-state pattern test (2026-09-07).
+attack_catalog_test: attack_catalog_test.c attack-catalog.o attack-catalog.h
+	$(CC) $(CFLAGS) -I. -o $@ attack_catalog_test.c attack-catalog.o
+
 # Hot Replay + Context Snapshot unit test (mocked globals, no forkserver).
 hot_replay_test: hot_replay_test.c
 	$(CC) $(CFLAGS) -o $@ hot_replay_test.c
@@ -133,8 +156,8 @@ endif
 protocol-oracle.o: $(ORACLE_SRC) protocol-oracle.h $(COMM_HDR)
 	$(CC) $(CFLAGS) -c $(ORACLE_SRC) -o protocol-oracle.o
 
-afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet.o aflnet.h chat-llm.o chat-llm.h grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o llm-validator.o mqtt-builder.o mp-driver-mqtt.o mqtt-generate.o mqtt-scheduler.o mqtt-differential.o mqtt-race.o protocol-oracle.o attack-catalog.o evidence-cal.o | test_x86
-	$(CC) $(CFLAGS) $@.c aflnet.o chat-llm.o grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o llm-validator.o mqtt-builder.o mp-driver-mqtt.o mqtt-generate.o mqtt-scheduler.o mqtt-differential.o mqtt-race.o protocol-oracle.o attack-catalog.o evidence-cal.o -o $@ $(LDFLAGS) -lcurl -ljson-c -lpcre2-8 -lpthread
+afl-fuzz: afl-fuzz.c $(COMM_HDR) aflnet.o aflnet.h chat-llm.o chat-llm.h grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o llm-validator.o mqtt-builder.o mp-driver-mqtt.o mqtt-generate.o mqtt-scheduler.o mqtt-differential.o mqtt-race.o protocol-oracle.o attack-catalog.o evidence-cal.o mutation-ops.o | test_x86
+	$(CC) $(CFLAGS) $@.c aflnet.o chat-llm.o grammar-hypothesis.o hypothesis-adapter.o rfc-knowledge.o llm-validator.o mqtt-builder.o mp-driver-mqtt.o mqtt-generate.o mqtt-scheduler.o mqtt-differential.o mqtt-race.o protocol-oracle.o attack-catalog.o evidence-cal.o mutation-ops.o -o $@ $(LDFLAGS) -lcurl -ljson-c -lpcre2-8 -lpthread
 
 afl-replay: afl-replay.c $(COMM_HDR) aflnet.o aflnet.h | test_x86
 	$(CC) $(CFLAGS) $@.c aflnet.o -o $@ $(LDFLAGS)

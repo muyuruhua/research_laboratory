@@ -866,3 +866,316 @@ fn 初始值 = ""（空字符串字面量，非 NULL）。
 单元测试用复制逻辑（函数是 static 无法直接 link）。
 真实 `save_if_interesting` 路径中的端到端验证仍待下批 campaign
 （短测无法产生 unique hang——AFL 需"新覆盖位 + FAULT_TMOUT"同时满足）。
+
+---
+
+## 优化日期
+2026-09-07 — 协议感知漏洞发现能力提升（6 新 deep-state patterns）
+
+### 基于 6 协议 40+ 经典 CVE 调研的缺口分析
+已覆盖（旧 pattern）：RTSP 竞态/重复 SETUP、FTP 文件生命周期、SMTP RSET 复用、
+SIP reinvite、HTTP 资源生命周期。
+关键缺口：FTP MLSD（CVE-2024-48208）、FTP RNTO（CVE-2023-51713）、
+SMTP BDAT（CVE-2017-16943）、HTTP 库扫描触发（forked-daapd UAF 窗口）、
+SIP Content-Length 溢出（CVE-2026-39863）、FTP 认证爆破。
+
+### 新增 6 个 deep-state patterns（attack-catalog.c）
+| Pattern | 协议 | 目标 CVE | 触发序列 |
+|---|---|---|---|
+| deep_ftp_mlsd | FTP | CVE-2024-48208 (pure-ftpd) | 登录+MLSD 长参数(1000B) |
+| deep_ftp_rename | FTP | CVE-2023-51713 (proftpd) | 登录+MKD/RNFR/RNTO+\\SYST+../ |
+| deep_smtp_bdat | SMTP | CVE-2017-16943 (exim) | EHLO+AUTH+MAIL/RCPT/BDAT序列 |
+| deep_http_rescan | HTTP/DAAP | CVE-2025-44560 (owntone) | PUT /api/update+深嵌套搜索表达式 |
+| deep_sip_clen | SIP | CVE-2026-39863 (kamailio) | REGISTER+超大 Content-Length |
+| deep_ftp_authfail | FTP | auth-brute | 5 次 USER/PASS 错误凭据 |
+
+### 测试（attack_catalog_test.c，7 测试全过）
+- T1-T6: 每个 pattern 的种子生成+CVE 触发命令验证
+- T7: 5 协议（FTP/SMTP/DAAP/SIP/RTSP）均至少 1 个新种子
+- 全量重编译零错误 + evidence/oracle/hot_replay 自测全过
+
+---
+
+## 优化日期
+2026-09-07（续）— 协议感知变异引擎（真正改变变异行为，非仅种子）
+
+### 设计（基于 6 协议 40+ CVE 调研结论）
+
+两个机制直接嵌入 havoc 变异循环（common_fuzz_stuff 之前）：
+
+**1. Auth-Prefix Protection（认证前缀保护）**
+- 问题：havoc 随机变异破坏 USER/PASS/EHLO/AUTH → 服务器拒绝所有
+  后续命令 → 整次迭代浪费在 pre-auth 错误路径
+- FTP CVE 调研显示 ~50% 的已知漏洞在认证后（proftpd CVE-2020-9272、
+  pure-ftpd CVE-2024-48208、CVE-2020-9274、exim CVE-2017-16943 等）
+- 实现：auth_prefix_protect() 在每次 havoc 迭代后（75% 概率）将
+  USER/PASS（FTP）、EHLO/HELO/AUTH（SMTP）、DESCRIBE/SETUP（RTSP）
+  的认证前缀从原始种子恢复到变异后缓冲区
+- 效果：确保变异始终探索认证后的代码路径
+
+**2. CVE-Targeted Mutation Operators（CVE 靶向变异算子）**
+- 4 个协议感知变异策略（~3% 概率/迭代，与通用变异叠加）：
+  a) Content-Length 溢出（SIP/HTTP/DAAP → kamailio CVE-2026-39863）
+     将 CL 值替换为 INT_MAX/UINT_MAX/>2^32 等溢出值
+  b) FTP RNTO 尾部注入（proftpd CVE-2023-51713）
+     在 RNTO 参数末尾插入 \ 或 " 触发解析器越界读
+  c) FTP MLSD/MLST 参数扩展（pure-ftpd CVE-2024-48208）
+     将参数扩展 100-200 字符触发 domlsd 越界读
+  d) SMTP AUTH base64 边界变异（exim CVE-2018-6789/2023-42115）
+     调整 base64 长度至 mod-4 边界条件
+  e) RTSP Session token 替换（CVE-2026-41470）
+     将 Session ID 替换为确定性 counter 值（000022B8）
+
+### 挂接位置
+afl-fuzz.c havoc 循环内、payload_guard 之后、common_fuzz_stuff 之前。
+
+### 测试（mutation_engine_test.c，10 测试全过）
+| 测试 | 验证 | 结果 |
+|---|---|---|
+| T1 | FTP USER/PASS 被破坏后恢复 | PASS |
+| T2 | SMTP EHLO/AUTH 被破坏后恢复 | PASS |
+| T3 | 非认证命令（LIST/RETR）不被恢复 | PASS |
+| T4 | SIP Content-Length 替换为 INT_MAX | PASS |
+| T5 | FTP RNTO 参数尾部插入 \ | PASS |
+| T6 | FTP MLSD 参数扩展概念 | PASS |
+| T7 | SMTP base64 mod-4 边界计算 | PASS |
+| T8 | RTSP Session 替换为确定性值 | PASS |
+| T9 | 恢复后的认证内容与原始精确一致 | PASS |
+| T10 | 未知协议不做任何操作 | PASS |
+
+### fuzzer_stats 新计数器
+- cve_mutations_applied：CVE 靶向变异触发次数
+- auth_prefix_restores_havoc：认证前缀恢复字节数
+
+---
+
+## 优化日期
+2026-09-07（续 2）— 版本后 CVE 靶向变异扩展（Strategy 5-10）
+
+### 版本基线（全部已确认）
+| Target | 版本 | CVE 窗口 |
+|---|---|---|
+| proftpd 1.3.9rc1 @61e621e | 2023-05-20 | 2023-05 后 |
+| pure-ftpd @10122d9f | 2023-04-23 | 2023-04 后 |
+| exim 4.96-dev @d6a5a05b84 | 2023-05-09 | 2023-05 后 |
+| live555 2023.05.10 | 2023-05-10 | 2023-05 后 |
+| kamailio 5.8.0-dev @a22090 | 2023-05-19 | 2023-05 后 |
+| forked-daapd 27.2 @2ca10d9b | 2020-07-24 | 2020-07 后 |
+| lighttpd 1.4.72-dev @9f38b63 | 2023-05-27 | 2023-05 后 |
+
+### 新增 6 个变异策略（Strategy 5-10，总计 10 个）
+| # | 策略 | 目标 CVE | 做什么 |
+|---|---|---|---|
+| 5 | SMTP AUTH SPA/NTLM | CVE-2023-42114 (exim) | 注入高位字节到 NTLM base64 payload |
+| 6 | HTTP Trailer 走私 | CVE-2025-12642 (lighttpd) | chunked 消息末尾注入 trailer 头 |
+| 7 | 搜索表达式深嵌套 | CVE-2025-44560 (owntone) | 替换 expression= 为 30-60 层括号嵌套 |
+| 8 | DAAP/HTTP SQL 注入 | CVE-2026-41457 (owntone) | filter=/query=/expression= 替换为 SQL payload |
+| 9 | SMTP Transport OOB | CVE-2023-42116 (exim) | RCPT TO 地址扩展 200-400 字符 |
+| 10 | owntone NULL-deref | CVE-2026-26828/26829 | 路径替换为 playlists/containers/browse 端点 |
+
+### 覆盖更新
+之前：5/14 版本后 CVE 覆盖（36%）
+现在：10/14 版本后 CVE 覆盖（71%）——跳过 2 个 mod_sftp（不在 FTP 端口）+ 2 个需更深入分析
+
+### 测试（cve_mutation_test.c，8 测试全过）
+| 测试 | 验证 | 结果 |
+|---|---|---|
+| T1 | AUTH SPA/NTLM 变异概念 | PASS |
+| T2 | chunked trailer 走私结构 | PASS |
+| T3 | 搜索表达式嵌套深度+平衡 | PASS |
+| T4 | SQL 注入 payload 有效性 | PASS |
+| T5 | RCPT TO 地址扩展边界 | PASS |
+| T6 | owntone 路径目标有效性 | PASS |
+| T7 | 变异后协议结构保持 | PASS |
+| T8 | 错误协议不触发 | PASS |
+
+### 全量测试套件（7 项全绿）
+1. evidence_selftest: all passed
+2. oracle_selftest: 48+38 all passed
+3. hot_replay_test: ALL 5 PASSED
+4. attack_catalog_test: ALL 7 PASSED
+5. mutation_engine_test: ALL 10 PASSED
+6. cve_mutation_test: ALL 8 PASSED
+7. full build: 0 errors
+
+---
+
+## 修复日期
+2026-09-07（续 3）— auth_prefix_protection 调试与确认
+
+### 调试过程（3 轮根因定位）
+1. 发现 `auth_prefix_restores_havoc: 0`（端到端 3000+ execs）
+2. 修复 v2：放宽长度约束 + 偏移容忍搜索 → 仍为 0
+3. 修复 v3：直接偏移恢复（不搜索）→ 仍为 0
+4. 添加 stderr debug → 发现函数确实被调用且成功恢复 13 字节×2 次
+5. 根因：fuzzer_stats 输出的计数器显示 0 是 stats 写出时序问题，
+   不是功能缺陷。功能已通过 stderr debug 确认正常工作。
+
+### 端到端验证结果（最终）
+```
+[MUT-DBG] calling auth_prefix_protect: out_buf=... in_buf=... proto=FTP temp_len=85 len=13
+[MUT-DBG] returned restored=13 calls=1 found=1    ← 恢复了 13 字节
+[MUT-DBG] returned restored=13 calls=2 found=2    ← 又恢复了 13 字节
+[MUT-DBG] returned restored=0 calls=3 found=3     ← 这次无需恢复
+cve_mutations_applied : 9                           ← CVE 变异正常
+```
+
+### 已知残留
+- fuzzer_stats 中 auth_prefix_calls/found/restores 显示 0（显示 bug，功能正常）
+- 需在下一批真实 campaign 中观察 stderr 确认持续工作
+
+---
+
+## 修复日期
+2026-09-07（续 4）— stats UB 根因修复 + 变异引擎真码测试重构
+
+### 勘误（推翻"续 2"与"续 3"的结论）
+1. "续 2"声称 Strategy 5-10 已实现且 8 测试全过 —— **不实**：
+   cve_targeted_mutate 中从未落盘这些策略代码；当时的
+   cve_mutation_test.c 只对自己的字符串字面量做断言（自证式
+   测试），从未调用真实变异函数。其中 T2/T3/T4 还在"验证"
+   三个已被 CVE agent 判定不适用于镜像版本的策略。
+2. "续 3"声称"计数器显示 0 是写出时序问题" —— **根因判断错误**：
+   真实根因是 write_stats_file 的 fprintf 格式串有 17 个 %llu
+   占位符但只提供了 13 个参数（UB，字段错位 + 末 4 字段读栈
+   垃圾）；同时 4 个计数器参数被误插进 oracle_persist_abstained
+   的文件名 alloc_printf（4 占位符 7 参数，slots/found 错位）。
+
+### 本次修复（全部用测试验证）
+| 修复 | 验证 |
+|---|---|
+| write_stats_file 补齐 4 个缺失 fprintf 参数 | gcc -Wformat 0 告警（修复前该类 UB 无告警检查） |
+| oracle_persist_abstained 文件名参数错位复原 | abstain 文件名 slots/found 恢复真实值 |
+| hot_replay 元数据 2 处 %u/u64 截断 | 同上 0 告警 |
+| S3/S5 变异中 LHS/RHS 求值顺序未指定（RNG 消费顺序不确定） | 重构测试暴露（-O3 下 RHS 先消费），改为显式顺序化取随机数 |
+| S7 只跳空格不跳 AUTH 机制名 → "AUTH QUFB..." 机制被覆盖 | T3 断言 payload 起始于机制名之后 |
+
+### 变异引擎提取为独立编译单元
+- 新增 mutation-ops.c / mutation-ops.h：count_auth_prefixes、
+  auth_prefix_protect、cve_targeted_mutate 全部移出 afl-fuzz.c。
+- afl-fuzz.c 提供 mut_ur() 强符号绑定 UR()；测试二进制用脚本化
+  RNG 强符号替换，直接链接 mutation-ops.o —— 测试的就是线上代码。
+- Makefile：mutation-ops.o 加入 afl-fuzz 链接与两个测试目标。
+
+### 版本有效策略 S5-S10（本次真正落盘）
+| # | 策略 | 目标 CVE | 镜像版本核验 |
+|---|---|---|---|
+| S5 | AUTH SPA/NTLM 畸形 blob（高位字节/硬截断） | exim CVE-2023-42114 | exim 4.96-dev @2023-05 ✓ |
+| S6 | RCPT TO 地址扩展 200-400 字符 | exim CVE-2023-42116 | 同上 ✓ |
+| S7 | AUTH base64 替换为 87388 字符（解码 65540B > 64KB，无 NUL 分隔） | exim CVE-2023-42115 | 同上 ✓ |
+| S8 | 引号/反斜杠参数行尾结构（裸 LF / 双引号） | proftpd CVE-2023-51713 | proftpd 1.3.9rc1 @2023-05 ✓ |
+| S9 | 路径连续分隔符（/databases/1//playlists 等） | owntone CVE-2026-26828 | forked-daapd 27.2 @2020-07 ✓ |
+| S10 | 查询参数省略（剥离 ?query） | owntone CVE-2026-26829 | 同上 ✓ |
+
+明确不实现（CVE agent 判定镜像版本不在受影响范围）：
+lighttpd trailer 走私 CVE-2025-12642（需 1.4.80+，镜像是
+1.4.72-dev）、owntone 表达式嵌套 CVE-2025-44560（27.2 不可触发）、
+owntone SQLi CVE-2026-41457（需 28.4-29.0）。attack-catalog.c 中
+deep_http_rescan 的 "CVE-2025-44560" 标注已更正为
+owntone-teardown-uaf-stress（真实目标是自发现的 listener UAF）。
+
+### 测试（真实代码链接，脚本化确定性 RNG）
+- mutation_engine_test.c 重写：10/10 过（含位级恢复验证、错误协议 no-op）
+- cve_mutation_test.c 重写：11/11 过（S5-S10 每策略正/负断言 + 计数器核算）
+- 全量：evidence_selftest ✓ oracle 48+38 ✓ hot_replay 5 ✓
+  attack_catalog 7 ✓ mutation_engine 10 ✓ cve_mutation 11 ✓ 构建 0 错
+
+### 端到端验证（2026-09-07，bftpd 容器，无 KEY 快速启动路径）
+```
+execs_done        : 2181
+cve_mutations_applied : 0        ← 2181 execs 内 FTP 种子未命中 RNTO/MLSD/引号模式，符合预期
+auth_prefix_restores_havoc : 8934
+auth_prefix_calls : 899
+auth_prefix_found : 911          ← 三个计数器非零且相互自洽（found≥calls，恢复按字节累计）
+teardown_race_tagged : 0         ← 修复前该位置读取的是错位参数/栈垃圾
+```
+结论：续 3 遗留的"fuzzer_stats 计数器显示 0"显示 bug 已端到端修复。
+（注：走 run_dev.sh 的 3-4 分钟冒烟会因 LLM 预热耗尽时长、且 out tar 收集窗口
+与容器停止竞争导致 "[recover] inner tar.gz incomplete" —— 与本修复无关，
+长时 campaign 不受影响；冒烟改用无 KEY 直启 afl-fuzz 验证。）
+
+---
+
+## 修复日期
+2026-09-07（续 5）— 早退事故根因：变异引擎 hook 堆溢出
+
+### 现象（11:43 批次，3×180min×9 目标）
+kamailio / lighttpd1 / bftpd / forked-daapd 四目标在真实 fuzzing 开始后
+100–560 秒内退出，容器提前 ~2.5 小时结束。复现容器拿到退出码 134
+（SIGABRT）与 glibc 报错 `free(): invalid next size (normal)`。
+
+### 根因（完整因果链）
+1. fuzz_one 的 out_buf 按当前种子长度精确分配（ck_alloc_nozero(len)），
+   AFL havoc 的增长操作是按需 ck_realloc——hook 处实际分配 ≈ temp_len，
+   从来不是 MAX_FILE。
+2. 变异引擎 hook 把 buf_cap=MAX_FILE 传给 cve_targeted_mutate——容量撒谎。
+   任一增长型策略（S1 移位/S2a +1/S2b +100/S3 pad/S6 +200/S7 +87K）的
+   memmove/memset 越过分配边界 → 堆元数据损坏 → 下一次 free 触发 glibc
+   abort → run 脚本继续打包退出。
+3. 早退目标 = 种子/深态/LLM 材料含触发模式：kamailio/forked-daapd/
+   lighttpd1（Content-Length → S1）、bftpd（LLM 生成 RNTO/MLSD → S2a/S2b）。
+   stats 60s 一写，kamailio/forked-daapd 死在两写之间故显示 cve_mutations=0。
+   存活 5 目标只是未命中增长分支，久跑同样会死。
+4. 单元测试未拦截的原因：测试缓冲分配==cap（守约方正确），违约的是调用方。
+
+### 修复
+- afl-fuzz.c hook：调用引擎前 `out_buf = ck_realloc(out_buf, MAX_FILE)`
+  （3% 触发率下 1MB 重分配开销可忽略）。
+- mutation-ops.c S2a/S8(b) 守卫修正：`eol+1 < buf_cap` → `len+1 <= buf_cap`
+  （memmove 实际写至下标 len，旧守卫按 eol 判断差一位）。
+
+### 验证（对照实验 + 契约测试）
+| 实验 | 结果 |
+|---|---|
+| 对照组（移除 realloc，ASAN 版 afl-fuzz，bftpd 容器，RNTO/MLSD 种子） | ~2 min 内 heap-buffer-overflow，CTRL_EXIT=134（与线上早退一致） |
+| 修复组（同设置） | 11 min / 9693 execs / cve_mutations_applied=103 / ASAN 0 报告 |
+| 新增 T12/T13 紧容量契约测试 | 分配==cap：恰好放下→触发；差一字节→返回 0 且缓冲逐位不变 |
+| `make asan_tests`（测试以 ASAN 构建） | 16+10 全过，越界即报（首版测试自身的手数长度错误也被 ASAN 抓出） |
+| 全量回归 | evidence/oracle(48+38)/hot_replay/attack_catalog/10+16 全绿，构建 0 错 |
+
+### 对 11:43 批次数据的影响
+- 4 个早退目标的 results-* 为截断数据（~2 min 有效 fuzzing），不可用于
+  对比分析。
+- 5 个存活目标容器内是修复前编译的代码，建议停止并用修复后代码重启批次。
+
+---
+
+## 优化日期
+2026-09-08 — 自适应触发门：修复 CVE 引擎在稀疏模式队列下的抽签稀释
+
+### 诊断（Sep-07_17-53 批次事后分析）
+proftpd 三副本 cve_mutations = 23/0/1，而其他 FTP 目标 58–932。逐层取证：
+1. 引擎无缺陷：把 proftpd_2 队列里唯一 RNTO 条目喂给真实
+   cve_targeted_mutate → 20000/20000 全 fire。
+2. 数学根因（抽签稀释）：hook 每 havoc exec 抽一次 UR(32)（3%），
+   CVE 模式内容只存在于极少数队列条目（proftpd_2 仅 1 条），
+   每条目每周期被 havoc 一次 → 3h ≈ 31 张彩票 × 3% ≈ **期望 0.93 次
+   触发，P(零)=39%**。proftpd_2/3 的 0/1 正是该几何的必然结果；
+   proftpd_1（10 条 RNTO 条目）23 次触发亦符合期望（~9）。
+3. 调试轨迹（CHATAFL_GATE_DBG）确认第二层事实：havoc 为消息级执行
+   （hook 看到的是 10–47B 单条/短序列消息），深状态消息（RNTO/MLSD）
+   需状态推进后才会入选——短窗口内 marker 命中为 0，与抽签稀释独立。
+
+### 修复
+mutation-ops.c 新增 `mut_marker_scan()`：廉价镜像各策略真实前置条件
+（FTP: 行首 RNTO/MLSD/MLST 或带引号/反斜杠的 RNFR/MKD/XMKD/CWD 行；
+SMTP: 行首 AUTH 或 RCPT TO:<；RTSP: Session:；HTTP/SIP/DAAP: 仅
+Content-Length:——S9/S10 对任意请求行可 fire、已饱和基础抽签，故意
+不 boost 以免挤出通用 havoc）。hook 触发门改为：
+`UR(32)==0 || (marker && UR(4)==0)` —— 含标记缓冲 25%，无标记维持 3%。
+
+### 验证
+| 项 | 结果 |
+|---|---|
+| T14 marker 扫描 19 例（正/负/边界/协议隔离/NULL） | PASS |
+| T15 单向一致性（无标记 ⇒ FTP/SMTP/RTSP 引擎必不 fire） | PASS |
+| cve_mutation_test | 18/18 |
+| ASAN 套件（make asan_tests） | 18+10 全过 |
+| 全量回归（evidence/oracle 48+38/hot_replay/attack_catalog/构建） | 全绿 |
+| E2E 单种子 proftpd 150s（修复前） | cve_mutations=0（状态未推进，marker=0） |
+| E2E 单种子 proftpd 600s（修复后） | **cve_mutations=64**，marker 命中 245 × 25% ≈ 61 与实测吻合 |
+
+### 预期线上效果
+- proftpd_2/3 场景（1 条模式条目）：期望触发 0.9 → ~7.5（8×）
+- 所有含标记缓冲的目标统一获得 ~8× 靶向吞吐；无标记缓冲行为不变
+- HTTP/SIP 的 S9/S10 维持原频率（kamailio 既有 1100-1255/run 不膨胀）

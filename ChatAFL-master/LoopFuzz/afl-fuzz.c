@@ -43,6 +43,7 @@
 #include "alloc-inl.h"
 #include "hash.h"
 #include "chat-llm.h"
+#include "mutation-ops.h"
 #include "grammar-hypothesis.h"
 #include "hypothesis-adapter.h"
 #include "mqtt-builder.h"
@@ -898,6 +899,17 @@ static void copy_stderr_stripped(const char *dst) {
 }
 
 
+
+/* ══════════════════════════════════════════════════════════════════
+ * Protocol-Aware Mutation Engine (2026-09-07)
+ *
+ * Implementation lives in mutation-ops.c (extracted 2026-09-07 so unit
+ * tests link the REAL functions). Bind the weak mut_ur() hook to AFL's
+ * UR() here; tests provide their own deterministic strong definition.
+ * ══════════════════════════════════════════════════════════════════ */
+u32 mut_ur(u32 bound) { return UR(bound); }
+
+
 /* Forward declarations for hot replay (defined at heap_abort_marker level) */
 static void bug_log_event(const char *kind, const char *fname,
                           const char *signature, const char *detail);
@@ -972,13 +984,14 @@ static void hot_replay_verify(char **argv, u8 *buf, u32 len,
           "\n"
           "detection_execs=%llu\n"
           "campaign_time_ms=%llu\n"
-          "queue_cycle=%u\n"
-          "queued_paths=%u\n"
+          "queue_cycle=%llu\n"
+          "queued_paths=%llu\n"
           "execs_per_sec_note=see_fuzzer_stats\n"
           "context_note=hot_replay_in_forkserver_context\n",
           (unsigned long long)saved_execs,
           (unsigned long long)campaign_ms,
-          queue_cycle, queued_paths);
+          (unsigned long long)queue_cycle,
+          (unsigned long long)queued_paths);
       fclose(m);
     }
     ck_free(meta_fn);
@@ -1008,9 +1021,9 @@ static void context_snapshot(const char *seed_fn) {
   fprintf(f, "campaign_elapsed_ms=%llu\n",
           (unsigned long long)(now_ms > start_time ? now_ms - start_time : 0));
   fprintf(f, "total_execs=%llu\n", (unsigned long long)total_execs);
-  fprintf(f, "queue_cycle=%u\n", queue_cycle);
-  fprintf(f, "queued_paths=%u\n", queued_paths);
-  fprintf(f, "pending_favored=%u\n", pending_favored);
+  fprintf(f, "queue_cycle=%llu\n", (unsigned long long)queue_cycle);
+  fprintf(f, "queued_paths=%llu\n", (unsigned long long)queued_paths);
+  fprintf(f, "pending_favored=%llu\n", (unsigned long long)pending_favored);
   fprintf(f, "unique_crashes=%llu\n", (unsigned long long)unique_crashes);
   fprintf(f, "unique_hangs=%llu\n", (unsigned long long)unique_hangs);
   fprintf(f, "unique_tmouts=%llu\n", (unsigned long long)unique_tmouts);
@@ -10952,6 +10965,10 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
              "oracle_untrusted_slots  : %llu\n"
              "oracle_align_mismatch_skips : %llu\n"
              "oracle_abstained_saved : %llu\n"
+             "cve_mutations_applied : %llu\n"
+             "auth_prefix_restores_havoc : %llu\n"
+             "auth_prefix_calls : %llu\n"
+             "auth_prefix_found : %llu\n"
              "oracle_abstained_dedup_hits : %llu\n"
              "oracle_embedded_method_skips : %llu\n"
              "teardown_candidates    : %llu\n"
@@ -10967,6 +10984,10 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)oracle_untrusted_slots,
           (unsigned long long)oracle_align_mismatch_skips,
           (unsigned long long)oracle_abstained_saved,
+          (unsigned long long)cve_mutations_applied,
+          (unsigned long long)auth_prefix_restores_havoc,
+          (unsigned long long)auth_prefix_calls,
+          (unsigned long long)auth_prefix_found,
           (unsigned long long)oracle_abstained_dedup_hits,
           (unsigned long long)oracle_embedded_method_skips,
           (unsigned long long)teardown_candidates,
@@ -16421,6 +16442,53 @@ havoc_stage:;
                  guard_len[gi]);
           payload_guard_restores++;
         }
+      }
+    }
+
+    /* ════════════════════════════════════════════════════════════════
+     * Protocol-Aware Mutation Engine (2026-09-07)
+     *
+     * 1) CVE-Targeted Mutation: with probability ~1/32, apply a
+     *    protocol-aware mutation targeting a known CVE pattern.
+     *    This runs IN ADDITION to (not instead of) the generic havoc
+     *    mutations above — the fuzzer keeps its full exploration
+     *    space while gaining directed exploitation of CVE surfaces.
+     *
+     * 2) Auth-Prefix Protection: restore authentication command
+     *    prefixes that havoc may have corrupted. Without this,
+     *    mutations on USER/PASS/EHLO break authentication and all
+     *    subsequent commands are rejected by the server, wasting
+     *    the entire iteration on pre-auth error paths.
+     * ════════════════════════════════════════════════════════════════ */
+    if (protocol_name && temp_len >= 8 && temp_len < MAX_FILE) {
+      int mk = mut_marker_scan(out_buf, temp_len, protocol_name);
+      /* CVE-targeted mutation: base 1/32 lottery, raised to 1/4 when the
+       * buffer actually contains a strategy precondition marker
+       * (2026-09-08 queue-dilution fix: proftpd replicas hit 0 triggers
+       * because pattern-bearing entries are rare and each gets only
+       * ~cycles lottery draws at 3% — 1 entry × 30 cycles × 1/32 ≈ 0.9
+       * expected fires, P(0) ≈ 39%). Marker-bearing buffers now draw at
+       * 25%, ~8× the directed throughput where it matters; marker-less
+       * buffers stay at 1/32 (the engine would decline anyway).
+       *
+       * out_buf is sized to the current entry by AFL's on-demand reallocs
+       * (≈ temp_len), NOT MAX_FILE — the engine's growth strategies would
+       * write past that allocation (heap smash → free(): invalid next
+       * size → abort 134; killed kamailio/lighttpd1/bftpd/forked-daapd
+       * ~2 min into the 2026-09-07 11:43 batch). Grow to the engine's
+       * MAX_FILE capacity contract before calling it. */
+      if (UR(32) == 0 || (mk && UR(4) == 0)) {
+        out_buf = ck_realloc(out_buf, MAX_FILE);
+        (void)cve_targeted_mutate(out_buf, &temp_len, MAX_FILE,
+                                  protocol_name);
+      }
+
+      /* Auth-prefix protection: restore auth commands from original */
+      if (UR(4) != 0) { /* 75% probability — leave 25% for full random */
+        u32 restored = auth_prefix_protect(out_buf, in_buf, temp_len,
+                                           len, protocol_name);
+        if (restored > 0)
+          auth_prefix_restores_havoc += restored;
       }
     }
 
