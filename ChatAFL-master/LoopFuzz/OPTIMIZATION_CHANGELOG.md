@@ -1179,3 +1179,135 @@ Content-Length:——S9/S10 对任意请求行可 fire、已饱和基础抽签�
 - proftpd_2/3 场景（1 条模式条目）：期望触发 0.9 → ~7.5（8×）
 - 所有含标记缓冲的目标统一获得 ~8× 靶向吞吐；无标记缓冲行为不变
 - HTTP/SIP 的 S9/S10 维持原频率（kamailio 既有 1100-1255/run 不膨胀）
+
+---
+
+## 分析日期
+2026-09-10 — Sep-10_04-19-34 批次（27 runs × 300min）
+
+### 优化生效验证
+27/27 全程运行；计数器全面激活（cve_mutations 最高 kamailio 18.5K/run，
+proftpd 最弱 13-1313 仍为队列标记密度问题）；归一化吞吐较 Sep-08 批
+-8%（5h vs 4h 预算下的正常波动区间）。
+
+### 漏洞盘点结论
+**1 个可认定漏洞（forked-daapd 全局拒绝服务，状态依赖）**：
+- 信号：8 hang 事件中的 forked-daapd r1 两信号（hang.meta: CPU≈0，
+  hot_replay 0/3 —— 因为有状态依赖，热重放不保状态）
+- 重放取证（全新服务器 ×3 轮，全部 3/3 复现）：
+  种子消息序列至 msg[8]（`GET /api/search?type=al?um&expression=
+  time_added+aft\x81r+iiiii...library<artirts?media_kind=music`）
+  后 >8s 无响应，且**新连接同样超时 = 全局 wedge**；
+  wedge 期间 CPU 0 ticks、7 线程全部 ep_poll（非死循环，是应答丢失型
+  死锁）；服务器进程存活。
+- 前缀二分：完整序列 3/3 复现；前缀 ≤2 或单条铺垫不可稳定复现——
+  依赖 msg2-7 的畸形请求铺垫（多次 lexer error 累积 + 库状态），
+  单发同 URL 不触发（0.00s）。服务器日志伴随大量 SMARTPL lexer
+  error 与一次 ASAN ReserveShadowMemoryRange 失败。
+- 判定依据：可复现的异常结果（全局 DoS，违背服务器可用性业务属性），
+  但**不是**历史 CVE-2025-44560（那是栈溢出，本缺陷是应答死锁）；
+  定性为 forked-daapd 27.2 的状态依赖全局 DoS（新发现候选）。
+**非漏洞**：proftpd 3 hang（重放全瞬时/存活）；27 teardown（bftpd 抽
+3 个 ASAN 零报告，SIGTERM 窗口伪影类）；692 abstained FN 抽查 5/5 无
+漏报。
+
+---
+
+## 修正日期
+2026-09-11 — forked-daapd DoS 声明的修正与最终定性
+
+### 撤回与修正
+撤回 2026-09-10 的「可认定漏洞（状态依赖全局 DoS）」声明中的
+"状态依赖"与"永久 wedge"两个断言。经本轮脱离进程（setsid）+ 严格
+内存限额（--memory 2g + RLIMIT_AS 1.5g）下的系统实验，修正为：
+
+**单请求瞬态全局阻塞 + 累积性深度 wedge**：
+1. 单次畸形表达式 GET（如 type=al?um&expression=...aft\x81r+iii...
+   library<artirts?media_kind=music）→ 服务器全局阻塞（新连接
+   accept 停止，conn refused = backlog 溢出），约 10 秒后恢复；
+2. 连续多次触发 → wedge 累积加深：3 连发后 >90 秒未恢复
+   （此前 +10s 恢复是单次触发的数据）；
+3. 进程不死（CPU=0、ep_poll 等待），属应答死锁而非崩溃；
+4. ASAN 构建下另有分配失控死亡路径（failed to allocate），
+   该路径曾两次冻结无内存限额的宿主机（本报告的工程事故根源）。
+
+### 取证链完整性自查（回应"自封"质疑）
+- 可重放：✓（多轮多构建：ASAN 主树 4/4、gcov 树 3/3、脱离进程
+  +10s 恢复、限额容器 3 连发 >90s 不恢复）
+- 异常结果：✓（全局 accept 停止 + 拒绝服务窗口可累积延长）
+- 但"漏洞"定级需要补充：上游是否已修、默认配置是否暴露
+  /api/search 于匿名、真实库规模下的行为——这些未做，
+  故降格为「候选缺陷」，不自称已认定漏洞。
+
+---
+
+## 实验日期
+2026-09-11 — forked-daapd 候选缺陷严格 A/B 实验（单请求，控制新鲜度/精确字节/多轮统计）
+
+### 实验设计
+- 构建：forked-daapd-gcov（非 ASAN）
+- 每轮全新服务器（pkill→restart→wait-ready），首请求即测试请求
+- A = 109 字节精确原始 URL（hex 验证：含 \x81 高位字节和裸 ? 号）
+- M = 同 URL 仅改 type=track（隔离 type vs 表达式效应）
+- B = 完全合法 search URL
+- 安全：容器 --memory=2g；全部进程 setsid 脱离
+
+### 结果（A/M 各 6+3 轮，B 3 轮）
+| 组 | 首请求响应 | 响应后 1s 新连接 | 恢复 |
+|---|---|---|---|
+| A | 6/6: 0.87-0.89s，空回复（0B）断连 | **3/3 REFUSED** | **3/3 >120s 不恢复**；1 次 **500s 不恢复 = 永久** |
+| M | 3/3: 同 A（0.86-0.88s 空回复断连） | **3/3 REFUSED** | 同 A |
+| B | 3/3: 0.01s，200 OK | 3/3 正常 | N/A |
+
+### 结论
+1. **单请求 100% 触发全局不可用**（A 6/6 + M 3/3 = 9/9），
+   触发因素是**畸形表达式**（M 组合法 type 同样触发），不是 type；
+2. 表现形态：服务器处理 ~0.88s 后返回空回复断连该连接，此后
+   **停止接受所有新连接**（REFUSED = listen backlog 满）；
+3. 恢复：**>120s 不恢复 ×3 次，500s 不恢复 ×1 次** —— 之前
+   "+10s 恢复"的观测是测试脚手架 artifacts（父脚本退出杀掉子进程
+   导致 accept 队列清空）；
+4. 进程存活但功能完全丧失（CPU=0，ep_poll 等待循环）。
+
+### 修正之前的说法
+- "状态依赖"：**错误**——单请求即可触发，不需要前置铺垫
+- "+10s 恢复"：**错误**——那是测试脚手架产物
+- "可重放"：**确认**——9/9，字节精确，全新服务器每轮
+- 定性：**单请求触发的永久全局拒绝服务**（listen 停止 accept），
+  非崩溃型。上游修复状态待查。
+
+---
+
+## 调查日期
+2026-09-11 — forked-daapd 27.2 SMARTPL DoS 上游修复状态严查
+
+### 根因代码路径
+`src/smartpl_query.c:42` `parse_input()` → antlr3 C runtime (libantlr3c-3.4)
+`SMARTPLLexerNew()` → lexer 遇到畸形输入（含 \x81 高位字节 + 裸 ? 号的长 token）
+时进入 antlr3 的递归错误恢复循环 → 打印大量 "lexer error" → 服务器事件循环
+（epoll）永久阻塞。
+
+### 上游修复状态：**已修（但非针对性修复）**
+- **28.0-28.3**（2022-01 至 2022-05）：仍用 antlr3（同 27.2 有此问题）
+- **28.4**（2022-05-30）：commit `[daap/rsp/smartpl] Drop ANTLR parsers`
+  完全移除 antlr3 C runtime，替换为 flex/bison 自写 parser
+- 新 parser 的 flex fallback 规则：`. { return yytext[0]; }`——非法字符
+  直接作为 token 返回给 bison，bison 报 syntax error 后正常退出
+  （无 antlr3 的递归恢复循环）
+- **结论：28.4 起此问题不存在。这是一个架构级修复，不是针对性 CVE 补丁。**
+
+### CVE / 公开报告搜索
+- NVD："owntone" 有 9 个 CVE，无一匹配 SMARTPL 表达式 DoS
+- NVD："forked-daapd" 无结果
+- GitHub issues (owntone-server)：搜索 DoS/hang/wedge/expression 无匹配
+  （最接近的是 #1734 搜索含双引号返回 400——不同问题）
+- **结论：此缺陷从未被公开报告，无 CVE 编号**
+
+### 对 CVE 注册的影响
+| 条件 | 状态 |
+|---|---|
+| 受影响版本 | forked-daapd/owntone-server **27.0 - 28.3** |
+| 当前版本（29.3） | 不受影响（antlr3 已被移除） |
+| 公开报告 | 无 |
+| 上游知情 | 不知情（架构重构时无意间修复） |
+| CVE 可注册性 | 可为 27.0-28.3 受影响版本范围申请，但上游可能因"旧版本已 EOL + 修复是架构重构而非安全补丁"而降低优先级 |
