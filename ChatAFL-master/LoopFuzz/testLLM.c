@@ -82,7 +82,7 @@ char *chat_with_llm(const char *prompt, const char *model, int tries, float temp
     }
     else
     {
-        asprintf(&data, "{\"model\": \"gpt-5.4-mini\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
+        asprintf(&data, "{\"model\": \"codex-auto-review\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f}", prompt, MAX_TOKENS, temperature);
     }
     printf("[DEBUG] url: %s\n", url);
     printf("[DEBUG] data: %s\n", data);
@@ -179,7 +179,7 @@ char *chat_with_llm(const char *prompt, const char *model, int tries, float temp
 
 int main() {
     char* messages = "[{\"role\": \"user\", \"content\": \"You are an expert in networking protocols. For the RTSP protocol, the typical sequence is: DESCRIBE, SETUP, PLAY. Please explain where SET_PARAMETER and TEARDOWN should be placed in this sequence.\"}]";
-    char* model ="gpt-5.4-mini";
+    char* model ="codex-auto-review";
     printf("Sending request to LLM API...\n");
     char* response = chat_with_llm(messages, model, 3, 0.7);
     if (response) {

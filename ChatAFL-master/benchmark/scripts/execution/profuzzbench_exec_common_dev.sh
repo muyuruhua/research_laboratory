@@ -817,7 +817,7 @@ for i in $(seq 1 $RUNS); do
     id=$(docker run --cpus=1 --memory=6g --memory-swap=6g \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
-      -e LLM_MODEL="${LLM_MODEL:-gpt-5.4-mini}" \
+      -e LLM_MODEL="${LLM_MODEL:-codex-auto-review}" \
       -e CHATAFL_HYPOTHESIS=1 \
       -e CHATAFL_TARGET_NAME="${DOCIMAGE}" \
       ${ABLATION_FLAGS} \

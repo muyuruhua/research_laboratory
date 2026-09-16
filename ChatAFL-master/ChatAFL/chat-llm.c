@@ -96,7 +96,7 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
     }
     else
     {
-        asprintf(&data, "{\"model\": \"gpt-5.4-mini\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f}", prompt, max_tokens, temperature);
+        asprintf(&data, "{\"model\": \"codex-auto-review\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f}", prompt, max_tokens, temperature);
     }
     curl_global_init(CURL_GLOBAL_DEFAULT);
     do
@@ -838,7 +838,7 @@ void get_protocol_message_types(char *state_prompt, khash_t(strSet) * states_set
 
     for (int i = 0; i < CONFIDENT_TIMES; i++)
     {
-        char *state_answer = chat_with_llm(state_prompt, "gpt-5.4-mini", MESSAGE_TYPE_RETRIES, 0.5);
+        char *state_answer = chat_with_llm(state_prompt, "codex-auto-review", MESSAGE_TYPE_RETRIES, 0.5);
         if (state_answer == NULL)
             continue;
         // printf("## Answer from LLM:\n %s\n", state_answer);
@@ -1028,7 +1028,7 @@ char *enrich_sequence(char *sequence, khash_t(strSet) * missing_message_types)
     ck_free(missing_fields_seq);
     json_object_put(sequence_escaped);
 
-    char *response = chat_with_llm(prompt, "gpt-5.4-mini", ENRICHMENT_RETRIES, 0.5);
+    char *response = chat_with_llm(prompt, "codex-auto-review", ENRICHMENT_RETRIES, 0.5);
 
     free(prompt);
 
@@ -1065,7 +1065,7 @@ char *enrich_sequence(char *sequence, khash_t(strSet) * missing_message_types)
 //     // char *prompt = NULL;
 //     // asprintf(&prompt, "user: The colors of flowers:\\nassistant: red and yellow.\\nuser: Other colors are:");
 //     // printf("## Prompt to LLM:\n %s\n", prompt);
-//     // char *answer = chat_with_llm(prompt, "gpt-5.4-mini");
+//     // char *answer = chat_with_llm(prompt, "codex-auto-review");
 //     // printf("## Answer from LLM:\n %s\n", answer);
 
 //     char *protocol_name = argv[1];
@@ -1076,11 +1076,11 @@ char *enrich_sequence(char *sequence, khash_t(strSet) * missing_message_types)
 //     {
 
 //         char *templates_prompt = construct_prompt_for_templates(protocol_name);
-//         char *templates_answer = chat_with_llm(templates_prompt, "gpt-5.4-mini");
+//         char *templates_answer = chat_with_llm(templates_prompt, "codex-auto-review");
 //         // printf("## Answer from LLM:\n %s\n", templates_answer);
 //         char *remaining_prompt = construct_prompt_for_remaining_templates(protocol_name, templates_prompt, templates_answer);
 //         // printf("remaining prompt is:\n %s\n", remaining_prompt);
-//         char *remaining_templates = chat_with_llm(remaining_prompt, "gpt-5.4-mini");
+//         char *remaining_templates = chat_with_llm(remaining_prompt, "codex-auto-review");
 //         // printf("## Remaining templates:\n %s\n", remaining_templates);
 
 //         char *combined_templates = NULL;

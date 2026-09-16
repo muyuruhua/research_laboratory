@@ -124,10 +124,10 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
      * compatibility, but the actual model name is resolved here:
      *   1. LLM_MODEL env var  — survives provider-side model retirement
      *      without a recompile (root cause of the Aug-17 regression: the
-     *      hardcoded "gpt-5.4-mini" was delisted by the provider and every
+     *      hardcoded "codex-auto-review" was delisted by the provider and every
      *      chat_with_llm() call returned an error, disabling grammar,
      *      enrichment and plateau features for the whole campaign).
-     *   2. "gpt-5.4"/"gpt-5.4-mini" passed as model  — mapped to the default.
+     *   2. "gpt-5.4"/"codex-auto-review" passed as model  — mapped to the default.
      * Default LLM_DEFAULT_MODEL must exist on the endpoint; verify with:
      *   curl -sS -H "Authorization: Bearer $KEY" https://www.cctq.ai/v1/models
      */
@@ -2441,7 +2441,7 @@ char *enrich_sequence(char *sequence, khash_t(strSet) *missing_message_types, co
 //     // char *prompt = NULL;
 //     // asprintf(&prompt, "user: The colors of flowers:\\nassistant: red and yellow.\\nuser: Other colors are:");
 //     // printf("## Prompt to LLM:\n %s\n", prompt);
-//     // char *answer = chat_with_llm(prompt, "gpt-5.4-mini");
+//     // char *answer = chat_with_llm(prompt, "codex-auto-review");
 //     // printf("## Answer from LLM:\n %s\n", answer);
 
 //     char *protocol_name = argv[1];
@@ -2452,11 +2452,11 @@ char *enrich_sequence(char *sequence, khash_t(strSet) *missing_message_types, co
 //     {
 
 //         char *templates_prompt = construct_prompt_for_templates(protocol_name);
-//         char *templates_answer = chat_with_llm(templates_prompt, "gpt-5.4-mini");
+//         char *templates_answer = chat_with_llm(templates_prompt, "codex-auto-review");
 //         // printf("## Answer from LLM:\n %s\n", templates_answer);
 //         char *remaining_prompt = construct_prompt_for_remaining_templates(protocol_name, templates_prompt, templates_answer);
 //         // printf("remaining prompt is:\n %s\n", remaining_prompt);
-//         char *remaining_templates = chat_with_llm(remaining_prompt, "gpt-5.4-mini");
+//         char *remaining_templates = chat_with_llm(remaining_prompt, "codex-auto-review");
 //         // printf("## Remaining templates:\n %s\n", remaining_templates);
 
 //         char *combined_templates = NULL;

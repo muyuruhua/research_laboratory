@@ -39,24 +39,79 @@ response-derived state 的效用由在线后验校准，而非固定信任。
 
 ## 3. 运行方式
 
-### 全效果（= 论文 arm D：gated-fixed）
+所有命令在 `ChatAFL-master/` 目录下执行。目标列表固定为 9 个：
+`exim,live555,kamailio,lighttpd1,pure-ftpd,forked-daapd,lightftp,bftpd,proftpd`
+
+### 论文 5-arm 完整矩阵（§七）
+
+#### Arm A — aflnet 基线（无 LLM，无 admission）
+
+```bash
+export KEY="sk-..." && export SKIPCOUNT=100
+sudo -E ./run_dev.sh 3 180 exim,live555,kamailio,lighttpd1,pure-ftpd,forked-daapd,lightftp,bftpd,proftpd aflnet
+```
+
+| 每目标跑几次 | 一次多久 | 总 run 数 |
+|---|---|---|
+| 3 次 | 180 min（3h） | 9 × 3 = 27 |
+
+#### Arm B — chatafl 基线（LLM，无 admission）
+
+```bash
+export KEY="sk-..." && export SKIPCOUNT=100
+sudo -E ./run_dev.sh 3 180 exim,live555,kamailio,lighttpd1,pure-ftpd,forked-daapd,lightftp,bftpd,proftpd chatafl
+```
+
+| 每目标跑几次 | 一次多久 | 总 run 数 |
+|---|---|---|
+| 3 次 | 180 min（3h） | 9 × 3 = 27 |
+
+#### Arm D — loopfuzz gated-fixed（默认，证据门控 + 固定 state policy）
 
 ```bash
 export KEY="sk-..." && export SKIPCOUNT=100
 sudo -E ./run_dev.sh 3 180 exim,live555,kamailio,lighttpd1,pure-ftpd,forked-daapd,lightftp,bftpd,proftpd loopfuzz
 ```
 
-### 消融（含论文 5-arm 对照组）
+| 每目标跑几次 | 一次多久 | 总 run 数 |
+|---|---|---|
+| 3 次 | 180 min（3h） | 9 × 3 = 27 |
+
+#### Arm C + E — 论文因果对照组（9 目标逐个跑）
 
 ```bash
-# 现有组照常工作：
-sudo -E ./run_ablation.sh bftpd 1 1580 -g full,wo_hypothesis,wo_refinement,wo_frontier,wo_adaptive,wo_admission
+export KEY="sk-..." && export SKIPCOUNT=100
 
-# 论文因果 arm 组（新增）：
-#   direct=C  gated_fixed|full=D  calibrated=E
-sudo -E ./run_ablation.sh bftpd 1 1580 -g direct,gated_fixed,calibrated
-# γ 敏感性（0.99 / 0.995默认 / 1.0，论文 §五.3 冻结后仅此三档）：
-sudo -E ./run_ablation.sh bftpd 1 1580 -g calibrated,cal_gamma099,cal_gamma100
+# 9 目标逐个执行（direct=C  gated_fixed=D  calibrated=E，每组 1 容器 × 1580 min）：
+for T in exim live555 kamailio lighttpd1 pure-ftpd forked-daapd lightftp bftpd proftpd; do
+  sudo -E ./run_ablation.sh $T 1 1580 -g direct,gated_fixed,calibrated
+done
+```
+
+| 每目标跑几次 | 一次多久 | 总 run 数 |
+|---|---|---|
+| 每组 1 次，共 3 组（C/D/E） | 1580 min（~26.3h） | 9 目标 × 3 组 × 1 = 27 |
+
+#### γ 敏感性（9 目标逐个跑）
+
+```bash
+export KEY="sk-..." && export SKIPCOUNT=100
+
+# γ 三档（0.995 默认 / 0.99 / 1.0，论文 §五.3）：
+for T in exim live555 kamailio lighttpd1 pure-ftpd forked-daapd lightftp bftpd proftpd; do
+  sudo -E ./run_ablation.sh $T 1 1580 -g calibrated,cal_gamma099,cal_gamma100
+done
+```
+
+| 每目标跑几次 | 一次多久 | 总 run 数 |
+|---|---|---|
+| 每组 1 次，共 3 组 | 1580 min（~26.3h） | 9 目标 × 3 组 × 1 = 27 |
+
+### 补充消融（论文不直接要求，可作 appendix）
+
+```bash
+# 单变量消融矩阵（6 组）——以 bftpd 为例，可换其他目标：
+sudo -E ./run_ablation.sh bftpd 1 1580 -g full,wo_hypothesis,wo_refinement,wo_frontier,wo_adaptive,wo_admission
 ```
 
 ### 环境变量
