@@ -1515,7 +1515,7 @@ int generate_grammar_hypotheses(hypothesis_context_t *ctx, int max_hypotheses) {
             strlen(prompt) > 200 ? prompt + strlen(prompt) - 200 : prompt);
     
     // Call LLM with structured prompt
-    fprintf(stderr, "[DEBUG] Calling chat_with_llm(model=gpt-4o-mini, tries=3, temperature=0.3)...\n");
+    fprintf(stderr, "[DEBUG] Calling chat_with_llm(model=%s, tries=3, temperature=0.3)...\n", LLM_DEFAULT_MODEL);
     char *response = chat_with_llm(prompt, LLM_DEFAULT_MODEL, 3, 0.3);  // Low temperature for consistency
     fprintf(stderr, "[DEBUG] chat_with_llm returned: %p\n", (void*)response);
     
