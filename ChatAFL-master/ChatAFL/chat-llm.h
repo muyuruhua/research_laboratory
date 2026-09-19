@@ -71,6 +71,11 @@ extern unsigned long long llm_last_prompt_tokens;
 extern unsigned long long llm_last_completion_tokens;
 int chat_llm_effective_max_tokens(void);
 
+/* Phase deadline (unix seconds, 0 = none): when set, chat_with_llm() refuses
+ * new calls once the deadline passes, bounding startup seed enrichment. */
+void chat_llm_set_deadline(long deadline_ts);
+int chat_llm_deadline_exceeded(void);
+
 char *chat_with_llm(char *prompt, char *model, int tries, float temperature);
 char *construct_prompt_for_templates(char *protocol_name, char **final_msg);
 char *construct_prompt_for_remaining_templates(char *protocol_name, char *templates_prompt, char *templates_answer);

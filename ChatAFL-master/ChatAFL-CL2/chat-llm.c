@@ -95,6 +95,11 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
             curl_easy_setopt(curl, CURLOPT_URL, url);
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, chat_with_llm_helper);
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+            /* Without a timeout a SYN-blackholed/stalled connection blocks
+             * curl_easy_perform() forever (same fix as LoopFuzz). */
+            curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 120L);
+            curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 30L);
 
             res = curl_easy_perform(curl);
 

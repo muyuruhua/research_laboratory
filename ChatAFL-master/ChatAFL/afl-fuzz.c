@@ -453,6 +453,12 @@ void setup_llm_grammars()
 
   for (int iter = 0; iter < TEMPLATE_CONSISTENCY_COUNT; iter++)
   {
+    if (chat_llm_deadline_exceeded())
+    {
+      WARNF("LLM startup deadline reached; skipping remaining grammar iterations (%d/%d done)", iter, TEMPLATE_CONSISTENCY_COUNT);
+      break;
+    }
+
     klist_t(gram) *grammar_list = kl_init(gram);
 
     char *templates_answer = chat_with_llm(templates_prompt, "codex-auto-review", GRAMMAR_RETRIES, 0.5);
@@ -2663,6 +2669,11 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
     {
       continue;
     }
+    if (chat_llm_deadline_exceeded())
+    {
+      WARNF("LLM enrichment deadline reached; skipping remaining seed files (next: %s)", nl_file_name);
+      break;
+    }
     char *nl_file_path = malloc(strlen(in_dir) + strlen(nl_file_name) + 2);
     strcpy(nl_file_path, in_dir);
     strcat(nl_file_path, "/");
@@ -2740,7 +2751,13 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
 
     for(int i = 0;i < kv_size(message_subsets);i++) {
 
-      khash_t(strSet)* subset = kv_A(message_subsets,i); 
+      khash_t(strSet)* subset = kv_A(message_subsets,i);
+
+      if (chat_llm_deadline_exceeded())
+      {
+        WARNF("LLM enrichment deadline reached; skipping remaining subsets for %s", nl_file_name);
+        break;
+      }
 
       // Try enriching the sequence
         char *client_request_answer = enrich_sequence(nl_file_content, subset);
@@ -2790,6 +2807,27 @@ void get_seeds_with_messsage_types(const char *in_dir, khash_t(strSet) * message
 
     kh_destroy(strSet, messages);
   }
+}
+
+/* Arm the wall-clock budget for the whole startup LLM phase (grammar
+ * discovery + seed enrichment) so a degraded endpoint cannot stall the
+ * campaign: CHATAFL_ENRICH_TIMEOUT seconds (default 1800, 0 disables).
+ * chat_llm_set_deadline(0) must be called once the phase ends. */
+static void start_llm_startup_budget(void)
+{
+  long enrich_budget = 1800;
+  const char *enrich_env = getenv("CHATAFL_ENRICH_TIMEOUT");
+  if (enrich_env && *enrich_env)
+  {
+    long v = strtol(enrich_env, NULL, 10);
+    if (v >= 0)
+      enrich_budget = v;
+    else
+      WARNF("Ignoring invalid CHATAFL_ENRICH_TIMEOUT=%s; using %ld", enrich_env, enrich_budget);
+  }
+  chat_llm_set_deadline(enrich_budget > 0 ? (long)time(NULL) + enrich_budget : 0);
+  if (enrich_budget > 0)
+    ACTF("LLM startup (grammars + enrichment) budget: %ld s", enrich_budget);
 }
 
 /* Enrich the testcases before startup */
@@ -10726,8 +10764,10 @@ int main(int argc, char **argv)
     protocol_patterns = kl_init(rang);
     message_types_set = kh_init(strSet);
 
+    start_llm_startup_budget();
     setup_llm_grammars();
     enrich_testcases();
+    chat_llm_set_deadline(0);
   }
   read_testcases();
   load_auto();

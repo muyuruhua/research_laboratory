@@ -6,6 +6,7 @@
 #include <dirent.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <time.h>
 
 #include "chat-llm.h"
 #include "alloc-inl.h"
@@ -61,6 +62,55 @@ int chat_llm_effective_max_tokens(void)
     return MAX_TOKENS;
 }
 
+static int chat_llm_env_int(const char *name, int defval, int lo, int hi)
+{
+    const char *env = getenv(name);
+    if (env && *env)
+    {
+        char *end = NULL;
+        long v = strtol(env, &end, 10);
+        if (end && *end == '\0' && v > 0)
+        {
+            if (v < lo)
+                v = lo;
+            if (v > hi)
+                v = hi;
+            return (int)v;
+        }
+        fprintf(stderr, "[ChatAFL] Ignoring invalid %s=%s; using %d\n", name, env, defval);
+    }
+    return defval;
+}
+
+/* Total budget for one HTTP attempt (connect + transfer). The endpoint sits
+ * behind Cloudflare, which aborts stalled origins with a 524 at ~100 s, so
+ * 240 s only fires when the connection itself is stuck (e.g. SYN blackhole). */
+static int chat_llm_timeout_total(void)
+{
+    return chat_llm_env_int("CHATAFL_LLM_TIMEOUT", 240, 5, 86400);
+}
+
+/* TCP connect budget; a healthy endpoint connects in well under a second. */
+static int chat_llm_timeout_connect(void)
+{
+    return chat_llm_env_int("CHATAFL_LLM_CONNECT_TIMEOUT", 15, 1, 3600);
+}
+
+/* Optional wall-clock deadline (unix time, 0 = none) used to bound a whole
+ * phase of LLM calls (e.g. startup seed enrichment). Set/cleared by afl-fuzz
+ * so a degraded endpoint cannot stall the campaign indefinitely. */
+static time_t llm_phase_deadline = 0;
+
+void chat_llm_set_deadline(long deadline_ts)
+{
+    llm_phase_deadline = (time_t)deadline_ts;
+}
+
+int chat_llm_deadline_exceeded(void)
+{
+    return llm_phase_deadline != 0 && time(NULL) >= llm_phase_deadline;
+}
+
 char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
 {
     CURL *curl;
@@ -84,6 +134,11 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
         fprintf(stderr, "KEY environment variable not set\n");
         return NULL;
     }
+    if (chat_llm_deadline_exceeded())
+    {
+        printf("[ChatAFL][LLM] phase deadline already reached, skipping LLM call\n");
+        return NULL;
+    }
     char auth_header[256];
     snprintf(auth_header, sizeof(auth_header), "Authorization: Bearer %s", api_key);
     char *content_header = "Content-Type: application/json";
@@ -99,9 +154,12 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
         asprintf(&data, "{\"model\": \"codex-auto-review\",\"messages\": %s, \"max_tokens\": %d, \"temperature\": %f}", prompt, max_tokens, temperature);
     }
     curl_global_init(CURL_GLOBAL_DEFAULT);
+    int total_tries = tries;
+    int attempt = 0;
     do
     {
         struct MemoryStruct chunk;
+        time_t attempt_started = time(NULL);
 
         chunk.memory = malloc(1); /* will be grown as needed by the realloc above */
         chunk.size = 0;           /* no data at this point */
@@ -119,7 +177,13 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
             curl_easy_setopt(curl, CURLOPT_URL, url);
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, chat_with_llm_helper);
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+            /* Without these, a SYN-blackholed or stalled connection blocks
+             * curl_easy_perform() forever and the fuzzer freezes at startup. */
+            curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+            curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, (long)chat_llm_timeout_connect());
+            curl_easy_setopt(curl, CURLOPT_TIMEOUT, (long)chat_llm_timeout_total());
 
+            attempt++;
             res = curl_easy_perform(curl);
 
             if (res == CURLE_OK)
@@ -132,7 +196,8 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
                     json_object *choices = json_object_object_get(jobj, "choices");
                     if (!choices || !json_object_is_type(choices, json_type_array) ||
                         json_object_array_length(choices) == 0) {
-                        printf("Error: 'choices' is not a valid array. Response: %s\n", chunk.memory);
+                        printf("[ChatAFL][LLM] attempt %d/%d: 'choices' invalid after %lds. Response: %s\n",
+                               attempt, total_tries, (long)(time(NULL) - attempt_started), chunk.memory);
                         json_object_put(jobj);
                         sleep(2);
                         continue;
@@ -165,7 +230,8 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
                     }
 
                     if (data == NULL) {
-                        printf("Error: could not extract LLM answer. Response: %s\n", chunk.memory);
+                        printf("[ChatAFL][LLM] attempt %d/%d: no answer after %lds. Response: %s\n",
+                               attempt, total_tries, (long)(time(NULL) - attempt_started), chunk.memory);
                         json_object_put(jobj);
                         sleep(2);
                         continue;
@@ -176,14 +242,16 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
                 }
                 else
                 {
-                    printf("Error response is: %s\n", chunk.memory);
+                    printf("[ChatAFL][LLM] attempt %d/%d: error body after %lds: %s\n",
+                           attempt, total_tries, (long)(time(NULL) - attempt_started), chunk.memory);
                     sleep(2); // Sleep for a small amount of time to ensure that the service can recover
                 }
                 json_object_put(jobj);
             }
             else
             {
-                printf("Error: %s\n", curl_easy_strerror(res));
+                printf("[ChatAFL][LLM] attempt %d/%d failed after %lds: %s\n",
+                       attempt, total_tries, (long)(time(NULL) - attempt_started), curl_easy_strerror(res));
             }
 
             curl_slist_free_all(headers);
@@ -191,7 +259,11 @@ char *chat_with_llm(char *prompt, char *model, int tries, float temperature)
         }
 
         free(chunk.memory);
-    } while ((res != CURLE_OK || answer == NULL) && (--tries > 0));
+    } while ((res != CURLE_OK || answer == NULL) && (--tries > 0) && !chat_llm_deadline_exceeded());
+
+    if (answer == NULL)
+        printf("[ChatAFL][LLM] giving up on this request after %d attempt(s)%s\n",
+               attempt, chat_llm_deadline_exceeded() ? " (phase deadline reached)" : "");
 
     if (data != NULL)
     {

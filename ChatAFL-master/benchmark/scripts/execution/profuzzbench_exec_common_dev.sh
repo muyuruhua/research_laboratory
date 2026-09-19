@@ -769,6 +769,14 @@ for i in $(seq 1 $RUNS); do
   [[ -n "${CHATAFL_TOP_P:-}" ]]            && TOKEN_FLAGS+=" -e CHATAFL_TOP_P=${CHATAFL_TOP_P}"
   [[ -n "${CHATAFL_TOKEN_CAP:-}" ]]        && TOKEN_FLAGS+=" -e CHATAFL_TOKEN_CAP=${CHATAFL_TOKEN_CAP}"
 
+  # LLM network robustness (2026-09-19): per-attempt curl timeouts and the
+  # startup-phase budget, so a degraded endpoint degrades gracefully instead
+  # of freezing the fuzzer at "Enriching test cases from LLM...".
+  LLM_NET_FLAGS=""
+  [[ -n "${CHATAFL_LLM_TIMEOUT:-}" ]]          && LLM_NET_FLAGS+=" -e CHATAFL_LLM_TIMEOUT=${CHATAFL_LLM_TIMEOUT}"
+  [[ -n "${CHATAFL_LLM_CONNECT_TIMEOUT:-}" ]]  && LLM_NET_FLAGS+=" -e CHATAFL_LLM_CONNECT_TIMEOUT=${CHATAFL_LLM_CONNECT_TIMEOUT}"
+  [[ -n "${CHATAFL_ENRICH_TIMEOUT:-}" ]]       && LLM_NET_FLAGS+=" -e CHATAFL_ENRICH_TIMEOUT=${CHATAFL_ENRICH_TIMEOUT}"
+
   # Attack-channel flags (Stage 1-4, 2026-08-21): forward the CHATAFL_ATTACK_*
   # gates into the container when the operator exports them.  All default OFF
   # in the fuzzer, so absence here is the default path.
@@ -822,6 +830,7 @@ for i in $(seq 1 $RUNS); do
       -e CHATAFL_TARGET_NAME="${DOCIMAGE}" \
       ${ABLATION_FLAGS} \
       ${TOKEN_FLAGS} \
+      ${LLM_NET_FLAGS} \
       ${ATTACK_FLAGS} \
       ${MQTT_FLAGS} \
       ${MQTT_RUN_FLAGS} \
@@ -840,6 +849,7 @@ for i in $(seq 1 $RUNS); do
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
       ${TOKEN_FLAGS} \
+      ${LLM_NET_FLAGS} \
       ${MQTT_FLAGS} \
       ${MQTT_RUN_FLAGS} \
       -v "${PROJECT_ROOT}/ChatAFL:/tmp/chatafl-src:ro" \
@@ -855,6 +865,7 @@ for i in $(seq 1 $RUNS); do
       -e KEY="${KEY}" \
       ${MQTT_FLAGS} \
       ${MQTT_RUN_FLAGS} \
+      ${LLM_NET_FLAGS} \
       -v "${PROJECT_ROOT}/ChatAFL-CL1:/tmp/chatafl-cl1-src:ro" \
       ${SUBJECT_MOUNT} \
       -d -it $DOCIMAGE /bin/bash -c "\
@@ -868,6 +879,7 @@ for i in $(seq 1 $RUNS); do
       -e KEY="${KEY}" \
       ${MQTT_FLAGS} \
       ${MQTT_RUN_FLAGS} \
+      ${LLM_NET_FLAGS} \
       -v "${PROJECT_ROOT}/ChatAFL-CL2:/tmp/chatafl-cl2-src:ro" \
       ${SUBJECT_MOUNT} \
       -d -it $DOCIMAGE /bin/bash -c "\
@@ -876,7 +888,7 @@ for i in $(seq 1 $RUNS); do
         cd /home/ubuntu/chatafl-cl2 && make clean && make -j\$(nproc) && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   else
-    id=$(docker run --cpus=1 --memory=6g --memory-swap=6g ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${TOKEN_FLAGS} ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
+    id=$(docker run --cpus=1 --memory=6g --memory-swap=6g ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${TOKEN_FLAGS} ${LLM_NET_FLAGS} ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   fi
   require_container_id "$id" "fuzz container run #${i}"
   cids+=("$id")
