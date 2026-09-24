@@ -27,6 +27,14 @@ if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" 
   TARGET_DIR=${TARGET_DIR:-"proftpd"}
   INPUTS=${INPUTS:-${WORKDIR}"/in-ftp"}
 
+  # Visibility unlock for the make_ftp_cmd OOB-read bug class: with the
+  # default CommandBufferSize (512) the escape-run overshoot stays inside
+  # the shared cmd pool block, so ASAN never sees it. 65535 makes cmd_buf
+  # its own ~64KB pool allocation. Applies to every fuzzer equally (shared
+  # basic.conf); benchmark arms must re-run all fuzzers under this env.
+  grep -q '^CommandBufferSize' ${WORKDIR}/basic.conf 2>/dev/null || \
+    sed -i '/^Port[[:space:]]/a CommandBufferSize\t65535' ${WORKDIR}/basic.conf
+
   #Step-1. Do Fuzzing
   #Move to fuzzing folder
   cd $WORKDIR/${TARGET_DIR}

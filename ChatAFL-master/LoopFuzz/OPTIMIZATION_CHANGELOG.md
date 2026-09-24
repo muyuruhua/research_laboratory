@@ -1311,3 +1311,18 @@ proftpd 最弱 13-1313 仍为队列标记密度问题）；归一化吞吐较 Se
 | 公开报告 | 无 |
 | 上游知情 | 不知情（架构重构时无意间修复） |
 | CVE 可注册性 | 可为 27.0-28.3 受影响版本范围申请，但上游可能因"旧版本已 EOL + 修复是架构重构而非安全补丁"而降低优先级 |
+
+## 更新日期
+2026-09-20 — SMARTPL DoS 复现条件修正（撤销"需多请求铺垫"的旧结论）
+
+### 新证据（2026-09-20 重验，forked-daapd 27.2 全新容器）
+- 用 msg[8] **原始字节**单发（含 \x81 高位字节的精确 token，非清洗后 URL）：
+  **5/5 轮全部触发全局 wedge**（进程存活、t+2s/t+60s 新连接均超时、每轮恰好
+  38 条 lexer error、CPU ticks 停止增长）。完整 48 条种子 3/3。
+- 旧记录"单发同 URL 不触发（0.00s）"系当年单发测试使用了清洗过的 URL
+  （丢掉 \x81 与原始 token 结构）所致——撤销该结论。
+- 定性升级：**单条未认证 GET = 永久全局 DoS**（AV:N/AC:L/PR:N/UI:N/S:U/
+  C:N/I:N/A:H，CVSS 7.5）。受影响 27.0-28.3，28.4 修复（Drop ANTLR parsers）。
+- 注册材料已成稿：`../forked-daapd-smartpl-dos-advisory-draft.md`
+  （GitHub Security Advisory 私密报告 → owntone/owntone-server 维护者发布 →
+  GitHub CNA 分配 CVE）。

@@ -5,6 +5,7 @@
 
 #include "mutation-ops.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
@@ -13,6 +14,10 @@ uint64_t auth_prefix_restores_havoc = 0;
 uint64_t auth_prefix_calls = 0;
 uint64_t auth_prefix_found = 0;
 uint32_t cve_mutations_applied = 0;
+
+/* S2c escape-amplifier ablation switch (CHATAFL_NO_ESCAPE_AMP) + counter */
+int mut_no_escape_amp = 0;
+uint64_t escape_amp_applied = 0;
 
 /* Weak default RNG; afl-fuzz.c and tests override with strong defs. */
 __attribute__((weak)) uint32_t mut_ur(uint32_t bound) {
@@ -332,6 +337,74 @@ uint8_t cve_targeted_mutate(uint8_t *buf, uint32_t *len_ref,
                     (*len_ref)++;
                     cve_mutations_applied++;
                     return 1;
+                }
+            }
+        }
+
+        /* ── S2c: quote-internal escape-run amplification ──────────
+         * Escape-decode-mismatch bug class: parsers that consume "\X"
+         * as two bytes but store one keep consumed >> strlen(word), so
+         * lengths derived from (buflen - strlen(word)) overshoot the
+         * buffer on read (proftpd CVE-2023-51713, make_ftp_cmd OOB
+         * read). Amplification target [30KB, 60KB) is calibrated so
+         * the overshoot crosses an ASAN pool-block boundary under
+         * CommandBufferSize 65535 (empirically 30000 escapes fire,
+         * ~250 stay pool-invisible). Class-generic: random escape
+         * letters, no verb or buffer size hardcoded. */
+        if (!mut_no_escape_amp) {
+            uint32_t cand_start[64], cand_stop[64];
+            int n_cand = 0;
+            uint32_t ls = 0;
+            while (ls < len && n_cand < 64) {
+                uint32_t le = ls;
+                while (le < len && buf[le] != '\n') le++;
+                uint32_t body_end = (le > ls && buf[le - 1] == '\r')
+                                        ? le - 1 : le;
+                if (body_end > ls &&
+                    !line_starts_with(buf, len, ls, "USER ") &&
+                    !line_starts_with(buf, len, ls, "PASS ") &&
+                    !line_starts_with(buf, len, ls, "ACCT ") &&
+                    !line_starts_with(buf, len, ls, "AUTH ")) {
+                    cand_start[n_cand] = ls;
+                    cand_stop[n_cand] = (le < len) ? le + 1 : len;
+                    n_cand++;
+                }
+                ls = (le < len) ? le + 1 : len;
+            }
+            if (n_cand > 0) {
+                int c = mut_ur(n_cand);
+                uint32_t line_start = cand_start[c];
+                uint32_t line_stop = cand_stop[c];
+                uint32_t target = 30720 + mut_ur(30720); /* [30K, 60K) */
+                uint32_t n_esc = (target > 6) ? (target - 6) / 2 : 0;
+                uint32_t new_len =
+                    len - (line_stop - line_start) + (n_esc * 2 + 6);
+                if (n_esc >= 4096 && new_len < buf_cap) {
+                    /* rebuild: prefix | '"' ('\X')*n '"' SP X CRLF | suffix */
+                    uint8_t *tmp = (uint8_t *)malloc(new_len);
+                    if (tmp) {
+                        uint32_t o = 0, i;
+                        memcpy(tmp + o, buf, line_start);
+                        o += line_start;
+                        tmp[o++] = '"';
+                        for (i = 0; i < n_esc; i++) {
+                            tmp[o++] = '\\';
+                            tmp[o++] = (uint8_t)('A' + mut_ur(26));
+                        }
+                        tmp[o++] = '"';
+                        tmp[o++] = ' ';
+                        tmp[o++] = 'X';
+                        tmp[o++] = '\r';
+                        tmp[o++] = '\n';
+                        memcpy(tmp + o, buf + line_stop, len - line_stop);
+                        o += len - line_stop;
+                        memcpy(buf, tmp, o);
+                        free(tmp);
+                        *len_ref = o;
+                        cve_mutations_applied++;
+                        escape_amp_applied++;
+                        return 1;
+                    }
                 }
             }
         }

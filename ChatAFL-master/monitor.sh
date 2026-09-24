@@ -23,6 +23,9 @@
 #   4. 逻辑漏洞(Viola):   replayable-violations/ 文件计数 + oracle_unique_violations
 #   5. MQTT Diff:        mqtt_diff_obs/pos/avg/last (multi-broker divergence)
 #   6. LLM Token Cost:   llm_total_calls, prompt/completion tokens
+#   7. Ablation/Arm:     direct | gated_fixed | calibrated | cal_gamma099/100
+#                        | wo_* 消融组 — fuzzer_stats 的 arm 字段为运行时真值,
+#                        /proc/1/environ 仅作回退 (与 run_ablation.sh 组名等价)
 #
 # LLM 统计说明（2026-03 起）:
 #   monitor.sh 优先且仅使用 fuzzer_stats 内的 llm_* 字段，
@@ -97,14 +100,6 @@ fi
 
 # ─── 工具函数 ───────────────────────────────────────────────────────────────
 
-# 从容器中读取 fuzzer_stats 中某个字段的值
-# 用法: get_stat <container_id> <stat_file_path> <key>
-get_stat() {
-    local cid="$1" fpath="$2" key="$3"
-    docker exec "$cid" grep -m1 "^${key}" "$fpath" 2>/dev/null \
-        | sed 's/.*: *//' | tr -d '[:space:]' || echo "N/A"
-}
-
 # 自动探测容器内的 out-* 目录路径
 # 支持结构:
 #   单层: /home/ubuntu/experiments/out-<target>-<fuzzer>          (mosquitto等)
@@ -164,6 +159,109 @@ target_label() {
     elif [[ "$rest" == *-chatafl ]];     then echo "${rest%-chatafl}"
     elif [[ "$rest" == *-aflnet ]];      then echo "${rest%-aflnet}"
     else echo "${rest%-*}"
+    fi
+}
+
+# ─── 消融 / 因果 arm 标签解析 ─────────────────────────────────────────────────
+# 标签词表与 run_ablation.sh 组名严格等价:
+#   因果 5-arm (paper §七): direct=C(≡wo_admission 环境别名)
+#                          gated_fixed=D(≡full 环境别名)
+#                          calibrated=E | cal_gamma099(γ=0.99) | cal_gamma100(γ=1.0)
+#   策略消融 (core/threshold 预设): wo_all | wo_hypothesis | wo_adaptive |
+#                          fixedNNN | wo_refinement | wo_frontier | wo_state_prompt
+#                          (多开关混合时按 +wo_xxx 拼接)
+# 数据源优先级 (arm 两轴只承认 fuzzer 运行时真值):
+#   1. fuzzer_stats 的 arm / calibration / cal_gamma 字段 — fuzzer 自报,
+#      不受 run-config.jsonl start 事件在 env 解析前写默认值的滞后影响
+#   2. /proc/1/environ 的 CHATAFL_* — 启动配置, arm 字段缺失时回退
+# 用法: resolve_ablation_label <arm_name> <cal_flag> <gamma_fs> <env_flags>
+#   env_flags: "NONE" (无 CHATAFL_* 环境) 或 9 字段
+#     "no_hyp no_refine no_frontier no_adaptive no_sp no_admission cal cal_gamma threshold"
+resolve_ablation_label() {
+    local arm_name="$1" cal_flag="$2" gamma_fs="$3" env_flags="$4"
+
+    local _no_hyp=0 _no_refine=0 _no_frontier=0 _no_adaptive=0 _no_sp=0 _no_adm=0 _cal=0 _cgamma="-" _thr="-"
+    if [[ "$env_flags" != "NONE" && -n "$env_flags" ]]; then
+        read -r _no_hyp _no_refine _no_frontier _no_adaptive _no_sp _no_adm _cal _cgamma _thr <<< "$env_flags"
+    fi
+
+    # admission/calibration 两轴: arm 字段为运行时真值, 优先于 env;
+    # arm 缺失 (旧版 loopfuzz / 非 loopfuzz) 时回退到启动环境变量
+    local no_admission=0 calibration=0 gamma=""
+    if [[ -n "$arm_name" ]]; then
+        [[ "$arm_name" == "loopfuzz-direct" ]] && no_admission=1
+        [[ "$arm_name" == "loopfuzz-gated-calibrated" ]] && calibration=1
+        gamma="$gamma_fs"
+    else
+        no_admission=$_no_adm
+        calibration=$_cal
+        gamma="$_cgamma"
+    fi
+    [[ "$cal_flag" == "1" ]] && calibration=1
+    if [[ -z "$gamma" || "$gamma" == "-" ]]; then gamma="$gamma_fs"; fi
+
+    # 无任何 CHATAFL_* 配置且无 arm 字段 → ChatAFL / AFLNet, 不具备消融能力
+    if [[ -z "$arm_name" && "$env_flags" == "NONE" ]]; then
+        echo "-"
+        return
+    fi
+
+    # 策略消融开关 (core/threshold 预设维度); 因果 arm 与策略消融正交
+    local strat_abl=0
+    if [[ "$_no_hyp" == "1" || "$_no_refine" == "1" || "$_no_frontier" == "1" \
+          || "$_no_adaptive" == "1" || "$_no_sp" == "1" ]]; then
+        strat_abl=1
+    fi
+    [[ "$_thr" != "-" && "$_thr" != "512" ]] && strat_abl=1
+
+    if [[ $strat_abl -eq 0 ]]; then
+        # 纯因果 arm: admission × calibration 两轴完全刻画
+        if [[ $no_admission -eq 1 ]]; then
+            echo "direct"
+        elif [[ $calibration -eq 1 ]]; then
+            local label="calibrated"
+            if [[ "$gamma" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+                if   awk "BEGIN{exit !($gamma <= 0.993)}"; then label="cal_gamma099"
+                elif awk "BEGIN{exit !($gamma >= 0.999)}"; then label="cal_gamma100"
+                fi
+            fi
+            echo "$label"
+        else
+            echo "gated_fixed"
+        fi
+        return
+    fi
+
+    # 策略消融矩阵: 先精确匹配单变量组, 再退到多开关拼接
+    if [[ $_no_hyp -eq 1 && $_no_refine -eq 1 && $_no_frontier -eq 1 && $_no_adaptive -eq 1 && $_no_sp -eq 1 && $no_admission -eq 0 ]]; then
+        echo "wo_all"
+    elif [[ $_no_hyp -eq 1 && $_no_refine -eq 0 && $_no_frontier -eq 0 && $_no_adaptive -eq 0 && $_no_sp -eq 0 && $no_admission -eq 0 ]]; then
+        echo "wo_hypothesis"
+    elif [[ $_no_hyp -eq 0 && $_no_refine -eq 0 && $_no_frontier -eq 0 && $_no_adaptive -eq 1 && $_no_sp -eq 0 && $no_admission -eq 0 ]]; then
+        if [[ "$_thr" == "-" || "$_thr" == "512" ]]; then
+            echo "wo_adaptive"
+        else
+            echo "fixed$_thr"
+        fi
+    else
+        local parts=""
+        [[ $_no_hyp -eq 1 ]]      && parts+="+wo_hypothesis"
+        [[ $no_admission -eq 1 ]] && parts+="+wo_admission"
+        [[ $_no_refine -eq 1 ]]   && parts+="+wo_refinement"
+        [[ $_no_frontier -eq 1 ]] && parts+="+wo_frontier"
+        if [[ $_no_adaptive -eq 1 ]]; then
+            if [[ "$_thr" != "-" && "$_thr" != "512" ]]; then
+                parts+="+fixed$_thr"
+            else
+                parts+="+wo_adaptive"
+            fi
+        elif [[ "$_thr" != "-" && "$_thr" != "512" ]]; then
+            parts+="+fixed$_thr"
+        fi
+        [[ $_no_sp -eq 1 ]]       && parts+="+wo_state_prompt"
+        [[ $calibration -eq 1 ]]  && parts+="+calibrated"
+        local out="${parts#+}"
+        echo "${out:-gated_fixed}"
     fi
 }
 
@@ -439,83 +537,43 @@ collect_one() {
     local viol_total="$oracle_unique_viol"
     viol_total=${viol_total:-0}
 
-    # ── 消融开关检测 → 标签与 run_ablation.sh 组名完全等价 ──────────
-    # core 预设 8 组标签: wo_all | full | wo_hypothesis | wo_admission |
-    #                      wo_refinement | wo_frontier | wo_adaptive |
-    #                      wo_state_prompt
-    # threshold 预设标签:  fixed150 | fixed200 | fixed300 | fixed512
-    # legacy / 混合消融:    wo_refinement+wo_frontier+... (多个 wo_ 拼接)
-    local ablation_label
-    ablation_label=$(docker exec "$cid" bash -c '
+    # ── 消融/因果 arm 标签: fuzzer_stats 真值 + 启动环境变量回退 ──────────
+    # arm/calibration/cal_gamma 由 fuzzer 实时写入 fuzzer_stats, 是运行时
+    # 真值; /proc/1/environ 只作 arm 字段缺失时的回退 (见 resolve_ablation_label)
+    local arm_name cal_flag cal_gamma_fs
+    arm_name=$(echo "$stats_blob"     | grep -m1 -E '^arm[[:space:]]*:'         | sed 's/.*: *//' | tr -d '[:space:]')
+    cal_flag=$(echo "$stats_blob"     | grep -m1 -E '^calibration[[:space:]]*:' | sed 's/.*: *//' | tr -d '[:space:]')
+    cal_gamma_fs=$(echo "$stats_blob" | grep -m1 -E '^cal_gamma[[:space:]]*:'   | sed 's/.*: *//' | tr -d '[:space:]')
+
+    # 单次 docker exec 读取 PID1 启动环境中的 CHATAFL_* 消融开关 (9 字段)
+    local env_flags
+    env_flags=$(docker exec "$cid" bash -c '
         env_vars=$(cat /proc/1/environ 2>/dev/null | tr "\0" "\n" | grep "^CHATAFL_")
         if [[ -z "$env_vars" ]]; then
-            echo "-"             # ChatAFL / AFLNet 不具备消融能力
+            echo "NONE"
             exit 0
         fi
-        no_hyp=0; no_refine=0; no_frontier=0; no_adaptive=0; no_sp=0; no_admission=0; threshold=""
+        no_hyp=0; no_refine=0; no_frontier=0; no_adaptive=0; no_sp=0; no_admission=0
+        cal=0; cal_gamma="-"; threshold="-"
         while IFS="=" read -r k v; do
             case "$k" in
-                CHATAFL_HYPOTHESIS)        [[ "$v" == "0" ]] && no_hyp=1 ;;
-                CHATAFL_NO_REFINEMENT)     [[ "$v" == "1" ]] && no_refine=1 ;;
-                CHATAFL_NO_FRONTIER)       [[ "$v" == "1" ]] && no_frontier=1 ;;
-                CHATAFL_NO_ADAPTIVE)       [[ "$v" == "1" ]] && no_adaptive=1 ;;
-                CHATAFL_NO_STATE_PROMPT)   [[ "$v" == "1" ]] && no_sp=1 ;;
-                CHATAFL_NO_ADMISSION)      [[ "$v" == "1" ]] && no_admission=1 ;;
-                CHATAFL_ABLATION_THRESHOLD) threshold="$v" ;;
+                CHATAFL_HYPOTHESIS)         [[ "$v" == "0" ]] && no_hyp=1 ;;
+                CHATAFL_NO_REFINEMENT)      [[ "$v" == "1" ]] && no_refine=1 ;;
+                CHATAFL_NO_FRONTIER)        [[ "$v" == "1" ]] && no_frontier=1 ;;
+                CHATAFL_NO_ADAPTIVE)        [[ "$v" == "1" ]] && no_adaptive=1 ;;
+                CHATAFL_NO_STATE_PROMPT)    [[ "$v" == "1" ]] && no_sp=1 ;;
+                CHATAFL_NO_ADMISSION)       [[ "$v" == "1" ]] && no_admission=1 ;;
+                CHATAFL_CALIBRATION)        [[ "$v" == "1" ]] && cal=1 ;;
+                CHATAFL_CAL_GAMMA)          [[ -n "$v" ]] && cal_gamma="$v" ;;
+                CHATAFL_ABLATION_THRESHOLD) [[ -n "$v" ]] && threshold="$v" ;;
             esac
         done <<< "$env_vars"
+        echo "$no_hyp $no_refine $no_frontier $no_adaptive $no_sp $no_admission $cal $cal_gamma $threshold"
+    ' 2>/dev/null || echo "NONE")
+    env_flags="${env_flags:-NONE}"
 
-        # ── wo_all: 全部策略 OFF（含 Hypothesis）────────────────────
-        if [[ $no_hyp -eq 1 && $no_refine -eq 1 && $no_frontier -eq 1 && $no_adaptive -eq 1 && $no_sp -eq 1 && $no_admission -eq 0 ]]; then
-            echo "wo_all"
-            exit 0
-        fi
-
-        # ── wo_hypothesis: 仅 Hypothesis OFF，需求4 全 ON ──────────
-        if [[ $no_hyp -eq 1 && $no_refine -eq 0 && $no_frontier -eq 0 && $no_adaptive -eq 0 && $no_sp -eq 0 && $no_admission -eq 0 ]]; then
-            echo "wo_hypothesis"
-            exit 0
-        fi
-
-        # ── wo_admission: 仅关闭 LLM request 的 admission gate ───────
-        if [[ $no_hyp -eq 0 && $no_refine -eq 0 && $no_frontier -eq 0 && $no_adaptive -eq 0 && $no_sp -eq 0 && $no_admission -eq 1 ]]; then
-            echo "wo_admission"
-            exit 0
-        fi
-
-        # ── full: 全部策略 ON + 自适应阈值 ON ────────────────────────
-        if [[ $no_refine -eq 0 && $no_frontier -eq 0 && $no_adaptive -eq 0 && $no_sp -eq 0 && $no_admission -eq 0 ]]; then
-            echo "full"
-            exit 0
-        fi
-
-        # ── 阈值子实验：全部策略 ON + 自适应 OFF + 固定阈值 ──────────
-        # 阈值=512 时等价于 wo_adaptive（core 预设单变量消融），统一标签
-        if [[ $no_refine -eq 0 && $no_frontier -eq 0 && $no_adaptive -eq 1 && $no_sp -eq 0 && $no_admission -eq 0 ]]; then
-            if [[ "$threshold" == "512" || -z "$threshold" ]]; then
-                echo "wo_adaptive"
-            else
-                echo "fixed${threshold}"
-            fi
-            exit 0
-        fi
-
-        # ── 单/多开关消融：拼接 wo_xxx ──────────────────────────────
-        parts=""
-        [[ $no_hyp -eq 1 ]]      && parts+="+wo_hypothesis"
-        [[ $no_admission -eq 1 ]] && parts+="+wo_admission"
-        [[ $no_refine -eq 1 ]]   && parts+="+wo_refinement"
-        [[ $no_frontier -eq 1 ]] && parts+="+wo_frontier"
-        if [[ $no_adaptive -eq 1 ]]; then
-            if [[ -n "$threshold" && "$threshold" != "512" ]]; then
-                parts+="+fixed${threshold}"
-            else
-                parts+="+wo_adaptive"
-            fi
-        fi
-        [[ $no_sp -eq 1 ]]       && parts+="+wo_state_prompt"
-        echo "${parts#+}"
-    ' 2>/dev/null || echo "?")
+    local ablation_label
+    ablation_label=$(resolve_ablation_label "$arm_name" "$cal_flag" "$cal_gamma_fs" "$env_flags")
     ablation_label=${ablation_label:-"?"}
 
     # IPSM 节点/边
@@ -524,9 +582,9 @@ collect_one() {
     nodes=$(echo "$ipsm_info" | awk '{print $1}')
     edges=$(echo "$ipsm_info" | awk '{print $2}')
 
-    # 运行时长
+    # 运行时长 (start_time 非纯数字时跳过, 避免算术展开报错)
     local runtime_min="?"
-    if [[ -n "$start_time" && "$start_time" != "N/A" ]]; then
+    if [[ "$start_time" =~ ^[0-9]+$ ]]; then
         runtime_min=$(calc_runtime_min "$start_time")
     fi
 

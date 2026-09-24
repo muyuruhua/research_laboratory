@@ -1,0 +1,149 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyperFirstAtBeginDocument{\AtBeginDocument}
+\HyperFirstAtBeginDocument{\ifx\hyper@anchor\@undefined
+\global\let\oldcontentsline\contentsline
+\gdef\contentsline#1#2#3#4{\oldcontentsline{#1}{#2}{#3}}
+\global\let\oldnewlabel\newlabel
+\gdef\newlabel#1#2{\newlabelxx{#1}#2}
+\gdef\newlabelxx#1#2#3#4#5#6{\oldnewlabel{#1}{{#2}{#3}}}
+\AtEndDocument{\ifx\hyper@anchor\@undefined
+\let\contentsline\oldcontentsline
+\let\newlabel\oldnewlabel
+\fi}
+\fi}
+\global\let\hyper@last\relax 
+\gdef\HyperFirstAtBeginDocument#1{#1}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\emailauthor{3250006913@student.must.edu.mo}{Ketang Chen}
+\emailauthor{xlren@must.edu.mo}{Xiaolei Ren\corref {cor1}}
+\Newlabel{cor1}{1}
+\citation{aflnet}
+\citation{stateafl}
+\citation{chatafl}
+\Newlabel{inst1}{a}
+\providecommand \oddpage@label [2]{}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
+\citation{aflnet,stateafl,nsfuzz,sgf_usenix22}
+\citation{chatafl,fuzz4all_universal_fuzzing_large_2024,llmif_augmented_large_language_2024}
+\citation{gramatron_effective_grammar_aware_2021,carpetfuzz_documentation_2023}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Background and Motivation}{2}{section.2}\protected@file@percent }
+\newlabel{sec:motivation}{{2}{2}{Background and Motivation}{section.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Response-visible state and independent code feedback}{2}{subsection.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Three falsifiable mismatch cases}{2}{subsection.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}Related Work and Novelty Boundary}{2}{section.3}\protected@file@percent }
+\citation{profuzzbench_benchmark_stateful_protocol_2021,sok_prudent_evaluation_practices_2024,reliability_benchmarking_2022}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Motivating mismatch hypotheses and their present evidential boundary.}}{3}{table.1}\protected@file@percent }
+\newlabel{tab:boundary}{{1}{3}{Motivating mismatch hypotheses and their present evidential boundary}{table.1}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Evidence-Calibrated Controller}{3}{section.4}\protected@file@percent }
+\newlabel{sec:design}{{4}{3}{Evidence-Calibrated Controller}{section.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}LLM proposal interface}{3}{subsection.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Admission predicates and evidence separation}{3}{subsection.4.2}\protected@file@percent }
+\newlabel{eq:gcode}{{1}{3}{Admission predicates and evidence separation}{equation.4.1}{}}
+\newlabel{eq:gstate}{{2}{3}{Admission predicates and evidence separation}{equation.4.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Provisional and durable queues}{3}{subsection.4.3}\protected@file@percent }
+\newlabel{eq:admission}{{3}{3}{Provisional and durable queues}{equation.4.3}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Observed native terminal code-branch and IPSM state-edge counts for the three motivating targets (mean and sample standard deviation; ten supplied runs per target and label). All runs, including interruptions, are retained. Runtime and provenance differences prevent a matched-horizon causal interpretation. This figure tests the earlier narrative against current observations: it does not assert that all three hypothesized mismatch types were reproduced.}}{4}{figure.1}\protected@file@percent }
+\newlabel{fig:mismatch}{{1}{4}{Observed native terminal code-branch and IPSM state-edge counts for the three motivating targets (mean and sample standard deviation; ten supplied runs per target and label). All runs, including interruptions, are retained. Runtime and provenance differences prevent a matched-horizon causal interpretation. This figure tests the earlier narrative against current observations: it does not assert that all three hypothesized mismatch types were reproduced}{figure.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}State-selection episodes and independent reward}{4}{subsection.4.4}\protected@file@percent }
+\newlabel{eq:reward}{{4}{4}{State-selection episodes and independent reward}{equation.4.4}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Prior work and novelty boundary. This compares mechanisms, not measured performance.}}{5}{table.2}\protected@file@percent }
+\newlabel{tab:novelty}{{2}{5}{Prior work and novelty boundary. This compares mechanisms, not measured performance}{table.2}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Admission predicates relative to the recorded pre-trial snapshot.}}{5}{table.3}\protected@file@percent }
+\newlabel{tab:predicates}{{3}{5}{Admission predicates relative to the recorded pre-trial snapshot}{table.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.5}Discounted productivity estimates}{5}{subsection.4.5}\protected@file@percent }
+\newlabel{eq:update}{{7}{5}{Discounted productivity estimates}{equation.4.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.6}Calibrated scheduling}{5}{subsection.4.6}\protected@file@percent }
+\newlabel{eq:score}{{11}{5}{Calibrated scheduling}{equation.4.11}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Controller contract: $P$ precedes execution; $U/R$ and distinct code/IPSM evidence precede queue disposition. Native saving must not bypass the boundary. Security-oracle artifacts are preserved separately.}}{6}{figure.2}\protected@file@percent }
+\newlabel{fig:architecture}{{2}{6}{Controller contract: $P$ precedes execution; $U/R$ and distinct code/IPSM evidence precede queue disposition. Native saving must not bypass the boundary. Security-oracle artifacts are preserved separately}{figure.2}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Productivity calibration: prediction precedes reward. IPSM state-edge growth is diagnostic and excluded from the main reward.}}{6}{figure.3}\protected@file@percent }
+\newlabel{fig:posterior}{{3}{6}{Productivity calibration: prediction precedes reward. IPSM state-edge growth is diagnostic and excluded from the main reward}{figure.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.7}Intervention policy and optional repair}{6}{subsection.4.7}\protected@file@percent }
+\@writefile{loa}{\contentsline {algocf}{\numberline {1}{\ignorespaces Evidence-gated candidate processing}}{6}{algocf.1}\protected@file@percent }
+\newlabel{alg:admission}{{1}{6}{Calibrated scheduling}{algocf.1}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5}Implementation and Evidence Status}{7}{section.5}\protected@file@percent }
+\newlabel{sec:implementation}{{5}{7}{Implementation and Evidence Status}{section.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Append-only event contract}{7}{subsection.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6}Experimental Protocol}{7}{section.6}\protected@file@percent }
+\newlabel{sec:protocol}{{6}{7}{Experimental Protocol}{section.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}Research questions}{7}{subsection.6.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.2}Five arms and causal comparisons}{7}{subsection.6.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Controller contract versus inspected implementation and available evidence. Source findings describe the current checkout; archive/source identity is not assumed without a commit or binary hash.}}{8}{table.4}\protected@file@percent }
+\newlabel{tab:implementation}{{4}{8}{Controller contract versus inspected implementation and available evidence. Source findings describe the current checkout; archive/source identity is not assumed without a commit or binary hash}{table.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.3}Targets, builds, and resource controls}{8}{subsection.6.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.4}LLM fairness and configuration}{8}{subsection.6.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.5}Mechanism and calibration metrics}{8}{subsection.6.5}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Required logging schema. Each event also includes run ID, schema version, event sequence, and timestamp. Required fields are not claimed to be fully present in the current archive.}}{9}{table.5}\protected@file@percent }
+\newlabel{tab:events}{{5}{9}{Required logging schema. Each event also includes run ID, schema version, event sequence, and timestamp. Required fields are not claimed to be fully present in the current archive}{table.5}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces Confirmatory arm matrix. Repair is disabled in C/D/E. Names specify required configurations, not inferred identities from archive filenames.}}{9}{table.6}\protected@file@percent }
+\newlabel{tab:arms}{{6}{9}{Confirmatory arm matrix. Repair is disabled in C/D/E. Names specify required configurations, not inferred identities from archive filenames}{table.6}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Target/protocol/build matrix. Blank build fields await exact commit, image, coverage, and reset manifests.}}{10}{table.7}\protected@file@percent }
+\newlabel{tab:targets}{{7}{10}{Target/protocol/build matrix. Blank build fields await exact commit, image, coverage, and reset manifests}{table.7}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {8}{\ignorespaces Shared LLM configuration required for B--E. Blank values await the confirmatory freeze; historical settings do not fill these cells.}}{10}{table.8}\protected@file@percent }
+\newlabel{tab:llm}{{8}{10}{Shared LLM configuration required for B--E. Blank values await the confirmatory freeze; historical settings do not fill these cells}{table.8}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.6}Coverage and statistical analysis}{10}{subsection.6.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {7}Available Evidence and Results}{10}{section.7}\protected@file@percent }
+\newlabel{sec:results}{{7}{10}{Available Evidence and Results}{section.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.1}Archive inventory and observation horizon}{10}{subsection.7.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Reserved reliability diagram: pre-update predicted episode productivity versus observed code reward, with bin counts, run-clustered uncertainty, Brier score, ECE, and AUPRC. No conforming calibrated-arm observations are available.}}{11}{figure.4}\protected@file@percent }
+\newlabel{fig:reliability}{{4}{11}{Reserved reliability diagram: pre-update predicted episode productivity versus observed code reward, with bin counts, run-clustered uncertainty, Brier score, ECE, and AUPRC. No conforming calibrated-arm observations are available}{figure.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.2}RQ1: Current alignment observations}{11}{subsection.7.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.3}RQ2: Observed admission records and missing counterfactual}{11}{subsection.7.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.4}RQ3: Scheduling evidence and unfilled causal results}{11}{subsection.7.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.5}RQ5: Recorded costs and interpretation limits}{11}{subsection.7.5}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {9}{\ignorespaces Supplied archive inventory. Completed, SIGABRT, and exit-137 columns refer only to recorded LoopFuzz runs and reproduce the summary labels; exit code 137 is not independent evidence of an out-of-memory failure. Durations are observed fuzzer runtime, in minutes.}}{12}{table.9}\protected@file@percent }
+\newlabel{tab:observed_inventory}{{9}{12}{Supplied archive inventory. Completed, SIGABRT, and exit-137 columns refer only to recorded LoopFuzz runs and reproduce the summary labels; exit code 137 is not independent evidence of an out-of-memory failure. Durations are observed fuzzer runtime, in minutes}{table.9}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {10}{\ignorespaces Exploratory native terminal endpoints (mean $\pm $ sample standard deviation), retaining every supplied summary row, including early terminations. These values are not matched-deadline or causal A--E comparisons.}}{12}{table.10}\protected@file@percent }
+\newlabel{tab:observed_endpoints}{{10}{12}{Exploratory native terminal endpoints (mean $\pm $ sample standard deviation), retaining every supplied summary row, including early terminations. These values are not matched-deadline or causal A--E comparisons}{table.10}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {8}Historical Vulnerability Rediscovery}{12}{section.8}\protected@file@percent }
+\newlabel{sec:cve}{{8}{12}{Historical Vulnerability Rediscovery}{section.8}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.1}Vulnerable/patch-paired benchmark}{12}{subsection.8.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.2}Information control and ground-truth oracles}{12}{subsection.8.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {11}{\ignorespaces Observed schema-v2 logging counts from all 90 supplied LoopFuzz archives. Reject, provisional, and durable are recorded decision labels, not verified post-execution queue membership.}}{13}{table.11}\protected@file@percent }
+\newlabel{tab:observed_log_counts}{{11}{13}{Observed schema-v2 logging counts from all 90 supplied LoopFuzz archives. Reject, provisional, and durable are recorded decision labels, not verified post-execution queue membership}{table.11}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {12}{\ignorespaces Confirmatory final code-branch count / code-branch AUC (branch-hours). Planned runs per target: A/B, 10; C/D/E, 20. Cells await comparable experiments and run-level inference.}}{13}{table.12}\protected@file@percent }
+\newlabel{tab:mainresults}{{12}{13}{Confirmatory final code-branch count / code-branch AUC (branch-hours). Planned runs per target: A/B, 10; C/D/E, 20. Cells await comparable experiments and run-level inference}{table.12}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.3}RQ4 outcomes and censoring}{13}{subsection.8.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {9}Discussion}{13}{section.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.1}What calibration can and cannot repair}{13}{subsection.9.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.2}Cost, nonstationarity, and provider variability}{13}{subsection.9.2}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Reserved code-branch trajectories for A--E under shared instrumentation and a 24-hour horizon. Each target will have its own labeled scale, run-level uncertainty, and incomplete-run accounting. Earlier curves are not reused for the new arms.}}{14}{figure.5}\protected@file@percent }
+\newlabel{fig:trajectories}{{5}{14}{Reserved code-branch trajectories for A--E under shared instrumentation and a 24-hour horizon. Each target will have its own labeled scale, run-level uncertainty, and incomplete-run accounting. Earlier curves are not reused for the new arms}{figure.5}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {13}{\ignorespaces Confirmatory mechanism metrics, reported per target. Numeric cells await joined candidate/descendant evidence.}}{14}{table.13}\protected@file@percent }
+\newlabel{tab:mechanisms}{{13}{14}{Confirmatory mechanism metrics, reported per target. Numeric cells await joined candidate/descendant evidence}{table.13}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Reserved candidate disposition plot: $P/U/R$ failures, provisional/direct durable admission, conversion, expiration, and censoring. Counts must reconcile with the candidate ledger and actual queue state.}}{14}{figure.6}\protected@file@percent }
+\newlabel{fig:dispositions}{{6}{14}{Reserved candidate disposition plot: $P/U/R$ failures, provisional/direct durable admission, conversion, expiration, and censoring. Counts must reconcile with the candidate ledger and actual queue state}{figure.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.3}Decision criteria for unfinished experiments}{14}{subsection.9.3}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {14}{\ignorespaces Recorded LoopFuzz costs: per-run minimum--maximum across all ten supplied runs per target. Total tokens combine prompt and completion tokens; k denotes 1,000 tokens. Final saved snapshots may omit the last reporting window and are not reconciled provider billing.}}{14}{table.14}\protected@file@percent }
+\newlabel{tab:observed_costs}{{14}{14}{Recorded LoopFuzz costs: per-run minimum--maximum across all ten supplied runs per target. Total tokens combine prompt and completion tokens; k denotes 1,000 tokens. Final saved snapshots may omit the last reporting window and are not reconciled provider billing}{table.14}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces Reserved cost-performance comparison: code coverage and CVE recall versus total tokens and measured CPU-hours, with uncertainty. No efficiency frontier is inferred from incomplete usage or unmatched arms.}}{15}{figure.7}\protected@file@percent }
+\newlabel{fig:cost}{{7}{15}{Reserved cost-performance comparison: code coverage and CVE recall versus total tokens and measured CPU-hours, with uncertainty. No efficiency frontier is inferred from incomplete usage or unmatched arms}{figure.7}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {15}{\ignorespaces Optional repair diagnostics. Repair is outside primary causal comparisons; unavailable observations stay blank.}}{15}{table.15}\protected@file@percent }
+\newlabel{tab:repair}{{15}{15}{Optional repair diagnostics. Repair is outside primary causal comparisons; unavailable observations stay blank}{table.15}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {10}Threats to Validity}{15}{section.10}\protected@file@percent }
+\newlabel{sec:threats}{{10}{15}{Threats to Validity}{section.10}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {11}Conclusion}{15}{section.11}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Reserved Kaplan--Meier time-to-trigger curves with risk sets, censoring marks, and a common deadline. Crash-file counts are not converted into rediscovery events.}}{15}{figure.8}\protected@file@percent }
+\newlabel{fig:km}{{8}{15}{Reserved Kaplan--Meier time-to-trigger curves with risk sets, censoring marks, and a common deadline. Crash-file counts are not converted into rediscovery events}{figure.8}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {16}{\ignorespaces Historical vulnerability benchmark template. Six initial slots are reserved; identity, revision, oracle, and validation fields await evidence. Expansion toward twelve is conditional on pilot stability.}}{16}{table.16}\protected@file@percent }
+\newlabel{tab:cve}{{16}{16}{Historical vulnerability benchmark template. Six initial slots are reserved; identity, revision, oracle, and validation fields await evidence. Expansion toward twelve is conditional on pilot stability}{table.16}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {17}{\ignorespaces Historical rediscovery outcomes, to be reported by CVE and arm. Blank cells indicate missing validated vulnerable/patch-paired evidence.}}{16}{table.17}\protected@file@percent }
+\newlabel{tab:cveresults}{{17}{16}{Historical rediscovery outcomes, to be reported by CVE and arm. Blank cells indicate missing validated vulnerable/patch-paired evidence}{table.17}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {18}{\ignorespaces Threats, protocol controls, and remaining evidence limits.}}{16}{table.18}\protected@file@percent }
+\newlabel{tab:threats}{{18}{16}{Threats, protocol controls, and remaining evidence limits}{table.18}{}}
+\bibstyle{elsarticle-num-names}
+\bibdata{references,references_calibration}
+\bibcite{aflnet}{{1}{2020}{{Pham et~al.}}{{Pham, B{"o}hme, and Roychoudhury}}}
+\bibcite{stateafl}{{2}{2022}{{Natella}}{{}}}
+\bibcite{chatafl}{{3}{2024}{{Meng et~al.}}{{Meng, Mirchev, B{"o}hme, and Roychoudhury}}}
+\bibcite{nsfuzz}{{4}{2023}{{Qin et~al.}}{{Qin, Hu, Ma, Zhao, Yin, and Zhang}}}
+\bibcite{sgf_usenix22}{{5}{2022}{{Ba et~al.}}{{Ba, B{"o}hme, Mirzamomen, and Roychoudhury}}}
+\bibcite{fuzz4all_universal_fuzzing_large_2024}{{6}{2024}{{Xia et~al.}}{{Xia, Paltenghi, Tian, Pradel, and Zhang}}}
+\bibcite{llmif_augmented_large_language_2024}{{7}{2024}{{Wang et~al.}}{{Wang, Yu, and Luo}}}
+\bibcite{gramatron_effective_grammar_aware_2021}{{8}{2021}{{Srivastava and Payer}}{{}}}
+\bibcite{carpetfuzz_documentation_2023}{{9}{2023}{{Wang et~al.}}{{Wang, Li, Zhang, and Chen}}}
+\bibcite{profuzzbench_benchmark_stateful_protocol_2021}{{10}{2021}{{Natella and Pham}}{{}}}
+\bibcite{sok_prudent_evaluation_practices_2024}{{11}{2024}{{Schloegel et~al.}}{{Schloegel, Bars, Schiller, Bernhard, Scharnowski, Crump, Ale-Ebrahim, Bissantz, Muench, and Holz}}}
+\bibcite{reliability_benchmarking_2022}{{12}{2022}{{B{"o}hme et~al.}}{{B{"o}hme, Szekeres, and Metzman}}}

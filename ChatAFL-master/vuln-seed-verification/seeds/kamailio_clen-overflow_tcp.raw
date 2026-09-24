@@ -1,0 +1,9 @@
+REGISTER sip:127.0.0.1 SIP/2.0
+Via: SIP/2.0/TCP 127.0.0.1:5068;branch=z9hG4bKtest
+From: <sip:33@127.0.0.1>;tag=seed
+To: <sip:33@127.0.0.1>
+Call-ID: seed-tcp-overflow@127.0.0.1
+CSeq: 1 REGISTER
+Contact: <sip:33@127.0.0.1:5068;transport=tcp>
+Content-Length: 21474836470
+

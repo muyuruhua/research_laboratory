@@ -1,0 +1,15 @@
+OPTIONS * RTSP/1.0
+CSeq: 1
+
+DESCRIBE rtsp://127.0.0.1:8554/matroskaFileTest RTSP/1.0
+CSeq: 2
+Accept: application/sdp
+
+SETUP rtsp://127.0.0.1:8554/matroskaFileTest/track1 RTSP/1.0
+CSeq: 3
+Transport: RTP/AVP;unicast;client_port=42000-42001
+
+SETUP rtsp://127.0.0.1:8554/matroskaFileTest/track1 RTSP/1.0
+CSeq: 4
+Transport: RTP/AVP;unicast;client_port=42000-42001
+

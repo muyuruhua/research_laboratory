@@ -16,6 +16,9 @@
  *   S6  RCPT TO address extension      (SMTP: exim CVE-2023-42116)
  *   S7  AUTH base64 NUL-field absence  (SMTP: exim CVE-2023-42115)
  *   S8  line-end/quote structure       (FTP: proftpd CVE-2023-51713)
+ *   S2c quote-internal escape-run amplification (FTP: escape-decode
+ *       mismatch class; proftpd CVE-2023-51713 OOB-read visibility needs
+ *       ~30K escape pairs to cross an ASAN pool boundary)
  *   S9  consecutive-separator path     (HTTP/DAAP: owntone CVE-2026-26828)
  *   S10 query parameter omission       (HTTP/DAAP: owntone CVE-2026-26829)
  *
@@ -35,6 +38,11 @@ extern uint64_t auth_prefix_restores_havoc;
 extern uint64_t auth_prefix_calls;
 extern uint64_t auth_prefix_found;
 extern uint32_t cve_mutations_applied;
+
+/* S2c escape-amplifier: ablation switch (set from CHATAFL_NO_ESCAPE_AMP in
+ * afl-fuzz.c main) and applied-count telemetry. */
+extern int mut_no_escape_amp;
+extern uint64_t escape_amp_applied;
 
 /* RNG hook. Weak default uses rand(); afl-fuzz.c provides a strong
  * override bound to UR(). Tests provide deterministic sequences. */

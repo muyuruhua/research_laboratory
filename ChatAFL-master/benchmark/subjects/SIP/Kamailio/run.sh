@@ -27,6 +27,30 @@ if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" 
   TARGET_DIR=${TARGET_DIR:-"kamailio"}
   INPUTS=${INPUTS:-${WORKDIR}"/in-sip"}
 
+  # ── KAMAILIO_TCP=1: TCP arm (2026-09-24) ─────────────────────────
+  # The tcp_read_headers Content-Length signed-overflow is only reachable
+  # over TCP. Default (unset/0) keeps the original UDP arm byte-identical
+  # so historical campaign data stays comparable. TCP needs: fork=yes
+  # (no-fork mode never starts tcp_main), no -D (which forces no-fork),
+  # and a wider exec timeout (daemonizing startup exceeds 5 s under
+  # load). Validated: ~28 execs/s, state machine forms, S1 shapes reach
+  # the vulnerable path, log fingerprint confirmed.
+  if [ "${KAMAILIO_TCP:-0}" = "1" ]; then
+    sed -e 's/^fork=no/fork=yes/' \
+        -e 's/^disable_tcp=yes/disable_tcp=no/' \
+        -e 's|^listen=udp:127.0.0.1:5060|listen=udp:127.0.0.1:5060\nlisten=tcp:127.0.0.1:5060|' \
+        ${WORKDIR}/kamailio-basic.cfg > ${WORKDIR}/kamailio-tcp.cfg
+    KAM_NET="-N tcp://127.0.0.1/5060"
+    KAM_CFG="-f ${WORKDIR}/kamailio-tcp.cfg"
+    KAM_EXTRA_TMO="-t 12000+"
+    KAM_NODAEMON=""
+  else
+    KAM_NET="-N udp://127.0.0.1:5060"
+    KAM_CFG="-f ${WORKDIR}/kamailio-basic.cfg"
+    KAM_EXTRA_TMO=""
+    KAM_NODAEMON="-D"
+  fi
+
   #Step-1. Do Fuzzing
   #Move to fuzzing folder
   export KAMAILIO_MODULES="src/modules"
@@ -34,7 +58,7 @@ if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" 
 
   cd $WORKDIR/${TARGET_DIR}
 
-  timeout -k 2s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -o $OUTDIR -N udp://127.0.0.1/5060 $OPTIONS -c ${WORKDIR}/run_pjsip ./src/kamailio -f ${WORKDIR}/kamailio-basic.cfg -L $KAMAILIO_MODULES -Y $KAMAILIO_RUNTIME_DIR -n 1 -D -E
+  timeout -k 2s --preserve-status $TIMEOUT /home/ubuntu/${FUZZER_DIR}/afl-fuzz -d -i ${INPUTS} -o $OUTDIR ${KAM_NET} $OPTIONS ${KAM_EXTRA_TMO} -c ${WORKDIR}/run_pjsip ./src/kamailio ${KAM_CFG} -L $KAMAILIO_MODULES -Y $KAMAILIO_RUNTIME_DIR -n 1 ${KAM_NODAEMON} -E
 
   STATUS=$?
 

@@ -745,11 +745,18 @@ for i in $(seq 1 $RUNS); do
   [[ -n "${CHATAFL_HYPOTHESIS:-}" ]]       && ABLATION_FLAGS+=" -e CHATAFL_HYPOTHESIS=${CHATAFL_HYPOTHESIS}"
   [[ -n "${CHATAFL_NO_REFINEMENT}" ]]      && ABLATION_FLAGS+=" -e CHATAFL_NO_REFINEMENT=1"
   [[ -n "${CHATAFL_NO_FRONTIER}" ]]        && ABLATION_FLAGS+=" -e CHATAFL_NO_FRONTIER=1"
+  [[ -n "${CHATAFL_NO_ESCAPE_AMP}" ]]      && ABLATION_FLAGS+=" -e CHATAFL_NO_ESCAPE_AMP=1"
   [[ -n "${CHATAFL_NO_ADAPTIVE}" ]]        && ABLATION_FLAGS+=" -e CHATAFL_NO_ADAPTIVE=1"
   [[ -n "${CHATAFL_NO_STATE_PROMPT}" ]]    && ABLATION_FLAGS+=" -e CHATAFL_NO_STATE_PROMPT=1"
   [[ -n "${CHATAFL_NO_ADMISSION}" ]]       && ABLATION_FLAGS+=" -e CHATAFL_NO_ADMISSION=1"
   [[ -n "${CHATAFL_ADMISSION_LOG}" ]]      && ABLATION_FLAGS+=" -e CHATAFL_ADMISSION_LOG=${CHATAFL_ADMISSION_LOG}"
   [[ -n "${CHATAFL_ABLATION_THRESHOLD}" ]] && ABLATION_FLAGS+=" -e CHATAFL_ABLATION_THRESHOLD=${CHATAFL_ABLATION_THRESHOLD}"
+
+  # Target-environment switches shared by ALL fuzzer containers (fairness:
+  # environment arms must apply identically to loopfuzz/chatafl/cl1/cl2/aflnet,
+  # unlike the loopfuzz-only ablation flags above).
+  TARGET_ENV_FLAGS=""
+  [[ -n "${KAMAILIO_TCP:-}" ]]             && TARGET_ENV_FLAGS+=" -e KAMAILIO_TCP=${KAMAILIO_TCP}"
 
   # Evidence-controller v2 (paper §五/§七): calibration arm switch and
   # two-tier admission parameters.  Absence = fuzzer defaults (arm D,
@@ -829,6 +836,7 @@ for i in $(seq 1 $RUNS); do
       -e CHATAFL_HYPOTHESIS=1 \
       -e CHATAFL_TARGET_NAME="${DOCIMAGE}" \
       ${ABLATION_FLAGS} \
+      ${TARGET_ENV_FLAGS} \
       ${TOKEN_FLAGS} \
       ${LLM_NET_FLAGS} \
       ${ATTACK_FLAGS} \
@@ -848,6 +856,7 @@ for i in $(seq 1 $RUNS); do
     id=$(docker run --cpus=1 --memory=6g --memory-swap=6g \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
+      ${TARGET_ENV_FLAGS} \
       ${TOKEN_FLAGS} \
       ${LLM_NET_FLAGS} \
       ${MQTT_FLAGS} \
@@ -863,6 +872,7 @@ for i in $(seq 1 $RUNS); do
     id=$(docker run --cpus=1 --memory=6g --memory-swap=6g \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
+      ${TARGET_ENV_FLAGS} \
       ${MQTT_FLAGS} \
       ${MQTT_RUN_FLAGS} \
       ${LLM_NET_FLAGS} \
@@ -877,6 +887,7 @@ for i in $(seq 1 $RUNS); do
     id=$(docker run --cpus=1 --memory=6g --memory-swap=6g \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
+      ${TARGET_ENV_FLAGS} \
       ${MQTT_FLAGS} \
       ${MQTT_RUN_FLAGS} \
       ${LLM_NET_FLAGS} \
@@ -888,7 +899,7 @@ for i in $(seq 1 $RUNS); do
         cd /home/ubuntu/chatafl-cl2 && make clean && make -j\$(nproc) && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   else
-    id=$(docker run --cpus=1 --memory=6g --memory-swap=6g ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${TOKEN_FLAGS} ${LLM_NET_FLAGS} ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
+    id=$(docker run --cpus=1 --memory=6g --memory-swap=6g ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${TARGET_ENV_FLAGS} ${TOKEN_FLAGS} ${LLM_NET_FLAGS} ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   fi
   require_container_id "$id" "fuzz container run #${i}"
   cids+=("$id")

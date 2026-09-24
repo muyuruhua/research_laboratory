@@ -3062,6 +3062,10 @@ static void run_config_log(const char *phase, const char *termination_reason) {
   json_object_object_add(j, "no_adaptive", json_object_new_boolean(ablation_no_adaptive));
   json_object_object_add(j, "no_state_prompt", json_object_new_boolean(ablation_no_state_prompt));
   json_object_object_add(j, "hypothesis", json_object_new_boolean(hypothesis_mode != 0));
+  /* S2c escape-amplifier (2026-09-24): arm-reconstructable per the same
+   * rule — without this field a run-config cannot tell whether the S2c
+   * mutation operator was active. */
+  json_object_object_add(j, "no_escape_amp", json_object_new_boolean(mut_no_escape_amp != 0));
   /* Calibration + two-tier admission parameters. */
   admission_json_add_f64(j, "cal_gamma", cal_gamma);
   admission_json_add_f64(j, "cal_epsilon", cal_epsilon);
@@ -5760,6 +5764,38 @@ MP_MULTI_DONE:
 
   child_force_killed = 0;  /* Fix-14a: reset before each termination attempt */
   child_term_sent = 0;     /* Fix: reset before each termination attempt */
+
+  /* Crash-grace wait (2026-09-23): when the server stopped responding
+   * mid-sequence (likely_buggy) it may be mid-abort with an ASAN report
+   * still being written.  SIGTERMing it now races the report; the death
+   * then lands in run_target's child_term_sent branch and — because the
+   * capture file has not yet received the "ERROR: AddressSanitizer" line
+   * — the genuine crash is misclassified as a teardown artifact
+   * (FAULT_NONE).  Empirically this discarded 38/38 SIGABRT crashes of
+   * proftpd CVE-2023-51713 trigger inputs under load.  Wait a bounded
+   * 1 s BEFORE any SIGTERM for the child to die on its own — a child
+   * that dies here leaves child_term_sent clear, so the signal read in
+   * run_target is classified as the genuine crash.
+   *
+   * Transport-gated (2026-09-24): TCP only, 1 s.  A 200 ms budget was
+   * empirically insufficient at ~70-container fleet load (2 crash
+   * candidates re-tagged as teardown races at 200 ms vs 0 at 1 s —
+   * ASAN abort completion can exceed 200 ms under CPU contention).
+   * EOF cannot be used as the gate — in the racy window the server is
+   * still parsing (no FIN yet, the fuzzer's ms-scale poll expired
+   * first), so "observed EOF" is false exactly when the wait is needed.
+   * For UDP there is no EOF at all and silent drops (kamailio drops
+   * malformed SIP without any response) are indistinguishable from a
+   * crash at this moment — only time separates them — so UDP would pay
+   * the budget on every malformed exec.  UDP therefore keeps the
+   * original no-wait behaviour (zero throughput regression vs the
+   * pre-fix fuzzer); the wait is additionally gated on likely_buggy so
+   * fully-responsive TCP execs (the common case) pay nothing. */
+  if (likely_buggy && child_pid > 0 && net_protocol == PRO_TCP) {
+    int cgw;
+    for (cgw = 0; cgw < 100 && kill(child_pid, 0) == 0; cgw++)
+      usleep(10000);
+  }
 
   if (terminate_child && (child_pid > 0)) {
     /* Fix: only mark termination if the child is still alive.  A server
@@ -10966,6 +11002,7 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
              "oracle_align_mismatch_skips : %llu\n"
              "oracle_abstained_saved : %llu\n"
              "cve_mutations_applied : %llu\n"
+             "escape_amp_applied    : %llu\n"
              "auth_prefix_restores_havoc : %llu\n"
              "auth_prefix_calls : %llu\n"
              "auth_prefix_found : %llu\n"
@@ -10985,6 +11022,7 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)oracle_align_mismatch_skips,
           (unsigned long long)oracle_abstained_saved,
           (unsigned long long)cve_mutations_applied,
+          (unsigned long long)escape_amp_applied,
           (unsigned long long)auth_prefix_restores_havoc,
           (unsigned long long)auth_prefix_calls,
           (unsigned long long)auth_prefix_found,
@@ -18695,6 +18733,10 @@ int main(int argc, char **argv)
   if (getenv("CHATAFL_NO_FRONTIER")) {
     ablation_no_frontier = 1;
     OKF("ABLATION: Frontier bonus + error penalty DISABLED");
+  }
+  if (getenv("CHATAFL_NO_ESCAPE_AMP")) {
+    mut_no_escape_amp = 1;
+    OKF("ABLATION: S2c quote-internal escape-run amplifier DISABLED");
   }
   /* Semantic-oracle sampling rate (default 1 = every execution).  The indexed
    * precise oracle is cheap; this is an optional safety valve for very slow

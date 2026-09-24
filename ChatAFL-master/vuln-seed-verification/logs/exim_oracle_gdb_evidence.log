@@ -1,0 +1,19 @@
+Breakpoint 1 at 0x69b8f8: file external.c, line 82.
+warning: Error disabling address space randomization: Operation not permitted
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib/x86_64-linux-gnu/libthread_db.so.1".
+220 75d05758d510 ESMTP Exim 4.96-221-d6a5a05b8-XX Tue, 22 Sep 2026 05:59:47 +0000
+
+Breakpoint 1, auth_external_server (ablock=0x625000005a18, data=0x62d000004422 "aTEAaTIAaTMAaTQ=") at external.c:82
+82	auth_external_options_block * ob = (auth_external_options_block *)ablock->options_block;
+Hardware watchpoint 2: auth_vars[4]
+
+Hardware watchpoint 2: auth_vars[4]
+
+Old value = (const uschar *) 0x3e8 <error: Cannot access memory at address 0x3e8>
+New value = (const uschar *) 0x621000000440 ""
+auth_external_server (ablock=0x625000005a18, data=<optimized out>) at external.c:108
+108	  expand_nstring[++expand_nmax] = s;
+#0  auth_external_server (ablock=0x625000005a18, data=<optimized out>) at external.c:108
+#1  0x0000000000601462 in smtp_in_auth (au=0x625000005a18, smtp_resp=0x7fed04d72140, errmsg=0x7fed04d72160) at smtp_in.c:3388
+#2  0x00000000005fd5e4 in smtp_setup_msg () at smtp_in.c:3802
