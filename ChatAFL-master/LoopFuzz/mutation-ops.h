@@ -19,6 +19,10 @@
  *   S2c quote-internal escape-run amplification (FTP: escape-decode
  *       mismatch class; proftpd CVE-2023-51713 OOB-read visibility needs
  *       ~30K escape pairs to cross an ASAN pool boundary)
+ *   S12 lexer-killer token injection (HTTP-like: lexer error-recovery
+ *       recursion class; forked-daapd SMARTPL ANTLR deadlock)
+ *   S12b/S13 tail arms: header-value-scope lexer-killer + nesting-
+ *       imbalance ('\\"'xN / '"'xN / '([{'xN) for text protocols
  *   S9  consecutive-separator path     (HTTP/DAAP: owntone CVE-2026-26828)
  *   S10 query parameter omission       (HTTP/DAAP: owntone CVE-2026-26829)
  *
@@ -43,6 +47,22 @@ extern uint32_t cve_mutations_applied;
  * afl-fuzz.c main) and applied-count telemetry. */
 extern int mut_no_escape_amp;
 extern uint64_t escape_amp_applied;
+
+/* S12 lexer-killer: ablation switch (CHATAFL_NO_LEXKILL) + telemetry. */
+extern int mut_no_lexkill;
+extern uint64_t lexkill_applied;
+
+/* S13 nesting-imbalance: ablation switch (CHATAFL_NO_NESTIMB) + telemetry. */
+extern int mut_no_nestimb;
+extern uint64_t nestimb_applied;
+
+/* S1b Transport saturation (CHATAFL_NO_TRANSPORTSAT) + counter */
+extern int mut_no_transportsat;
+extern uint64_t transportsat_applied;
+
+/* S15 tunnel-switch (CHATAFL_NO_TUNNELSWITCH) + counter */
+extern int mut_no_tunnelswitch;
+extern uint64_t tunnelswitch_applied;
 
 /* RNG hook. Weak default uses rand(); afl-fuzz.c provides a strong
  * override bound to UR(). Tests provide deterministic sequences. */

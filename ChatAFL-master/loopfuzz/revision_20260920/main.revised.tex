@@ -1,0 +1,832 @@
+% !TEX root = main.revised.tex
+% !TEX program = latexmk
+% Reproducible build (including BibTeX): bash build_revised.sh
+% Revision 2026-09-20: C_two_papers/first_paper.md.
+% Empirical source: Key_Experiment. Blank numeric cells mean unavailable evidence.
+% Original manuscript/PDF preserved in revision_20260920/main.before.{tex,pdf}.
+\pdfminorversion=7
+\documentclass[final,5p,times,number]{elsarticle}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage[ruled,vlined,linesnumbered]{algorithm2e}
+\usepackage{graphicx,booktabs,tabularx,array,multirow}
+\usepackage{xcolor,microtype}
+% Vector Latin Modern typewriter without overriding the Times body/math.
+\renewcommand{\ttdefault}{lmtt}
+\usepackage{supertabular,capt-of,stfloats}
+% Balance the final bibliography page without manual column/page breaks.
+\usepackage{flushend}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,calc}
+\usepackage[hidelinks]{hyperref}
+\hypersetup{pdfauthor={Ketang Chen and Xiaolei Ren},
+pdftitle={When Protocol States Mislead: Evidence-Gated Admission and Online Feedback Calibration for LLM-Assisted Stateful Fuzzing}}
+\biboptions{sort&compress}
+\journal{Journal of Network and Computer Applications}
+\emergencystretch=2em
+\newcommand{\missing}{\mbox{}}
+\newcommand{\gcode}{G_{\mathrm{code}}}
+\newcommand{\gstate}{G_{\mathrm{state}}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcommand{\figref}[1]{Fig.~\ref{#1}}
+\setlength{\tabcolsep}{4pt}
+
+% Keep body/math in the Times family selected by elsarticle; figures use sans serif.
+\renewcommand{\topfraction}{0.92}
+\renewcommand{\bottomfraction}{0.8}
+\renewcommand{\textfraction}{0.06}
+\renewcommand{\floatpagefraction}{0.92}
+\renewcommand{\dbltopfraction}{0.92}
+\renewcommand{\dblfloatpagefraction}{0.92}
+\setcounter{topnumber}{3}
+\setcounter{bottomnumber}{2}
+\setcounter{totalnumber}{5}
+\setcounter{dbltopnumber}{3}
+\setlength{\textfloatsep}{12pt plus 2pt minus 2pt}
+\setlength{\dbltextfloatsep}{12pt plus 2pt minus 2pt}
+\setlength{\floatsep}{10pt plus 2pt minus 2pt}
+\setlength{\dblfloatsep}{10pt plus 2pt minus 2pt}
+\makeatletter
+\setlength{\@fptop}{0pt}
+\setlength{\@dblfptop}{0pt}
+\setlength{\@fpsep}{8pt}
+\setlength{\@dblfpsep}{8pt}
+\makeatother
+% Keep bibliography type at 9pt; compact leading avoids a nearly empty final page.
+\renewcommand{\bibfont}{\fontsize{9}{10}\selectfont\raggedright\urlstyle{same}}
+\setlength{\bibsep}{0pt}
+
+\begin{document}
+\raggedbottom
+\begin{frontmatter}
+\title{When Protocol States Mislead: Evidence-Gated Admission and Online Feedback Calibration for LLM-Assisted Stateful Fuzzing}
+\author[inst1]{Ketang Chen}
+\ead{3250006913@student.must.edu.mo}
+\author[inst1]{Xiaolei Ren\corref{cor1}}
+\ead{xlren@must.edu.mo}
+\cortext[cor1]{Corresponding author: Xiaolei Ren.}
+\affiliation[inst1]{organization={Macau University of Science and Technology},
+addressline={Avenida Wai Long, Taipa},city={Macau},country={China}}
+\begin{abstract}
+Response-derived states provide inexpensive scheduling feedback for network protocol fuzzing, but state-space expansion need not indicate progress through program code. Large language models (LLMs) introduce another source of uncertain proposals: a plausible request can consume long-term mutation resources without yielding useful executions. We present LoopFuzz as an evidence-calibration controller with two complementary mechanisms. Execute-before-promote admission separates structural validity, response acceptability, and state reachability from independent code and state novelty. Candidates with only state novelty receive bounded provisional validation; durable promotion requires code evidence. Online state-productivity calibration uses discounted Beta--Bernoulli updates at state-selection episodes and combines Thompson samples with frontier exploration. It estimates the usefulness of an observed state proxy, without attempting to recover semantic protocol states. We specify five experimental arms that separate admission from scheduling calibration under matched model policies and resource ceilings, together with information-controlled historical vulnerability rediscovery. The nine-target archive contains AFLNet, ChatAFL, benchmark LoopFuzz, direct-admission LoopFuzz, and calibrated LoopFuzz runs, together with two small gamma sensitivity groups. Run counts and horizons are heterogeneous: some target-arm groups have fewer than ten runs or missing archives, while others contain additional attempts. We report recoverable endpoints and AUCs with observed n, leave unavailable values blank, and do not convert these descriptive results into causal admission or calibration claims. Four vulnerability dossiers add replay evidence with explicit log/report provenance, including a recorded ProFTPD patch differential; controlled rediscovery benefits remain unmeasured.
+\end{abstract}
+\begin{keyword}
+Stateful protocol fuzzing \sep Response-derived state feedback \sep Evidence-gated admission \sep Provisional queue \sep Online productivity calibration
+\end{keyword}
+\end{frontmatter}
+
+\section{Introduction}
+Stateful protocol fuzzing must discover useful interaction sequences as well as useful message contents. A server can accept a request only after earlier exchanges establish a session, authenticate a client, or create a resource. AFLNet uses responses to construct an inferred protocol state machine (IPSM), making protocol-visible feedback available without a target-specific internal-state extractor~\cite{aflnet}. This deployment advantage comes with an abstraction boundary: a response code or sequence is evidence about observable behavior, rather than an identifier of the server's complete semantic state.
+
+StateAFL already identifies limitations of response-derived state abstractions and uses memory observations to infer server states~\cite{stateafl}. The fact that responses can misrepresent internal progress is therefore established background. Our question is how a fuzzer retaining a response-visible abstraction should decide, during a campaign, whether a particular state signal is useful enough to justify further exploration. A new IPSM state edge can accompany a previously unseen code branch, reproduce an already explored rejection path, or distinguish responses after the measured code surface has saturated. These outcomes should not receive identical evidential weight.
+
+LLM-assisted protocol fuzzing makes this distinction consequential for queue management. ChatAFL demonstrates that language models can derive protocol structures and propose interaction sequences~\cite{chatafl}. A generated request is nevertheless a hypothesis about both message structure and live session conditions. If a proposal is retained indefinitely because it produces a new response-derived state, the fuzzer may repeatedly mutate an input whose apparent novelty has little downstream code value. Durable queue membership represents a continuing allocation of execution resources.
+
+Three target families motivate the investigation. Forked-daapd exposes DAAP/DACP behavior through HTTP status responses, so response distinctions may overstate useful code progress. Lighttpd1 can execute different code paths under the same HTTP status, so response novelty may understate code progress. LightFTP motivates examining continuing IPSM growth after code-coverage saturation. These are hypotheses inherited from earlier development observations, not conclusions imposed on the present archive. Section~\ref{sec:motivation} separates them from the available measurements.
+
+LoopFuzz addresses this problem through evidence-gated admission and online state-productivity calibration. It first checks a proposal's structure, then executes a bounded trial and separates response acceptability, state reachability, code novelty, and IPSM novelty. Code-supported candidates can enter the durable queue. State-only candidates receive a provisional validation budget and must earn durable promotion through subsequent code evidence. At the scheduling layer, a discounted productivity estimate conditions investment on the observed relationship between selected response states and later code progress.
+
+This work makes three contributions, with their current evidence status stated explicitly.
+\begin{enumerate}
+\item \textbf{Evidence-gated queue admission.} We specify an execute-before-promote controller that distinguishes reject, provisional, and durable outcomes. It separates state novelty from code evidence and makes the lifetime and descendant cost of provisional entries auditable.
+\item \textbf{Online calibration of state productivity.} We formulate response-state utility as the probability of code progress in a bounded state-selection episode. Discounted Beta--Bernoulli updates and Thompson sampling instantiate the controller; these established estimation and selection methods are not claimed as new algorithms.
+\item \textbf{A controlled empirical framework with partial evidence.} We define candidate-level and episode-level measurements, five arms, launch accounting, and information-controlled rediscovery on vulnerable/patch-paired targets. We audit the supplied archive, report four vulnerability replay dossiers with their evidence limits, and identify the missing evidence for causal admission and calibration claims.
+\end{enumerate}
+The available evidence does not justify describing the third contribution as a completed five-arm evaluation. Preserving this distinction allows the design, implementation, and later experiments to be evaluated against the same explicit contract.
+
+\section{Background and Motivation}
+\label{sec:motivation}
+\subsection{Response-visible state and independent code feedback}
+Let $\mathcal{M}_t=(Q_t,\widehat{\Delta}_t,q_0)$ be the IPSM observed by time $t$, where $Q_t$ contains response-derived state identifiers, $\widehat{\Delta}_t\subseteq Q_t\times Q_t$ contains observed IPSM state edges, and $q_0$ denotes the initial connection state. The abstraction can alias different internal states and separate executions that reach the same code. It can also depend on history, asynchronous replies, and reset behavior. It is not assumed deterministic or semantically complete.
+
+Let $\mathcal{B}_t$ be the covered code-branch set under a fixed instrumentation and replay pipeline. An IPSM state-edge increment changes $\widehat{\Delta}_t$; a code-branch increment changes $\mathcal{B}_t$. These objects have distinct units. An AFL bitmap observation must also distinguish a newly encountered code edge from a hit-count bucket change. Neither bitmap slots nor response-state identifiers are interchangeable with source-level code branches.
+
+\subsection{Three falsifiable mismatch cases}
+Table~\ref{tab:boundary} defines the three motivating cases; \figref{fig:mismatch} shows the corresponding observations available from the supplied archive. Establishing a mismatch mechanism requires comparable builds, a shared observation horizon, and execution-level or time-resolved evidence. Endpoint differences alone do not establish which state caused a difference. The partial archive must be allowed to contradict the earlier negative-target narrative.
+
+\begin{table*}[!tbp]
+\centering\small
+\caption{Motivating mismatch hypotheses and their present evidential boundary.}
+\label{tab:boundary}
+\begin{tabularx}{\textwidth}{l Y Y Y}
+\toprule
+Target & Hypothesis & Required observation & Current interpretation \\
+\midrule
+Forked-daapd & Overestimation: IPSM state-edge growth without downstream code gain. & Selected-state episodes with growing IPSM structure and low code reward. & The new archive does not reproduce the older endpoint code regression. \\
+Lighttpd1 & Underestimation: code exploration within a shallow response abstraction. & Code-branch gain with little IPSM state-edge gain, joined to executions. & Both native endpoint metrics increase; their aggregate changes do not establish hidden productive states. \\
+LightFTP & Saturation mismatch: response novelty persists after code progress plateaus. & Aligned code-branch and IPSM state-edge trajectories before and after saturation. & Near-equal native code endpoints motivate the test; current-build trajectories are still required. \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\begin{figure*}[!tbp]
+\centering\includegraphics[width=0.92\textwidth]{revision_20260920/native_endpoints_filled.pdf}
+\caption{Observed native terminal code-branch and IPSM state-edge counts for the three motivating targets (mean and sample standard deviation; observed run counts are labeled; nominal target $N=10$). All runs, including interruptions, are retained. Runtime and provenance differences prevent a matched-horizon causal interpretation. This figure tests the earlier narrative against current observations: it does not assert that all three hypothesized mismatch types were reproduced.}
+\label{fig:mismatch}
+\end{figure*}
+
+The desired controller must accommodate both overestimation and underestimation. Rejecting every state-only candidate could lose useful bridges; promoting every such candidate would treat an imperfect proxy as sufficient evidence for permanent resource allocation. A provisional queue expresses the intermediate conclusion that an input deserves limited descendant validation while its longer-term value remains unproven.
+
+The scope is textual or semi-textual request-response protocols with usable parsers, response extractors, and code feedback. Response-visible state extraction avoids a target-specific internal-state adapter, but the complete controller remains greybox because productivity requires code feedback. It is not a pure black-box system. Encrypted or opaque binary protocols require suitable construction, response, and code-observation adapters before evaluation.
+
+\section{Related Work and Novelty Boundary}
+Stateful greybox fuzzing studies how to expose, infer, and schedule protocol state~\cite{aflnet,stateafl,nsfuzz,sgf_usenix22}. AFLNet supplies a response-derived IPSM, whereas StateAFL and NSFuzz use different internal observations. LoopFuzz retains the response-visible interface and studies its instrumental reliability under an independent code-progress criterion. It does not claim to be the first system to identify state aliasing or misleading responses.
+
+LLM-assisted generation addresses structured inputs and interaction histories~\cite{chatafl,fuzz4all_universal_fuzzing_large_2024,llmif_augmented_large_language_2024}. Grammar-aware and documentation-guided methods likewise improve input structure~\cite{gramatron_effective_grammar_aware_2021,carpetfuzz_documentation_2023}. Better proposals still need execution evidence before acquiring long-term queue resources. Our controlled ChatAFL comparison preserves its scheduling lineage rather than replacing its scheduler.
+
+State and seed scheduling already use adaptive resource allocation. The Bandit's States studies bandit-based protocol-state selection~\cite{bandits_states2023}; Zhang et al. study seed scheduling with Thompson sampling~\cite{zhang2026thompson}; SSGFuzz studies state significance in protocol fuzzing~\cite{ssgfuzz2026}. These systems delimit the novelty claim: a bandit or productivity score is not itself a contribution. The distinction here is the combination of a response-derived proxy, an independent code-progress target, two-tier LLM-candidate admission, and auditable episode evidence.
+
+Benchmark methodology requires repeated trials, comparable instrumentation, explicit budgets, and careful failure interpretation~\cite{profuzzbench_benchmark_stateful_protocol_2021,sok_prudent_evaluation_practices_2024,reliability_benchmarking_2022}. Historical vulnerability benchmarks such as Magma~\cite{magma2020} motivate distinguishing execution reaching bug-related code from execution satisfying a trigger condition. We adopt that distinction for network-reachable vulnerable/patch pairs; crash-file counts are not the unit of security success.
+
+\begin{table*}[!tbp]
+\centering\small
+\caption{Prior work and novelty boundary. This compares mechanisms, not measured performance.}
+\label{tab:novelty}
+\begin{tabularx}{\textwidth}{l Y Y}
+\toprule
+Prior work & Established focus & Present boundary \\
+\midrule
+AFLNet; StateAFL; NSFuzz & Response-derived or internal-state feedback. & Calibrate a retained response proxy without claiming semantic-state recovery. \\
+ChatAFL; LLM synthesis & Protocol-informed message/sequence proposals. & Execute-before-promote and bounded provisional validation. \\
+The Bandit's States~\cite{bandits_states2023} & Bandit-based protocol-state selection. & Bandit formulation is prior art; independent reward and queue evidence are the focus. \\
+Zhang et al.~\cite{zhang2026thompson} & Seed scheduling using Thompson sampling. & Beta estimation and Thompson sampling are reused components. \\
+SSGFuzz~\cite{ssgfuzz2026} & State-significance-guided protocol fuzzing. & Distinguish state importance from calibration against code productivity. \\
+Magma~\cite{magma2020}; evaluation methodology & Ground-truth bug conditions and repeated evaluation. & Information-controlled network rediscovery with minimal security-patch pairs. \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\section{Evidence-Calibrated Controller}
+\label{sec:design}
+This section specifies the controller contract. Section~\ref{sec:implementation} identifies where the inspected implementation and archive do not yet satisfy it. A mathematical design rule is not evidence that a completed campaign obeyed that rule.
+
+\subsection{LLM proposal interface}
+The model receives permitted RFC fragments, seed traces, and observed interaction summaries and returns candidate requests or bounded scheduling hints. Each candidate has a persistent identifier, source state, intended target/frontier, and links to its prompt and raw reply. Message-field hypotheses remain proposals rather than verified protocol grammars.
+
+The information policy excludes CVE identifiers, security advisories, exploit inputs, and patch contents. It fixes which documentation and live responses may be supplied. Identical information policy does not imply identical prompt bytes after adaptive campaigns diverge; prompt and reply hashes expose that distinction.
+
+Outputs that propose requests pass through admission. Outputs that only guide scheduling require schema, state-ID, and seed-ID checks and cannot insert durable inputs. Parsing or transport failure does not create a positive admission decision. All attempts, retries, failures, and successful replies enter the declared call/token accounting.
+
+\subsection{Admission predicates and evidence separation}
+For candidate $x$, $P(x)$ checks schema, message structure, required fields, lengths, and terminators before execution. A bounded trial then evaluates response acceptability $U(x)$ and reachability $R(x)$: arrival at a declared target/frontier or escape from a recorded rejection sink. Table~\ref{tab:predicates} gives operational evidence and required reason codes.
+
+HTTP/FTP 4xx/5xx classes are rejection priors, not a universal semantic definition. An adapter must specify exceptions before a run and retain the response and reason code. Timeout, reset, disconnect, or an unparseable response gives no positive $U$ evidence. A valid response alone is insufficient for $R$. Security-oracle artifacts are retained independently even when normal request admission fails.
+
+Gain is split into
+\begin{align}
+\gcode(x)&=\mathbf{1}\{\text{new code coverage or a favored}\nonumber\\
+&\hspace{18mm}\text{code-coverage entry}\},\label{eq:gcode}\\
+\gstate(x)&=\mathbf{1}\{\text{new IPSM node, state edge, or path}\}.\label{eq:gstate}
+\end{align}
+Favored status must be grounded in code coverage; merely being queued or state-novel does not qualify. Source-level code branches are the main evaluation surface. If runtime instrumentation observes code edges instead, that reward definition must be frozen and reported separately. Hit-count novelty is a separate sensitivity condition. Pre-trial coverage and IPSM snapshots establish which gains are new.
+
+\begin{table*}[!tbp]
+\centering\small
+\caption{Admission predicates relative to the recorded pre-trial snapshot.}
+\label{tab:predicates}
+\begin{tabularx}{\textwidth}{l Y Y Y}
+\toprule
+Predicate & Positive evidence & Example failure & Required audit fields \\
+\midrule
+$P$ & Schema and local structural checks pass. & Missing field, invalid length or delimiter. & Candidate ID, parser/schema version, reason, hypothesis hash. \\
+$U$ & Adapter-defined acceptable response. & Rejection, timeout, reset, drop, unparseable reply. & Response code/hash, adapter, flags, exception rule. \\
+$R$ & Target/frontier reached or documented sink escape. & Repeats a sink or misses the destination. & Source, intended target, observed state sequence. \\
+$\gcode$ & New code branch/code edge or code-supported favored entry. & IPSM-only novelty. & Pre/post code observations, novelty class, favored reason. \\
+$\gstate$ & New IPSM node, state edge, or path. & Known response-state structure. & Pre/post IPSM observations and new transitions. \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\subsection{Provisional and durable queues}
+Let $Q_{\mathrm{prov}}$ contain temporary candidates and $Q_{\mathrm{dur}}$ contain long-term mutation seeds. Admission has three outcomes:
+\begin{equation}
+D(x)=
+\begin{cases}
+\mathrm{durable}, & P\land U\land R\land\gcode,\\
+\mathrm{provisional}, & P\land U\land R\land\neg\gcode\land\gstate,\\
+\mathrm{reject}, & \text{otherwise}.
+\end{cases}\label{eq:admission}
+\end{equation}
+IPSM novelty alone is never sufficient for durable promotion. These logical conditions do not assume statistical independence among predicates.
+
+A provisional entry receives at most $H=64$ descendant executions and a local validation deadline of 30 seconds, whichever is exhausted first; the proposed live provisional capacity is 64. These initial settings are checked in the pilot and frozen before formal runs. Budget checks occur before each descendant execution. Exhaustion expires the entry from active scheduling while preserving its audit record. Campaign termination before the validation horizon is censoring, not unproductive expiration.
+
+A descendant supplying qualifying code evidence permits promotion of the replayable parent sequence and productive descendant, subject to the same structural, response, and reachability checks. The record identifies the first productive descendant and the candidate whose status changes. A global code-discovery event is credited once through execution/lineage IDs, not repeatedly to multiple ancestors.
+
+Productivity estimates select where to propose and continue exploration; they do not independently relax Equation~\ref{eq:admission}. Fixed and calibrated arms use identical admission rules and provisional budgets. Calibration thus affects admission outcomes indirectly through exploration opportunities, preserving the causal scheduling comparison.
+
+\begin{figure*}[!tbp]
+\centering
+\begin{tikzpicture}[>=Latex,font=\small,
+box/.style={draw,rounded corners,align=center,text width=26mm,minimum height=12mm,inner sep=3pt},
+arr/.style={->,thick}]
+\node[box,fill=blue!6] (llm) at (0,0) {LLM proposal};
+\node[box] (p) at (3,0) {Structural\\check $P$};
+\node[box] (trial) at (6,0) {Bounded trial\\then $U,R$};
+\node[box,fill=blue!6] (gain) at (9,0) {Separate\\$\gcode,\gstate$};
+\node[box,fill=green!8] (dur) at (12.7,1.4) {Durable queue\\code evidence};
+\node[box,fill=orange!10] (prov) at (12.7,-.6) {Provisional queue\\state-only evidence};
+\node[box,fill=red!6] (rej) at (6,-2.3) {Reject / expire\\preserve audit};
+\draw[arr] (llm)--(p);
+\draw[arr] (p)--(trial);
+\draw[arr] (trial)--(gain);
+\draw[arr] (gain.east)--(dur.west);
+\draw[arr] (gain.east)--(prov.west);
+\draw[arr] (p.south)|-(rej.west);
+\draw[arr] (trial.south)--(rej.north);
+\draw[arr] (gain.south)|-(rej.east);
+\draw[arr] (prov.south)|-node[pos=.25,right]{budget exhausted}(rej.east);
+\draw[arr] (prov.north)--node[right]{code gain}(dur.south);
+\end{tikzpicture}
+\caption{Controller contract: $P$ precedes execution; $U/R$ and distinct code/IPSM evidence precede queue disposition. Native saving must not bypass the boundary. Security-oracle artifacts are preserved separately.}
+\label{fig:architecture}
+\end{figure*}
+
+\subsection{State-selection episodes and independent reward}
+An episode begins when the scheduler selects response-derived state $s$ and a seed capable of reaching it. It receives one fixed execution-energy budget. Individual executions within the episode do not generate repeated posterior updates. Mutation counts, reset failures, elapsed time, and budget exhaustion are logged. Infrastructure-interrupted episodes are incomplete, rather than silently assigned reward zero.
+
+For completed episode $t$ targeting $s_t$, let $\Delta B_t$ count previously unseen code branches discovered within that episode. The main reward is
+\begin{equation}
+r_t=\mathbf{1}\{\Delta B_t>0\}.
+\label{eq:reward}
+\end{equation}
+A declared code-edge instrumentation variant is admissible, but IPSM novelty is excluded. Favored descendants are a secondary sensitivity reward. Equal energy prevents a state appearing more productive merely because it receives more executions. Trial execution, ordinary mutation, and provisional validation use distinct event types to avoid duplicate updates.
+
+$\theta_s$ denotes the probability of positive code reward conditional on selecting $s$ under the episode policy and current campaign phase. It is instrumental utility, not the probability that $s$ is a true semantic state. $U$ continues to mean response acceptability; utility is never denoted $U(s)$.
+
+\subsection{Discounted productivity estimates}
+Each state starts with $\alpha_s=\beta_s=1$ and
+\begin{equation}
+\theta_s\sim\operatorname{Beta}(\alpha_s,\beta_s),\qquad
+\widehat{\theta}_{s,t}^{\,\mathrm{pre}}
+=\frac{\alpha_{s,t}}{\alpha_{s,t}+\beta_{s,t}}.
+\end{equation}
+For a completed selected-state episode:
+\begin{align}
+\alpha_s&\leftarrow1+\gamma(\alpha_s-1)+r_t,\\
+\beta_s&\leftarrow1+\gamma(\beta_s-1)+(1-r_t).
+\label{eq:update}
+\end{align}
+The proposed discount is $\gamma=0.995$, with sensitivity values $\{0.99,0.995,1.0\}$. Parameters are frozen after the pilot and before inspecting formal results. At $\gamma=1$, updates reduce to cumulative Beta--Bernoulli counts. For $\gamma<1$, excess prior counts are discounted to respond to changing productivity as coverage saturates.
+
+The term productivity posterior denotes this discounted working model. With discounting it is not the exact posterior of a stationary Bernoulli process. Discounting occurs on completed episodes for the selected state; unselected states do not automatically age in wall-clock time. The update clock and cold start are therefore explicit applicability limits.
+
+Every calibration metric uses the pre-update mean recorded before reward. Post-update predictions would leak the outcome into their own evaluation. Thompson samples are recorded separately and are not substituted for predicted Bernoulli probabilities in reliability calculations.
+
+\subsection{Calibrated scheduling}
+The topology term favors underexplored observed states:
+\begin{equation}
+F(s)=
+\begin{cases}
+4,&s\text{ is newly reachable or }\deg^+(s)\leq1,\\
+2,&1<\deg^+(s)\leq3,\\
+1,&\deg^+(s)>3.
+\end{cases}
+\end{equation}
+Only reachable states with eligible seeds participate. $\deg^+(s)$ counts outgoing IPSM state edges, not code branches. Let $B(s)$ denote the inherited base weight shared by C, D, and E. Define
+\begin{equation}
+\operatorname{Frontier}(s)=B(s)F(s).
+\end{equation}
+Keeping this factor and any warm-up policy fixed prevents calibration from simultaneously changing the baseline scheduler. Using the Thompson-sampling principle~\cite{thompson1933}, draw
+\begin{equation}
+\widetilde{\theta}_s\sim\operatorname{Beta}(\alpha_s,\beta_s)
+\end{equation}
+and calculate
+\begin{equation}
+S(s)=\operatorname{Frontier}(s)[\epsilon+(1-\epsilon)\widetilde{\theta}_s],
+\qquad\epsilon=0.1.
+\label{eq:score}
+\end{equation}
+Select a state with probability proportional to $S(s)$, recording the pseudorandom seed. This is Thompson-sampled weighted selection, not an argmax policy. Under a finite eligible set, the positive floor gives nonzero selection probability, not a fixed number of selections.
+
+The fixed-policy comparator retains the original penalty:
+\begin{equation}
+S_D(s)=\operatorname{Frontier}(s)\rho_{\mathrm{fixed}}(s).
+\end{equation}
+Its cached queue-yield ratio $p_s=D_s/(N_s+1)$ counts interesting queued paths $D_s$ per state selections $N_s$. It is not a calibrated Bernoulli probability and can reflect state-only novelty or unequal execution energy. E replaces only $\rho_{\mathrm{fixed}}$ with the calibrated factor in Equation~\ref{eq:score}, preserving the shared base, admission, prompts, triggers, repair settings, and caps. The source implementation's integer score conversion and initial round-robin cycles require explicit freezing and verification before comparison.
+
+\begin{figure}[!tbp]
+\centering
+\begin{tikzpicture}[>=Latex,font=\small,
+box/.style={draw,rounded corners,align=center,text width=61mm,minimum height=9mm},
+arr/.style={->,thick}]
+\node[box] (pre) {Record pre-update mean and Thompson sample};
+\node[box,below=5mm of pre] (run) {Select state; execute a fixed-energy episode};
+\node[box,below=5mm of run] (reward) {Observe independent code reward};
+\node[box,below=5mm of reward] (update) {One discounted update; log before/after counts};
+\draw[arr](pre)--(run);\draw[arr](run)--(reward);\draw[arr](reward)--(update);
+\end{tikzpicture}
+\caption{Productivity calibration: prediction precedes reward. IPSM state-edge growth is diagnostic and excluded from the main reward.}
+\label{fig:posterior}
+\end{figure}
+
+\begin{algorithm}[t]
+\small\caption{Evidence-gated candidate processing}\label{alg:admission}
+\DontPrintSemicolon
+\KwIn{Candidate $x$, target, immutable pre-trial snapshot}
+Record candidate, prompt, reply, and lineage identifiers\;
+\If{$\neg P(x)$}{Record structural rejection; stop processing $x$\;}
+Execute one bounded trial without durable queue insertion\;
+Record $U,R,\gcode,\gstate$ and reason codes\;
+\If{$P\land U\land R\land\gcode$}{Promote $x$ to $Q_{\mathrm{dur}}$\;}
+\ElseIf{$P\land U\land R\land\neg\gcode\land\gstate$}{
+Insert $x$ into $Q_{\mathrm{prov}}$\;
+\While{budget, validation deadline, and campaign time remain}{
+Check budget before the next descendant execution\;
+Execute and record one descendant\;
+\If{qualifying code gain and validation pass}{
+Record first productive descendant; promote; end validation\;
+}
+}
+Record expiration or campaign censoring if still provisional\;
+}
+\Else{Record rejection\;}
+Preserve security-oracle evidence separately\;
+\end{algorithm}
+
+\subsection{Intervention policy and optional repair}
+Plateau assistance uses a frozen definition, cadence, counters, and retry policy. The legacy trigger combines IPSM state-edge growth with an unproductive streak. If retained, its dependence on the proxy remains common to the causal arms and is reported; calibrating scheduling does not automatically calibrate triggering.
+
+Primary comparisons of C, D, and E disable repair. Local repair guided by counterexamples remains an optional implementation feature evaluated diagnostically. E-with-repair versus E-without-repair records failure type, counterexample, parent repair ID, before/after hypothesis hashes, changed fields, validation, post-repair predicates, descendant gain, and token/latency cost. Sparse events or illustrative examples do not establish an effect. An additional contribution would require sufficient events, reproducible code gains, and independent statistical support across several targets.
+
+
+\section{Implementation and Evidence Status}
+\label{sec:implementation}
+The source includes split gain fields, provisional-queue machinery, and a posterior-scheduling switch. Their presence does not establish that archived runs exercised or correctly enforced the intended mechanisms. Run configuration, execution ordering, and event semantics must be checked together.
+
+Several differences are material. The candidate path invokes native execution before evaluating the post-trial gate; native execution can already save a code-novel input. A later $U/R$ failure does not undo that insertion, so the inspected implementation does not strictly enforce Equation~\ref{eq:admission}. Native bitmap novelty includes hit-count changes, rather than exclusively new code branches. Provisional accounting checks budgets after a complete fuzzing round and can overshoot the nominal limits.
+
+In addition, trial IPSM novelty is computed from graph updates tied to queue saving. In the inspected ordinary gated path, an unsaved candidate does not independently update that graph before the state-only check, whereas a native save already supplies code evidence. This ordering obstructs the intended state-only provisional branch. Zero provisional records therefore cannot be interpreted as successful filtering or proof that provisional validation is unnecessary.
+
+Existing $P$ flags can reflect action-schema acceptance rather than complete wire-format validation. The $R$ implementation also admits generic parsed transitions without requiring the intended target/frontier. These are weaker conditions than the design definitions. Table~\ref{tab:implementation} summarizes the boundaries. This manuscript revision does not change fuzzer code; it separates the proposed contract from the implementation evidence.
+
+\begin{table*}[!tbp]
+\centering\small
+\caption{Controller contract versus inspected implementation and available evidence. Source findings describe the current checkout; archive/source identity is not assumed without a commit or binary hash.}
+\label{tab:implementation}
+\begin{tabularx}{\textwidth}{Y Y Y}
+\toprule
+Contract & Current boundary & Evaluation consequence \\
+\midrule
+Gate precedes durable promotion & Native saving may precede post-trial $U/R$ checks. & Disposition/reason text does not certify strict queue protection. \\
+Independent state-only trial evidence & IPSM update depends on saving in the inspected path. & Zero provisional events cannot establish a low state-only rate. \\
+Full structural and reachability checks & $P$ can mean action schema; $R$ accepts generic state transitions. & Audit exact parser and target-hit evidence. \\
+Main reward is new code coverage & Bitmap novelty includes hit-count changes; some named branch fields count bitmap slots. & Keep offline branches, bitmap slots, and save events distinct. \\
+Fixed-energy episode & Existing rounds vary mutation energy and may include zero-execution attempts. & Raw episode productivity is not equal-opportunity productivity. \\
+Strict provisional budget & Limits checked after a whole fuzzing round. & Nominal 64/30-second thresholds are not enforced maxima. \\
+Verified run configuration & Start event is written before some environment flags are parsed. & Cross-check launcher, end records, and effective execution path. \\
+Equal total call/token caps & The logged 64 cap concerns plateau use; token-cap logging does not prove enforcement. & No existing total-budget fairness claim. \\
+Repair disabled in C/D/E & Code defaults and activation differ from the prospective configuration. & Legacy labels do not certify the complete D-arm contract. \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\subsection{Append-only event contract}
+Six core streams record run configuration, candidate generation, admission trials, provisional lifecycle, state-selection episodes, and bug-oracle events. Repair adds a seventh optional stream. Table~\ref{tab:events} specifies joinable fields. Missing fields are not replaced with zero.
+
+\begin{table*}[!tbp]
+\centering\footnotesize
+\caption{Required logging schema. Each event also includes run ID, schema version, event sequence, and timestamp. Required fields are not claimed to be fully present in the current archive.}
+\label{tab:events}
+\begin{tabularx}{\textwidth}{l Y}
+\toprule
+Stream & Minimum additional fields \\
+\midrule
+\texttt{run\_config} & Arm; target/fuzzer commits; image digest; model/version/endpoint; temperature, top-$p$, penalties; call/token caps; seed; CPU/memory quota; start/end; termination reason. \\
+\texttt{candidate\_event} & Candidate/prompt IDs; prompt/raw-reply hashes; raw candidate or artifact path; action; input/output tokens; source/requested states; generation timestamp; parent candidate. \\
+\texttt{admission\_trial} & Candidate/trial IDs; $P/U/R$ and reasons; response code/hash; timeout/reset/drop; state sequence; target/frontier reached; pre/post IPSM nodes/state edges and code coverage; favored reason; latency; disposition. \\
+\texttt{provisional\_event} & Stable candidate/provisional IDs; budget; actual descendant executions/code gain; first productive descendant; conversion timestamp; promotion latency; expiration/censoring reason. \\
+\texttt{state\_selection\_episode} & Episode/state/seed IDs; pre-update $\alpha,\beta,\widehat{\theta}$; Thompson sample; frontier/final score; mutations; code-branch/IPSM state-edge gain; reward; post-update $\alpha,\beta$; latency; completion status. \\
+\texttt{bug\_event} & Anonymous oracle ID; reached/triggered; first trigger time; reproducing input; vulnerable/patched result; sanitizer evidence; root-cause signature. CVE identity remains isolated metadata. \\
+\texttt{repair\_event} (optional) & Repair/parent IDs; failure/counterexample; before/after hypothesis hashes; changed field; validation before/after; post-repair predicates/descendant gain; tokens/latency. \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+Before formal runs, candidate-event completeness must reach at least 99.9\%; no trial may lack a candidate ID, no posterior update may lack an episode ID, and every promotion must be reconstructable. Completeness denominators include failed generation and parsing paths, not only successful candidates. File presence, join completeness, and agreement between logged disposition and actual queue state are separate checks.
+
+\section{Experimental Protocol}
+\label{sec:protocol}
+This protocol is prospective for unfinished confirmatory experiments. The supplied archive does not establish a dated preregistration, parameter freeze, or completed pilot. We do not retrospectively call it preregistered. A version, timestamp, and checksum must be frozen before the remaining runs, with subsequent deviations recorded. Development and pilot observations remain separate.
+
+\subsection{Research questions}
+\begin{enumerate}
+\item \textbf{RQ1: State/code alignment.} How reliably does response-derived state novelty predict downstream code progress across targets and campaign phases? Measure IPSM state-edge/code-branch alignment, episode productivity, calibration, and boundary cases.
+\item \textbf{RQ2: Admission.} Does execute-before-promote reduce durable queue pollution and improve downstream productivity under matched proposal and scheduling conditions? Compare D with C.
+\item \textbf{RQ3: Calibration.} Does online productivity calibration improve scheduling over a fixed response-state heuristic? Compare E with D.
+\item \textbf{RQ4: Historical vulnerability rediscovery.} Does the controller improve reproducible rediscovery under independent reached/triggered oracles and patch validation?
+\item \textbf{RQ5: Cost and applicability.} What runtime, throughput, and LLM costs arise, and under which target characteristics does the method fail to help?
+\end{enumerate}
+The directional hypotheses are improved downstream productivity for D over C and improved code-branch AUC for E over D. Regressions, null results, and uncertainty are reported per target rather than hidden in pooled means or replaced by increased IPSM state-edge counts.
+
+\subsection{Five arms and causal comparisons}
+\begin{table*}[!tbp]
+\centering\small
+\caption{Confirmatory arm matrix. Repair is disabled in C/D/E. Names specify required configurations, not inferred identities from archive filenames.}
+\label{tab:arms}
+\begin{tabularx}{\textwidth}{l c Y Y Y}
+\toprule
+Arm & LLM & Admission & Scheduler & Role \\
+\midrule
+A: AFLNet & No & Native AFLNet & AFLNet & Non-LLM baseline. \\
+B: Controlled ChatAFL & Yes & ChatAFL direct/open-loop & ChatAFL lineage & B--A: total controlled LLM-lineage change. \\
+C: LoopFuzz-direct & Yes & Parseable candidates directly durable & Fixed LoopFuzz & Admission counterfactual. \\
+D: LoopFuzz-gated-fixed & Yes & Evidence gate + provisional queue & Same fixed LoopFuzz & D--C: admission effect. \\
+E: LoopFuzz-gated-calibrated & Yes & Identical to D & Productivity calibration & E--D: scheduling calibration. \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+C/D share model configuration, prompt construction, trigger, repair setting, scheduler, and budget policy; the intended intervention is admission. E/D share admission and differ only in state selection. Controlled ChatAFL retains its scheduling lineage; replacing it with the LoopFuzz scheduler would change the baseline. B--A is not an isolated admission comparison.
+
+Proposal control has two scopes. A paired candidate diagnostic evaluates the same recorded output from the same target/campaign snapshot under direct and gated admission with identical descendant budgets. It supports a candidate-level counterfactual. Independent online campaigns diverge in queue and state history, so matching policies cannot guarantee identical prompt bytes or model outputs throughout. Recorded-action replay supports parser checks, predicate replay, snapshot comparisons, and provider-free artifact inspection; it does not make a replayed campaign equivalent to live adaptation.
+
+\subsection{Targets, builds, and resource controls}
+The primary design contains nine servers: four FTP servers, Exim (SMTP), Live555 (RTSP), Kamailio (SIP), Forked-daapd (DAAP/DACP over HTTP), and Lighttpd1 (HTTP). Exact build metadata unavailable for a verified comparison remains blank in Table~\ref{tab:targets}. Hardware settings and version pins are not carried over from the old manuscript without evidence linking them to the present runs.
+
+\begin{table*}[!tbp]
+\centering\small
+\caption{Target/protocol/build matrix. Blank build fields await exact commit, image, coverage, and reset manifests.}
+\label{tab:targets}
+\begin{tabularx}{\textwidth}{l l Y Y Y}
+\toprule
+Target & Protocol & Commit/version & Image digest & Coverage build / reset hook \\
+\midrule
+LightFTP & FTP & \missing & \missing & \missing \\
+bftpd & FTP & \missing & \missing & \missing \\
+ProFTPD & FTP & \missing & \missing & \missing \\
+Pure-FTPd & FTP & \missing & \missing & \missing \\
+Exim & SMTP & \missing & \missing & \missing \\
+Live555 & RTSP & \missing & \missing & \missing \\
+Kamailio & SIP & \missing & \missing & \missing \\
+Forked-daapd & DAAP/DACP & \missing & \missing & \missing \\
+Lighttpd1 & HTTP & \missing & \missing & \missing \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+Each causal comparison uses the same source revision, flags, instrumentation, seeds, replay procedure, and reset policy. Launch order is randomized within host blocks and balanced across machines and periods. Runs record fuzzer seeds, quotas, measured CPU use, throttling, and execution rates. Container quotas alone do not establish equal CPU time. Startup, model waiting, admission trials, provisional descendants, and cleanup enter the resource ledger.
+
+Each arm initially receives 10 independent 24-hour runs per target; C/D/E receive 10 more, reaching 20 each. For nine targets and one allocated CPU per run, the stages require 10,800 and 6,480 CPU-hours, totaling 17,280 before overhead/failures. These are planned resources, not measured usage. A four-target pilot covers Forked-daapd, Lighttpd1, LightFTP, and ProFTPD or Pure-FTPd with five arms, three runs, and four to six hours each. Pilot observations are excluded from formal inference.
+
+The intention-to-run ledger includes planned, launched, completed, timeout, target/fuzzer crash, infrastructure failure, extraction failure, excluded, and rerun states, with reasons and linked attempts. Poor coverage is never an exclusion criterion. Only predefined infrastructure failures permit reruns, and original launches remain visible. An interrupted run is not silently extended to 24 hours. It contributes a declared failure outcome or censored observation according to the estimand, with sensitivity analysis; completed-run-only results are not intention-to-run results.
+
+\subsection{LLM fairness and configuration}
+The main design uses equal policy and equal ceilings. All LLM arms must use identical model configurations, intervention policies, and resource ceilings. Actual calls and token usage are reported because adaptive trajectories can trigger different numbers of interventions. Table~\ref{tab:llm} does not invent unfrozen settings.
+
+\begin{table*}[!tbp]
+\centering\small
+\caption{Shared LLM configuration required for B--E. Blank values await the confirmatory freeze; historical settings do not fill these cells.}
+\label{tab:llm}
+\begin{tabularx}{\textwidth}{Y c Y}
+\toprule
+Field & Frozen value & Required handling \\
+\midrule
+Provider / endpoint / immutable model version & \missing & Record resolved version; an alias alone is insufficient. \\
+Temperature by call class & \missing & Match corresponding call classes across arms. \\
+Top-$p$ / presence and frequency penalties & \missing & Explicit values or documented provider defaults. \\
+Maximum output tokens per attempt & \missing & Shared cap; record truncation and failures. \\
+Maximum attempted calls / total tokens & \missing & Include all classes and retries. \\
+Timeout / retry count / backoff & \missing & Fixed policy; record realized waits and failures. \\
+Model-side seed / support status & \missing & Record support; do not promise service determinism. \\
+Prompt corpus / template version & \missing & Shared information policy; prompt/reply hashes. \\
+Plateau cadence / threshold / reset & \missing & Same trigger, including state-growth dependencies. \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+An output-token cap per request is not a total campaign ceiling. A zero legacy token-cap field must be interpreted through its actual enforcement, not reported as equal-token control. Dollar costs require auditable usage and applicable prices; unknown charges remain blank.
+
+Secondary comparisons report code-branch gain per 1,000 total tokens, per LLM call, at a common cumulative token budget, and at a common call count. Security costs use CPU-hours and 100,000-token units. Accounting includes unsuccessful generations, retries, validation, and optional repair. A fixed intervention schedule provides a cost-control sensitivity, not a replacement for the adaptive main policy. Ratios with zero denominators are undefined.
+
+\subsection{Mechanism and calibration metrics}
+For every target/arm, report candidate generation, $P/U/R$ first-failure distribution, direct durable and provisional rates, conversion, expiration, promotion latency, queue size, trial latency, descendant executions, code gain per candidate/token, episode productivity, and throughput. Denominators and incomplete/censored events accompany rates.
+
+Downstream productivity uses a fixed descendant horizon rather than admission gain. For a declared cohort $\mathcal{C}$ of $N$ candidates enrolled before their outcomes are known, let $Y_i(H)=1$ if a later descendant produces new code coverage within $H$ executions, and $0$ if the full horizon is observed without gain. With complete observation, define
+\begin{equation}
+\operatorname{Productivity@}H=\frac{1}{N}\sum_{i\in\mathcal{C}}Y_i(H).
+\end{equation}
+Initially $H=64$. The admission trial is excluded. A positive outcome can be established early; a negative requires the complete horizon. With $n_+$ known positives and $n_?$ censored unresolved candidates, report the cohort bounds $[n_+/N,(n_++n_?)/N]$ rather than deleting incomplete negatives from the denominator. The primary paired diagnostic reserves the same full validation horizon for both controllers; incomplete online cohorts are reported with these bounds and censoring counts. Durable and provisional cohorts are distinct; post-promotion productivity uses a fresh horizon. Thus neither admission gain nor selective observation mechanically raises measured productivity.
+
+Avoided queue pollution requires C--D evidence. In the paired diagnostic, identify direct-arm durable candidates without downstream gain and compare their retention under gating. D-arm rejections are not automatically pollution. A random, predeclared sample of rejected candidates receives shadow validation to estimate false negatives, with inclusion probabilities, snapshots, lineage, and cost recorded.
+
+For complete episodes, $p_t=\widehat{\theta}_{s_t,t}^{\,\mathrm{pre}}$ predicts later reward $r_t$. The Brier score~\cite{brier1950} is
+\begin{equation}
+\mathrm{BS}=\frac{1}{n}\sum_{t=1}^{n}(p_t-r_t)^2.
+\end{equation}
+Expected calibration error (ECE)~\cite{guo2017calibration} uses ten fixed equal-width probability bins and reports counts, mean predictions, and observed frequencies. Empty bins stay empty. Reliability plots and precision--recall diagnostics~\cite{davis2006pr}, summarized by AUPRC, accompany the score; with no positive episodes AUPRC is undefined. Compare Brier score to a prequential base-rate predictor because rare rewards can make uninformative near-zero predictions look accurate. IPSM state-edge/code-gain ratios with zero code gain are undefined or shown as separate zero-gain cases.
+
+Episodes within a run are dependent; uncertainty is clustered by run and reported by target/phase. Posterior trajectories and state weights are diagnostic, not evidence that every state is accurately learned. Correlation between IPSM growth and later code gain is evaluated within target and phase, without pooling raw counts across unlike programs.
+
+\subsection{Coverage and statistical analysis}
+Primary coverage outcomes are code-branch AUC over 24 hours and final code-branch count. AUC uses each run's cumulative time series with a common interpolation convention and instrumentation, in branch-hours. Native endpoints at unequal durations are not substituted. Time to 95\% of a target-specific common reference endpoint uses a threshold frozen before formal comparisons; unreached thresholds are censored.
+
+Per target, report mean, median, dispersion, bootstrap 95\% intervals~\cite{efron1979}, two-sided Mann--Whitney U tests~\cite{mann1947}, and Cliff's $\delta$~\cite{cliff1993}. The primary family comprises 36 coverage tests across nine targets: D--C and E--D contrasts for final branches and AUC. The Benjamini--Hochberg procedure~\cite{benjamini1995} controls this family at $q=0.05$. The primary admission-mechanism family has nine D--C productivity contrasts and is reported separately. Other diagnostics and sensitivity tests are exploratory. Effect direction is treatment minus comparator.
+
+Cross-target summaries use equal-weight target effects and a hierarchical bootstrap resampling targets, then runs within targets. Raw branch counts from different programs or individual executions are not pooled as independent samples. Target regressions and uncertainty accompany aggregates. Historical time-to-trigger uses Kaplan--Meier estimates~\cite{kaplan1958}, right censoring, and CVE-specific deadline recall. Fuzzer-failure interruptions are distinguished because censoring may be informative.
+
+
+\section{Available Evidence and Results}
+\label{sec:results}
+The empirical source for this revision is the supplied \texttt{Key\_Experiment} directory. Earlier selected-run tables, significance counts, auxiliary comparisons, crash-class totals, and curves are not treated as measurements of the new controller. A blank numeric cell below means unavailable or unvalidated evidence, never a measured zero.
+
+\subsection{Archive inventory and observation horizon}
+The current extraction contains 94 AFLNet (A), 101 ChatAFL (B), and 108 benchmark LoopFuzz (D) summary rows, alongside 90 direct-admission (C) and 76 calibrated (E) ablation rows. The two sensitivity groups contain 24 rows each. Extra benchmark rows are retained as archive observations without assuming independence; groups with fewer than ten available runs retain a nominal count of ten, while the observed count $n$ remains explicit. Means and sample SDs use observed values only; unavailable runs are left unfilled.
+
+Benchmark LoopFuzz summaries include completed and interrupted rows; status counts are shown per target in Table~\ref{tab:observed_inventory}. The exit-code labels do not independently establish out-of-memory termination or a vulnerability. Runtime is fuzzer runtime, not total CPU time or necessarily the full startup-to-cleanup campaign duration.
+
+Benchmark LoopFuzz supplies arm D and is counted once; it is the supplied equivalent of \path{ablation/gated_fixed}. Arms C and E use \path{ablation/direct} and \path{ablation/calibrated}, respectively. Two additional groups record sensitivity runs with $\gamma=0.99$ and $\gamma=1.0$. The startup logging-order issue in Table~\ref{tab:implementation} means these declarations require launcher/end-record corroboration, and heterogeneous run counts prevent a complete matched-arm claim. No calibrated-arm effect is inferred from posterior fields alone.
+
+\input{revision_20260920/observed_tables.tex}
+The complete target--arm ledger, including both gamma sensitivity groups, is reported in Appendix~\ref{sec:archive_appendix}, Table~\ref{tab:archive_arms}.
+
+Table~\ref{tab:observed_endpoints} retains every summary row, including interruptions. Its native terminal \texttt{b\_abs} is taken from the supplied run summary; its IPSM state-edge count is likewise the supplied terminal summary value. The independently read trajectory for one D Lighttpd1 archive ends at 2,115 branches, whereas its summary records 2,139. The endpoint/cost tables retain the summary value and the trajectory plot retains the recorded time series; this unresolved source discrepancy is not silently reconciled. These observations are descriptive, not matched 24-hour outcomes. Sample standard deviations express variation among the supplied rows; neither causal claims nor significance tests are attached to unequal-duration endpoints.
+
+\subsection{RQ1: Current alignment observations}
+Forked-daapd has mean native code-branch endpoints of $2330.8\pm60.0$ for AFLNet and $2670.2\pm87.3$ for recorded LoopFuzz, while IPSM state-edge endpoints are $21.6\pm2.1$ and $22.8\pm2.9$. This direction does not reproduce the older motivating claim of code regression. The difference cannot be attributed to calibration, which is not established as active.
+
+Lighttpd1 increases in both native metrics: code branches from $1940.7\pm21.2$ to $2127.9\pm16.0$, and IPSM state edges from $17.7\pm2.5$ to $28.8\pm2.8$. These aggregate observations do not demonstrate the hypothesized small state expansion with hidden code progress. LightFTP has near-equal code endpoints, $71.0\pm0.0$ versus $71.7\pm2.3$, with larger recorded LoopFuzz IPSM state-edge counts, $187.3\pm11.3$ versus $207.0\pm17.0$. That pattern motivates a saturation analysis but does not establish the full time course or identify individual misleading states.
+
+All three cases require common-build, common-horizon verification and event joins before becoming mechanism evidence. The available episode fields do support a narrower diagnostic: \figref{fig:reliability} compares the logged pre-update probabilities with the logged binary coverage-save reward, separately for each target. All 28,866 E-archive records pass finite-probability, Beta-mean, binary-reward, episode-ID uniqueness, chronological-order, and within-episode discounted-update checks. Excluding 5,753 zero-execution records leaves 23,113 records from 76 runs. Three between-episode posterior discontinuities are retained and documented; no missing history is reconstructed. The archived arm mapping does not by itself verify that every run used the intended scheduling policy.
+
+Table~\ref{tab:logged_calibration} reports Brier score, ten-bin ECE, and AUPRC, together with a prequential reference that uses only past included rewards from the same run. Bootstrap resampling retains entire runs within each target; its intervals describe the supplied archive under that resampling scheme and do not resolve unknown dependence between launches. The saved reward counts native coverage-save events and can reflect hit-count novelty, and positive execution counts do not prove a complete fixed-energy episode. Consequently, these diagnostics do not fill the independent source-branch calibration outcomes in Table~\ref{tab:mechanisms}.
+
+\input{revision_20260920/figures_reflow_20260928/logged_calibration_table.tex}
+
+\begin{figure*}[!tbp]
+\centering\includegraphics[width=\textwidth]{revision_20260920/figures_reflow_20260928/logged_reward_reliability.pdf}
+\caption{Descriptive reliability of the E-archive logged reward, shown separately by target. Pre-update probabilities are grouped into ten fixed equal-width bins; dots show the mean prediction and episode-weighted reward frequency. The dashed diagonal denotes perfect calibration. Whiskers are percentile 95\% intervals from 2,000 resamples of whole runs within target; bins represented by fewer than two runs have no interval. Lower strips give exact episode counts; empty bins have no estimate. Only records with positive execution counts are included. The reward marks native coverage-save events, which may include hit-count novelty; it is not independently replayed source-branch gain. Episodes have unequal energy and no verified completion flag. Nominal $N=10$; actual $n$ and episode count $m$ are shown.}
+\label{fig:reliability}
+\end{figure*}
+
+\subsection{RQ2: Observed admission records and missing counterfactual}
+For the benchmark LoopFuzz D archive, the event stream contains 1,992 candidate records, 1,991 trial records, 1,968 reject labels, 23 durable labels, and no provisional labels. One candidate lacks a trial match; no trial lacks a candidate match. The corresponding C and E totals are 1,326/1,326 and 726/725 candidates/trials, respectively, with 1,326 direct durable labels for C and 716 rejects plus 9 durable labels for E. These are logged decisions rather than verified queue membership, and they do not demonstrate the required 99.9\% event completeness.
+
+Candidate/admission files occur in the C, D, and E archives with target-specific gaps; ProFTPD has no candidate/admission records in both D and E despite nonzero model-call counters. The supplied archives lack provisional and repair lifecycle files. Table~\ref{tab:observed_log_counts} reports the D benchmark counts, while Table~\ref{tab:archive_arms} gives the arm endpoints. Zero recorded lifecycle events do not yield a zero conversion rate or prove absence of repair/provisional behavior.
+
+Disposition labels are not independently verified queue membership. The native-save ordering and state-only reachability problems prevent interpreting rejected labels as avoided queue pollution or durable labels as proof of strict predicate conformance. Without a validated C--D comparison and descendant lineage, downstream productivity, shadow-validation false negatives, and avoided nonproductive retention remain blank. Logged trial flags and latency can nevertheless be summarized descriptively in Table~\ref{tab:mechanisms}; \figref{fig:dispositions} visualizes the reconciled record counts. A first-failure flag is a logged predicate result, not an independently validated reason for retention or rejection.
+
+\subsection{RQ3: Scheduling evidence and unfilled causal results}
+The supplied C, D, and E archives contain 56,164, 75,631, and 28,866 state-episode records, respectively. Their logged episode \texttt{mutations} counts range from zero to 18,816, which is not a shared fixed-energy measurement surface. Some coverage fields are named as code branches or code edges while the inspected implementation fills bitmap-slot counts or coverage-save-event counts. These values cannot be merged with source-level \texttt{b\_abs} or treated as the main reward of Equation~\ref{eq:reward}.
+
+The archive contains E-arm calibrated runs and two small gamma sensitivity groups, but the logged implementation and heterogeneous horizons do not establish that all runs used the intended Thompson policy or that D--E is a matched causal comparison. Table~\ref{tab:mainresults} reports the recoverable endpoint/AUC values; cells without an E archive, such as bftpd, remain blank. Calibration benefits still require a frozen, matched-horizon analysis.
+
+\figref{fig:trajectories} displays the time-resolved branch observations over the first 24 hours, retaining per-time missingness. Its interpolation follows the linear convention used for the archive AUCs, while the table AUCs integrate each full observed trajectory. Changes in the set of contributing runs can change an aggregate curve even when individual histories do not decrease. In 121 of the 469 source trajectories, at least one recorded branch count decreases. The figure preserves these observations without applying a cumulative maximum or otherwise correcting the replay output; both source decreases and changing support can produce aggregate decreases.
+
+\figref{fig:posterior_cases} adds three reproducible state-level archive illustrations. For each motivating target, the selected E run is the lower-median run by terminal branch count, with source path breaking ties; its two states with the most positive-execution episodes are shown. This rule uses no calibration score or effect direction. The complete logged histories for those states, including zero-execution episodes, expose the working posterior and realized scheduling multiplier. These cases illustrate recorded behavior and do not identify a causal response-state/branch mismatch.
+
+
+
+\begin{table*}[!tbp]
+\centering\small
+\caption{Archive-derived final code-branch count / branch-coverage AUC (branch-hours). Each cell shows mean $\pm$ sample SD and observed $n$ on the first line, with AUC on the second line. The nominal target is 10 runs; missing target-arm archives remain blank. These descriptive endpoints do not replace matched-horizon causal inference.}
+\label{tab:mainresults}
+\begin{tabularx}{\textwidth}{l *{5}{>{\centering\arraybackslash}X}}
+\toprule
+Target & A & B & C & D & E \\
+\midrule
+LightFTP & \shortstack{71.0$\pm$0.0\,(n=13)\\1758.5$\pm$33.8} & \shortstack{71.3$\pm$0.9\,(n=11)\\1728.1$\pm$36.5} & \shortstack{80.6$\pm$15.5\,(n=10)\\1987.7$\pm$394.1} & \shortstack{71.7$\pm$2.3\,(n=15)\\1780.7$\pm$45.2} & \shortstack{73.9$\pm$4.5\,(n=10)\\1825.0$\pm$107.6} \\
+\addlinespace[3pt]
+bftpd & \shortstack{486.0$\pm$8.8\,(n=10)\\11868.7$\pm$165.6} & \shortstack{492.2$\pm$13.7\,(n=20)\\12068.6$\pm$315.2} & \shortstack{498.9$\pm$12.2\,(n=10)\\12082.0$\pm$451.0} & \shortstack{502.7$\pm$7.3\,(n=20)\\12267.7$\pm$377.5} & \missing \\
+\addlinespace[3pt]
+ProFTPD & \shortstack{5053.8$\pm$97.4\,(n=10)\\122652.5$\pm$1730.1} & \shortstack{5205.9$\pm$166.7\,(n=10)\\125217.7$\pm$2989.1} & \shortstack{5446.3$\pm$194.7\,(n=10)\\130538.5$\pm$4511.6} & \shortstack{5404.6$\pm$95.6\,(n=10)\\132057.4$\pm$2915.3} & \shortstack{5469.8$\pm$215.7\,(n=10)\\130564.7$\pm$4604.1} \\
+\addlinespace[3pt]
+Pure-FTPd & \shortstack{1076.4$\pm$89.6\,(n=11)\\23054.1$\pm$2084.4} & \shortstack{1109.3$\pm$40.0\,(n=10)\\24976.6$\pm$1126.8} & \shortstack{1221.2$\pm$48.9\,(n=10)\\28860.8$\pm$1645.7} & \shortstack{1223.3$\pm$29.7\,(n=10)\\27863.9$\pm$1496.9} & \shortstack{1215.4$\pm$63.7\,(n=10)\\27894.3$\pm$1737.6} \\
+\addlinespace[3pt]
+Exim & \shortstack{3798.8$\pm$43.3\,(n=10)\\91083.0$\pm$1031.5} & \shortstack{3761.7$\pm$60.4\,(n=10)\\91301.7$\pm$1501.4} & \shortstack{3896.1$\pm$25.6\,(n=10)\\94880.1$\pm$928.3} & \shortstack{3914.9$\pm$20.9\,(n=10)\\93659.0$\pm$573.1} & \shortstack{3858.3$\pm$32.8\,(n=10)\\93123.6$\pm$924.6} \\
+\addlinespace[3pt]
+Live555 & \shortstack{2893.6$\pm$14.5\,(n=10)\\71127.4$\pm$517.3} & \shortstack{2882.4$\pm$22.0\,(n=10)\\71224.8$\pm$422.5} & \shortstack{3075.7$\pm$34.4\,(n=10)\\73511.0$\pm$562.9} & \shortstack{3057.9$\pm$22.0\,(n=10)\\75316.2$\pm$723.5} & \shortstack{3054.2$\pm$20.5\,(n=10)\\72378.5$\pm$1049.8} \\
+\addlinespace[3pt]
+Kamailio & \shortstack{10002.6$\pm$144.2\,(n=10)\\242853.7$\pm$2772.6} & \shortstack{10644.3$\pm$96.5\,(n=10)\\257606.8$\pm$2082.0} & \shortstack{10800.6$\pm$129.0\,(n=10)\\260260.9$\pm$2942.4} & \shortstack{10764.5$\pm$108.7\,(n=11)\\256813.5$\pm$4223.4} & \shortstack{10830.0$\pm$91.3\,(n=10)\\259377.2$\pm$2649.6} \\
+\addlinespace[3pt]
+Forked-daapd & \shortstack{2330.8$\pm$60.0\,(n=10)\\54453.2$\pm$1494.1} & \shortstack{2169.6$\pm$113.0\,(n=10)\\49393.2$\pm$3335.9} & \shortstack{2585.4$\pm$86.2\,(n=10)\\61776.8$\pm$1863.7} & \shortstack{2670.2$\pm$87.3\,(n=12)\\63646.7$\pm$1977.0} & \shortstack{2648.2$\pm$116.0\,(n=6)\\62349.5$\pm$1726.9} \\
+\addlinespace[3pt]
+Lighttpd1 & \shortstack{1940.7$\pm$21.2\,(n=10)\\46909.4$\pm$235.7} & \shortstack{1884.1$\pm$25.3\,(n=10)\\45075.8$\pm$729.3} & \shortstack{2145.0$\pm$69.8\,(n=10)\\53003.8$\pm$1613.7} & \shortstack{2127.9$\pm$16.0\,(n=10)\\51220.4$\pm$654.6} & \shortstack{2068.1$\pm$44.5\,(n=10)\\50385.1$\pm$941.3} \\
+\addlinespace[3pt]
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\begin{figure*}[!tbp]
+\centering\includegraphics[width=\textwidth]{revision_20260920/figures_reflow_20260928/coverage_trajectories.pdf}
+\caption{Observed A--E code-branch trajectories from 469 archives. Time is measured from each fuzzer\_stats start time. Lines are medians and shaded regions are interquartile ranges, computed on a five-minute grid by linear interpolation only between recorded observations. A run contributes neither before its first observation nor after its last; the actual contributing $n$ at 24 hours is shown in A--E order. The plot displays 0--24 hours without imposing a completed 24-hour campaign on interrupted runs. Full time-dependent denominators accompany the figure data; the nominal target remains $N=10$. Missing E--bftpd is omitted. Native pipeline/build comparability remains unverified; these curves are descriptive, and shaded ranges are not confidence intervals.}
+\label{fig:trajectories}
+\end{figure*}
+
+\begin{figure*}[!tbp]
+\centering\includegraphics[width=\textwidth]{revision_20260920/figures_reflow_20260928/posterior_cases.pdf}
+\caption{State-level E-archive illustrations for the three motivating targets, selected by the deterministic rule in the text. Upper panels show pre-update probabilities; lower panels show the logged final selection score divided by the frontier score. Each point is positioned at the logged episode-end time; connecting lines only guide the eye. Zero-frontier records have an undefined multiplier and are omitted from the lower panels. Colors identify states within each target, not equivalent states across targets. Unequal mutation energy, possible posterior resets, and native save-event rewards limit interpretation. The selected source paths and exact plotted values accompany the figure.}
+\label{fig:posterior_cases}
+\end{figure*}
+
+\begin{table*}[!tbp]
+\centering\footnotesize
+\caption{Logged mechanism totals across the available C/D/E archives. Candidate and trial IDs are scoped to each archive; disposition labels are not independently verified queue membership. Metrics requiring descendant joins or verified fixed-energy, independent code-branch rewards remain blank; the separate logged-reward diagnostics appear in Table~\ref{tab:logged_calibration}.}
+\label{tab:mechanisms}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{0.19\textwidth} *{3}{>{\centering\arraybackslash}p{0.14\textwidth}} Y}
+\toprule
+Metric & C & D & E & Denominator / interpretation \\
+\midrule
+Candidate records & 1,326 & 1,992 & 726 & Distinct candidate IDs within each archive. \\
+Trial records & 1,326 & 1,991 & 725 & Distinct trial IDs within each archive. \\
+Reject / durable labels & 0 / 1,326 & 1,968 / 23 & 716 / 9 & Logged trial dispositions. \\
+First failed logged $P/U/R$ & 0 / 1,208 / 0 & 0 / 1,836 / 0 & 0 / 678 / 0 & First false field in $P$, then $U$, then $R$ order; trial denominator. \\
+Direct durable rate & 100.0\% (1,326/1,326) & 1.2\% (23/1,992) & 1.2\% (9/726) & Logged disposition labels / generated candidates. \\
+State-only provisional rate & \missing & \missing & \missing & All candidates; not enabled for C. \\
+Provisional conversion / expiration & \missing & \missing & \missing & Provisional admissions, including pending/censored counts. \\
+Trial latency (ms) & 439.2$\pm$405.9 ($n=67$) & 381.9$\pm$561.3 ($n=84$) & 758.7$\pm$451.3 ($n=55$) & Mean $\pm$ sample SD of within-run mean \texttt{latency\_ms}; runs with trials only. \\
+Promotion latency & \missing & \missing & \missing & Requires verified queue-promotion timestamps. \\
+Downstream productivity@64 & \missing & \missing & \missing & Later descendants, excluding admission gain. \\
+Queue size / nonproductive retention & \missing & \missing & \missing & Queue state plus C--D counterfactual. \\
+Shadow-validation false-negative rate & \missing & \missing & \missing & Random rejected-candidate sample. \\
+Code-branch gain per episode & \missing & \missing & \missing & Completed equal-energy episodes. \\
+Brier / ECE / AUPRC & \missing & \missing & \missing & Fixed-energy source-branch reward; separate logged-reward diagnostics in Table~\ref{tab:logged_calibration}. \\
+Code gain per candidate / 1,000 tokens & \missing & \missing & \missing & Joined gain and complete usage. \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\begin{figure*}[!tbp]
+\centering\includegraphics[width=\textwidth]{revision_20260920/figures_reflow_20260928/candidate_dispositions.pdf}
+\caption{Logged candidate dispositions (left) and first failed trial flags in $P\!\rightarrow\!U\!\rightarrow\!R$ order (right), pooled within each archive arm. Exact counts accompany percentages. The candidate denominators are 1,326/1,992/726 for C/D/E; the trial denominators are 1,326/1,991/725. D and E each have one unmatched candidate, whose narrow segment is identified by the count. Passing $P/U/R$ does not establish code gain or durable queue membership. Provisional, converted, and expired outcomes have no validated lifecycle evidence and are not assigned zero rates.}
+\label{fig:dispositions}
+\end{figure*}
+
+\subsection{RQ5: Recorded costs and interpretation limits}
+The final saved statistics across the benchmark LoopFuzz D archives report model calls and token counts by target in Table~\ref{tab:observed_costs}; the C/E arm ranges and means are retained in the machine-readable arm summary. Calls range from 52 to 248 per run in D. Thus the logged cap of 64 is not an enforced all-call campaign ceiling. These are saved tool counters, not independently reconciled provider billing. Some final aggregate statistics lag the event stream, so costs may omit the last reporting window.
+
+Recorded configurations include a model alias, grammar/plateau temperatures of 0.5/1.2, top-$p$ 1.0, maximum output tokens 4096, and total-token-cap field 0. The alias does not establish an immutable provider model. Startup configuration timing and missing build/resource provenance limit interpretation. These historical values do not fill the prospective shared configuration in Table~\ref{tab:llm}.
+
+Candidate token fields do not necessarily cover all call classes or retries; summing them is not total campaign cost. Low-activation targets, high-rejection targets, token outliers, saturation, and regressions must remain in the final analysis. Low activation may reflect productive mutation or a restrictive trigger; high rejection may reflect either useful gating or false negatives. Both need mechanism evidence.
+
+\input{revision_20260920/observed_costs.tex}
+
+\figref{fig:cost} shows terminal coverage against saved token usage, and \figref{fig:callcost} shows the complementary saved-call view. Each target is plotted separately, with all available B--E observations retained. These views reveal dispersion and usage ranges without estimating a causal return per token or call. Measured CPU-hours and controlled A--E CVE recall remain unavailable. The case-level replays in Section~\ref{sec:cve} do not supply those cost--performance axes.
+
+
+
+\begin{figure*}[!tbp]
+\centering\includegraphics[width=\textwidth]{revision_20260920/figures_reflow_20260928/token_cost_coverage.pdf}
+\caption{Saved token counters versus native terminal code coverage, with one marker per B--E archive (375 observations). Token usage is the saved prompt-plus-completion count, expressed in thousands; individual observations show the available dispersion without imposing a fitted efficiency frontier. Different targets have separate axes, and missing E--bftpd is omitted. AFLNet lacks a comparable saved counter and is not assigned a synthetic zero. Horizons and build provenance are not matched, and final counters may lag the event stream. This is a descriptive cost--coverage view, not reconciled billing or a cost-matched causal comparison.}
+\label{fig:cost}
+\end{figure*}
+
+\begin{figure*}[!tbp]
+\centering\includegraphics[width=\textwidth]{revision_20260920/figures_reflow_20260928/call_cost_coverage.pdf}
+\caption{Saved model-call counters versus native terminal branch coverage for the same 375 B--E observations as \figref{fig:cost}. Each marker represents a run; no regression, Pareto frontier, or missing usage is inferred. Separate target scales preserve the different program coverage surfaces. Call counts do not measure token expenditure or CPU-hours.}
+\label{fig:callcost}
+\end{figure*}
+
+\begin{table}[!tbp]
+\centering\small
+\caption{Optional repair diagnostics. Repair is outside primary causal comparisons; unavailable observations stay blank.}
+\label{tab:repair}
+\begin{tabularx}{\columnwidth}{Y c c}
+\toprule
+Metric & E, repair off & E, repair on \\
+\midrule
+Repair opportunities / attempts & \missing & \missing \\
+Before/after validation success & \missing & \missing \\
+Post-repair descendant code gain & \missing & \missing \\
+Changed fields / locality & \missing & \missing \\
+Token / latency cost & \missing & \missing \\
+Independent effect / interval & \missing & \missing \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Vulnerability Replay Evidence and Rediscovery Protocol}
+\label{sec:cve}
+The supplied \path{Key_Experiment/vulnerability} collection contains four case dossiers: three labeled with CVE identifiers and one SMARTPL availability case without a CVE. Each includes a report and a trigger input; three include vulnerable-side log excerpts, and ProFTPD also includes a patched-side replay log. Tables~\ref{tab:cve} and~\ref{tab:cveresults} report this evidence. Identifiers, versions, and replay counts are attributed to these local records; the archive does not include the upstream patches or complete build manifests needed to independently certify every vulnerability/patch pair.
+
+\subsection{Case identity and evidence provenance}
+We distinguish an attached log observation (L) from a replay result stated only in a case report (R). A report can contain additional trials not represented by the supplied log excerpt. Repeated lines within a log are not independent trials. Input hashes and byte lengths are recorded in the companion \path{vulnerability_evidence_20260929.json}; no additional target executions were performed for this manuscript update. Table~\ref{tab:cve} identifies the recorded builds, triggering conditions, and differential evidence.
+
+\begin{table*}[!tbp]
+\centering\small
+\caption{Supplied vulnerability case inventory. Build and CVE identities follow the local case reports. L denotes an attached log; R denotes a report-only observation. A local guard or an unsuccessful patch attempt does not establish equivalence to the upstream security fix.}
+\label{tab:cve}
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{0.20\textwidth} >{\raggedright\arraybackslash}p{0.19\textwidth} Y Y@{}}
+\toprule
+Case / interface & Reported vulnerable build & Trigger evidence / oracle & Patch or control evidence \\
+\midrule
+\mbox{CVE-2023-51713}\newline ProFTPD / FTP & \texttt{61e621e743346};\newline ASan; command buffer 65,535 bytes & 60,006-byte input; heap-buffer-overflow, one-byte read beyond a 65,568-byte region (L). & Reported base + \texttt{97bbe68363cc}; three rejection/no-ASan rounds (L). Same input and buffer configuration are stated in that log. \\
+\addlinespace[3pt]
+\mbox{CVE-2026-38998}\newline LIVE555 / RTSP & 2023.05.10 campaign snapshot; public report identifies 2026.02.26 (R) & 728-byte public PoC; heap-use-after-free excerpt (L). A separate fuzzer-discovered input is described but absent. & Local handler-removal attempt still triggers, 1/1 (R). Successful upstream-patch differential unavailable. \\
+\addlinespace[3pt]
+\mbox{CVE-2026-39863}\newline Kamailio / SIP over TCP & \texttt{a2209018fb};\newline TCP listener required & 278-byte input; negative Content-Length value $-10$ (L). This is the overflow predicate, not a crash count. & Local \texttt{INT\_MAX/10} guard suppresses the fingerprint (R); upstream fix is identified as \texttt{060b6c2530c8}. Patched log and repeat count unavailable. \\
+\addlinespace[3pt]
+SMARTPL availability case\newline forked-daapd / HTTP & Reported 27.2,\newline \texttt{2ca10d9b} & 148-byte input; lexer errors, failed health probe, process still alive (R). No standalone replay log. & No patched-version replay. No CVE assigned; report associates parser removal with version 28.4. \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+For ProFTPD, the report identifies an out-of-bounds read in \texttt{make\_ftp\_cmd}; the attached ASan trace records the corresponding heap-buffer-overflow signature. The oracle uses a 65,535-byte command buffer. The report states that the default 512-byte configuration does not expose the same error to ASan, so the outcome is conditional on this configuration. The patched log lists three rounds returning an FTP 500 response with no ASan report and normal one-shot exit. This supports a recorded differential replay; immutable image digests, build flags, and the actual applied patch remain unavailable in this collection.
+
+For LIVE555, the supplied ASan excerpt contains the public-PoC use-after-free signature at offset \texttt{0x614b86}. Its two-line observation is repeated verbatim and is counted once as an attached signature. The report separately attributes fuzzer-generated inputs to the same allocation/free lifecycle, reports 8/9 replay hits, and records failure of a local patch attempt. The described \path{trigger_loopfuzz.raw}, full allocation/free traces, and per-trial replay metadata are absent. The archived public PoC therefore supports replay diagnostics, but cannot demonstrate independent rediscovery by the evaluated controller or establish the cross-version CVE attribution on its own.
+
+For Kamailio, the attached log records a negative parsed Content-Length, providing evidence for the reported overflow predicate. This path requires TCP and cannot be evaluated through the UDP-only benchmark configuration. The latest report records suppression by a local guard, but supplies neither a patched-side log nor a repetition denominator. That observation is retained as R; it does not verify equivalence to the identified upstream patch. The report's earlier registry-only 20/20 versus 0/20 statement is excluded from the quantitative table because the registry and trial records are not supplied. The SMARTPL report describes reproducible unavailability from a known input, while none of five sampled campaign hang inputs satisfies that predicate. This case has neither a CVE identity nor a verified patched counterpart.
+
+\subsection{Replay outcomes and their denominators}
+Table~\ref{tab:cveresults} preserves each reported batch separately. A numerator counts replay attempts or selected queue inputs satisfying that case's predicate; the denominator is the number tested. These are not independent 12-hour fuzzer runs, and the main experiment's nominal $N=10$ is not substituted for the actual replay denominator. Selected batches, per-input repeats, and later aggregate counts may overlap; they are not pooled into one success rate. In particular, 19/20 selected inputs is not 95\% campaign recall, and 8/9 LIVE555 replays is below the prospective 95\% stability threshold.
+
+\begin{table*}[!tbp]
+\centering\small
+\caption{Recorded replay and sampled-input outcomes. R/L have the meanings in Table~\ref{tab:cve}. Fractions retain the original batch denominators; vulnerable-side batches are report-only unless specified. The control column records separate tests, not matched A--E campaigns. No absent trial is imputed.}
+\label{tab:cveresults}
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{0.20\textwidth} Y Y Y@{}}
+\toprule
+Case & Vulnerable-side batches (R) & Patched or diagnostic control & Interpretation / missing evidence \\
+\midrule
+\mbox{CVE-2023-51713} & 1/1 known seed; 1/1 fuzzer crash (Sept.~22); 3/3 batch crashes (Sept.~25). & 0/3 ASan activations after the reported upstream fix; 3/3 FTP 500 rejections (L, Sept.~28). & Vulnerable and patched replay evidence available. Counts are from different batches; no arm-specific discovery probability or trigger time. \\
+\addlinespace[3pt]
+\mbox{CVE-2026-38998} & 1/1 public PoC; three fuzzer inputs reported at 3/3 each; later aggregate 8/9. & Local patch attempt: 1/1 still triggers (R). Successful patched-side denominator unavailable. & Keep the 3/3 batches and 8/9 aggregate separate. Fuzzer input and individual trial records missing; no confirmed patched pair. \\
+\addlinespace[3pt]
+\mbox{CVE-2026-39863} & 1/1 seed; 3/4 from a 60-s queue; 19/20 from a 60-min queue; 19/20 sampled from a 1,540-min queue; 50/51 in another 60-min batch. & Local guard: fingerprint absent (R); repeat count unavailable. & Queue-sample outcomes, not campaign recall. No extrapolation to all 195 reported large-header entries; no attached patched log. \\
+\addlinespace[3pt]
+SMARTPL availability case & 5/5 advisory-input repeats; 3/3 repeats of a 48-message seed; 1/1 later advisory replay. & SMARTPL predicate hits among five sampled campaign hang inputs: 0/5 (R). Patched replay unavailable. & Known-input availability evidence; not five validated bugs, not a CVE, and not demonstrated rediscovery in the long campaigns. \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+The reports also list crash-file totals and campaigns outside the supplied benchmark/ablation ledger. These totals are not unique vulnerabilities, and durations such as 60 or 1,540 minutes do not identify time to first trigger. The collection lacks a join from each reproducing input to a verified A--E run, its model information history, and its independent oracle/root cause. We therefore do not assign these replay outcomes to individual arms, claim newly discovered CVEs, or infer admission/calibration gains from them.
+
+\subsection{Controlled rediscovery still to be measured}
+The confirmatory benchmark requires a vulnerable base and the same base plus a minimal upstream security patch, with dependencies, instrumentation, configuration, and input compatibility held constant. Each case must have a network-reachable trigger, an independent reached/triggered oracle, reproducible builds/reset, and patch validation. The planned six-case pilot across at least three protocols, followed by expansion toward twelve, remains unfinished. Pilot qualification requires at least 95\% observed oracle repeatability over a declared validation set, no patched-target activation, automated build/reset/cleanup, and information separation. The four dossiers above are case evidence, not six qualified benchmark pairs; a small all-success replay batch alone does not establish an underlying success probability of at least 95\%.
+
+Information-controlled campaigns must exclude CVE identifiers, advisories, public PoCs, and patch contents from model inputs and campaign seeds, while retaining anonymous oracle IDs in separate benchmark metadata. The public PoC and known triggers in this collection are validation inputs; their replay is not evidence of information-controlled rediscovery. Source-level trigger conditions, sanitizer reports with patch validation, and protocol invariants distinguish reaching relevant code from actually triggering a defect. Experiments require isolated target networks and reset between trials; these are protocol requirements, not properties inferred from the reports.
+
+For each CVE and arm, the formal plan retains ten independent runs and a 12-hour deadline, frozen before execution. Deadline recall, time-to-trigger, reached-but-not-triggered counts, patched-target activation, executions/coverage/tokens before trigger, and recall per CPU-hour or 100,000 tokens remain unavailable for the controlled A--E comparison. Nontriggers require right-censoring records, and interrupted runs require separate failure accounting. The supplied replay batches do not supply those risk sets, so Kaplan--Meier estimates or arm-level security-effectiveness claims are not reported.
+
+\section{Discussion}
+\subsection{What calibration can and cannot repair}
+The controller calibrates the instrumental utility of an observed state proxy; it does not recover or verify semantic protocol state. If one response identifier aliases several server states, a single productivity estimate averages them. Reweighting the identifier cannot reconstruct lost distinctions. Richer parsing or internal-state instrumentation addresses different aspects at the cost of adapter complexity and deployment effort.
+
+Low productivity can arise from a poor response proxy, saturated coverage, restrictive grammar, inadequate seeds, or insufficient energy. Independent reward prevents IPSM novelty from certifying itself but does not automatically diagnose these causes. The boundary analysis includes aliasing, cold start, phase, and target-specific regressions.
+
+A fixed provisional horizon can discard a bridge whose payoff takes more descendants. Shadow validation and horizon sensitivity estimate this limitation; they do not prove every expired candidate worthless. Similarly, $U/R$ can exclude useful error-handling inputs. Independent oracle retention and false-negative analysis are therefore necessary.
+
+\subsection{Cost, nonstationarity, and provider variability}
+Selection-indexed discounting can retain stale evidence for rarely selected states. Priors and the exploration floor preserve opportunities without guaranteeing fast identification. When code coverage saturates, nearly every reward may be zero, and calibration may offer little benefit.
+
+Provider nondeterminism persists despite recorded prompts and fixed parameters. Aliases may resolve to different backends, retries alter costs, and target responses alter subsequent prompts. Equal-policy/equal-cap controls declared resources; actual usage and cost-matched analysis expose remaining tradeoffs. Provider-free replay audits the local controller rather than reproducing an adaptive campaign.
+
+\begin{table*}[!tbp]
+\centering\small
+\caption{Threats, protocol controls, and remaining evidence limits.}
+\label{tab:threats}
+\begin{tabularx}{\textwidth}{l Y Y}
+\toprule
+Dimension & Required control & Current limitation \\
+\midrule
+Internal & Admission-only C--D; scheduling-only E--D; repair off; paired snapshot diagnostics. & Missing target-arm observations and implementation-ordering differences prevent attribution. \\
+Construct & Separate IPSM state edges, code branches, bitmap counts, reached/triggered events. & Native novelty and terminal summaries do not fully instantiate the proposed measures. \\
+Statistical & Repeated trials, test families, effect sizes, clustered/hierarchical intervals, censoring. & Unequal-duration partial data cannot establish confirmatory effects. \\
+Selection & Complete intention-to-run ledger and predefined infrastructure reruns. & Result manifests omit planned/unlaunched attempts; extra rows do not establish independent launches. \\
+Reproducibility & Build/image pins, seeds, prompts/replies, event joins, resource traces. & Aliases and incomplete provenance prevent exact replication claims. \\
+External & Multiple targets/protocols, negative cases, declared adapter assumptions. & Textual targets do not establish transfer to encrypted or opaque binary protocols. \\
+Security & Minimal patch pairs, independent triggers, information separation. & Replay dossiers lack controlled A--E outcomes and complete patch/build provenance; model pretraining leakage cannot be excluded. \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\subsection{Decision criteria for unfinished experiments}
+Calibration remains a principal empirical claim only if the pilot produces nondegenerate predictions, reduces investment in branch-unproductive Forked-daapd states when observed, does not suppress Lighttpd1 solely for limited IPSM novelty, avoids severe throughput regressions on at least three pilot targets, and improves predictive diagnostics relative to a shared prequential base-rate predictor. D's logged shadow productivity estimates provide an additional diagnostic; its raw queue-yield score is not treated as a calibrated probability. E--D differences require a plausible measured mechanism. These are development decisions, not confirmatory significance tests.
+
+If these checks fail, calibration becomes exploratory and the empirical focus shifts to admission. If rediscovery does not improve, the result is reported without selecting easier CVEs after inspecting formal outcomes. Unsupported repair remains diagnostic. After raw-data and parameter freeze, revisions are limited to factual corrections, analysis/figure corrections, scoped confirmatory reruns, and artifact documentation; they do not introduce new algorithms or tune formal results into success.
+
+The planned full evidence package requires clear D--C and E--D estimates, complete candidate-level mechanisms, at least nine targets, twenty runs per core arm, and a stable historical benchmark of approximately eight to twelve vulnerabilities. The four replay dossiers do not yet constitute that benchmark. These are completion criteria, not achieved sample counts.
+
+\section{Threats to Validity}
+Table~\ref{tab:threats} summarizes the controls and remaining evidence limits.
+\label{sec:threats}
+
+
+The audit is retrospective. The inspected source may differ from archived executables; a recorded short commit string alone does not verify binary identity. Source-level concerns and archive-level facts retain separate provenance. An absence of corrected significance does not establish equivalence, while favorable descriptive endpoints do not establish a mechanism under unresolved duration, resource, or implementation differences. Admission, calibration, and rediscovery each require their own evidence.
+
+\section{Conclusion}
+LoopFuzz treats response-derived protocol states and LLM output as uncertain evidence for resource allocation. Its controller contract separates code progress from IPSM novelty, gives state-only proposals bounded provisional validation, and calibrates state productivity at scheduling episodes. The response-visible interface remains useful, while independent code feedback determines its measured value.
+
+The supplied benchmark and ablation archives support descriptive A--E endpoints, AUCs, time-resolved branch curves, saved-cost comparisons, and logged reward/admission diagnostics, together with a partial implementation audit. Four additional vulnerability dossiers provide case-level replay evidence, with attached logs distinguished from report-only trial counts and incomplete differentials. These observations do not yet establish causal admission gains, calibrated-scheduling gains, or improved historical rediscovery. The five-arm protocol, event schema, and explicitly unavailable outcomes identify what remains to be measured. Effectiveness claims must follow those measurements, including unfavorable targets and resource costs.
+
+\section*{CRediT authorship contribution statement}
+Author contribution roles remain to be confirmed by all authors before submission.
+\section*{Declaration of competing interest}
+The competing-interest declaration remains to be confirmed by all authors.
+\section*{Funding}
+Funding information remains to be confirmed by all authors.
+\section*{Data availability}
+This revision uses the locally supplied experimental archive, including four vulnerability dossiers with input hashes and evidence provenance, and includes a source-to-result audit in its companion materials. Public release location, access conditions, and permanent identifiers remain to be confirmed. The intended package contains build manifests, launch ledgers, raw event schemas, sanitized prompts/replies, analysis scripts, and patch-pair oracle metadata with information separation. No public archive or exact provider replay is claimed.
+\section*{Declaration of generative AI and AI-assisted technologies in the manuscript preparation process}
+OpenAI Codex assisted manuscript restructuring, language revision, LaTeX editing, figure-generation and analysis scripts, and consistency checks. The authors must verify the technical content, references, empirical interpretations, and final disclosure before submission.
+
+\appendix
+\setcounter{table}{0}
+\renewcommand{\theHtable}{appendix.\Alph{section}.\arabic{table}}
+\section{Complete archive observations}
+\label{sec:archive_appendix}
+Table~\ref{tab:archive_arms} retains the full archive inventory behind the descriptive results. The table uses the same observed values and sample standard deviations as the main results; repeated counts are shown once per row. Missing target--arm archives are not imputed.
+\input{revision_20260920/archive_arm_results.flow_20260928.tex}
+
+\bibliographystyle{elsarticle-num-names}
+\bibliography{revision_20260920/references.verified_20260928}
+\end{document}

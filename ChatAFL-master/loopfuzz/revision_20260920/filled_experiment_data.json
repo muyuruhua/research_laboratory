@@ -1,0 +1,4885 @@
+{
+  "policy": "All available summary rows and archives are retained; nominal target is 10 runs; missing observations remain blank. D uses benchmark loopfuzz as gated_fixed per user mapping.",
+  "aggregate": {
+    "A|lightftp": {
+      "target": "lightftp",
+      "arm": "A",
+      "runs_available": 13,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 13
+      },
+      "exit_code": {
+        "0": 10,
+        "": 3
+      },
+      "runtime_min": {
+        "n": 13,
+        "mean": 1511.3076923076924,
+        "sd": 19.215378456610456,
+        "min": 1499.0,
+        "max": 1539.0
+      },
+      "branches": {
+        "n": 13,
+        "mean": 71.0,
+        "sd": 0.0,
+        "min": 71.0,
+        "max": 71.0
+      },
+      "ipsm_edges": {
+        "n": 13,
+        "mean": 187.30769230769232,
+        "sd": 11.272271402166583,
+        "min": 168.0,
+        "max": 202.0
+      },
+      "auc_branch_hours": {
+        "n": 13,
+        "mean": 1758.4847222222222,
+        "sd": 33.77569384809536,
+        "min": 1688.309861111111,
+        "max": 1814.3305555555555
+      },
+      "model_calls": {
+        "n": 0
+      },
+      "prompt_tokens": {
+        "n": 0
+      },
+      "completion_tokens": {
+        "n": 0
+      },
+      "episodes": 0,
+      "episode_rewards": 0,
+      "candidates": 0,
+      "trials": 0,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {},
+      "predicate_failures": {},
+      "config_arms": {
+        "None": 13
+      },
+      "config_calibration": {
+        "None": 13
+      },
+      "config_gamma": {
+        "None": 13
+      }
+    },
+    "A|bftpd": {
+      "target": "bftpd",
+      "arm": "A",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1499.0,
+        "sd": 0.0,
+        "min": 1499.0,
+        "max": 1499.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 486.0,
+        "sd": 8.755950357709132,
+        "min": 466.0,
+        "max": 494.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 163.1,
+        "sd": 15.444884086468388,
+        "min": 144.0,
+        "max": 187.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 11868.72438888889,
+        "sd": 165.6122591228337,
+        "min": 11465.34888888889,
+        "max": 12058.15138888889
+      },
+      "model_calls": {
+        "n": 0
+      },
+      "prompt_tokens": {
+        "n": 0
+      },
+      "completion_tokens": {
+        "n": 0
+      },
+      "episodes": 0,
+      "episode_rewards": 0,
+      "candidates": 0,
+      "trials": 0,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {},
+      "predicate_failures": {},
+      "config_arms": {
+        "None": 10
+      },
+      "config_calibration": {
+        "None": 10
+      },
+      "config_gamma": {
+        "None": 10
+      }
+    },
+    "A|proftpd": {
+      "target": "proftpd",
+      "arm": "A",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1499.0,
+        "sd": 0.0,
+        "min": 1499.0,
+        "max": 1499.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 5053.8,
+        "sd": 97.44263269568751,
+        "min": 4928.0,
+        "max": 5291.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 190.5,
+        "sd": 27.865749586185547,
+        "min": 142.0,
+        "max": 222.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 122652.54805555556,
+        "sd": 1730.0681808538225,
+        "min": 120362.99347222222,
+        "max": 126369.8463888889
+      },
+      "model_calls": {
+        "n": 0
+      },
+      "prompt_tokens": {
+        "n": 0
+      },
+      "completion_tokens": {
+        "n": 0
+      },
+      "episodes": 0,
+      "episode_rewards": 0,
+      "candidates": 0,
+      "trials": 0,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {},
+      "predicate_failures": {},
+      "config_arms": {
+        "None": 10
+      },
+      "config_calibration": {
+        "None": 10
+      },
+      "config_gamma": {
+        "None": 10
+      }
+    },
+    "A|pure-ftpd": {
+      "target": "pure-ftpd",
+      "arm": "A",
+      "runs_available": 11,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 11
+      },
+      "exit_code": {
+        "0": 9,
+        "1": 1,
+        "": 1
+      },
+      "runtime_min": {
+        "n": 11,
+        "mean": 1499.0,
+        "sd": 0.0,
+        "min": 1499.0,
+        "max": 1499.0
+      },
+      "branches": {
+        "n": 11,
+        "mean": 1076.3636363636363,
+        "sd": 89.64069692642146,
+        "min": 899.0,
+        "max": 1162.0
+      },
+      "ipsm_edges": {
+        "n": 11,
+        "mean": 236.45454545454547,
+        "sd": 26.725881225372667,
+        "min": 196.0,
+        "max": 286.0
+      },
+      "auc_branch_hours": {
+        "n": 11,
+        "mean": 23054.10037878788,
+        "sd": 2084.401870362128,
+        "min": 19511.93138888889,
+        "max": 25365.161944444444
+      },
+      "model_calls": {
+        "n": 0
+      },
+      "prompt_tokens": {
+        "n": 0
+      },
+      "completion_tokens": {
+        "n": 0
+      },
+      "episodes": 0,
+      "episode_rewards": 0,
+      "candidates": 0,
+      "trials": 0,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {},
+      "predicate_failures": {},
+      "config_arms": {
+        "None": 11
+      },
+      "config_calibration": {
+        "None": 11
+      },
+      "config_gamma": {
+        "None": 11
+      }
+    },
+    "A|exim": {
+      "target": "exim",
+      "arm": "A",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1499.0,
+        "sd": 0.0,
+        "min": 1499.0,
+        "max": 1499.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 3798.8,
+        "sd": 43.32256276404299,
+        "min": 3732.0,
+        "max": 3847.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 88.8,
+        "sd": 5.181162460726786,
+        "min": 80.0,
+        "max": 96.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 91083.03334722223,
+        "sd": 1031.5342976286513,
+        "min": 89559.68069444444,
+        "max": 92288.89527777777
+      },
+      "model_calls": {
+        "n": 0
+      },
+      "prompt_tokens": {
+        "n": 0
+      },
+      "completion_tokens": {
+        "n": 0
+      },
+      "episodes": 0,
+      "episode_rewards": 0,
+      "candidates": 0,
+      "trials": 0,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {},
+      "predicate_failures": {},
+      "config_arms": {
+        "None": 10
+      },
+      "config_calibration": {
+        "None": 10
+      },
+      "config_gamma": {
+        "None": 10
+      }
+    },
+    "A|live555": {
+      "target": "live555",
+      "arm": "A",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1499.0,
+        "sd": 0.0,
+        "min": 1499.0,
+        "max": 1499.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 2893.6,
+        "sd": 14.523544103741804,
+        "min": 2876.0,
+        "max": 2923.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 96.1,
+        "sd": 8.595218308907446,
+        "min": 85.0,
+        "max": 113.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 71127.42019444445,
+        "sd": 517.3290810656968,
+        "min": 70148.3451388889,
+        "max": 71858.35361111112
+      },
+      "model_calls": {
+        "n": 0
+      },
+      "prompt_tokens": {
+        "n": 0
+      },
+      "completion_tokens": {
+        "n": 0
+      },
+      "episodes": 0,
+      "episode_rewards": 0,
+      "candidates": 0,
+      "trials": 0,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {},
+      "predicate_failures": {},
+      "config_arms": {
+        "None": 10
+      },
+      "config_calibration": {
+        "None": 10
+      },
+      "config_gamma": {
+        "None": 10
+      }
+    },
+    "A|kamailio": {
+      "target": "kamailio",
+      "arm": "A",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1499.0,
+        "sd": 0.0,
+        "min": 1499.0,
+        "max": 1499.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 10002.6,
+        "sd": 144.17134867156435,
+        "min": 9806.0,
+        "max": 10202.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 109.4,
+        "sd": 9.686187187031965,
+        "min": 95.0,
+        "max": 129.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 242853.66930555555,
+        "sd": 2772.6437283574005,
+        "min": 239608.46819444443,
+        "max": 246803.8513888889
+      },
+      "model_calls": {
+        "n": 0
+      },
+      "prompt_tokens": {
+        "n": 0
+      },
+      "completion_tokens": {
+        "n": 0
+      },
+      "episodes": 0,
+      "episode_rewards": 0,
+      "candidates": 0,
+      "trials": 0,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {},
+      "predicate_failures": {},
+      "config_arms": {
+        "None": 10
+      },
+      "config_calibration": {
+        "None": 10
+      },
+      "config_gamma": {
+        "None": 10
+      }
+    },
+    "A|forked-daapd": {
+      "target": "forked-daapd",
+      "arm": "A",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1499.0,
+        "sd": 0.0,
+        "min": 1499.0,
+        "max": 1499.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 2330.8,
+        "sd": 59.95331517105622,
+        "min": 2206.0,
+        "max": 2441.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 21.6,
+        "sd": 2.1186998109427604,
+        "min": 18.0,
+        "max": 24.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 54453.22279166667,
+        "sd": 1494.0931457010815,
+        "min": 51504.76944444444,
+        "max": 56928.30222222222
+      },
+      "model_calls": {
+        "n": 0
+      },
+      "prompt_tokens": {
+        "n": 0
+      },
+      "completion_tokens": {
+        "n": 0
+      },
+      "episodes": 0,
+      "episode_rewards": 0,
+      "candidates": 0,
+      "trials": 0,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {},
+      "predicate_failures": {},
+      "config_arms": {
+        "None": 10
+      },
+      "config_calibration": {
+        "None": 10
+      },
+      "config_gamma": {
+        "None": 10
+      }
+    },
+    "A|lighttpd1": {
+      "target": "lighttpd1",
+      "arm": "A",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1499.0,
+        "sd": 0.0,
+        "min": 1499.0,
+        "max": 1499.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 1940.7,
+        "sd": 21.16627296221777,
+        "min": 1912.0,
+        "max": 1974.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 17.7,
+        "sd": 2.4517567397911058,
+        "min": 15.0,
+        "max": 23.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 46909.35776388889,
+        "sd": 235.65726477075492,
+        "min": 46544.48472222222,
+        "max": 47240.56333333333
+      },
+      "model_calls": {
+        "n": 0
+      },
+      "prompt_tokens": {
+        "n": 0
+      },
+      "completion_tokens": {
+        "n": 0
+      },
+      "episodes": 0,
+      "episode_rewards": 0,
+      "candidates": 0,
+      "trials": 0,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {},
+      "predicate_failures": {},
+      "config_arms": {
+        "None": 10
+      },
+      "config_calibration": {
+        "None": 10
+      },
+      "config_gamma": {
+        "None": 10
+      }
+    },
+    "B|lightftp": {
+      "target": "lightftp",
+      "arm": "B",
+      "runs_available": 11,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 11
+      },
+      "exit_code": {
+        "": 11
+      },
+      "runtime_min": {
+        "n": 11,
+        "mean": 1487.0,
+        "sd": 14.825653442597396,
+        "min": 1471.0,
+        "max": 1509.0
+      },
+      "branches": {
+        "n": 11,
+        "mean": 71.27272727272727,
+        "sd": 0.9045340337332909,
+        "min": 71.0,
+        "max": 74.0
+      },
+      "ipsm_edges": {
+        "n": 11,
+        "mean": 195.0909090909091,
+        "sd": 14.638678529529539,
+        "min": 170.0,
+        "max": 210.0
+      },
+      "auc_branch_hours": {
+        "n": 11,
+        "mean": 1728.1192045454545,
+        "sd": 36.518731702755254,
+        "min": 1676.31,
+        "max": 1790.9644444444446
+      },
+      "model_calls": {
+        "n": 11,
+        "mean": 138.27272727272728,
+        "sd": 32.747796594857824,
+        "min": 83.0,
+        "max": 163.0
+      },
+      "prompt_tokens": {
+        "n": 11,
+        "mean": 24396.272727272728,
+        "sd": 3025.1930877518907,
+        "min": 17325.0,
+        "max": 28082.0
+      },
+      "completion_tokens": {
+        "n": 11,
+        "mean": 97852.54545454546,
+        "sd": 25347.95144134388,
+        "min": 52816.0,
+        "max": 128968.0
+      },
+      "episodes": 0,
+      "episode_rewards": 0,
+      "candidates": 0,
+      "trials": 0,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {},
+      "predicate_failures": {},
+      "config_arms": {
+        "None": 11
+      },
+      "config_calibration": {
+        "None": 11
+      },
+      "config_gamma": {
+        "None": 11
+      }
+    },
+    "B|bftpd": {
+      "target": "bftpd",
+      "arm": "B",
+      "runs_available": 20,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 20
+      },
+      "exit_code": {
+        "": 10,
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 20,
+        "mean": 1508.8,
+        "sd": 0.6155870112510925,
+        "min": 1507.0,
+        "max": 1509.0
+      },
+      "branches": {
+        "n": 20,
+        "mean": 492.2,
+        "sd": 13.679027358466836,
+        "min": 455.0,
+        "max": 501.0
+      },
+      "ipsm_edges": {
+        "n": 20,
+        "mean": 167.1,
+        "sd": 12.152106163563841,
+        "min": 143.0,
+        "max": 183.0
+      },
+      "auc_branch_hours": {
+        "n": 20,
+        "mean": 12068.627138888889,
+        "sd": 315.1709252595877,
+        "min": 11247.307916666667,
+        "max": 12340.135555555555
+      },
+      "model_calls": {
+        "n": 20,
+        "mean": 96.7,
+        "sd": 5.506933428821678,
+        "min": 90.0,
+        "max": 106.0
+      },
+      "prompt_tokens": {
+        "n": 20,
+        "mean": 20351.6,
+        "sd": 1700.946188696781,
+        "min": 17199.0,
+        "max": 23204.0
+      },
+      "completion_tokens": {
+        "n": 20,
+        "mean": 89153.8,
+        "sd": 10197.999925682023,
+        "min": 72130.0,
+        "max": 104984.0
+      },
+      "episodes": 0,
+      "episode_rewards": 0,
+      "candidates": 0,
+      "trials": 0,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {},
+      "predicate_failures": {},
+      "config_arms": {
+        "None": 20
+      },
+      "config_calibration": {
+        "None": 20
+      },
+      "config_gamma": {
+        "None": 20
+      }
+    },
+    "B|proftpd": {
+      "target": "proftpd",
+      "arm": "B",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1508.3,
+        "sd": 0.6749485577105528,
+        "min": 1507.0,
+        "max": 1509.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 5205.9,
+        "sd": 166.70229619161086,
+        "min": 4998.0,
+        "max": 5473.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 150.0,
+        "sd": 18.51125783588643,
+        "min": 122.0,
+        "max": 183.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 125217.69030555556,
+        "sd": 2989.1494335864863,
+        "min": 120451.11472222222,
+        "max": 129482.12694444445
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 35.3,
+        "sd": 8.83238988672438,
+        "min": 20.0,
+        "max": 50.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 9810.8,
+        "sd": 2695.1810411258916,
+        "min": 5855.0,
+        "max": 12533.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 31368.4,
+        "sd": 5930.5643763660655,
+        "min": 17665.0,
+        "max": 39813.0
+      },
+      "episodes": 0,
+      "episode_rewards": 0,
+      "candidates": 0,
+      "trials": 0,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {},
+      "predicate_failures": {},
+      "config_arms": {
+        "None": 10
+      },
+      "config_calibration": {
+        "None": 10
+      },
+      "config_gamma": {
+        "None": 10
+      }
+    },
+    "B|pure-ftpd": {
+      "target": "pure-ftpd",
+      "arm": "B",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1508.6,
+        "sd": 0.5163977794943223,
+        "min": 1508.0,
+        "max": 1509.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 1109.3,
+        "sd": 40.008471325180345,
+        "min": 1039.0,
+        "max": 1182.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 186.0,
+        "sd": 31.47132733845912,
+        "min": 133.0,
+        "max": 243.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 24976.631166666666,
+        "sd": 1126.8167993900493,
+        "min": 22839.305694444443,
+        "max": 26614.321805555555
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 54.0,
+        "sd": 8.472176684759223,
+        "min": 41.0,
+        "max": 65.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 12937.0,
+        "sd": 3081.8290384481456,
+        "min": 9345.0,
+        "max": 18092.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 54511.5,
+        "sd": 8782.216250911713,
+        "min": 39577.0,
+        "max": 71450.0
+      },
+      "episodes": 0,
+      "episode_rewards": 0,
+      "candidates": 0,
+      "trials": 0,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {},
+      "predicate_failures": {},
+      "config_arms": {
+        "None": 10
+      },
+      "config_calibration": {
+        "None": 10
+      },
+      "config_gamma": {
+        "None": 10
+      }
+    },
+    "B|exim": {
+      "target": "exim",
+      "arm": "B",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1508.5,
+        "sd": 0.7071067811865476,
+        "min": 1507.0,
+        "max": 1509.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 3761.7,
+        "sd": 60.387728701928985,
+        "min": 3700.0,
+        "max": 3857.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 115.8,
+        "sd": 13.505554412907307,
+        "min": 91.0,
+        "max": 135.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 91301.73865277777,
+        "sd": 1501.3788614526443,
+        "min": 89532.41777777778,
+        "max": 93158.92847222222
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 64.6,
+        "sd": 8.099382692526635,
+        "min": 49.0,
+        "max": 80.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 11225.6,
+        "sd": 1424.2696529956834,
+        "min": 9083.0,
+        "max": 13587.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 34099.8,
+        "sd": 3295.467655229932,
+        "min": 30667.0,
+        "max": 40828.0
+      },
+      "episodes": 0,
+      "episode_rewards": 0,
+      "candidates": 0,
+      "trials": 0,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {},
+      "predicate_failures": {},
+      "config_arms": {
+        "None": 10
+      },
+      "config_calibration": {
+        "None": 10
+      },
+      "config_gamma": {
+        "None": 10
+      }
+    },
+    "B|live555": {
+      "target": "live555",
+      "arm": "B",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1509.0,
+        "sd": 0.0,
+        "min": 1509.0,
+        "max": 1509.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 2882.4,
+        "sd": 22.01615568420407,
+        "min": 2850.0,
+        "max": 2929.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 143.8,
+        "sd": 8.753412033157254,
+        "min": 132.0,
+        "max": 164.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 71224.826875,
+        "sd": 422.54884720074466,
+        "min": 70437.07,
+        "max": 71887.84458333334
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 90.7,
+        "sd": 4.922736366426028,
+        "min": 83.0,
+        "max": 97.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 42696.4,
+        "sd": 3325.5805909144146,
+        "min": 37629.0,
+        "max": 46061.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 81258.9,
+        "sd": 5867.135955662032,
+        "min": 69313.0,
+        "max": 86620.0
+      },
+      "episodes": 0,
+      "episode_rewards": 0,
+      "candidates": 0,
+      "trials": 0,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {},
+      "predicate_failures": {},
+      "config_arms": {
+        "None": 10
+      },
+      "config_calibration": {
+        "None": 10
+      },
+      "config_gamma": {
+        "None": 10
+      }
+    },
+    "B|kamailio": {
+      "target": "kamailio",
+      "arm": "B",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1508.6,
+        "sd": 0.5163977794943223,
+        "min": 1508.0,
+        "max": 1509.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 10644.3,
+        "sd": 96.52639247607073,
+        "min": 10493.0,
+        "max": 10795.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 106.5,
+        "sd": 6.819090848492928,
+        "min": 95.0,
+        "max": 118.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 257606.84384722222,
+        "sd": 2082.0267559116432,
+        "min": 253953.93180555556,
+        "max": 261226.73875
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 46.9,
+        "sd": 5.566766466171263,
+        "min": 39.0,
+        "max": 59.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 33492.9,
+        "sd": 5596.737570525648,
+        "min": 28202.0,
+        "max": 46914.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 59719.6,
+        "sd": 5312.258406532741,
+        "min": 50460.0,
+        "max": 71035.0
+      },
+      "episodes": 0,
+      "episode_rewards": 0,
+      "candidates": 0,
+      "trials": 0,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {},
+      "predicate_failures": {},
+      "config_arms": {
+        "None": 10
+      },
+      "config_calibration": {
+        "None": 10
+      },
+      "config_gamma": {
+        "None": 10
+      }
+    },
+    "B|forked-daapd": {
+      "target": "forked-daapd",
+      "arm": "B",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1470.3,
+        "sd": 5.375872022286245,
+        "min": 1463.0,
+        "max": 1479.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 2169.6,
+        "sd": 113.02526757814428,
+        "min": 1987.0,
+        "max": 2345.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 17.7,
+        "sd": 4.900113377373131,
+        "min": 9.0,
+        "max": 22.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 49393.21563888889,
+        "sd": 3335.933695154472,
+        "min": 44366.80652777778,
+        "max": 54572.212916666664
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 109.3,
+        "sd": 5.982381539896038,
+        "min": 102.0,
+        "max": 120.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 112957.8,
+        "sd": 3111.145833933215,
+        "min": 109127.0,
+        "max": 119120.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 105891.5,
+        "sd": 9205.248868022103,
+        "min": 91528.0,
+        "max": 122858.0
+      },
+      "episodes": 0,
+      "episode_rewards": 0,
+      "candidates": 0,
+      "trials": 0,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {},
+      "predicate_failures": {},
+      "config_arms": {
+        "None": 10
+      },
+      "config_calibration": {
+        "None": 10
+      },
+      "config_gamma": {
+        "None": 10
+      }
+    },
+    "B|lighttpd1": {
+      "target": "lighttpd1",
+      "arm": "B",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1509.0,
+        "sd": 0.0,
+        "min": 1509.0,
+        "max": 1509.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 1884.1,
+        "sd": 25.273833636127833,
+        "min": 1845.0,
+        "max": 1928.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 14.3,
+        "sd": 3.1287200080686173,
+        "min": 10.0,
+        "max": 18.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 45075.797402777775,
+        "sd": 729.3042752597565,
+        "min": 43649.10625,
+        "max": 46176.58125
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 40.3,
+        "sd": 3.5292429153510465,
+        "min": 36.0,
+        "max": 47.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 5180.6,
+        "sd": 605.4143117641744,
+        "min": 4552.0,
+        "max": 6085.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 22831.4,
+        "sd": 3327.5298212204066,
+        "min": 18920.0,
+        "max": 28769.0
+      },
+      "episodes": 0,
+      "episode_rewards": 0,
+      "candidates": 0,
+      "trials": 0,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {},
+      "predicate_failures": {},
+      "config_arms": {
+        "None": 10
+      },
+      "config_calibration": {
+        "None": 10
+      },
+      "config_gamma": {
+        "None": 10
+      }
+    },
+    "C|lightftp": {
+      "target": "lightftp",
+      "arm": "C",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1508.6,
+        "sd": 4.788875998951459,
+        "min": 1499.0,
+        "max": 1515.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 80.6,
+        "sd": 15.45027867422174,
+        "min": 71.0,
+        "max": 109.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 210.6,
+        "sd": 8.289216555930428,
+        "min": 197.0,
+        "max": 223.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 1987.747263888889,
+        "sd": 394.10307101349827,
+        "min": 1633.5834722222223,
+        "max": 2737.0204166666667
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 153.8,
+        "sd": 5.138093031466052,
+        "min": 145.0,
+        "max": 159.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 124892.1,
+        "sd": 9033.02253401374,
+        "min": 112492.0,
+        "max": 140072.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 59978.9,
+        "sd": 4948.559486243334,
+        "min": 50517.0,
+        "max": 66683.0
+      },
+      "episodes": 7690,
+      "episode_rewards": 1493,
+      "candidates": 33,
+      "trials": 33,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "durable": 33
+      },
+      "predicate_failures": {
+        "u_pass": 33,
+        "g_code_pass": 31,
+        "g_state_pass": 33
+      },
+      "config_arms": {
+        "loopfuzz-direct": 10
+      },
+      "config_calibration": {
+        "False": 10
+      },
+      "config_gamma": {
+        "0.995": 10
+      }
+    },
+    "C|bftpd": {
+      "target": "bftpd",
+      "arm": "C",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 6,
+        "exit_137_near_limit": 4
+      },
+      "exit_code": {
+        "0": 6,
+        "137": 4
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1492.9,
+        "sd": 3.784471194529326,
+        "min": 1488.0,
+        "max": 1499.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 498.9,
+        "sd": 12.187881048174225,
+        "min": 479.0,
+        "max": 515.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 217.9,
+        "sd": 13.779614572903618,
+        "min": 191.0,
+        "max": 236.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 12081.961333333333,
+        "sd": 450.96949901634866,
+        "min": 11267.118888888888,
+        "max": 12597.035833333333
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 223.8,
+        "sd": 19.600453509492525,
+        "min": 198.0,
+        "max": 252.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 188198.8,
+        "sd": 29843.781648220567,
+        "min": 146240.0,
+        "max": 241581.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 103097.7,
+        "sd": 5442.64749812891,
+        "min": 91711.0,
+        "max": 110764.0
+      },
+      "episodes": 2754,
+      "episode_rewards": 1189,
+      "candidates": 16,
+      "trials": 16,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "durable": 16
+      },
+      "predicate_failures": {
+        "u_pass": 16,
+        "g_code_pass": 16,
+        "g_state_pass": 16
+      },
+      "config_arms": {
+        "loopfuzz-direct": 6,
+        "loopfuzz-gated-fixed": 4
+      },
+      "config_calibration": {
+        "False": 10
+      },
+      "config_gamma": {
+        "0.995": 10
+      }
+    },
+    "C|proftpd": {
+      "target": "proftpd",
+      "arm": "C",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "exit_137_near_limit": 9,
+        "completed": 1
+      },
+      "exit_code": {
+        "137": 9,
+        "0": 1
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1493.8,
+        "sd": 3.7653389990514503,
+        "min": 1486.0,
+        "max": 1498.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 5446.3,
+        "sd": 194.6598457709128,
+        "min": 5261.0,
+        "max": 5818.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 300.7,
+        "sd": 29.105364148593335,
+        "min": 250.0,
+        "max": 340.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 130538.50009722222,
+        "sd": 4511.610185425168,
+        "min": 126379.63375,
+        "max": 139386.34805555554
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 187.2,
+        "sd": 1.0327955589886446,
+        "min": 185.0,
+        "max": 189.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 73533.0,
+        "sd": 1814.05647345635,
+        "min": 71239.0,
+        "max": 78169.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 102486.8,
+        "sd": 5640.848356211836,
+        "min": 94539.0,
+        "max": 113143.0
+      },
+      "episodes": 2320,
+      "episode_rewards": 907,
+      "candidates": 2,
+      "trials": 2,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "durable": 2
+      },
+      "predicate_failures": {
+        "u_pass": 2,
+        "g_code_pass": 2,
+        "g_state_pass": 2
+      },
+      "config_arms": {
+        "loopfuzz-gated-fixed": 9,
+        "loopfuzz-direct": 1
+      },
+      "config_calibration": {
+        "False": 10
+      },
+      "config_gamma": {
+        "0.995": 10
+      }
+    },
+    "C|pure-ftpd": {
+      "target": "pure-ftpd",
+      "arm": "C",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 7,
+        "exit_137_near_limit": 3
+      },
+      "exit_code": {
+        "0": 7,
+        "137": 3
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1511.2,
+        "sd": 1.4757295747452437,
+        "min": 1508.0,
+        "max": 1513.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 1221.2,
+        "sd": 48.889444441287914,
+        "min": 1147.0,
+        "max": 1286.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 328.5,
+        "sd": 22.54994456755936,
+        "min": 293.0,
+        "max": 360.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 28860.783583333334,
+        "sd": 1645.7135217500393,
+        "min": 26561.003472222223,
+        "max": 30997.635
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 204.1,
+        "sd": 17.729134841334538,
+        "min": 173.0,
+        "max": 238.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 138054.0,
+        "sd": 19406.454069601576,
+        "min": 106075.0,
+        "max": 166050.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 96039.8,
+        "sd": 7413.000319258953,
+        "min": 85727.0,
+        "max": 108466.0
+      },
+      "episodes": 7359,
+      "episode_rewards": 2475,
+      "candidates": 161,
+      "trials": 161,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "durable": 161
+      },
+      "predicate_failures": {
+        "u_pass": 90,
+        "g_code_pass": 152,
+        "g_state_pass": 160
+      },
+      "config_arms": {
+        "loopfuzz-direct": 7,
+        "loopfuzz-gated-fixed": 3
+      },
+      "config_calibration": {
+        "False": 10
+      },
+      "config_gamma": {
+        "0.995": 10
+      }
+    },
+    "C|exim": {
+      "target": "exim",
+      "arm": "C",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1501.9,
+        "sd": 7.475143997126596,
+        "min": 1486.0,
+        "max": 1510.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 3896.1,
+        "sd": 25.627459231587252,
+        "min": 3853.0,
+        "max": 3929.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 150.9,
+        "sd": 9.527154174603593,
+        "min": 136.0,
+        "max": 166.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 94880.05818055556,
+        "sd": 928.2822176047172,
+        "min": 93062.67722222222,
+        "max": 96034.12097222223
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 112.0,
+        "sd": 8.137703743822469,
+        "min": 99.0,
+        "max": 128.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 101430.4,
+        "sd": 11872.675643397883,
+        "min": 84256.0,
+        "max": 125126.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 61772.0,
+        "sd": 3709.4921784824164,
+        "min": 53709.0,
+        "max": 67003.0
+      },
+      "episodes": 2862,
+      "episode_rewards": 1448,
+      "candidates": 22,
+      "trials": 22,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "durable": 22
+      },
+      "predicate_failures": {
+        "u_pass": 22,
+        "g_code_pass": 22,
+        "g_state_pass": 22
+      },
+      "config_arms": {
+        "loopfuzz-direct": 10
+      },
+      "config_calibration": {
+        "False": 10
+      },
+      "config_gamma": {
+        "0.995": 10
+      }
+    },
+    "C|live555": {
+      "target": "live555",
+      "arm": "C",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1454.3,
+        "sd": 10.739853092312037,
+        "min": 1437.0,
+        "max": 1473.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 3075.7,
+        "sd": 34.435285520652926,
+        "min": 3045.0,
+        "max": 3155.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 166.8,
+        "sd": 9.319036669336828,
+        "min": 157.0,
+        "max": 185.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 73510.98352777777,
+        "sd": 562.9376205889889,
+        "min": 72679.24222222222,
+        "max": 74452.66944444444
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 209.0,
+        "sd": 21.066033745766614,
+        "min": 163.0,
+        "max": 242.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 171586.2,
+        "sd": 17516.6837158179,
+        "min": 142373.0,
+        "max": 203512.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 300988.4,
+        "sd": 42358.07025087165,
+        "min": 216401.0,
+        "max": 375079.0
+      },
+      "episodes": 6877,
+      "episode_rewards": 2684,
+      "candidates": 606,
+      "trials": 606,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "durable": 606
+      },
+      "predicate_failures": {
+        "u_pass": 564,
+        "g_code_pass": 595,
+        "g_state_pass": 605
+      },
+      "config_arms": {
+        "loopfuzz-direct": 10
+      },
+      "config_calibration": {
+        "False": 10
+      },
+      "config_gamma": {
+        "0.995": 10
+      }
+    },
+    "C|kamailio": {
+      "target": "kamailio",
+      "arm": "C",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 9,
+        "exit_137_near_limit": 1
+      },
+      "exit_code": {
+        "0": 9,
+        "137": 1
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1498.7,
+        "sd": 1.636391694484477,
+        "min": 1496.0,
+        "max": 1500.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 10800.6,
+        "sd": 129.02299536645913,
+        "min": 10581.0,
+        "max": 10959.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 139.2,
+        "sd": 9.78434123144391,
+        "min": 125.0,
+        "max": 155.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 260260.94861111112,
+        "sd": 2942.4354737523668,
+        "min": 255766.97291666668,
+        "max": 263840.3513888889
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 63.1,
+        "sd": 6.332456079595025,
+        "min": 55.0,
+        "max": 76.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 94953.4,
+        "sd": 13998.863987243156,
+        "min": 77347.0,
+        "max": 123960.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 89448.8,
+        "sd": 3078.2282710820664,
+        "min": 84143.0,
+        "max": 93675.0
+      },
+      "episodes": 7946,
+      "episode_rewards": 5047,
+      "candidates": 126,
+      "trials": 126,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "durable": 126
+      },
+      "predicate_failures": {
+        "u_pass": 126,
+        "g_code_pass": 125,
+        "g_state_pass": 126
+      },
+      "config_arms": {
+        "loopfuzz-direct": 9,
+        "loopfuzz-gated-fixed": 1
+      },
+      "config_calibration": {
+        "False": 10
+      },
+      "config_gamma": {
+        "0.995": 10
+      }
+    },
+    "C|forked-daapd": {
+      "target": "forked-daapd",
+      "arm": "C",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 8,
+        "sigabrt": 2
+      },
+      "exit_code": {
+        "0": 8,
+        "134": 2
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1510.7,
+        "sd": 9.416887903005843,
+        "min": 1490.0,
+        "max": 1524.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 2585.4,
+        "sd": 86.2350792246919,
+        "min": 2452.0,
+        "max": 2733.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 22.3,
+        "sd": 2.1628170930011112,
+        "min": 19.0,
+        "max": 25.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 61776.82155555555,
+        "sd": 1863.7332757888905,
+        "min": 59659.525,
+        "max": 65493.57347222222
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 48.2,
+        "sd": 10.152175464730043,
+        "min": 35.0,
+        "max": 70.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 69179.9,
+        "sd": 18413.03274223632,
+        "min": 46994.0,
+        "max": 109803.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 63842.9,
+        "sd": 18604.890853094395,
+        "min": 43706.0,
+        "max": 107381.0
+      },
+      "episodes": 4832,
+      "episode_rewards": 995,
+      "candidates": 94,
+      "trials": 94,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "durable": 94
+      },
+      "predicate_failures": {
+        "u_pass": 90,
+        "g_code_pass": 94,
+        "g_state_pass": 94
+      },
+      "config_arms": {
+        "loopfuzz-direct": 10
+      },
+      "config_calibration": {
+        "False": 10
+      },
+      "config_gamma": {
+        "0.995": 10
+      }
+    },
+    "C|lighttpd1": {
+      "target": "lighttpd1",
+      "arm": "C",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1518.1,
+        "sd": 4.408325456829762,
+        "min": 1512.0,
+        "max": 1523.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 2145.0,
+        "sd": 69.81403870282824,
+        "min": 2079.0,
+        "max": 2279.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 32.1,
+        "sd": 4.998888765404656,
+        "min": 27.0,
+        "max": 44.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 53003.77363888889,
+        "sd": 1613.6645383470877,
+        "min": 51530.33458333334,
+        "max": 56056.99319444445
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 162.0,
+        "sd": 21.28118626601649,
+        "min": 130.0,
+        "max": 192.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 148907.8,
+        "sd": 22269.67133320312,
+        "min": 122232.0,
+        "max": 188907.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 75494.1,
+        "sd": 19039.814112362896,
+        "min": 47006.0,
+        "max": 99552.0
+      },
+      "episodes": 13524,
+      "episode_rewards": 3336,
+      "candidates": 266,
+      "trials": 266,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "durable": 266
+      },
+      "predicate_failures": {
+        "u_pass": 265,
+        "g_code_pass": 266,
+        "g_state_pass": 266
+      },
+      "config_arms": {
+        "loopfuzz-direct": 10
+      },
+      "config_calibration": {
+        "False": 10
+      },
+      "config_gamma": {
+        "0.995": 10
+      }
+    },
+    "D|lightftp": {
+      "target": "lightftp",
+      "arm": "D",
+      "runs_available": 15,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 15
+      },
+      "exit_code": {
+        "": 15
+      },
+      "runtime_min": {
+        "n": 15,
+        "mean": 1509.0,
+        "sd": 14.793821103999564,
+        "min": 1473.0,
+        "max": 1522.0
+      },
+      "branches": {
+        "n": 15,
+        "mean": 71.66666666666667,
+        "sd": 2.3196879921559237,
+        "min": 71.0,
+        "max": 80.0
+      },
+      "ipsm_edges": {
+        "n": 15,
+        "mean": 207.0,
+        "sd": 16.983184961265994,
+        "min": 175.0,
+        "max": 231.0
+      },
+      "auc_branch_hours": {
+        "n": 15,
+        "mean": 1780.742685185185,
+        "sd": 45.21298586810087,
+        "min": 1737.4291666666666,
+        "max": 1924.9183333333333
+      },
+      "model_calls": {
+        "n": 15,
+        "mean": 141.26666666666668,
+        "sd": 33.969454065731014,
+        "min": 59.0,
+        "max": 161.0
+      },
+      "prompt_tokens": {
+        "n": 15,
+        "mean": 120938.13333333333,
+        "sd": 12414.687360810447,
+        "min": 94244.0,
+        "max": 143555.0
+      },
+      "completion_tokens": {
+        "n": 15,
+        "mean": 50506.666666666664,
+        "sd": 18283.151250992447,
+        "min": 11755.0,
+        "max": 81165.0
+      },
+      "episodes": 13604,
+      "episode_rewards": 2452,
+      "candidates": 48,
+      "trials": 48,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 44,
+        "durable": 4
+      },
+      "predicate_failures": {
+        "g_code_pass": 44,
+        "g_state_pass": 47,
+        "u_pass": 47
+      },
+      "config_arms": {
+        "loopfuzz-gated-fixed": 15
+      },
+      "config_calibration": {
+        "False": 15
+      },
+      "config_gamma": {
+        "0.995": 15
+      }
+    },
+    "D|bftpd": {
+      "target": "bftpd",
+      "arm": "D",
+      "runs_available": 20,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 13,
+        "exit_137_near_limit": 7
+      },
+      "exit_code": {
+        "": 10,
+        "137": 7,
+        "0": 3
+      },
+      "runtime_min": {
+        "n": 20,
+        "mean": 1504.6,
+        "sd": 3.97889167323872,
+        "min": 1499.0,
+        "max": 1510.0
+      },
+      "branches": {
+        "n": 20,
+        "mean": 502.7,
+        "sd": 7.269981539106366,
+        "min": 488.0,
+        "max": 516.0
+      },
+      "ipsm_edges": {
+        "n": 20,
+        "mean": 226.7,
+        "sd": 13.63470803346719,
+        "min": 202.0,
+        "max": 251.0
+      },
+      "auc_branch_hours": {
+        "n": 20,
+        "mean": 12267.72073611111,
+        "sd": 377.5176849397441,
+        "min": 11252.547083333333,
+        "max": 12631.141666666666
+      },
+      "model_calls": {
+        "n": 20,
+        "mean": 230.1,
+        "sd": 15.877491516045765,
+        "min": 199.0,
+        "max": 248.0
+      },
+      "prompt_tokens": {
+        "n": 20,
+        "mean": 148438.1,
+        "sd": 25130.316765339743,
+        "min": 101421.0,
+        "max": 182836.0
+      },
+      "completion_tokens": {
+        "n": 20,
+        "mean": 109677.1,
+        "sd": 7530.333402138874,
+        "min": 96594.0,
+        "max": 121902.0
+      },
+      "episodes": 6498,
+      "episode_rewards": 2654,
+      "candidates": 26,
+      "trials": 26,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 26
+      },
+      "predicate_failures": {
+        "u_pass": 26,
+        "g_code_pass": 26,
+        "g_state_pass": 26
+      },
+      "config_arms": {
+        "loopfuzz-gated-fixed": 20
+      },
+      "config_calibration": {
+        "False": 20
+      },
+      "config_gamma": {
+        "0.995": 20
+      }
+    },
+    "D|proftpd": {
+      "target": "proftpd",
+      "arm": "D",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1503.1,
+        "sd": 6.5226102477799826,
+        "min": 1489.0,
+        "max": 1512.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 5404.6,
+        "sd": 95.57684517357399,
+        "min": 5241.0,
+        "max": 5568.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 307.4,
+        "sd": 18.602269873444058,
+        "min": 289.0,
+        "max": 346.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 132057.37605555556,
+        "sd": 2915.3458806264834,
+        "min": 128072.37319444444,
+        "max": 137306.99097222224
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 190.1,
+        "sd": 1.1005049346146119,
+        "min": 188.0,
+        "max": 192.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 77099.5,
+        "sd": 3805.5414930802626,
+        "min": 71693.0,
+        "max": 83045.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 103981.1,
+        "sd": 6564.310803292469,
+        "min": 93810.0,
+        "max": 115773.0
+      },
+      "episodes": 1911,
+      "episode_rewards": 603,
+      "candidates": 0,
+      "trials": 0,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {},
+      "predicate_failures": {},
+      "config_arms": {
+        "loopfuzz-gated-fixed": 10
+      },
+      "config_calibration": {
+        "False": 10
+      },
+      "config_gamma": {
+        "0.995": 10
+      }
+    },
+    "D|pure-ftpd": {
+      "target": "pure-ftpd",
+      "arm": "D",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1466.6,
+        "sd": 4.060651288757616,
+        "min": 1460.0,
+        "max": 1472.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 1223.3,
+        "sd": 29.657489217171886,
+        "min": 1178.0,
+        "max": 1263.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 321.4,
+        "sd": 11.147495981908524,
+        "min": 305.0,
+        "max": 337.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 27863.892430555556,
+        "sd": 1496.8591913245991,
+        "min": 25446.54,
+        "max": 29651.362777777777
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 229.0,
+        "sd": 10.583005244258363,
+        "min": 207.0,
+        "max": 242.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 134578.8,
+        "sd": 17438.614444196344,
+        "min": 100379.0,
+        "max": 156403.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 104923.6,
+        "sd": 6515.306647511774,
+        "min": 94482.0,
+        "max": 116535.0
+      },
+      "episodes": 5378,
+      "episode_rewards": 1863,
+      "candidates": 173,
+      "trials": 173,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 166,
+        "durable": 7
+      },
+      "predicate_failures": {
+        "u_pass": 89,
+        "g_code_pass": 166,
+        "g_state_pass": 170
+      },
+      "config_arms": {
+        "loopfuzz-gated-fixed": 10
+      },
+      "config_calibration": {
+        "False": 10
+      },
+      "config_gamma": {
+        "0.995": 10
+      }
+    },
+    "D|exim": {
+      "target": "exim",
+      "arm": "D",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1482.5,
+        "sd": 3.2058973436118907,
+        "min": 1477.0,
+        "max": 1486.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 3914.9,
+        "sd": 20.9202188218851,
+        "min": 3879.0,
+        "max": 3946.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 152.7,
+        "sd": 9.274217547109357,
+        "min": 142.0,
+        "max": 170.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 93658.97566666667,
+        "sd": 573.1378187646861,
+        "min": 92879.67986111112,
+        "max": 94830.185
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 113.6,
+        "sd": 4.857983120596447,
+        "min": 106.0,
+        "max": 123.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 58238.8,
+        "sd": 7164.074442816896,
+        "min": 47992.0,
+        "max": 73299.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 69883.6,
+        "sd": 7754.041930932968,
+        "min": 59863.0,
+        "max": 77931.0
+      },
+      "episodes": 2650,
+      "episode_rewards": 1292,
+      "candidates": 24,
+      "trials": 24,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 24
+      },
+      "predicate_failures": {
+        "u_pass": 24,
+        "g_code_pass": 24,
+        "g_state_pass": 24
+      },
+      "config_arms": {
+        "loopfuzz-gated-fixed": 10
+      },
+      "config_calibration": {
+        "False": 10
+      },
+      "config_gamma": {
+        "0.995": 10
+      }
+    },
+    "D|live555": {
+      "target": "live555",
+      "arm": "D",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1503.7,
+        "sd": 1.4944341180973262,
+        "min": 1501.0,
+        "max": 1505.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 3057.9,
+        "sd": 21.982063395211814,
+        "min": 3023.0,
+        "max": 3084.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 171.9,
+        "sd": 11.347540115226149,
+        "min": 163.0,
+        "max": 196.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 75316.24479166667,
+        "sd": 723.4982266711867,
+        "min": 74334.16555555556,
+        "max": 76331.47111111111
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 138.5,
+        "sd": 8.934950102453474,
+        "min": 123.0,
+        "max": 151.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 135454.3,
+        "sd": 6343.936335851215,
+        "min": 127438.0,
+        "max": 147305.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 160942.1,
+        "sd": 14289.04629777649,
+        "min": 133703.0,
+        "max": 182372.0
+      },
+      "episodes": 7128,
+      "episode_rewards": 3028,
+      "candidates": 778,
+      "trials": 778,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 771,
+        "durable": 7
+      },
+      "predicate_failures": {
+        "u_pass": 715,
+        "g_code_pass": 771,
+        "g_state_pass": 777
+      },
+      "config_arms": {
+        "loopfuzz-gated-fixed": 10
+      },
+      "config_calibration": {
+        "False": 10
+      },
+      "config_gamma": {
+        "0.995": 10
+      }
+    },
+    "D|kamailio": {
+      "target": "kamailio",
+      "arm": "D",
+      "runs_available": 11,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 11
+      },
+      "exit_code": {
+        "": 11
+      },
+      "runtime_min": {
+        "n": 11,
+        "mean": 1490.3636363636363,
+        "sd": 20.534228630619303,
+        "min": 1472.0,
+        "max": 1518.0
+      },
+      "branches": {
+        "n": 11,
+        "mean": 10764.454545454546,
+        "sd": 108.67323832145946,
+        "min": 10566.0,
+        "max": 10957.0
+      },
+      "ipsm_edges": {
+        "n": 11,
+        "mean": 134.9090909090909,
+        "sd": 13.960333416179898,
+        "min": 125.0,
+        "max": 170.0
+      },
+      "auc_branch_hours": {
+        "n": 11,
+        "mean": 256813.4604419192,
+        "sd": 4223.354583684332,
+        "min": 250307.5823611111,
+        "max": 265001.11375
+      },
+      "model_calls": {
+        "n": 11,
+        "mean": 61.81818181818182,
+        "sd": 4.996362313087029,
+        "min": 56.0,
+        "max": 71.0
+      },
+      "prompt_tokens": {
+        "n": 11,
+        "mean": 76469.18181818182,
+        "sd": 11144.127043588313,
+        "min": 63500.0,
+        "max": 96462.0
+      },
+      "completion_tokens": {
+        "n": 11,
+        "mean": 99630.0,
+        "sd": 3055.521788500288,
+        "min": 93257.0,
+        "max": 103487.0
+      },
+      "episodes": 7038,
+      "episode_rewards": 4896,
+      "candidates": 127,
+      "trials": 127,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 123,
+        "durable": 4
+      },
+      "predicate_failures": {
+        "u_pass": 127,
+        "g_code_pass": 123,
+        "g_state_pass": 126
+      },
+      "config_arms": {
+        "loopfuzz-gated-fixed": 11
+      },
+      "config_calibration": {
+        "False": 11
+      },
+      "config_gamma": {
+        "0.995": 11
+      }
+    },
+    "D|forked-daapd": {
+      "target": "forked-daapd",
+      "arm": "D",
+      "runs_available": 12,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 12
+      },
+      "exit_code": {
+        "": 12
+      },
+      "runtime_min": {
+        "n": 12,
+        "mean": 1502.5,
+        "sd": 14.82320048866886,
+        "min": 1474.0,
+        "max": 1524.0
+      },
+      "branches": {
+        "n": 12,
+        "mean": 2670.25,
+        "sd": 87.2781603422487,
+        "min": 2573.0,
+        "max": 2874.0
+      },
+      "ipsm_edges": {
+        "n": 12,
+        "mean": 22.75,
+        "sd": 2.8643577734887544,
+        "min": 20.0,
+        "max": 29.0
+      },
+      "auc_branch_hours": {
+        "n": 12,
+        "mean": 63646.71092592592,
+        "sd": 1976.9929916499925,
+        "min": 60247.68583333334,
+        "max": 68056.1475
+      },
+      "model_calls": {
+        "n": 12,
+        "mean": 99.5,
+        "sd": 39.08149992469117,
+        "min": 52.0,
+        "max": 163.0
+      },
+      "prompt_tokens": {
+        "n": 12,
+        "mean": 162558.08333333334,
+        "sd": 77606.11176665069,
+        "min": 75860.0,
+        "max": 283946.0
+      },
+      "completion_tokens": {
+        "n": 12,
+        "mean": 118755.83333333333,
+        "sd": 93938.80028443405,
+        "min": 27125.0,
+        "max": 256999.0
+      },
+      "episodes": 12056,
+      "episode_rewards": 2053,
+      "candidates": 412,
+      "trials": 411,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 410,
+        "durable": 1
+      },
+      "predicate_failures": {
+        "u_pass": 405,
+        "g_code_pass": 410,
+        "g_state_pass": 411
+      },
+      "config_arms": {
+        "loopfuzz-gated-fixed": 12
+      },
+      "config_calibration": {
+        "False": 12
+      },
+      "config_gamma": {
+        "0.995": 12
+      }
+    },
+    "D|lighttpd1": {
+      "target": "lighttpd1",
+      "arm": "D",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1487.1,
+        "sd": 19.06392754217591,
+        "min": 1469.0,
+        "max": 1523.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 2127.9,
+        "sd": 16.030872992101486,
+        "min": 2109.0,
+        "max": 2149.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 28.8,
+        "sd": 2.8205594401741574,
+        "min": 22.0,
+        "max": 32.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 51220.42654166667,
+        "sd": 654.5921475255525,
+        "min": 50588.87486111111,
+        "max": 52497.34694444444
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 159.8,
+        "sd": 20.8795487392701,
+        "min": 131.0,
+        "max": 187.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 141255.3,
+        "sd": 16347.005305423852,
+        "min": 118255.0,
+        "max": 161013.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 69376.2,
+        "sd": 18579.804435043025,
+        "min": 49447.0,
+        "max": 95178.0
+      },
+      "episodes": 19368,
+      "episode_rewards": 3963,
+      "candidates": 404,
+      "trials": 404,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 404
+      },
+      "predicate_failures": {
+        "u_pass": 403,
+        "g_code_pass": 404,
+        "g_state_pass": 404
+      },
+      "config_arms": {
+        "loopfuzz-gated-fixed": 10
+      },
+      "config_calibration": {
+        "False": 10
+      },
+      "config_gamma": {
+        "0.995": 10
+      }
+    },
+    "E|lightftp": {
+      "target": "lightftp",
+      "arm": "E",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1508.5,
+        "sd": 7.214953607304454,
+        "min": 1491.0,
+        "max": 1517.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 73.9,
+        "sd": 4.458450154232722,
+        "min": 71.0,
+        "max": 81.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 210.9,
+        "sd": 9.290975310602338,
+        "min": 196.0,
+        "max": 228.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 1825.0354583333333,
+        "sd": 107.56152454376382,
+        "min": 1726.6734722222222,
+        "max": 1998.8245833333333
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 155.0,
+        "sd": 4.0276819911981905,
+        "min": 147.0,
+        "max": 162.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 118350.4,
+        "sd": 7669.902378054683,
+        "min": 104896.0,
+        "max": 126970.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 55999.0,
+        "sd": 5392.476075257286,
+        "min": 48454.0,
+        "max": 64373.0
+      },
+      "episodes": 6828,
+      "episode_rewards": 1601,
+      "candidates": 41,
+      "trials": 41,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 40,
+        "durable": 1
+      },
+      "predicate_failures": {
+        "u_pass": 41,
+        "g_code_pass": 40,
+        "g_state_pass": 40
+      },
+      "config_arms": {
+        "loopfuzz-gated-calibrated": 10
+      },
+      "config_calibration": {
+        "True": 10
+      },
+      "config_gamma": {
+        "0.995": 10
+      }
+    },
+    "E|proftpd": {
+      "target": "proftpd",
+      "arm": "E",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "exit_137_near_limit": 5,
+        "completed": 5
+      },
+      "exit_code": {
+        "137": 5,
+        "0": 5
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1490.3,
+        "sd": 3.0568684048294332,
+        "min": 1485.0,
+        "max": 1495.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 5469.8,
+        "sd": 215.6668212261167,
+        "min": 5073.0,
+        "max": 5726.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 307.8,
+        "sd": 21.274920028574073,
+        "min": 271.0,
+        "max": 337.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 130564.66598611111,
+        "sd": 4604.091135920269,
+        "min": 122612.33972222223,
+        "max": 136347.2176388889
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 186.5,
+        "sd": 3.4721111093332766,
+        "min": 181.0,
+        "max": 192.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 72339.4,
+        "sd": 3968.696433059321,
+        "min": 68351.0,
+        "max": 81824.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 93725.4,
+        "sd": 7382.969730700814,
+        "min": 80664.0,
+        "max": 107371.0
+      },
+      "episodes": 2186,
+      "episode_rewards": 834,
+      "candidates": 0,
+      "trials": 0,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {},
+      "predicate_failures": {},
+      "config_arms": {
+        "loopfuzz-gated-fixed": 5,
+        "loopfuzz-gated-calibrated": 5
+      },
+      "config_calibration": {
+        "False": 5,
+        "True": 5
+      },
+      "config_gamma": {
+        "0.995": 10
+      }
+    },
+    "E|pure-ftpd": {
+      "target": "pure-ftpd",
+      "arm": "E",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "exit_137_near_limit": 5,
+        "completed": 5
+      },
+      "exit_code": {
+        "137": 5,
+        "0": 5
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1501.8,
+        "sd": 3.0840089349921005,
+        "min": 1498.0,
+        "max": 1508.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 1215.4,
+        "sd": 63.687082241569556,
+        "min": 1081.0,
+        "max": 1328.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 311.6,
+        "sd": 22.421220107547917,
+        "min": 266.0,
+        "max": 342.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 27894.288027777777,
+        "sd": 1737.6043857321342,
+        "min": 24789.800416666665,
+        "max": 30171.685833333333
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 209.1,
+        "sd": 9.527154174603593,
+        "min": 194.0,
+        "max": 224.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 111525.7,
+        "sd": 12679.632101655527,
+        "min": 91345.0,
+        "max": 132525.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 99653.4,
+        "sd": 5596.67353980122,
+        "min": 93819.0,
+        "max": 109259.0
+      },
+      "episodes": 4378,
+      "episode_rewards": 1629,
+      "candidates": 64,
+      "trials": 64,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 61,
+        "durable": 3
+      },
+      "predicate_failures": {
+        "g_code_pass": 61,
+        "g_state_pass": 62,
+        "u_pass": 36
+      },
+      "config_arms": {
+        "loopfuzz-gated-fixed": 5,
+        "loopfuzz-gated-calibrated": 5
+      },
+      "config_calibration": {
+        "False": 5,
+        "True": 5
+      },
+      "config_gamma": {
+        "0.995": 10
+      }
+    },
+    "E|exim": {
+      "target": "exim",
+      "arm": "E",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1502.0,
+        "sd": 3.620926830400072,
+        "min": 1497.0,
+        "max": 1508.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 3858.3,
+        "sd": 32.7517599187857,
+        "min": 3802.0,
+        "max": 3906.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 138.6,
+        "sd": 14.268847185389575,
+        "min": 109.0,
+        "max": 159.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 93123.582875,
+        "sd": 924.594704240527,
+        "min": 90932.37666666666,
+        "max": 94232.55833333333
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 101.0,
+        "sd": 4.47213595499958,
+        "min": 95.0,
+        "max": 108.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 46062.0,
+        "sd": 4754.165985977164,
+        "min": 40063.0,
+        "max": 53821.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 77188.3,
+        "sd": 4858.605196510162,
+        "min": 71500.0,
+        "max": 87994.0
+      },
+      "episodes": 1371,
+      "episode_rewards": 731,
+      "candidates": 8,
+      "trials": 8,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 8
+      },
+      "predicate_failures": {
+        "u_pass": 8,
+        "g_code_pass": 8,
+        "g_state_pass": 8
+      },
+      "config_arms": {
+        "loopfuzz-gated-calibrated": 10
+      },
+      "config_calibration": {
+        "True": 10
+      },
+      "config_gamma": {
+        "0.995": 10
+      }
+    },
+    "E|live555": {
+      "target": "live555",
+      "arm": "E",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1455.4,
+        "sd": 19.945481248198103,
+        "min": 1412.0,
+        "max": 1477.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 3054.2,
+        "sd": 20.49823840669675,
+        "min": 3031.0,
+        "max": 3094.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 162.1,
+        "sd": 4.3576242252962665,
+        "min": 158.0,
+        "max": 172.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 72378.54270833333,
+        "sd": 1049.8411503628229,
+        "min": 70591.99819444444,
+        "max": 73557.37569444445
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 165.6,
+        "sd": 42.42954945161057,
+        "min": 117.0,
+        "max": 262.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 107989.0,
+        "sd": 23739.82310614616,
+        "min": 73721.0,
+        "max": 156267.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 264114.6,
+        "sd": 87581.77642282541,
+        "min": 182629.0,
+        "max": 454460.0
+      },
+      "episodes": 2674,
+      "episode_rewards": 1536,
+      "candidates": 290,
+      "trials": 290,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 288,
+        "durable": 2
+      },
+      "predicate_failures": {
+        "u_pass": 275,
+        "g_code_pass": 288,
+        "g_state_pass": 289
+      },
+      "config_arms": {
+        "loopfuzz-gated-calibrated": 10
+      },
+      "config_calibration": {
+        "True": 10
+      },
+      "config_gamma": {
+        "0.995": 10
+      }
+    },
+    "E|kamailio": {
+      "target": "kamailio",
+      "arm": "E",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1490.3,
+        "sd": 3.093002855909879,
+        "min": 1486.0,
+        "max": 1495.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 10830.0,
+        "sd": 91.33090021089978,
+        "min": 10694.0,
+        "max": 10971.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 130.9,
+        "sd": 9.011720763045819,
+        "min": 114.0,
+        "max": 142.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 259377.1745,
+        "sd": 2649.5521571934887,
+        "min": 256093.1188888889,
+        "max": 263444.6279166667
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 62.3,
+        "sd": 7.832269431297958,
+        "min": 52.0,
+        "max": 74.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 88887.8,
+        "sd": 15870.480639644577,
+        "min": 67453.0,
+        "max": 111470.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 78308.5,
+        "sd": 6287.979171049755,
+        "min": 68579.0,
+        "max": 85781.0
+      },
+      "episodes": 7691,
+      "episode_rewards": 5083,
+      "candidates": 254,
+      "trials": 254,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 251,
+        "durable": 3
+      },
+      "predicate_failures": {
+        "u_pass": 254,
+        "g_code_pass": 251,
+        "g_state_pass": 254
+      },
+      "config_arms": {
+        "loopfuzz-gated-calibrated": 10
+      },
+      "config_calibration": {
+        "True": 10
+      },
+      "config_gamma": {
+        "0.995": 10
+      }
+    },
+    "E|forked-daapd": {
+      "target": "forked-daapd",
+      "arm": "E",
+      "runs_available": 6,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 6
+      },
+      "exit_code": {
+        "0": 3,
+        "": 3
+      },
+      "runtime_min": {
+        "n": 6,
+        "mean": 1496.3333333333333,
+        "sd": 23.070905198250603,
+        "min": 1474.0,
+        "max": 1520.0
+      },
+      "branches": {
+        "n": 6,
+        "mean": 2648.1666666666665,
+        "sd": 116.04381356481984,
+        "min": 2525.0,
+        "max": 2798.0
+      },
+      "ipsm_edges": {
+        "n": 6,
+        "mean": 22.5,
+        "sd": 2.073644135332772,
+        "min": 20.0,
+        "max": 26.0
+      },
+      "auc_branch_hours": {
+        "n": 6,
+        "mean": 62349.54611111111,
+        "sd": 1726.9474427967946,
+        "min": 60178.688472222224,
+        "max": 64535.42847222222
+      },
+      "model_calls": {
+        "n": 6,
+        "mean": 54.5,
+        "sd": 19.745885647395003,
+        "min": 34.0,
+        "max": 79.0
+      },
+      "prompt_tokens": {
+        "n": 6,
+        "mean": 82968.16666666667,
+        "sd": 38091.52516986773,
+        "min": 45819.0,
+        "max": 131201.0
+      },
+      "completion_tokens": {
+        "n": 6,
+        "mean": 102273.83333333333,
+        "sd": 51868.744000280814,
+        "min": 54883.0,
+        "max": 170682.0
+      },
+      "episodes": 1276,
+      "episode_rewards": 426,
+      "candidates": 35,
+      "trials": 34,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 34
+      },
+      "predicate_failures": {
+        "u_pass": 30,
+        "g_code_pass": 34,
+        "g_state_pass": 34
+      },
+      "config_arms": {
+        "loopfuzz-gated-fixed": 1,
+        "loopfuzz-gated-calibrated": 5
+      },
+      "config_calibration": {
+        "False": 1,
+        "True": 5
+      },
+      "config_gamma": {
+        "0.995": 6
+      }
+    },
+    "E|lighttpd1": {
+      "target": "lighttpd1",
+      "arm": "E",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1506.0,
+        "sd": 6.4635731432217725,
+        "min": 1496.0,
+        "max": 1515.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 2068.1,
+        "sd": 44.53575342725588,
+        "min": 2015.0,
+        "max": 2153.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 27.1,
+        "sd": 4.3576242252962665,
+        "min": 19.0,
+        "max": 34.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 50385.05134722222,
+        "sd": 941.2550812191137,
+        "min": 49344.27847222222,
+        "max": 52391.693194444444
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 127.1,
+        "sd": 19.381835711705833,
+        "min": 95.0,
+        "max": 145.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 78530.1,
+        "sd": 11299.235455453514,
+        "min": 58276.0,
+        "max": 91855.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 65860.4,
+        "sd": 21575.092244942494,
+        "min": 38741.0,
+        "max": 106156.0
+      },
+      "episodes": 2462,
+      "episode_rewards": 1190,
+      "candidates": 34,
+      "trials": 34,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 34
+      },
+      "predicate_failures": {
+        "u_pass": 34,
+        "g_code_pass": 34,
+        "g_state_pass": 34
+      },
+      "config_arms": {
+        "loopfuzz-gated-calibrated": 10
+      },
+      "config_calibration": {
+        "True": 10
+      },
+      "config_gamma": {
+        "0.995": 10
+      }
+    },
+    "E-gamma099|lightftp": {
+      "target": "lightftp",
+      "arm": "E-gamma099",
+      "runs_available": 3,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 3
+      },
+      "exit_code": {
+        "0": 3
+      },
+      "runtime_min": {
+        "n": 3,
+        "mean": 1505.6666666666667,
+        "sd": 6.027713773341708,
+        "min": 1500.0,
+        "max": 1512.0
+      },
+      "branches": {
+        "n": 3,
+        "mean": 71.0,
+        "sd": 0.0,
+        "min": 71.0,
+        "max": 71.0
+      },
+      "ipsm_edges": {
+        "n": 3,
+        "mean": 203.66666666666666,
+        "sd": 20.55075018906447,
+        "min": 180.0,
+        "max": 217.0
+      },
+      "auc_branch_hours": {
+        "n": 3,
+        "mean": 1765.0369907407407,
+        "sd": 17.778936123467968,
+        "min": 1750.505,
+        "max": 1784.861111111111
+      },
+      "model_calls": {
+        "n": 3,
+        "mean": 121.66666666666667,
+        "sd": 51.67526810122356,
+        "min": 62.0,
+        "max": 152.0
+      },
+      "prompt_tokens": {
+        "n": 3,
+        "mean": 115503.0,
+        "sd": 18754.36805120343,
+        "min": 93943.0,
+        "max": 128044.0
+      },
+      "completion_tokens": {
+        "n": 3,
+        "mean": 37584.333333333336,
+        "sd": 23481.890092863763,
+        "min": 11519.0,
+        "max": 57086.0
+      },
+      "episodes": 2205,
+      "episode_rewards": 464,
+      "candidates": 5,
+      "trials": 5,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 5
+      },
+      "predicate_failures": {
+        "u_pass": 5,
+        "g_code_pass": 5,
+        "g_state_pass": 5
+      },
+      "config_arms": {
+        "loopfuzz-gated-calibrated": 3
+      },
+      "config_calibration": {
+        "True": 3
+      },
+      "config_gamma": {
+        "0.99": 3
+      }
+    },
+    "E-gamma099|bftpd": {
+      "target": "bftpd",
+      "arm": "E-gamma099",
+      "runs_available": 3,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 1,
+        "oom_killed": 2
+      },
+      "exit_code": {
+        "0": 1,
+        "137": 2
+      },
+      "runtime_min": {
+        "n": 3,
+        "mean": 1524.0,
+        "sd": 0.0,
+        "min": 1524.0,
+        "max": 1524.0
+      },
+      "branches": {
+        "n": 3,
+        "mean": 504.0,
+        "sd": 8.18535277187245,
+        "min": 497.0,
+        "max": 513.0
+      },
+      "ipsm_edges": {
+        "n": 3,
+        "mean": 220.33333333333334,
+        "sd": 3.7859388972001824,
+        "min": 216.0,
+        "max": 223.0
+      },
+      "auc_branch_hours": {
+        "n": 3,
+        "mean": 12449.311898148148,
+        "sd": 107.45187688518278,
+        "min": 12342.095,
+        "max": 12556.997222222222
+      },
+      "model_calls": {
+        "n": 3,
+        "mean": 231.33333333333334,
+        "sd": 9.073771725877465,
+        "min": 223.0,
+        "max": 241.0
+      },
+      "prompt_tokens": {
+        "n": 3,
+        "mean": 136536.66666666666,
+        "sd": 14452.254230165387,
+        "min": 122417.0,
+        "max": 151300.0
+      },
+      "completion_tokens": {
+        "n": 3,
+        "mean": 104272.33333333333,
+        "sd": 10383.176986516859,
+        "min": 92884.0,
+        "max": 113213.0
+      },
+      "episodes": 990,
+      "episode_rewards": 377,
+      "candidates": 3,
+      "trials": 3,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 3
+      },
+      "predicate_failures": {
+        "u_pass": 3,
+        "g_code_pass": 3,
+        "g_state_pass": 3
+      },
+      "config_arms": {
+        "loopfuzz-gated-calibrated": 1,
+        "loopfuzz-gated-fixed": 2
+      },
+      "config_calibration": {
+        "True": 1,
+        "False": 2
+      },
+      "config_gamma": {
+        "0.99": 1,
+        "0.995": 2
+      }
+    },
+    "E-gamma099|proftpd": {
+      "target": "proftpd",
+      "arm": "E-gamma099",
+      "runs_available": 3,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 2,
+        "oom_killed": 1
+      },
+      "exit_code": {
+        "0": 2,
+        "137": 1
+      },
+      "runtime_min": {
+        "n": 3,
+        "mean": 1523.6666666666667,
+        "sd": 0.5773502691896257,
+        "min": 1523.0,
+        "max": 1524.0
+      },
+      "branches": {
+        "n": 3,
+        "mean": 5520.333333333333,
+        "sd": 257.82229021815266,
+        "min": 5282.0,
+        "max": 5794.0
+      },
+      "ipsm_edges": {
+        "n": 3,
+        "mean": 296.0,
+        "sd": 23.259406699226016,
+        "min": 271.0,
+        "max": 317.0
+      },
+      "auc_branch_hours": {
+        "n": 3,
+        "mean": 134617.20685185186,
+        "sd": 7078.480428956976,
+        "min": 126966.72486111111,
+        "max": 140933.92916666667
+      },
+      "model_calls": {
+        "n": 3,
+        "mean": 192.0,
+        "sd": 1.0,
+        "min": 191.0,
+        "max": 193.0
+      },
+      "prompt_tokens": {
+        "n": 3,
+        "mean": 75023.33333333333,
+        "sd": 1831.0175677293032,
+        "min": 73256.0,
+        "max": 76912.0
+      },
+      "completion_tokens": {
+        "n": 3,
+        "mean": 96972.33333333333,
+        "sd": 1500.4323821263433,
+        "min": 95257.0,
+        "max": 98041.0
+      },
+      "episodes": 785,
+      "episode_rewards": 339,
+      "candidates": 2,
+      "trials": 2,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 2
+      },
+      "predicate_failures": {
+        "u_pass": 2,
+        "g_code_pass": 2,
+        "g_state_pass": 2
+      },
+      "config_arms": {
+        "loopfuzz-gated-calibrated": 2,
+        "loopfuzz-gated-fixed": 1
+      },
+      "config_calibration": {
+        "True": 2,
+        "False": 1
+      },
+      "config_gamma": {
+        "0.99": 2,
+        "0.995": 1
+      }
+    },
+    "E-gamma099|pure-ftpd": {
+      "target": "pure-ftpd",
+      "arm": "E-gamma099",
+      "runs_available": 3,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 3
+      },
+      "exit_code": {
+        "0": 3
+      },
+      "runtime_min": {
+        "n": 3,
+        "mean": 1483.3333333333333,
+        "sd": 2.309401076758503,
+        "min": 1482.0,
+        "max": 1486.0
+      },
+      "branches": {
+        "n": 3,
+        "mean": 1229.0,
+        "sd": 27.055498516937366,
+        "min": 1203.0,
+        "max": 1257.0
+      },
+      "ipsm_edges": {
+        "n": 3,
+        "mean": 317.3333333333333,
+        "sd": 19.008769905844336,
+        "min": 298.0,
+        "max": 336.0
+      },
+      "auc_branch_hours": {
+        "n": 3,
+        "mean": 28031.611851851852,
+        "sd": 831.1058471046501,
+        "min": 27460.315833333334,
+        "max": 28985.056666666667
+      },
+      "model_calls": {
+        "n": 3,
+        "mean": 211.33333333333334,
+        "sd": 13.051181300301261,
+        "min": 199.0,
+        "max": 225.0
+      },
+      "prompt_tokens": {
+        "n": 3,
+        "mean": 121401.33333333333,
+        "sd": 18816.40872571951,
+        "min": 105108.0,
+        "max": 141996.0
+      },
+      "completion_tokens": {
+        "n": 3,
+        "mean": 98969.0,
+        "sd": 966.1738973911476,
+        "min": 98151.0,
+        "max": 100035.0
+      },
+      "episodes": 1440,
+      "episode_rewards": 532,
+      "candidates": 36,
+      "trials": 36,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 35,
+        "durable": 1
+      },
+      "predicate_failures": {
+        "u_pass": 18,
+        "g_code_pass": 35,
+        "g_state_pass": 35
+      },
+      "config_arms": {
+        "loopfuzz-gated-calibrated": 3
+      },
+      "config_calibration": {
+        "True": 3
+      },
+      "config_gamma": {
+        "0.99": 3
+      }
+    },
+    "E-gamma099|exim": {
+      "target": "exim",
+      "arm": "E-gamma099",
+      "runs_available": 3,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 3
+      },
+      "exit_code": {
+        "0": 3
+      },
+      "runtime_min": {
+        "n": 3,
+        "mean": 1509.0,
+        "sd": 2.0,
+        "min": 1507.0,
+        "max": 1511.0
+      },
+      "branches": {
+        "n": 3,
+        "mean": 3877.6666666666665,
+        "sd": 19.857828011475306,
+        "min": 3862.0,
+        "max": 3900.0
+      },
+      "ipsm_edges": {
+        "n": 3,
+        "mean": 145.33333333333334,
+        "sd": 6.6583281184793925,
+        "min": 138.0,
+        "max": 151.0
+      },
+      "auc_branch_hours": {
+        "n": 3,
+        "mean": 94524.8936574074,
+        "sd": 985.8758372758867,
+        "min": 93933.61694444444,
+        "max": 95662.99569444444
+      },
+      "model_calls": {
+        "n": 3,
+        "mean": 102.0,
+        "sd": 2.6457513110645907,
+        "min": 99.0,
+        "max": 104.0
+      },
+      "prompt_tokens": {
+        "n": 3,
+        "mean": 41353.333333333336,
+        "sd": 2977.5866626067045,
+        "min": 38145.0,
+        "max": 44028.0
+      },
+      "completion_tokens": {
+        "n": 3,
+        "mean": 67189.0,
+        "sd": 14270.863884152213,
+        "min": 54699.0,
+        "max": 82743.0
+      },
+      "episodes": 410,
+      "episode_rewards": 218,
+      "candidates": 4,
+      "trials": 4,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 3,
+        "durable": 1
+      },
+      "predicate_failures": {
+        "u_pass": 4,
+        "g_code_pass": 3,
+        "g_state_pass": 3
+      },
+      "config_arms": {
+        "loopfuzz-gated-calibrated": 3
+      },
+      "config_calibration": {
+        "True": 3
+      },
+      "config_gamma": {
+        "0.99": 3
+      }
+    },
+    "E-gamma099|live555": {
+      "target": "live555",
+      "arm": "E-gamma099",
+      "runs_available": 3,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 3
+      },
+      "exit_code": {
+        "0": 3
+      },
+      "runtime_min": {
+        "n": 3,
+        "mean": 1421.3333333333333,
+        "sd": 52.50079364479487,
+        "min": 1369.0,
+        "max": 1474.0
+      },
+      "branches": {
+        "n": 3,
+        "mean": 3137.6666666666665,
+        "sd": 32.19213154380016,
+        "min": 3110.0,
+        "max": 3173.0
+      },
+      "ipsm_edges": {
+        "n": 3,
+        "mean": 164.0,
+        "sd": 9.539392014169456,
+        "min": 158.0,
+        "max": 175.0
+      },
+      "auc_branch_hours": {
+        "n": 3,
+        "mean": 72830.71078703704,
+        "sd": 2052.543464003948,
+        "min": 71160.31013888889,
+        "max": 75122.02097222222
+      },
+      "model_calls": {
+        "n": 3,
+        "mean": 209.33333333333334,
+        "sd": 77.05409355338192,
+        "min": 134.0,
+        "max": 288.0
+      },
+      "prompt_tokens": {
+        "n": 3,
+        "mean": 119919.33333333333,
+        "sd": 30202.517980018376,
+        "min": 89861.0,
+        "max": 150264.0
+      },
+      "completion_tokens": {
+        "n": 3,
+        "mean": 368758.0,
+        "sd": 173798.51150398268,
+        "min": 204833.0,
+        "max": 550982.0
+      },
+      "episodes": 800,
+      "episode_rewards": 453,
+      "candidates": 87,
+      "trials": 87,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 86,
+        "durable": 1
+      },
+      "predicate_failures": {
+        "u_pass": 86,
+        "g_code_pass": 86,
+        "g_state_pass": 87
+      },
+      "config_arms": {
+        "loopfuzz-gated-calibrated": 3
+      },
+      "config_calibration": {
+        "True": 3
+      },
+      "config_gamma": {
+        "0.99": 3
+      }
+    },
+    "E-gamma099|kamailio": {
+      "target": "kamailio",
+      "arm": "E-gamma099",
+      "runs_available": 3,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 2,
+        "sigabrt": 1
+      },
+      "exit_code": {
+        "0": 2,
+        "134": 1
+      },
+      "runtime_min": {
+        "n": 3,
+        "mean": 1362.6666666666667,
+        "sd": 250.94288858888456,
+        "min": 1073.0,
+        "max": 1514.0
+      },
+      "branches": {
+        "n": 3,
+        "mean": 10707.333333333334,
+        "sd": 342.2430909943009,
+        "min": 10313.0,
+        "max": 10927.0
+      },
+      "ipsm_edges": {
+        "n": 3,
+        "mean": 134.0,
+        "sd": 5.5677643628300215,
+        "min": 128.0,
+        "max": 139.0
+      },
+      "auc_branch_hours": {
+        "n": 3,
+        "mean": 235132.51550925928,
+        "sd": 53603.99274222798,
+        "min": 173253.62319444446,
+        "max": 267352.6069444445
+      },
+      "model_calls": {
+        "n": 3,
+        "mean": 53.0,
+        "sd": 5.196152422706632,
+        "min": 47.0,
+        "max": 56.0
+      },
+      "prompt_tokens": {
+        "n": 3,
+        "mean": 62715.333333333336,
+        "sd": 8962.009670455245,
+        "min": 52930.0,
+        "max": 70524.0
+      },
+      "completion_tokens": {
+        "n": 3,
+        "mean": 89904.66666666667,
+        "sd": 5379.298684153291,
+        "min": 86293.0,
+        "max": 96087.0
+      },
+      "episodes": 1611,
+      "episode_rewards": 1239,
+      "candidates": 22,
+      "trials": 21,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 20,
+        "durable": 1
+      },
+      "predicate_failures": {
+        "u_pass": 21,
+        "g_code_pass": 20,
+        "g_state_pass": 20
+      },
+      "config_arms": {
+        "loopfuzz-gated-calibrated": 2,
+        "loopfuzz-gated-fixed": 1
+      },
+      "config_calibration": {
+        "True": 2,
+        "False": 1
+      },
+      "config_gamma": {
+        "0.99": 2,
+        "0.995": 1
+      }
+    },
+    "E-gamma099|lighttpd1": {
+      "target": "lighttpd1",
+      "arm": "E-gamma099",
+      "runs_available": 3,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 3
+      },
+      "exit_code": {
+        "0": 3
+      },
+      "runtime_min": {
+        "n": 3,
+        "mean": 1499.0,
+        "sd": 4.58257569495584,
+        "min": 1494.0,
+        "max": 1503.0
+      },
+      "branches": {
+        "n": 3,
+        "mean": 2086.6666666666665,
+        "sd": 32.593455375785695,
+        "min": 2060.0,
+        "max": 2123.0
+      },
+      "ipsm_edges": {
+        "n": 3,
+        "mean": 32.0,
+        "sd": 9.0,
+        "min": 23.0,
+        "max": 41.0
+      },
+      "auc_branch_hours": {
+        "n": 3,
+        "mean": 50671.89231481482,
+        "sd": 946.5288805774582,
+        "min": 49750.07680555555,
+        "max": 51641.33625
+      },
+      "model_calls": {
+        "n": 3,
+        "mean": 126.33333333333333,
+        "sd": 16.441816606851365,
+        "min": 114.0,
+        "max": 145.0
+      },
+      "prompt_tokens": {
+        "n": 3,
+        "mean": 77642.0,
+        "sd": 7764.810429109007,
+        "min": 71331.0,
+        "max": 86313.0
+      },
+      "completion_tokens": {
+        "n": 3,
+        "mean": 66923.33333333333,
+        "sd": 23633.5305092856,
+        "min": 52051.0,
+        "max": 94175.0
+      },
+      "episodes": 698,
+      "episode_rewards": 334,
+      "candidates": 12,
+      "trials": 12,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 12
+      },
+      "predicate_failures": {
+        "u_pass": 12,
+        "g_code_pass": 12,
+        "g_state_pass": 12
+      },
+      "config_arms": {
+        "loopfuzz-gated-calibrated": 3
+      },
+      "config_calibration": {
+        "True": 3
+      },
+      "config_gamma": {
+        "0.99": 3
+      }
+    },
+    "E-gamma100|lightftp": {
+      "target": "lightftp",
+      "arm": "E-gamma100",
+      "runs_available": 3,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 3
+      },
+      "exit_code": {
+        "0": 3
+      },
+      "runtime_min": {
+        "n": 3,
+        "mean": 1500.6666666666667,
+        "sd": 1.5275252316519468,
+        "min": 1499.0,
+        "max": 1502.0
+      },
+      "branches": {
+        "n": 3,
+        "mean": 71.0,
+        "sd": 0.0,
+        "min": 71.0,
+        "max": 71.0
+      },
+      "ipsm_edges": {
+        "n": 3,
+        "mean": 218.33333333333334,
+        "sd": 4.163331998932265,
+        "min": 215.0,
+        "max": 223.0
+      },
+      "auc_branch_hours": {
+        "n": 3,
+        "mean": 1717.5421296296297,
+        "sd": 89.15289366200571,
+        "min": 1614.7273611111111,
+        "max": 1773.4306944444445
+      },
+      "model_calls": {
+        "n": 3,
+        "mean": 146.0,
+        "sd": 4.0,
+        "min": 142.0,
+        "max": 150.0
+      },
+      "prompt_tokens": {
+        "n": 3,
+        "mean": 115065.0,
+        "sd": 7245.989442443316,
+        "min": 106739.0,
+        "max": 119944.0
+      },
+      "completion_tokens": {
+        "n": 3,
+        "mean": 46815.333333333336,
+        "sd": 1523.7205561825742,
+        "min": 45723.0,
+        "max": 48556.0
+      },
+      "episodes": 2255,
+      "episode_rewards": 458,
+      "candidates": 5,
+      "trials": 5,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 5
+      },
+      "predicate_failures": {
+        "u_pass": 5,
+        "g_code_pass": 5,
+        "g_state_pass": 5
+      },
+      "config_arms": {
+        "loopfuzz-gated-calibrated": 3
+      },
+      "config_calibration": {
+        "True": 3
+      },
+      "config_gamma": {
+        "1.0": 3
+      }
+    },
+    "E-gamma100|bftpd": {
+      "target": "bftpd",
+      "arm": "E-gamma100",
+      "runs_available": 3,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 2,
+        "oom_killed": 1
+      },
+      "exit_code": {
+        "0": 2,
+        "137": 1
+      },
+      "runtime_min": {
+        "n": 3,
+        "mean": 1524.0,
+        "sd": 0.0,
+        "min": 1524.0,
+        "max": 1524.0
+      },
+      "branches": {
+        "n": 3,
+        "mean": 504.6666666666667,
+        "sd": 6.110100926607787,
+        "min": 498.0,
+        "max": 510.0
+      },
+      "ipsm_edges": {
+        "n": 3,
+        "mean": 227.0,
+        "sd": 11.135528725660043,
+        "min": 217.0,
+        "max": 239.0
+      },
+      "auc_branch_hours": {
+        "n": 3,
+        "mean": 12589.392037037038,
+        "sd": 115.29357250532362,
+        "min": 12470.19013888889,
+        "max": 12700.332916666666
+      },
+      "model_calls": {
+        "n": 3,
+        "mean": 240.66666666666666,
+        "sd": 9.865765724632494,
+        "min": 234.0,
+        "max": 252.0
+      },
+      "prompt_tokens": {
+        "n": 3,
+        "mean": 150010.0,
+        "sd": 15285.824707878865,
+        "min": 138102.0,
+        "max": 167247.0
+      },
+      "completion_tokens": {
+        "n": 3,
+        "mean": 111614.0,
+        "sd": 1590.54330340296,
+        "min": 110516.0,
+        "max": 113438.0
+      },
+      "episodes": 1159,
+      "episode_rewards": 414,
+      "candidates": 5,
+      "trials": 5,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 5
+      },
+      "predicate_failures": {
+        "u_pass": 5,
+        "g_code_pass": 5,
+        "g_state_pass": 5
+      },
+      "config_arms": {
+        "loopfuzz-gated-calibrated": 2,
+        "loopfuzz-gated-fixed": 1
+      },
+      "config_calibration": {
+        "True": 2,
+        "False": 1
+      },
+      "config_gamma": {
+        "1.0": 2,
+        "0.995": 1
+      }
+    },
+    "E-gamma100|proftpd": {
+      "target": "proftpd",
+      "arm": "E-gamma100",
+      "runs_available": 3,
+      "runs_nominal": 10,
+      "status": {
+        "oom_killed": 2,
+        "completed": 1
+      },
+      "exit_code": {
+        "137": 2,
+        "0": 1
+      },
+      "runtime_min": {
+        "n": 3,
+        "mean": 1524.3333333333333,
+        "sd": 0.5773502691896257,
+        "min": 1524.0,
+        "max": 1525.0
+      },
+      "branches": {
+        "n": 3,
+        "mean": 5300.666666666667,
+        "sd": 179.15728657616282,
+        "min": 5144.0,
+        "max": 5496.0
+      },
+      "ipsm_edges": {
+        "n": 3,
+        "mean": 290.0,
+        "sd": 15.132745950421556,
+        "min": 273.0,
+        "max": 302.0
+      },
+      "auc_branch_hours": {
+        "n": 3,
+        "mean": 130892.42402777779,
+        "sd": 5230.830396219806,
+        "min": 126869.60361111112,
+        "max": 136805.66375
+      },
+      "model_calls": {
+        "n": 3,
+        "mean": 191.66666666666666,
+        "sd": 1.5275252316519468,
+        "min": 190.0,
+        "max": 193.0
+      },
+      "prompt_tokens": {
+        "n": 3,
+        "mean": 74811.33333333333,
+        "sd": 2846.1521978512205,
+        "min": 71811.0,
+        "max": 77473.0
+      },
+      "completion_tokens": {
+        "n": 3,
+        "mean": 94762.66666666667,
+        "sd": 1779.449446692244,
+        "min": 93379.0,
+        "max": 96770.0
+      },
+      "episodes": 654,
+      "episode_rewards": 232,
+      "candidates": 0,
+      "trials": 0,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {},
+      "predicate_failures": {},
+      "config_arms": {
+        "loopfuzz-gated-fixed": 2,
+        "loopfuzz-gated-calibrated": 1
+      },
+      "config_calibration": {
+        "False": 2,
+        "True": 1
+      },
+      "config_gamma": {
+        "0.995": 2,
+        "1.0": 1
+      }
+    },
+    "E-gamma100|pure-ftpd": {
+      "target": "pure-ftpd",
+      "arm": "E-gamma100",
+      "runs_available": 3,
+      "runs_nominal": 10,
+      "status": {
+        "oom_killed": 1,
+        "completed": 2
+      },
+      "exit_code": {
+        "137": 1,
+        "0": 2
+      },
+      "runtime_min": {
+        "n": 3,
+        "mean": 1484.0,
+        "sd": 7.0,
+        "min": 1476.0,
+        "max": 1489.0
+      },
+      "branches": {
+        "n": 3,
+        "mean": 1176.0,
+        "sd": 31.192947920964443,
+        "min": 1147.0,
+        "max": 1209.0
+      },
+      "ipsm_edges": {
+        "n": 3,
+        "mean": 290.6666666666667,
+        "sd": 16.258331197676267,
+        "min": 278.0,
+        "max": 309.0
+      },
+      "auc_branch_hours": {
+        "n": 3,
+        "mean": 26176.935046296298,
+        "sd": 991.8941650628507,
+        "min": 25037.256805555557,
+        "max": 26845.283888888887
+      },
+      "model_calls": {
+        "n": 3,
+        "mean": 209.33333333333334,
+        "sd": 17.473789896108208,
+        "min": 190.0,
+        "max": 224.0
+      },
+      "prompt_tokens": {
+        "n": 3,
+        "mean": 107591.33333333333,
+        "sd": 28056.312040846235,
+        "min": 76962.0,
+        "max": 132046.0
+      },
+      "completion_tokens": {
+        "n": 3,
+        "mean": 98560.33333333333,
+        "sd": 3834.0445137391575,
+        "min": 94737.0,
+        "max": 102405.0
+      },
+      "episodes": 1411,
+      "episode_rewards": 482,
+      "candidates": 7,
+      "trials": 7,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 7
+      },
+      "predicate_failures": {
+        "u_pass": 5,
+        "g_code_pass": 7,
+        "g_state_pass": 7
+      },
+      "config_arms": {
+        "loopfuzz-gated-fixed": 1,
+        "loopfuzz-gated-calibrated": 2
+      },
+      "config_calibration": {
+        "False": 1,
+        "True": 2
+      },
+      "config_gamma": {
+        "0.995": 1,
+        "1.0": 2
+      }
+    },
+    "E-gamma100|exim": {
+      "target": "exim",
+      "arm": "E-gamma100",
+      "runs_available": 3,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 3
+      },
+      "exit_code": {
+        "0": 3
+      },
+      "runtime_min": {
+        "n": 3,
+        "mean": 1512.6666666666667,
+        "sd": 2.309401076758503,
+        "min": 1510.0,
+        "max": 1514.0
+      },
+      "branches": {
+        "n": 3,
+        "mean": 3852.0,
+        "sd": 22.338307903688676,
+        "min": 3834.0,
+        "max": 3877.0
+      },
+      "ipsm_edges": {
+        "n": 3,
+        "mean": 142.0,
+        "sd": 11.135528725660043,
+        "min": 130.0,
+        "max": 152.0
+      },
+      "auc_branch_hours": {
+        "n": 3,
+        "mean": 93809.28337962963,
+        "sd": 740.4508732352801,
+        "min": 93220.92888888888,
+        "max": 94640.71916666666
+      },
+      "model_calls": {
+        "n": 3,
+        "mean": 107.0,
+        "sd": 2.0,
+        "min": 105.0,
+        "max": 109.0
+      },
+      "prompt_tokens": {
+        "n": 3,
+        "mean": 48141.333333333336,
+        "sd": 2237.0002980181594,
+        "min": 45905.0,
+        "max": 50379.0
+      },
+      "completion_tokens": {
+        "n": 3,
+        "mean": 65386.0,
+        "sd": 6881.3920830018105,
+        "min": 59379.0,
+        "max": 72894.0
+      },
+      "episodes": 445,
+      "episode_rewards": 213,
+      "candidates": 0,
+      "trials": 0,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {},
+      "predicate_failures": {},
+      "config_arms": {
+        "loopfuzz-gated-calibrated": 3
+      },
+      "config_calibration": {
+        "True": 3
+      },
+      "config_gamma": {
+        "1.0": 3
+      }
+    },
+    "E-gamma100|live555": {
+      "target": "live555",
+      "arm": "E-gamma100",
+      "runs_available": 3,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 2,
+        "sigabrt": 1
+      },
+      "exit_code": {
+        "0": 2,
+        "134": 1
+      },
+      "runtime_min": {
+        "n": 3,
+        "mean": 1423.3333333333333,
+        "sd": 68.77014856268185,
+        "min": 1344.0,
+        "max": 1466.0
+      },
+      "branches": {
+        "n": 3,
+        "mean": 3111.0,
+        "sd": 2.6457513110645907,
+        "min": 3108.0,
+        "max": 3113.0
+      },
+      "ipsm_edges": {
+        "n": 3,
+        "mean": 165.0,
+        "sd": 11.532562594670797,
+        "min": 156.0,
+        "max": 178.0
+      },
+      "auc_branch_hours": {
+        "n": 3,
+        "mean": 72199.61893518518,
+        "sd": 3600.0374577013554,
+        "min": 68044.26666666666,
+        "max": 74377.57138888889
+      },
+      "model_calls": {
+        "n": 3,
+        "mean": 166.0,
+        "sd": 13.114877048604,
+        "min": 154.0,
+        "max": 180.0
+      },
+      "prompt_tokens": {
+        "n": 3,
+        "mean": 96738.33333333333,
+        "sd": 19424.892131832632,
+        "min": 79464.0,
+        "max": 117766.0
+      },
+      "completion_tokens": {
+        "n": 3,
+        "mean": 274336.3333333333,
+        "sd": 3114.625873734008,
+        "min": 271574.0,
+        "max": 277712.0
+      },
+      "episodes": 719,
+      "episode_rewards": 434,
+      "candidates": 56,
+      "trials": 55,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 55
+      },
+      "predicate_failures": {
+        "u_pass": 52,
+        "g_code_pass": 55,
+        "g_state_pass": 55
+      },
+      "config_arms": {
+        "loopfuzz-gated-calibrated": 2,
+        "loopfuzz-gated-fixed": 1
+      },
+      "config_calibration": {
+        "True": 2,
+        "False": 1
+      },
+      "config_gamma": {
+        "1.0": 2,
+        "0.995": 1
+      }
+    },
+    "E-gamma100|kamailio": {
+      "target": "kamailio",
+      "arm": "E-gamma100",
+      "runs_available": 3,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 3
+      },
+      "exit_code": {
+        "0": 3
+      },
+      "runtime_min": {
+        "n": 3,
+        "mean": 1507.6666666666667,
+        "sd": 6.506407098647712,
+        "min": 1501.0,
+        "max": 1514.0
+      },
+      "branches": {
+        "n": 3,
+        "mean": 10909.666666666666,
+        "sd": 72.52815545244022,
+        "min": 10849.0,
+        "max": 10990.0
+      },
+      "ipsm_edges": {
+        "n": 3,
+        "mean": 135.66666666666666,
+        "sd": 8.082903768654761,
+        "min": 127.0,
+        "max": 143.0
+      },
+      "auc_branch_hours": {
+        "n": 3,
+        "mean": 264791.4474074074,
+        "sd": 2646.5100336369906,
+        "min": 261737.0625,
+        "max": 266402.69333333336
+      },
+      "model_calls": {
+        "n": 3,
+        "mean": 60.333333333333336,
+        "sd": 4.163331998932265,
+        "min": 57.0,
+        "max": 65.0
+      },
+      "prompt_tokens": {
+        "n": 3,
+        "mean": 78448.66666666667,
+        "sd": 4947.1250573776015,
+        "min": 73371.0,
+        "max": 83254.0
+      },
+      "completion_tokens": {
+        "n": 3,
+        "mean": 92954.66666666667,
+        "sd": 396.3209978456016,
+        "min": 92680.0,
+        "max": 93409.0
+      },
+      "episodes": 1875,
+      "episode_rewards": 1295,
+      "candidates": 42,
+      "trials": 42,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 42
+      },
+      "predicate_failures": {
+        "u_pass": 42,
+        "g_code_pass": 42,
+        "g_state_pass": 42
+      },
+      "config_arms": {
+        "loopfuzz-gated-calibrated": 3
+      },
+      "config_calibration": {
+        "True": 3
+      },
+      "config_gamma": {
+        "1.0": 3
+      }
+    },
+    "E-gamma100|lighttpd1": {
+      "target": "lighttpd1",
+      "arm": "E-gamma100",
+      "runs_available": 3,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 3
+      },
+      "exit_code": {
+        "0": 3
+      },
+      "runtime_min": {
+        "n": 3,
+        "mean": 1503.0,
+        "sd": 14.0,
+        "min": 1493.0,
+        "max": 1519.0
+      },
+      "branches": {
+        "n": 3,
+        "mean": 2034.0,
+        "sd": 19.672315572906,
+        "min": 2016.0,
+        "max": 2055.0
+      },
+      "ipsm_edges": {
+        "n": 3,
+        "mean": 26.666666666666668,
+        "sd": 1.1547005383792515,
+        "min": 26.0,
+        "max": 28.0
+      },
+      "auc_branch_hours": {
+        "n": 3,
+        "mean": 49632.11208333333,
+        "sd": 491.9443545805822,
+        "min": 49064.36319444444,
+        "max": 49931.959861111114
+      },
+      "model_calls": {
+        "n": 3,
+        "mean": 127.66666666666667,
+        "sd": 28.307831660749528,
+        "min": 95.0,
+        "max": 145.0
+      },
+      "prompt_tokens": {
+        "n": 3,
+        "mean": 77966.0,
+        "sd": 18403.44524810504,
+        "min": 56827.0,
+        "max": 90418.0
+      },
+      "completion_tokens": {
+        "n": 3,
+        "mean": 71984.33333333333,
+        "sd": 29418.422091154607,
+        "min": 39626.0,
+        "max": 97116.0
+      },
+      "episodes": 711,
+      "episode_rewards": 374,
+      "candidates": 2,
+      "trials": 2,
+      "provisional_events": 0,
+      "repairs": 0,
+      "dispositions": {
+        "reject": 2
+      },
+      "predicate_failures": {
+        "u_pass": 2,
+        "g_code_pass": 2,
+        "g_state_pass": 2
+      },
+      "config_arms": {
+        "loopfuzz-gated-calibrated": 3
+      },
+      "config_calibration": {
+        "True": 3
+      },
+      "config_gamma": {
+        "1.0": 3
+      }
+    }
+  }
+}

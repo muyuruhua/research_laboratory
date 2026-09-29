@@ -1,0 +1,643 @@
+{
+  "url": "https://api.crossref.org/works/10.1145%2F3580598",
+  "accessed": "2026-09-28",
+  "response": {
+    "status": "ok",
+    "message-type": "work",
+    "message-version": "1.0.0",
+    "message": {
+      "indexed": {
+        "date-parts": [
+          [
+            2026,
+            9,
+            9
+          ]
+        ],
+        "date-time": "2026-09-09T17:44:31Z",
+        "timestamp": 1788975871217,
+        "version": "build-2803163510"
+      },
+      "reference-count": 47,
+      "publisher": "Association for Computing Machinery (ACM)",
+      "issue": "6",
+      "license": [
+        {
+          "start": {
+            "date-parts": [
+              [
+                2023,
+                9,
+                28
+              ]
+            ],
+            "date-time": "2023-09-28T00:00:00Z",
+            "timestamp": 1695859200000
+          },
+          "content-version": "vor",
+          "delay-in-days": 0,
+          "URL": "https://creativecommons.org/licenses/by/4.0/"
+        }
+      ],
+      "funder": [
+        {
+          "name": "National Key Research and Development Program of China",
+          "award": [
+            "2021YFB2701000"
+          ],
+          "award-info": [
+            {
+              "award-number": [
+                "2021YFB2701000"
+              ]
+            }
+          ]
+        },
+        {
+          "DOI": "10.13039/501100001809",
+          "name": "National Natural Science Foundation of China",
+          "doi-asserted-by": "crossref",
+          "award": [
+            "61972224"
+          ],
+          "award-info": [
+            {
+              "award-number": [
+                "61972224"
+              ]
+            }
+          ],
+          "id": [
+            {
+              "id": "10.13039/501100001809",
+              "id-type": "DOI",
+              "asserted-by": "crossref"
+            }
+          ]
+        }
+      ],
+      "content-domain": {
+        "domain": [
+          "dl.acm.org"
+        ],
+        "crossmark-restriction": true
+      },
+      "short-container-title": [
+        "ACM Trans. Softw. Eng. Methodol."
+      ],
+      "published-print": {
+        "date-parts": [
+          [
+            2023,
+            11,
+            30
+          ]
+        ]
+      },
+      "abstract": "<jats:p>As an essential component responsible for communication, network services are security critical, thus, it is vital to find their vulnerabilities. Fuzzing is currently one of the most popular software vulnerability discovery techniques, widely adopted due to its high efficiency and low false positives. However, existing coverage-guided fuzzers mainly aim at stateless local applications, leaving stateful network services underexplored. Recently, some fuzzers targeting network services have been proposed but have certain limitations, for example, insufficient or inaccurate state representation and low testing efficiency.</jats:p>\n          <jats:p>\n            In this article, we propose a new fuzzing solution NSFuzz for stateful network services. We studied typical implementations of network service programs to determine how they represent states and interact with clients. Accordingly, we propose (1) a program variable–based state representation scheme and (2) an efficient interaction synchronization mechanism to improve fuzzing efficiency. We implemented a prototype of NSFuzz, which uses static analysis and annotation application programming interfaces (APIs) to identify synchronization points and state variables within the services. It then achieves fast I/O synchronization and accurate service state tracing to carry out efficient state-aware fuzzing via lightweight compile-time instrumentation. The evaluation results show that compared with other network service fuzzers, including AFL\n            <jats:sc>net</jats:sc>\n            and S\n            <jats:sc>tate</jats:sc>\n            AFL, our solution NSFuzz could infer a more accurate state model during fuzzing and improve fuzzing throughput by up to 200×. In addition, NSFuzz could improve code coverage by up to 25% and trigger more crashes in less time. We also performed a fuzzing campaign to find new bugs in the latest version of the target services; 8 zero-day vulnerabilities have been found by NSFuzz.\n          </jats:p>",
+      "DOI": "10.1145/3580598",
+      "type": "journal-article",
+      "created": {
+        "date-parts": [
+          [
+            2023,
+            3,
+            31
+          ]
+        ],
+        "date-time": "2023-03-31T12:18:15Z",
+        "timestamp": 1680265095000
+      },
+      "page": "1-26",
+      "update-policy": "https://doi.org/10.1145/crossmark-policy",
+      "source": "Crossref",
+      "is-referenced-by-count": 50,
+      "title": [
+        "NSFuzz: Towards Efficient and State-Aware Network Service Fuzzing"
+      ],
+      "prefix": "10.1145",
+      "volume": "32",
+      "author": [
+        {
+          "ORCID": "https://orcid.org/0000-0002-1935-5747",
+          "authenticated-orcid": false,
+          "given": "Shisong",
+          "family": "Qin",
+          "sequence": "first",
+          "affiliation": [
+            {
+              "name": "Tsinghua University, China"
+            }
+          ],
+          "role": [
+            {
+              "vocabulary": "crossref",
+              "role": "author"
+            }
+          ]
+        },
+        {
+          "ORCID": "https://orcid.org/0000-0002-9875-8973",
+          "authenticated-orcid": false,
+          "given": "Fan",
+          "family": "Hu",
+          "sequence": "additional",
+          "affiliation": [
+            {
+              "name": "State Key Laboratory of Mathematical Engineering and Advanced Computing, China"
+            }
+          ],
+          "role": [
+            {
+              "vocabulary": "crossref",
+              "role": "author"
+            }
+          ]
+        },
+        {
+          "ORCID": "https://orcid.org/0000-0002-0710-326X",
+          "authenticated-orcid": false,
+          "given": "Zheyu",
+          "family": "Ma",
+          "sequence": "additional",
+          "affiliation": [
+            {
+              "name": "Tsinghua University, China"
+            }
+          ],
+          "role": [
+            {
+              "vocabulary": "crossref",
+              "role": "author"
+            }
+          ]
+        },
+        {
+          "ORCID": "https://orcid.org/0000-0003-4443-3708",
+          "authenticated-orcid": false,
+          "given": "Bodong",
+          "family": "Zhao",
+          "sequence": "additional",
+          "affiliation": [
+            {
+              "name": "Tsinghua University, China"
+            }
+          ],
+          "role": [
+            {
+              "vocabulary": "crossref",
+              "role": "author"
+            }
+          ]
+        },
+        {
+          "ORCID": "https://orcid.org/0000-0003-1231-4050",
+          "authenticated-orcid": false,
+          "given": "Tingting",
+          "family": "Yin",
+          "sequence": "additional",
+          "affiliation": [
+            {
+              "name": "Tsinghua University, China"
+            }
+          ],
+          "role": [
+            {
+              "vocabulary": "crossref",
+              "role": "author"
+            }
+          ]
+        },
+        {
+          "ORCID": "https://orcid.org/0000-0001-7894-8828",
+          "authenticated-orcid": false,
+          "given": "Chao",
+          "family": "Zhang",
+          "sequence": "additional",
+          "affiliation": [
+            {
+              "name": "Tsinghua University, China"
+            }
+          ],
+          "role": [
+            {
+              "vocabulary": "crossref",
+              "role": "author"
+            }
+          ]
+        }
+      ],
+      "member": "320",
+      "published-online": {
+        "date-parts": [
+          [
+            2023,
+            9,
+            28
+          ]
+        ]
+      },
+      "reference": [
+        {
+          "key": "e_1_3_2_2_2",
+          "unstructured": "2018. The Transport Layer Security (TLS) Protocol Version 1.3. Retrieved April 10 2023 from https://datatracker.ietf.org/doc/html/rfc8446."
+        },
+        {
+          "key": "e_1_3_2_3_2",
+          "unstructured": "2020. The Heartbleed Bug. Retrieved April 10 2023 from https://heartbleed.com/."
+        },
+        {
+          "key": "e_1_3_2_4_2",
+          "unstructured": "2021. libFuzzer —a Library for Coverage-guided Fuzz Testing. Retrieved April 10 2023 from https://llvm.org/docs/LibFuzzer.html."
+        },
+        {
+          "key": "e_1_3_2_5_2",
+          "unstructured": "2021. LightFTP: Small x86-32/x64 FTP Server. Retrieved April 10 2023 from https://github.com/hfiref0x/LightFTP."
+        },
+        {
+          "key": "e_1_3_2_6_2",
+          "unstructured": "2021. Readelf (GNU Binary Utilities). Retrieved April 10 2023 from https://sourceware.org/binutils/docs/binutils/readelf.html."
+        },
+        {
+          "key": "e_1_3_2_7_2",
+          "unstructured": "2021. Server Message Block (SMB) Protocol Versions 2 and 3. Retrieved April 10 2023 from https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-smb/."
+        },
+        {
+          "key": "e_1_3_2_8_2",
+          "unstructured": "2021. TLS-Attacker. Retrieved April 10 2023 from https://github.com/tls-attacker/TLS-Attacker."
+        },
+        {
+          "key": "e_1_3_2_9_2",
+          "unstructured": "2021. WannaCry Ransomware Attack. Retrieved April 10 2023 from https://en.wikipedia.org/wiki/WannaCry_ransomware_attack."
+        },
+        {
+          "key": "e_1_3_2_10_2",
+          "unstructured": "2022. OpenSSL. Retrieved April 10 2023 from https://www.openssl.org/."
+        },
+        {
+          "key": "e_1_3_2_11_2",
+          "unstructured": "2022. The GNU C Library (glibc). Retrieved April 10 2023 from https://www.gnu.org/software/libc/."
+        },
+        {
+          "key": "e_1_3_2_12_2",
+          "unstructured": "2022. The LLVM Compiler Infrastructure. Retrieved April 10 2023 from https://llvm.org/."
+        },
+        {
+          "key": "e_1_3_2_13_2",
+          "unstructured": "2022. TinyDTLS. Retrieved April 10 2023 from https://projects.eclipse.org/projects/iot.tinydtls."
+        },
+        {
+          "key": "e_1_3_2_14_2",
+          "doi-asserted-by": "crossref",
+          "first-page": "47",
+          "DOI": "10.1145/1326304.1326313",
+          "volume-title": "Proceedings of the 1st International Conference on Principles, Systems and Applications of IP Telecommunications",
+          "author": "Abdelnur Humberto J",
+          "year": "2007",
+          "unstructured": "Humberto J Abdelnur, Radu State, and Olivier Festor. 2007. KiF: A stateful SIP fuzzer. In Proceedings of the 1st International Conference on Principles, Systems and Applications of IP Telecommunications. 47–56."
+        },
+        {
+          "key": "e_1_3_2_15_2",
+          "first-page": "106",
+          "article-title": "The advantages of block-based protocol analysis for security testing",
+          "volume": "105",
+          "author": "Aitel Dave",
+          "year": "2002",
+          "unstructured": "Dave Aitel. 2002. The advantages of block-based protocol analysis for security testing. Immunity Inc., February 105 (2002), 106.",
+          "journal-title": "Immunity Inc., February"
+        },
+        {
+          "key": "e_1_3_2_16_2",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/3533767.3534376"
+        },
+        {
+          "key": "e_1_3_2_17_2",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1016/0890-5401(87)90052-6"
+        },
+        {
+          "key": "e_1_3_2_18_2",
+          "doi-asserted-by": "crossref",
+          "first-page": "1597",
+          "DOI": "10.1109/SP40000.2020.00117",
+          "volume-title": "2020 IEEE Symposium on Security and Privacy (SP’20)",
+          "author": "Aschermann Cornelius",
+          "year": "2020",
+          "unstructured": "Cornelius Aschermann, Sergej Schumilo, Ali Abbasi, and Thorsten Holz. 2020. Ijon: Exploring deep state spaces via fuzzing. In 2020 IEEE Symposium on Security and Privacy (SP’20). IEEE, 1597–1612."
+        },
+        {
+          "key": "e_1_3_2_19_2",
+          "unstructured": "Jinsheng Ba Marcel Böhme Zahra Mirzamomen and Abhik Roychoudhury. 2022. Stateful greybox fuzzing. (2022). arxiv:2204.02545http://arxiv.org/abs/2204.02545."
+        },
+        {
+          "key": "e_1_3_2_20_2",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1007/11836810_25"
+        },
+        {
+          "key": "e_1_3_2_21_2",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/3338502.3359762"
+        },
+        {
+          "key": "e_1_3_2_22_2",
+          "doi-asserted-by": "crossref",
+          "first-page": "110",
+          "DOI": "10.1109/SP.2009.14",
+          "volume-title": "2009 30th IEEE Symposium on Security and Privacy",
+          "author": "Comparetti Paolo Milani",
+          "year": "2009",
+          "unstructured": "Paolo Milani Comparetti, Gilbert Wondracek, Christopher Kruegel, and Engin Kirda. 2009. Prospex: Protocol specification extraction. In 2009 30th IEEE Symposium on Security and Privacy. IEEE, 110–125."
+        },
+        {
+          "key": "e_1_3_2_23_2",
+          "first-page": "193",
+          "volume-title": "24th  \\(\\lbrace\\) USENIX \\(\\rbrace\\)  Security Symposium ( \\(\\lbrace\\) USENIX \\(\\rbrace\\)  Security’15)",
+          "author": "Ruiter Joeri De",
+          "year": "2015",
+          "unstructured": "Joeri De Ruiter and Erik Poll. 2015. Protocol state fuzzing of \\(\\lbrace\\) TLS \\(\\rbrace\\) implementations. In 24th \\(\\lbrace\\) USENIX \\(\\rbrace\\) Security Symposium ( \\(\\lbrace\\) USENIX \\(\\rbrace\\) Security’15). 193–206."
+        },
+        {
+          "key": "e_1_3_2_24_2",
+          "unstructured": "Frank Denis. 2021. Pure-FTPd. Retrieved April 10 2023 from https://www.pureftpd.org/project/pure-ftpd/."
+        },
+        {
+          "key": "e_1_3_2_25_2",
+          "first-page": "2523",
+          "volume-title": "29th  \\(\\lbrace\\) USENIX \\(\\rbrace\\)  Security Symposium ( \\(\\lbrace\\) USENIX \\(\\rbrace\\)  Security’20)",
+          "author": "Fiterau-Brostean Paul",
+          "year": "2020",
+          "unstructured": "Paul Fiterau-Brostean, Bengt Jonsson, Robert Merget, Joeri de Ruiter, Konstantinos Sagonas, and Juraj Somorovsky. 2020. Analysis of \\(\\lbrace\\) DTLS \\(\\rbrace\\) implementations using protocol state fuzzing. In 29th \\(\\lbrace\\) USENIX \\(\\rbrace\\) Security Symposium ( \\(\\lbrace\\) USENIX \\(\\rbrace\\) Security’20). 2523–2540."
+        },
+        {
+          "key": "e_1_3_2_26_2",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1007/978-3-319-28865-9_18"
+        },
+        {
+          "key": "e_1_3_2_27_2",
+          "unstructured": "Google. 2021. Honggfuzz. Retrieved April 10 2023 from https://github.com/google/honggfuzz."
+        },
+        {
+          "issue": "8",
+          "key": "e_1_3_2_28_2",
+          "first-page": "239",
+          "article-title": "Autofuzz: Automated network protocol fuzzing framework",
+          "volume": "10",
+          "author": "Gorbunov Serge",
+          "year": "2010",
+          "unstructured": "Serge Gorbunov and Arnold Rosenbloom. 2010. Autofuzz: Automated network protocol fuzzing framework. IJCSNS 10, 8 (2010), 239.",
+          "journal-title": "IJCSNS"
+        },
+        {
+          "key": "e_1_3_2_29_2",
+          "doi-asserted-by": "crossref",
+          "DOI": "10.5121/csit.2020.101805",
+          "article-title": "PNFUZZ: A stateful network protocol fuzzing approach based on packet clustering",
+          "author": "He Huihui",
+          "year": "2020",
+          "unstructured": "Huihui He and Yongjun Wang. 2020. PNFUZZ: A stateful network protocol fuzzing approach based on packet clustering. Computer Science & Information Technology (CS & IT’20).",
+          "journal-title": "Computer Science & Information Technology (CS & IT’20)"
+        },
+        {
+          "key": "e_1_3_2_30_2",
+          "doi-asserted-by": "crossref",
+          "first-page": "173",
+          "DOI": "10.1007/978-0-387-35413-2_16",
+          "volume-title": "Communications and Multimedia Security Issues of the New Century",
+          "author": "Kaksonen Rauli",
+          "year": "2001",
+          "unstructured": "Rauli Kaksonen, Marko Laakso, and Ari Takanen. 2001. Software security assessment through specification mutations and fault injection. In Communications and Multimedia Security Issues of the New Century. Springer, 173–183."
+        },
+        {
+          "key": "e_1_3_2_31_2",
+          "doi-asserted-by": "crossref",
+          "first-page": "202",
+          "DOI": "10.1109/ISCC.2010.5546704",
+          "volume-title": "IEEE Symposium on Computers and Communications",
+          "author": "Kitagawa Takahisa",
+          "year": "2010",
+          "unstructured": "Takahisa Kitagawa, Miyuki Hanaoka, and Kenji Kono. 2010. AspFuzz: A state-aware protocol fuzzer based on application-layer protocols. In IEEE Symposium on Computers and Communications. IEEE, 202–208."
+        },
+        {
+          "key": "e_1_3_2_32_2",
+          "first-page": "141",
+          "volume-title": "IFIP International Conference on ICT Systems Security and Privacy Protection",
+          "author": "Lee Choongin",
+          "year": "2018",
+          "unstructured": "Choongin Lee, Jeonghan Bae, and Heejo Lee. 2018. PRETT: Protocol reverse engineering using binary tokens and network traces. In IFIP International Conference on ICT Systems Security and Privacy Protection. Springer, 141–155."
+        },
+        {
+          "key": "e_1_3_2_33_2",
+          "first-page": "1",
+          "volume-title": "57th ACM/IEEE Design Automation Conference (DAC’20)",
+          "author": "Luo Zhengxiong",
+          "year": "2020",
+          "unstructured": "Zhengxiong Luo, Feilong Zuo, Yuheng Shen, Xun Jiao, Wanli Chang, and Yu Jiang. 2020. ICS protocol fuzzing: Coverage guided packet crack and generation. In 57th ACM/IEEE Design Automation Conference (DAC’20). IEEE, 1–6."
+        },
+        {
+          "key": "e_1_3_2_34_2",
+          "article-title": "StateAFL: Greybox fuzzing for stateful network servers",
+          "author": "Natella Roberto",
+          "year": "2021",
+          "unstructured": "Roberto Natella. 2021. StateAFL: Greybox fuzzing for stateful network servers. arXiv preprint arXiv:2110.06253 (2021).",
+          "journal-title": "arXiv preprint arXiv:2110.06253"
+        },
+        {
+          "key": "e_1_3_2_35_2",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/3460319.3469077"
+        },
+        {
+          "key": "e_1_3_2_36_2",
+          "unstructured": "OpenRCE. 2012. Sulley. Retrieved April 10 2023 from https://github.com/OpenRCE/sulley."
+        },
+        {
+          "key": "e_1_3_2_37_2",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/3360600"
+        },
+        {
+          "key": "e_1_3_2_38_2",
+          "unstructured": "Joshua Pereyda. 2021. boofuzz: Network Protocol Fuzzing for Humans. Retrieved April 10 2023 from https://github.com/jtpereyda/boofuzz."
+        },
+        {
+          "key": "e_1_3_2_39_2",
+          "unstructured": "Van-Thuan Pham. 2021. AFLNWE. Retrieved April 10 2023 from https://github.com/thuanpv/aflnwe."
+        },
+        {
+          "key": "e_1_3_2_40_2",
+          "volume-title": "Proceedings of the 13rd IEEE International Conference on Software Testing, Verification and Validation: Testing Tools Track",
+          "author": "Pham Van-Thuan",
+          "year": "2020",
+          "unstructured": "Van-Thuan Pham, Marcel Böhme, and Abhik Roychoudhury. 2020. AFLNet: A greybox fuzzer for network protocols. In Proceedings of the 13rd IEEE International Conference on Software Testing, Verification and Validation: Testing Tools Track."
+        },
+        {
+          "key": "e_1_3_2_41_2",
+          "article-title": "Nyx-Net: Network fuzzing with incremental snapshots",
+          "author": "Schumilo Sergej",
+          "year": "2021",
+          "unstructured": "Sergej Schumilo, Cornelius Aschermann, Andrea Jemmett, Ali Abbasi, and Thorsten Holz. 2021. Nyx-Net: Network fuzzing with incremental snapshots. arXiv preprint arXiv:2111.03013 (2021).",
+          "journal-title": "arXiv preprint arXiv:2111.03013"
+        },
+        {
+          "key": "e_1_3_2_42_2",
+          "unstructured": "Mozilla Security. 2021. Peach. Retrieved April 10 2023 from https://github.com/MozillaSecurity/peach."
+        },
+        {
+          "key": "e_1_3_2_43_2",
+          "first-page": "309",
+          "volume-title": "2012 USENIX Annual Technical Conference (USENIX ATC’12)",
+          "author": "Serebryany Konstantin",
+          "year": "2012",
+          "unstructured": "Konstantin Serebryany, Derek Bruening, Alexander Potapenko, and Dmitriy Vyukov. 2012. \\(\\lbrace\\) AddressSanitizer \\(\\rbrace\\) : A fast address sanity checker. In 2012 USENIX Annual Technical Conference (USENIX ATC’12). 309–318."
+        },
+        {
+          "key": "e_1_3_2_44_2",
+          "unstructured": "Jesse Smith. 2021. Bftpd. Retrieved April 10 2023 from http://bftpd.sourceforge.net/."
+        },
+        {
+          "key": "e_1_3_2_45_2",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1109/ACCESS.2019.2895025"
+        },
+        {
+          "key": "e_1_3_2_46_2",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/3319535.3363247"
+        },
+        {
+          "key": "e_1_3_2_47_2",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1109/ACCESS.2020.3025037"
+        },
+        {
+          "key": "e_1_3_2_48_2",
+          "unstructured": "Michal Zalewski. 2021. American Fuzzy Lop. Retrieved April 10 2023 from https://github.com/google/AFL."
+        }
+      ],
+      "container-title": [
+        "ACM Transactions on Software Engineering and Methodology"
+      ],
+      "original-title": [],
+      "language": "en",
+      "link": [
+        {
+          "URL": "https://dl.acm.org/doi/10.1145/3580598",
+          "content-type": "unspecified",
+          "content-version": "vor",
+          "intended-application": "text-mining"
+        },
+        {
+          "URL": "https://dl.acm.org/doi/pdf/10.1145/3580598",
+          "content-type": "unspecified",
+          "content-version": "vor",
+          "intended-application": "similarity-checking"
+        }
+      ],
+      "deposited": {
+        "date-parts": [
+          [
+            2025,
+            6,
+            17
+          ]
+        ],
+        "date-time": "2025-06-17T16:46:36Z",
+        "timestamp": 1750178796000
+      },
+      "score": 1,
+      "resource": {
+        "primary": {
+          "URL": "https://dl.acm.org/doi/10.1145/3580598"
+        }
+      },
+      "subtitle": [],
+      "short-title": [],
+      "issued": {
+        "date-parts": [
+          [
+            2023,
+            9,
+            28
+          ]
+        ]
+      },
+      "references-count": 47,
+      "journal-issue": {
+        "issue": "6",
+        "published-print": {
+          "date-parts": [
+            [
+              2023,
+              11,
+              30
+            ]
+          ]
+        }
+      },
+      "alternative-id": [
+        "10.1145/3580598"
+      ],
+      "URL": "https://doi.org/10.1145/3580598",
+      "relation": {},
+      "ISSN": [
+        "1049-331X",
+        "1557-7392"
+      ],
+      "issn-type": [
+        {
+          "value": "1049-331X",
+          "type": "print"
+        },
+        {
+          "value": "1557-7392",
+          "type": "electronic"
+        }
+      ],
+      "subject": [],
+      "published": {
+        "date-parts": [
+          [
+            2023,
+            9,
+            28
+          ]
+        ]
+      },
+      "assertion": [
+        {
+          "value": "2022-06-16",
+          "order": 0,
+          "name": "received",
+          "label": "Received",
+          "group": {
+            "name": "publication_history",
+            "label": "Publication History"
+          }
+        },
+        {
+          "value": "2022-12-14",
+          "order": 1,
+          "name": "accepted",
+          "label": "Accepted",
+          "group": {
+            "name": "publication_history",
+            "label": "Publication History"
+          }
+        },
+        {
+          "value": "2023-09-28",
+          "order": 2,
+          "name": "published",
+          "label": "Published",
+          "group": {
+            "name": "publication_history",
+            "label": "Publication History"
+          }
+        }
+      ]
+    }
+  }
+}

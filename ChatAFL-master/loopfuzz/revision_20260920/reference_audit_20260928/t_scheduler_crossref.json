@@ -1,0 +1,490 @@
+{
+  "query_url": "https://api.crossref.org/works?query.bibliographic=T-Scheduler+Thompson+fuzzing&rows=4",
+  "accessed": "2026-09-28",
+  "response": {
+    "status": "ok",
+    "message-type": "work-list",
+    "message-version": "1.0.0",
+    "message": {
+      "facets": {},
+      "total-results": 284863,
+      "items": [
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2023,
+                2,
+                21
+              ]
+            ],
+            "date-time": "2023-02-21T05:31:51Z",
+            "timestamp": 1676957511732
+          },
+          "publisher-location": "Reston, VA",
+          "reference-count": 0,
+          "publisher": "Internet Society",
+          "isbn-type": [
+            {
+              "value": "1891562770",
+              "type": "print"
+            }
+          ],
+          "content-domain": {
+            "domain": [],
+            "crossmark-restriction": false
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2022
+              ]
+            ]
+          },
+          "DOI": "10.14722/fuzzing.2022",
+          "type": "proceedings",
+          "created": {
+            "date-parts": [
+              [
+                2023,
+                2,
+                20
+              ]
+            ],
+            "date-time": "2023-02-20T20:18:14Z",
+            "timestamp": 1676924294000
+          },
+          "source": "Crossref",
+          "is-referenced-by-count": 0,
+          "title": [
+            "Proceedings FUZZING 2022 - 1st International Fuzzing Workshop"
+          ],
+          "prefix": "10.14722",
+          "member": "5725",
+          "event": {
+            "name": "1st International Fuzzing Workshop",
+            "location": "San Diego, CA, USA",
+            "acronym": "FUZZING 2022",
+            "number": "1",
+            "sponsor": [
+              "Internet Society"
+            ]
+          },
+          "deposited": {
+            "date-parts": [
+              [
+                2023,
+                2,
+                20
+              ]
+            ],
+            "date-time": "2023-02-20T20:18:17Z",
+            "timestamp": 1676924297000
+          },
+          "score": 19.279924,
+          "resource": {
+            "primary": {
+              "URL": "https://www.ndss-symposium.org/ndss-program/fuzzing-2022/"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2022
+              ]
+            ]
+          },
+          "ISBN": [
+            "1891562770"
+          ],
+          "references-count": 0,
+          "URL": "https://doi.org/10.14722/fuzzing.2022",
+          "published": {
+            "date-parts": [
+              [
+                2022
+              ]
+            ]
+          }
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                2,
+                28
+              ]
+            ],
+            "date-time": "2026-02-28T09:29:28Z",
+            "timestamp": 1772270968856,
+            "version": "3.50.1"
+          },
+          "reference-count": 0,
+          "publisher": "PeerJ",
+          "content-domain": {
+            "domain": [],
+            "crossmark-restriction": false
+          },
+          "DOI": "10.7717/peerj-cs.1592/fig-8",
+          "type": "component",
+          "created": {
+            "date-parts": [
+              [
+                2023,
+                9,
+                19
+              ]
+            ],
+            "date-time": "2023-09-19T03:14:33Z",
+            "timestamp": 1695093273000
+          },
+          "source": "Crossref",
+          "is-referenced-by-count": 0,
+          "title": [
+            "Figure 8: Fuzzing Redis using or not using multi-dimensional fuzzing."
+          ],
+          "prefix": "10.7717",
+          "member": "4443",
+          "deposited": {
+            "date-parts": [
+              [
+                2023,
+                9,
+                19
+              ]
+            ],
+            "date-time": "2023-09-19T03:14:48Z",
+            "timestamp": 1695093288000
+          },
+          "score": 19.21407,
+          "resource": {
+            "primary": {
+              "URL": "https://peerj.com/articles/cs-1592/fig-8"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                null
+              ]
+            ]
+          },
+          "references-count": 0,
+          "URL": "https://doi.org/10.7717/peerj-cs.1592/fig-8",
+          "relation": {
+            "is-component-of": [
+              {
+                "id-type": "doi",
+                "id": "10.7717/peerj-cs.1592",
+                "asserted-by": "object"
+              }
+            ]
+          }
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2023,
+                2,
+                21
+              ]
+            ],
+            "date-time": "2023-02-21T05:35:42Z",
+            "timestamp": 1676957742637
+          },
+          "publisher-location": "Reston, VA",
+          "reference-count": 0,
+          "publisher": "Internet Society",
+          "content-domain": {
+            "domain": [],
+            "crossmark-restriction": false
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2022
+              ]
+            ]
+          },
+          "DOI": "10.14722/fuzzing.2022.23007",
+          "type": "proceedings-article",
+          "created": {
+            "date-parts": [
+              [
+                2023,
+                2,
+                20
+              ]
+            ],
+            "date-time": "2023-02-20T20:18:14Z",
+            "timestamp": 1676924294000
+          },
+          "source": "Crossref",
+          "is-referenced-by-count": 0,
+          "title": [
+            "Fine-Grained Coverage-Based Fuzzing"
+          ],
+          "prefix": "10.14722",
+          "author": [
+            {
+              "given": "Bernard",
+              "family": "Nongpoh",
+              "sequence": "first",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Marwan",
+              "family": "Nour",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Michaël",
+              "family": "Marcozzi",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Sébastien",
+              "family": "Bardin",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "member": "5725",
+          "event": {
+            "name": "1st International Fuzzing Workshop",
+            "location": "San Diego, CA, USA",
+            "acronym": "FUZZING 2022",
+            "number": "1",
+            "sponsor": [
+              "Internet Society"
+            ]
+          },
+          "container-title": [
+            "Proceedings FUZZING 2022 - 1st International Fuzzing Workshop"
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2023,
+                2,
+                20
+              ]
+            ],
+            "date-time": "2023-02-20T20:18:19Z",
+            "timestamp": 1676924299000
+          },
+          "score": 19.046259,
+          "resource": {
+            "primary": {
+              "URL": "https://www.ndss-symposium.org/wp-content/uploads/fuzzing2022_23007_paper.pdf"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2022
+              ]
+            ]
+          },
+          "references-count": 0,
+          "URL": "https://doi.org/10.14722/fuzzing.2022.23007",
+          "published": {
+            "date-parts": [
+              [
+                2022
+              ]
+            ]
+          }
+        },
+        {
+          "indexed": {
+            "date-parts": [
+              [
+                2026,
+                3,
+                9
+              ]
+            ],
+            "date-time": "2026-03-09T17:59:58Z",
+            "timestamp": 1773079198552,
+            "version": "3.50.1"
+          },
+          "publisher-location": "Reston, VA",
+          "reference-count": 0,
+          "publisher": "Internet Society",
+          "content-domain": {
+            "domain": [],
+            "crossmark-restriction": false
+          },
+          "published-print": {
+            "date-parts": [
+              [
+                2022
+              ]
+            ]
+          },
+          "DOI": "10.14722/fuzzing.2022.23008",
+          "type": "proceedings-article",
+          "created": {
+            "date-parts": [
+              [
+                2023,
+                2,
+                20
+              ]
+            ],
+            "date-time": "2023-02-20T20:18:14Z",
+            "timestamp": 1676924294000
+          },
+          "source": "Crossref",
+          "is-referenced-by-count": 1,
+          "title": [
+            "Fuzzing Configurations of Program Options"
+          ],
+          "prefix": "10.14722",
+          "author": [
+            {
+              "given": "Zenong",
+              "family": "Zhang",
+              "sequence": "first",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "George",
+              "family": "Klees",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Eric",
+              "family": "Wang",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Michael",
+              "family": "Hicks",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            },
+            {
+              "given": "Shiyi",
+              "family": "Wei",
+              "sequence": "additional",
+              "affiliation": [],
+              "role": [
+                {
+                  "role": "author",
+                  "vocabulary": "crossref"
+                }
+              ]
+            }
+          ],
+          "member": "5725",
+          "event": {
+            "name": "1st International Fuzzing Workshop",
+            "location": "San Diego, CA, USA",
+            "acronym": "FUZZING 2022",
+            "number": "1",
+            "sponsor": [
+              "Internet Society"
+            ]
+          },
+          "container-title": [
+            "Proceedings FUZZING 2022 - 1st International Fuzzing Workshop"
+          ],
+          "deposited": {
+            "date-parts": [
+              [
+                2023,
+                2,
+                20
+              ]
+            ],
+            "date-time": "2023-02-20T20:18:20Z",
+            "timestamp": 1676924300000
+          },
+          "score": 18.69043,
+          "resource": {
+            "primary": {
+              "URL": "https://www.ndss-symposium.org/wp-content/uploads/fuzzing2022_23008_paper.pdf"
+            }
+          },
+          "issued": {
+            "date-parts": [
+              [
+                2022
+              ]
+            ]
+          },
+          "references-count": 0,
+          "URL": "https://doi.org/10.14722/fuzzing.2022.23008",
+          "published": {
+            "date-parts": [
+              [
+                2022
+              ]
+            ]
+          }
+        }
+      ],
+      "items-per-page": 4,
+      "query": {
+        "start-index": 0,
+        "search-terms": null
+      }
+    }
+  }
+}

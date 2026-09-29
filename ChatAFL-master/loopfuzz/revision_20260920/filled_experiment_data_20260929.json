@@ -1,0 +1,4447 @@
+{
+  "policy": "Current tar.gz files with matching run_summary.csv; nominal N=10 retained, actual n shown; missing combinations blank; ablation/gated_fixed excluded because it duplicates benchmark LoopFuzz D.",
+  "aggregate": {
+    "A|bftpd": {
+      "target": "bftpd",
+      "arm": "A",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1499.0,
+        "sd": 0.0,
+        "min": 1499.0,
+        "max": 1499.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 486.0,
+        "sd": 8.755950357709132,
+        "min": 466.0,
+        "max": 494.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 163.1,
+        "sd": 15.444884086468388,
+        "min": 144.0,
+        "max": 187.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 11868.724388888888,
+        "sd": 165.6122591228337,
+        "min": 11465.34888888889,
+        "max": 12058.15138888889
+      },
+      "model_calls": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "prompt_tokens": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "completion_tokens": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "candidates": 0,
+      "trials": 0,
+      "episodes": 0,
+      "episode_rewards": 0,
+      "dispositions": {},
+      "first_failed_logged_predicate": {},
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "A|exim": {
+      "target": "exim",
+      "arm": "A",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1499.0,
+        "sd": 0.0,
+        "min": 1499.0,
+        "max": 1499.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 3798.8,
+        "sd": 43.32256276404299,
+        "min": 3732.0,
+        "max": 3847.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 88.8,
+        "sd": 5.181162460726786,
+        "min": 80.0,
+        "max": 96.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 91083.03334722223,
+        "sd": 1031.5342976286513,
+        "min": 89559.68069444444,
+        "max": 92288.89527777777
+      },
+      "model_calls": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "prompt_tokens": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "completion_tokens": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "candidates": 0,
+      "trials": 0,
+      "episodes": 0,
+      "episode_rewards": 0,
+      "dispositions": {},
+      "first_failed_logged_predicate": {},
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "A|forked-daapd": {
+      "target": "forked-daapd",
+      "arm": "A",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1499.0,
+        "sd": 0.0,
+        "min": 1499.0,
+        "max": 1499.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 2330.8,
+        "sd": 59.95331517105622,
+        "min": 2206.0,
+        "max": 2441.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 21.6,
+        "sd": 2.1186998109427604,
+        "min": 18.0,
+        "max": 24.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 54453.22279166667,
+        "sd": 1494.093145701081,
+        "min": 51504.76944444444,
+        "max": 56928.30222222222
+      },
+      "model_calls": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "prompt_tokens": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "completion_tokens": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "candidates": 0,
+      "trials": 0,
+      "episodes": 0,
+      "episode_rewards": 0,
+      "dispositions": {},
+      "first_failed_logged_predicate": {},
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "A|kamailio": {
+      "target": "kamailio",
+      "arm": "A",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1499.0,
+        "sd": 0.0,
+        "min": 1499.0,
+        "max": 1499.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 10002.6,
+        "sd": 144.17134867156435,
+        "min": 9806.0,
+        "max": 10202.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 109.4,
+        "sd": 9.686187187031965,
+        "min": 95.0,
+        "max": 129.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 242853.66930555555,
+        "sd": 2772.6437283574005,
+        "min": 239608.46819444443,
+        "max": 246803.8513888889
+      },
+      "model_calls": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "prompt_tokens": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "completion_tokens": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "candidates": 0,
+      "trials": 0,
+      "episodes": 0,
+      "episode_rewards": 0,
+      "dispositions": {},
+      "first_failed_logged_predicate": {},
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "A|lightftp": {
+      "target": "lightftp",
+      "arm": "A",
+      "runs_available": 13,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 13
+      },
+      "exit_code": {
+        "0": 10,
+        "": 3
+      },
+      "runtime_min": {
+        "n": 13,
+        "mean": 1511.3076923076924,
+        "sd": 19.215378456610456,
+        "min": 1499.0,
+        "max": 1539.0
+      },
+      "branches": {
+        "n": 13,
+        "mean": 71.0,
+        "sd": 0.0,
+        "min": 71.0,
+        "max": 71.0
+      },
+      "ipsm_edges": {
+        "n": 13,
+        "mean": 187.30769230769232,
+        "sd": 11.272271402166583,
+        "min": 168.0,
+        "max": 202.0
+      },
+      "auc_branch_hours": {
+        "n": 13,
+        "mean": 1758.4847222222222,
+        "sd": 33.775693848095365,
+        "min": 1688.309861111111,
+        "max": 1814.3305555555555
+      },
+      "model_calls": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "prompt_tokens": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "completion_tokens": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "candidates": 0,
+      "trials": 0,
+      "episodes": 0,
+      "episode_rewards": 0,
+      "dispositions": {},
+      "first_failed_logged_predicate": {},
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "A|lighttpd1": {
+      "target": "lighttpd1",
+      "arm": "A",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1499.0,
+        "sd": 0.0,
+        "min": 1499.0,
+        "max": 1499.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 1940.7,
+        "sd": 21.16627296221777,
+        "min": 1912.0,
+        "max": 1974.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 17.7,
+        "sd": 2.4517567397911058,
+        "min": 15.0,
+        "max": 23.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 46909.35776388889,
+        "sd": 235.65726477075543,
+        "min": 46544.48472222222,
+        "max": 47240.56333333333
+      },
+      "model_calls": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "prompt_tokens": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "completion_tokens": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "candidates": 0,
+      "trials": 0,
+      "episodes": 0,
+      "episode_rewards": 0,
+      "dispositions": {},
+      "first_failed_logged_predicate": {},
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "A|live555": {
+      "target": "live555",
+      "arm": "A",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1499.0,
+        "sd": 0.0,
+        "min": 1499.0,
+        "max": 1499.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 2893.6,
+        "sd": 14.523544103741804,
+        "min": 2876.0,
+        "max": 2923.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 96.1,
+        "sd": 8.595218308907446,
+        "min": 85.0,
+        "max": 113.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 71127.42019444445,
+        "sd": 517.3290810656962,
+        "min": 70148.3451388889,
+        "max": 71858.35361111112
+      },
+      "model_calls": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "prompt_tokens": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "completion_tokens": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "candidates": 0,
+      "trials": 0,
+      "episodes": 0,
+      "episode_rewards": 0,
+      "dispositions": {},
+      "first_failed_logged_predicate": {},
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "A|proftpd": {
+      "target": "proftpd",
+      "arm": "A",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1499.0,
+        "sd": 0.0,
+        "min": 1499.0,
+        "max": 1499.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 5053.8,
+        "sd": 97.44263269568751,
+        "min": 4928.0,
+        "max": 5291.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 190.5,
+        "sd": 27.865749586185547,
+        "min": 142.0,
+        "max": 222.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 122652.54805555556,
+        "sd": 1730.068180853819,
+        "min": 120362.99347222222,
+        "max": 126369.84638888888
+      },
+      "model_calls": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "prompt_tokens": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "completion_tokens": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "candidates": 0,
+      "trials": 0,
+      "episodes": 0,
+      "episode_rewards": 0,
+      "dispositions": {},
+      "first_failed_logged_predicate": {},
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "A|pure-ftpd": {
+      "target": "pure-ftpd",
+      "arm": "A",
+      "runs_available": 11,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 11
+      },
+      "exit_code": {
+        "0": 9,
+        "": 1,
+        "1": 1
+      },
+      "runtime_min": {
+        "n": 11,
+        "mean": 1499.0,
+        "sd": 0.0,
+        "min": 1499.0,
+        "max": 1499.0
+      },
+      "branches": {
+        "n": 11,
+        "mean": 1076.3636363636363,
+        "sd": 89.64069692642146,
+        "min": 899.0,
+        "max": 1162.0
+      },
+      "ipsm_edges": {
+        "n": 11,
+        "mean": 236.45454545454547,
+        "sd": 26.725881225372667,
+        "min": 196.0,
+        "max": 286.0
+      },
+      "auc_branch_hours": {
+        "n": 11,
+        "mean": 23054.10037878788,
+        "sd": 2084.401870362128,
+        "min": 19511.93138888889,
+        "max": 25365.161944444444
+      },
+      "model_calls": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "prompt_tokens": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "completion_tokens": {
+        "n": 0,
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null
+      },
+      "candidates": 0,
+      "trials": 0,
+      "episodes": 0,
+      "episode_rewards": 0,
+      "dispositions": {},
+      "first_failed_logged_predicate": {},
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "B|bftpd": {
+      "target": "bftpd",
+      "arm": "B",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1508.8,
+        "sd": 0.6324555320336759,
+        "min": 1507.0,
+        "max": 1509.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 492.2,
+        "sd": 14.053864632588116,
+        "min": 455.0,
+        "max": 501.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 167.1,
+        "sd": 12.485102233373093,
+        "min": 143.0,
+        "max": 183.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 12068.627138888889,
+        "sd": 323.8073441664819,
+        "min": 11247.307916666667,
+        "max": 12340.135555555555
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 96.7,
+        "sd": 5.657836257007719,
+        "min": 90.0,
+        "max": 106.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 20351.6,
+        "sd": 1747.5560839831912,
+        "min": 17199.0,
+        "max": 23204.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 89153.8,
+        "sd": 10477.448924025139,
+        "min": 72130.0,
+        "max": 104984.0
+      },
+      "candidates": 0,
+      "trials": 0,
+      "episodes": 0,
+      "episode_rewards": 0,
+      "dispositions": {},
+      "first_failed_logged_predicate": {},
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "B|exim": {
+      "target": "exim",
+      "arm": "B",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1508.5,
+        "sd": 0.7071067811865476,
+        "min": 1507.0,
+        "max": 1509.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 3761.7,
+        "sd": 60.387728701928985,
+        "min": 3700.0,
+        "max": 3857.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 115.8,
+        "sd": 13.505554412907307,
+        "min": 91.0,
+        "max": 135.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 91301.73865277777,
+        "sd": 1501.3788614526443,
+        "min": 89532.41777777778,
+        "max": 93158.92847222222
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 64.6,
+        "sd": 8.099382692526635,
+        "min": 49.0,
+        "max": 80.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 11225.6,
+        "sd": 1424.2696529956834,
+        "min": 9083.0,
+        "max": 13587.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 34099.8,
+        "sd": 3295.467655229932,
+        "min": 30667.0,
+        "max": 40828.0
+      },
+      "candidates": 0,
+      "trials": 0,
+      "episodes": 0,
+      "episode_rewards": 0,
+      "dispositions": {},
+      "first_failed_logged_predicate": {},
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "B|forked-daapd": {
+      "target": "forked-daapd",
+      "arm": "B",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1470.3,
+        "sd": 5.375872022286245,
+        "min": 1463.0,
+        "max": 1479.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 2169.6,
+        "sd": 113.02526757814428,
+        "min": 1987.0,
+        "max": 2345.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 17.7,
+        "sd": 4.900113377373131,
+        "min": 9.0,
+        "max": 22.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 49393.21563888889,
+        "sd": 3335.933695154469,
+        "min": 44366.80652777778,
+        "max": 54572.212916666664
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 109.3,
+        "sd": 5.982381539896038,
+        "min": 102.0,
+        "max": 120.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 112957.8,
+        "sd": 3111.145833933215,
+        "min": 109127.0,
+        "max": 119120.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 105891.5,
+        "sd": 9205.248868022103,
+        "min": 91528.0,
+        "max": 122858.0
+      },
+      "candidates": 0,
+      "trials": 0,
+      "episodes": 0,
+      "episode_rewards": 0,
+      "dispositions": {},
+      "first_failed_logged_predicate": {},
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "B|kamailio": {
+      "target": "kamailio",
+      "arm": "B",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1508.6,
+        "sd": 0.5163977794943223,
+        "min": 1508.0,
+        "max": 1509.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 10644.3,
+        "sd": 96.52639247607073,
+        "min": 10493.0,
+        "max": 10795.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 106.5,
+        "sd": 6.819090848492928,
+        "min": 95.0,
+        "max": 118.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 257606.84384722222,
+        "sd": 2082.0267559116432,
+        "min": 253953.93180555556,
+        "max": 261226.73875
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 46.9,
+        "sd": 5.566766466171263,
+        "min": 39.0,
+        "max": 59.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 33492.9,
+        "sd": 5596.737570525648,
+        "min": 28202.0,
+        "max": 46914.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 59719.6,
+        "sd": 5312.258406532741,
+        "min": 50460.0,
+        "max": 71035.0
+      },
+      "candidates": 0,
+      "trials": 0,
+      "episodes": 0,
+      "episode_rewards": 0,
+      "dispositions": {},
+      "first_failed_logged_predicate": {},
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "B|lightftp": {
+      "target": "lightftp",
+      "arm": "B",
+      "runs_available": 11,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 11
+      },
+      "exit_code": {
+        "": 11
+      },
+      "runtime_min": {
+        "n": 11,
+        "mean": 1487.0,
+        "sd": 14.825653442597396,
+        "min": 1471.0,
+        "max": 1509.0
+      },
+      "branches": {
+        "n": 11,
+        "mean": 71.27272727272727,
+        "sd": 0.9045340337332909,
+        "min": 71.0,
+        "max": 74.0
+      },
+      "ipsm_edges": {
+        "n": 11,
+        "mean": 195.0909090909091,
+        "sd": 14.638678529529539,
+        "min": 170.0,
+        "max": 210.0
+      },
+      "auc_branch_hours": {
+        "n": 11,
+        "mean": 1728.1192045454545,
+        "sd": 36.51873170275522,
+        "min": 1676.31,
+        "max": 1790.9644444444443
+      },
+      "model_calls": {
+        "n": 11,
+        "mean": 138.27272727272728,
+        "sd": 32.747796594857824,
+        "min": 83.0,
+        "max": 163.0
+      },
+      "prompt_tokens": {
+        "n": 11,
+        "mean": 24396.272727272728,
+        "sd": 3025.1930877518907,
+        "min": 17325.0,
+        "max": 28082.0
+      },
+      "completion_tokens": {
+        "n": 11,
+        "mean": 97852.54545454546,
+        "sd": 25347.95144134388,
+        "min": 52816.0,
+        "max": 128968.0
+      },
+      "candidates": 0,
+      "trials": 0,
+      "episodes": 0,
+      "episode_rewards": 0,
+      "dispositions": {},
+      "first_failed_logged_predicate": {},
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "B|lighttpd1": {
+      "target": "lighttpd1",
+      "arm": "B",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1509.0,
+        "sd": 0.0,
+        "min": 1509.0,
+        "max": 1509.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 1884.1,
+        "sd": 25.273833636127833,
+        "min": 1845.0,
+        "max": 1928.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 14.3,
+        "sd": 3.1287200080686173,
+        "min": 10.0,
+        "max": 18.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 45075.797402777775,
+        "sd": 729.3042752597553,
+        "min": 43649.10625,
+        "max": 46176.581249999996
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 40.3,
+        "sd": 3.5292429153510465,
+        "min": 36.0,
+        "max": 47.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 5180.6,
+        "sd": 605.4143117641744,
+        "min": 4552.0,
+        "max": 6085.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 22831.4,
+        "sd": 3327.5298212204066,
+        "min": 18920.0,
+        "max": 28769.0
+      },
+      "candidates": 0,
+      "trials": 0,
+      "episodes": 0,
+      "episode_rewards": 0,
+      "dispositions": {},
+      "first_failed_logged_predicate": {},
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "B|live555": {
+      "target": "live555",
+      "arm": "B",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1509.0,
+        "sd": 0.0,
+        "min": 1509.0,
+        "max": 1509.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 2882.4,
+        "sd": 22.01615568420407,
+        "min": 2850.0,
+        "max": 2929.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 143.8,
+        "sd": 8.753412033157254,
+        "min": 132.0,
+        "max": 164.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 71224.826875,
+        "sd": 422.5488472007477,
+        "min": 70437.06999999999,
+        "max": 71887.84458333334
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 90.7,
+        "sd": 4.922736366426028,
+        "min": 83.0,
+        "max": 97.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 42696.4,
+        "sd": 3325.5805909144146,
+        "min": 37629.0,
+        "max": 46061.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 81258.9,
+        "sd": 5867.135955662032,
+        "min": 69313.0,
+        "max": 86620.0
+      },
+      "candidates": 0,
+      "trials": 0,
+      "episodes": 0,
+      "episode_rewards": 0,
+      "dispositions": {},
+      "first_failed_logged_predicate": {},
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "B|proftpd": {
+      "target": "proftpd",
+      "arm": "B",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1508.3,
+        "sd": 0.6749485577105528,
+        "min": 1507.0,
+        "max": 1509.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 5205.9,
+        "sd": 166.70229619161086,
+        "min": 4998.0,
+        "max": 5473.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 150.0,
+        "sd": 18.51125783588643,
+        "min": 122.0,
+        "max": 183.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 125217.69030555556,
+        "sd": 2989.1494335864863,
+        "min": 120451.11472222222,
+        "max": 129482.12694444445
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 35.3,
+        "sd": 8.83238988672438,
+        "min": 20.0,
+        "max": 50.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 9810.8,
+        "sd": 2695.1810411258916,
+        "min": 5855.0,
+        "max": 12533.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 31368.4,
+        "sd": 5930.5643763660655,
+        "min": 17665.0,
+        "max": 39813.0
+      },
+      "candidates": 0,
+      "trials": 0,
+      "episodes": 0,
+      "episode_rewards": 0,
+      "dispositions": {},
+      "first_failed_logged_predicate": {},
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "B|pure-ftpd": {
+      "target": "pure-ftpd",
+      "arm": "B",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1508.6,
+        "sd": 0.5163977794943223,
+        "min": 1508.0,
+        "max": 1509.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 1109.3,
+        "sd": 40.008471325180345,
+        "min": 1039.0,
+        "max": 1182.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 186.0,
+        "sd": 31.47132733845912,
+        "min": 133.0,
+        "max": 243.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 24976.631166666666,
+        "sd": 1126.8167993900493,
+        "min": 22839.305694444443,
+        "max": 26614.321805555555
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 54.0,
+        "sd": 8.472176684759223,
+        "min": 41.0,
+        "max": 65.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 12937.0,
+        "sd": 3081.8290384481456,
+        "min": 9345.0,
+        "max": 18092.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 54511.5,
+        "sd": 8782.216250911713,
+        "min": 39577.0,
+        "max": 71450.0
+      },
+      "candidates": 0,
+      "trials": 0,
+      "episodes": 0,
+      "episode_rewards": 0,
+      "dispositions": {},
+      "first_failed_logged_predicate": {},
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "C|bftpd": {
+      "target": "bftpd",
+      "arm": "C",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 6,
+        "exit_137_near_limit": 4
+      },
+      "exit_code": {
+        "0": 6,
+        "137": 4
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1492.9,
+        "sd": 3.784471194529326,
+        "min": 1488.0,
+        "max": 1499.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 498.9,
+        "sd": 12.187881048174225,
+        "min": 479.0,
+        "max": 515.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 217.9,
+        "sd": 13.779614572903618,
+        "min": 191.0,
+        "max": 236.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 12081.961333333333,
+        "sd": 450.9694990163487,
+        "min": 11267.118888888888,
+        "max": 12597.035833333333
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 223.8,
+        "sd": 19.600453509492525,
+        "min": 198.0,
+        "max": 252.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 188198.8,
+        "sd": 29843.781648220567,
+        "min": 146240.0,
+        "max": 241581.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 103097.7,
+        "sd": 5442.64749812891,
+        "min": 91711.0,
+        "max": 110764.0
+      },
+      "candidates": 16,
+      "trials": 16,
+      "episodes": 2754,
+      "episode_rewards": 1189,
+      "dispositions": {
+        "durable": 16
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 16
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "C|exim": {
+      "target": "exim",
+      "arm": "C",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1501.9,
+        "sd": 7.475143997126596,
+        "min": 1486.0,
+        "max": 1510.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 3896.1,
+        "sd": 25.627459231587252,
+        "min": 3853.0,
+        "max": 3929.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 150.9,
+        "sd": 9.527154174603593,
+        "min": 136.0,
+        "max": 166.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 94880.05818055556,
+        "sd": 928.2822176047172,
+        "min": 93062.67722222222,
+        "max": 96034.12097222223
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 112.0,
+        "sd": 8.137703743822469,
+        "min": 99.0,
+        "max": 128.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 101430.4,
+        "sd": 11872.675643397883,
+        "min": 84256.0,
+        "max": 125126.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 61772.0,
+        "sd": 3709.4921784824164,
+        "min": 53709.0,
+        "max": 67003.0
+      },
+      "candidates": 22,
+      "trials": 22,
+      "episodes": 2862,
+      "episode_rewards": 1448,
+      "dispositions": {
+        "durable": 22
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 22
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "C|forked-daapd": {
+      "target": "forked-daapd",
+      "arm": "C",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 8,
+        "sigabrt": 2
+      },
+      "exit_code": {
+        "0": 8,
+        "134": 2
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1510.7,
+        "sd": 9.416887903005843,
+        "min": 1490.0,
+        "max": 1524.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 2585.4,
+        "sd": 86.2350792246919,
+        "min": 2452.0,
+        "max": 2733.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 22.3,
+        "sd": 2.1628170930011112,
+        "min": 19.0,
+        "max": 25.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 61776.82155555556,
+        "sd": 1863.7332757888921,
+        "min": 59659.525,
+        "max": 65493.573472222226
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 48.2,
+        "sd": 10.152175464730043,
+        "min": 35.0,
+        "max": 70.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 69179.9,
+        "sd": 18413.03274223632,
+        "min": 46994.0,
+        "max": 109803.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 63842.9,
+        "sd": 18604.890853094395,
+        "min": 43706.0,
+        "max": 107381.0
+      },
+      "candidates": 94,
+      "trials": 94,
+      "episodes": 4832,
+      "episode_rewards": 995,
+      "dispositions": {
+        "durable": 94
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 90,
+        "pass_all": 4
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "C|kamailio": {
+      "target": "kamailio",
+      "arm": "C",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 9,
+        "exit_137_near_limit": 1
+      },
+      "exit_code": {
+        "0": 9,
+        "137": 1
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1498.7,
+        "sd": 1.636391694484477,
+        "min": 1496.0,
+        "max": 1500.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 10800.6,
+        "sd": 129.02299536645913,
+        "min": 10581.0,
+        "max": 10959.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 139.2,
+        "sd": 9.78434123144391,
+        "min": 125.0,
+        "max": 155.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 260260.94861111112,
+        "sd": 2942.4354737523663,
+        "min": 255766.97291666668,
+        "max": 263840.3513888889
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 63.1,
+        "sd": 6.332456079595025,
+        "min": 55.0,
+        "max": 76.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 94953.4,
+        "sd": 13998.863987243156,
+        "min": 77347.0,
+        "max": 123960.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 89448.8,
+        "sd": 3078.2282710820664,
+        "min": 84143.0,
+        "max": 93675.0
+      },
+      "candidates": 126,
+      "trials": 126,
+      "episodes": 7946,
+      "episode_rewards": 5047,
+      "dispositions": {
+        "durable": 126
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 126
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "C|lightftp": {
+      "target": "lightftp",
+      "arm": "C",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1508.6,
+        "sd": 4.788875998951459,
+        "min": 1499.0,
+        "max": 1515.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 80.6,
+        "sd": 15.45027867422174,
+        "min": 71.0,
+        "max": 109.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 210.6,
+        "sd": 8.289216555930428,
+        "min": 197.0,
+        "max": 223.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 1987.747263888889,
+        "sd": 394.10307101349827,
+        "min": 1633.5834722222223,
+        "max": 2737.0204166666667
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 153.8,
+        "sd": 5.138093031466052,
+        "min": 145.0,
+        "max": 159.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 124892.1,
+        "sd": 9033.02253401374,
+        "min": 112492.0,
+        "max": 140072.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 59978.9,
+        "sd": 4948.559486243334,
+        "min": 50517.0,
+        "max": 66683.0
+      },
+      "candidates": 33,
+      "trials": 33,
+      "episodes": 7690,
+      "episode_rewards": 1493,
+      "dispositions": {
+        "durable": 33
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 33
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "C|lighttpd1": {
+      "target": "lighttpd1",
+      "arm": "C",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1518.1,
+        "sd": 4.408325456829762,
+        "min": 1512.0,
+        "max": 1523.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 2145.0,
+        "sd": 69.81403870282824,
+        "min": 2079.0,
+        "max": 2279.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 32.1,
+        "sd": 4.998888765404656,
+        "min": 27.0,
+        "max": 44.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 53003.77363888889,
+        "sd": 1613.6645383470886,
+        "min": 51530.33458333333,
+        "max": 56056.99319444445
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 162.0,
+        "sd": 21.28118626601649,
+        "min": 130.0,
+        "max": 192.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 148907.8,
+        "sd": 22269.67133320312,
+        "min": 122232.0,
+        "max": 188907.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 75494.1,
+        "sd": 19039.814112362896,
+        "min": 47006.0,
+        "max": 99552.0
+      },
+      "candidates": 266,
+      "trials": 266,
+      "episodes": 13524,
+      "episode_rewards": 3336,
+      "dispositions": {
+        "durable": 266
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 265,
+        "pass_all": 1
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "C|live555": {
+      "target": "live555",
+      "arm": "C",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1454.3,
+        "sd": 10.739853092312037,
+        "min": 1437.0,
+        "max": 1473.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 3075.7,
+        "sd": 34.435285520652926,
+        "min": 3045.0,
+        "max": 3155.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 166.8,
+        "sd": 9.319036669336828,
+        "min": 157.0,
+        "max": 185.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 73510.98352777777,
+        "sd": 562.9376205889888,
+        "min": 72679.24222222222,
+        "max": 74452.66944444444
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 209.0,
+        "sd": 21.066033745766614,
+        "min": 163.0,
+        "max": 242.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 171586.2,
+        "sd": 17516.6837158179,
+        "min": 142373.0,
+        "max": 203512.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 300988.4,
+        "sd": 42358.07025087165,
+        "min": 216401.0,
+        "max": 375079.0
+      },
+      "candidates": 606,
+      "trials": 606,
+      "episodes": 6877,
+      "episode_rewards": 2684,
+      "dispositions": {
+        "durable": 606
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 564,
+        "pass_all": 42
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "C|proftpd": {
+      "target": "proftpd",
+      "arm": "C",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "exit_137_near_limit": 9,
+        "completed": 1
+      },
+      "exit_code": {
+        "137": 9,
+        "0": 1
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1493.8,
+        "sd": 3.7653389990514503,
+        "min": 1486.0,
+        "max": 1498.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 5446.3,
+        "sd": 194.6598457709128,
+        "min": 5261.0,
+        "max": 5818.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 300.7,
+        "sd": 29.105364148593335,
+        "min": 250.0,
+        "max": 340.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 130538.50009722222,
+        "sd": 4511.610185425169,
+        "min": 126379.63375,
+        "max": 139386.34805555557
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 187.2,
+        "sd": 1.0327955589886446,
+        "min": 185.0,
+        "max": 189.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 73533.0,
+        "sd": 1814.05647345635,
+        "min": 71239.0,
+        "max": 78169.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 102486.8,
+        "sd": 5640.848356211836,
+        "min": 94539.0,
+        "max": 113143.0
+      },
+      "candidates": 2,
+      "trials": 2,
+      "episodes": 2320,
+      "episode_rewards": 907,
+      "dispositions": {
+        "durable": 2
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 2
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "C|pure-ftpd": {
+      "target": "pure-ftpd",
+      "arm": "C",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 7,
+        "exit_137_near_limit": 3
+      },
+      "exit_code": {
+        "0": 7,
+        "137": 3
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1511.2,
+        "sd": 1.4757295747452437,
+        "min": 1508.0,
+        "max": 1513.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 1221.2,
+        "sd": 48.889444441287914,
+        "min": 1147.0,
+        "max": 1286.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 328.5,
+        "sd": 22.54994456755936,
+        "min": 293.0,
+        "max": 360.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 28860.783583333334,
+        "sd": 1645.7135217500397,
+        "min": 26561.003472222223,
+        "max": 30997.635
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 204.1,
+        "sd": 17.729134841334538,
+        "min": 173.0,
+        "max": 238.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 138054.0,
+        "sd": 19406.454069601576,
+        "min": 106075.0,
+        "max": 166050.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 96039.8,
+        "sd": 7413.000319258953,
+        "min": 85727.0,
+        "max": 108466.0
+      },
+      "candidates": 161,
+      "trials": 161,
+      "episodes": 7359,
+      "episode_rewards": 2475,
+      "dispositions": {
+        "durable": 161
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 90,
+        "pass_all": 71
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "D|bftpd": {
+      "target": "bftpd",
+      "arm": "D",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1504.6,
+        "sd": 4.087922591134904,
+        "min": 1499.0,
+        "max": 1510.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 502.7,
+        "sd": 7.469196000165539,
+        "min": 488.0,
+        "max": 516.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 226.7,
+        "sd": 14.00833085464979,
+        "min": 202.0,
+        "max": 251.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 12267.72073611111,
+        "sd": 387.86255056849757,
+        "min": 11252.547083333335,
+        "max": 12631.141666666666
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 230.1,
+        "sd": 16.312571838922274,
+        "min": 199.0,
+        "max": 248.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 148438.1,
+        "sd": 25818.94609455106,
+        "min": 101421.0,
+        "max": 182836.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 109677.1,
+        "sd": 7736.682111861647,
+        "min": 96594.0,
+        "max": 121902.0
+      },
+      "candidates": 13,
+      "trials": 13,
+      "episodes": 3249,
+      "episode_rewards": 1327,
+      "dispositions": {
+        "reject": 13
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 13
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "D|exim": {
+      "target": "exim",
+      "arm": "D",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1482.5,
+        "sd": 3.2058973436118907,
+        "min": 1477.0,
+        "max": 1486.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 3914.9,
+        "sd": 20.9202188218851,
+        "min": 3879.0,
+        "max": 3946.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 152.7,
+        "sd": 9.274217547109357,
+        "min": 142.0,
+        "max": 170.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 93658.97566666667,
+        "sd": 573.1378187646861,
+        "min": 92879.67986111112,
+        "max": 94830.185
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 113.6,
+        "sd": 4.857983120596447,
+        "min": 106.0,
+        "max": 123.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 58238.8,
+        "sd": 7164.074442816896,
+        "min": 47992.0,
+        "max": 73299.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 69883.6,
+        "sd": 7754.041930932968,
+        "min": 59863.0,
+        "max": 77931.0
+      },
+      "candidates": 24,
+      "trials": 24,
+      "episodes": 2650,
+      "episode_rewards": 1292,
+      "dispositions": {
+        "reject": 24
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 24
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "D|forked-daapd": {
+      "target": "forked-daapd",
+      "arm": "D",
+      "runs_available": 12,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 12
+      },
+      "exit_code": {
+        "": 12
+      },
+      "runtime_min": {
+        "n": 12,
+        "mean": 1502.5,
+        "sd": 14.82320048866886,
+        "min": 1474.0,
+        "max": 1524.0
+      },
+      "branches": {
+        "n": 12,
+        "mean": 2670.25,
+        "sd": 87.2781603422487,
+        "min": 2573.0,
+        "max": 2874.0
+      },
+      "ipsm_edges": {
+        "n": 12,
+        "mean": 22.75,
+        "sd": 2.8643577734887544,
+        "min": 20.0,
+        "max": 29.0
+      },
+      "auc_branch_hours": {
+        "n": 12,
+        "mean": 63646.71092592592,
+        "sd": 1976.9929916499896,
+        "min": 60247.68583333334,
+        "max": 68056.14749999999
+      },
+      "model_calls": {
+        "n": 12,
+        "mean": 99.5,
+        "sd": 39.08149992469117,
+        "min": 52.0,
+        "max": 163.0
+      },
+      "prompt_tokens": {
+        "n": 12,
+        "mean": 162558.08333333334,
+        "sd": 77606.11176665069,
+        "min": 75860.0,
+        "max": 283946.0
+      },
+      "completion_tokens": {
+        "n": 12,
+        "mean": 118755.83333333333,
+        "sd": 93938.80028443405,
+        "min": 27125.0,
+        "max": 256999.0
+      },
+      "candidates": 412,
+      "trials": 411,
+      "episodes": 12056,
+      "episode_rewards": 2053,
+      "dispositions": {
+        "reject": 410,
+        "durable": 1
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 405,
+        "pass_all": 6
+      },
+      "unmatched_candidates": 1,
+      "orphan_trials": 0
+    },
+    "D|kamailio": {
+      "target": "kamailio",
+      "arm": "D",
+      "runs_available": 12,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 12
+      },
+      "exit_code": {
+        "": 12
+      },
+      "runtime_min": {
+        "n": 12,
+        "mean": 1491.6666666666667,
+        "sd": 20.09221166763305,
+        "min": 1472.0,
+        "max": 1518.0
+      },
+      "branches": {
+        "n": 12,
+        "mean": 10631.25,
+        "sd": 472.92458076410986,
+        "min": 9166.0,
+        "max": 10957.0
+      },
+      "ipsm_edges": {
+        "n": 12,
+        "mean": 128.25,
+        "sd": 26.632601347698923,
+        "min": 55.0,
+        "max": 170.0
+      },
+      "auc_branch_hours": {
+        "n": 12,
+        "mean": 254332.1056712963,
+        "sd": 9492.136827590752,
+        "min": 227037.20319444445,
+        "max": 265001.11375
+      },
+      "model_calls": {
+        "n": 12,
+        "mean": 65.66666666666667,
+        "sd": 14.157126912768792,
+        "min": 56.0,
+        "max": 108.0
+      },
+      "prompt_tokens": {
+        "n": 12,
+        "mean": 85278.58333333333,
+        "sd": 32313.589799335154,
+        "min": 63500.0,
+        "max": 182182.0
+      },
+      "completion_tokens": {
+        "n": 12,
+        "mean": 99936.75,
+        "sd": 3101.0665064252858,
+        "min": 93257.0,
+        "max": 103487.0
+      },
+      "candidates": 253,
+      "trials": 253,
+      "episodes": 9004,
+      "episode_rewards": 5551,
+      "dispositions": {
+        "reject": 249,
+        "durable": 4
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 253
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "D|lightftp": {
+      "target": "lightftp",
+      "arm": "D",
+      "runs_available": 15,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 15
+      },
+      "exit_code": {
+        "": 15
+      },
+      "runtime_min": {
+        "n": 15,
+        "mean": 1509.0,
+        "sd": 14.793821103999564,
+        "min": 1473.0,
+        "max": 1522.0
+      },
+      "branches": {
+        "n": 15,
+        "mean": 71.66666666666667,
+        "sd": 2.3196879921559237,
+        "min": 71.0,
+        "max": 80.0
+      },
+      "ipsm_edges": {
+        "n": 15,
+        "mean": 207.0,
+        "sd": 16.983184961265994,
+        "min": 175.0,
+        "max": 231.0
+      },
+      "auc_branch_hours": {
+        "n": 15,
+        "mean": 1780.742685185185,
+        "sd": 45.212985868100866,
+        "min": 1737.4291666666668,
+        "max": 1924.9183333333333
+      },
+      "model_calls": {
+        "n": 15,
+        "mean": 141.26666666666668,
+        "sd": 33.969454065731014,
+        "min": 59.0,
+        "max": 161.0
+      },
+      "prompt_tokens": {
+        "n": 15,
+        "mean": 120938.13333333333,
+        "sd": 12414.687360810447,
+        "min": 94244.0,
+        "max": 143555.0
+      },
+      "completion_tokens": {
+        "n": 15,
+        "mean": 50506.666666666664,
+        "sd": 18283.151250992447,
+        "min": 11755.0,
+        "max": 81165.0
+      },
+      "candidates": 48,
+      "trials": 48,
+      "episodes": 13604,
+      "episode_rewards": 2452,
+      "dispositions": {
+        "reject": 44,
+        "durable": 4
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 47,
+        "pass_all": 1
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "D|lighttpd1": {
+      "target": "lighttpd1",
+      "arm": "D",
+      "runs_available": 11,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 11
+      },
+      "exit_code": {
+        "": 11
+      },
+      "runtime_min": {
+        "n": 11,
+        "mean": 1486.6363636363637,
+        "sd": 18.150882773423046,
+        "min": 1469.0,
+        "max": 1523.0
+      },
+      "branches": {
+        "n": 11,
+        "mean": 2126.7272727272725,
+        "sd": 15.697712630131239,
+        "min": 2109.0,
+        "max": 2149.0
+      },
+      "ipsm_edges": {
+        "n": 11,
+        "mean": 28.90909090909091,
+        "sd": 2.7001683449201996,
+        "min": 22.0,
+        "max": 32.0
+      },
+      "auc_branch_hours": {
+        "n": 11,
+        "mean": 51223.15199494949,
+        "sd": 621.0664221268685,
+        "min": 50588.87486111111,
+        "max": 52497.34694444444
+      },
+      "model_calls": {
+        "n": 11,
+        "mean": 160.9090909090909,
+        "sd": 20.14673445228554,
+        "min": 131.0,
+        "max": 187.0
+      },
+      "prompt_tokens": {
+        "n": 11,
+        "mean": 143082.45454545456,
+        "sd": 16650.091749678955,
+        "min": 118255.0,
+        "max": 161354.0
+      },
+      "completion_tokens": {
+        "n": 11,
+        "mean": 69804.45454545454,
+        "sd": 17683.484980985148,
+        "min": 49447.0,
+        "max": 95178.0
+      },
+      "candidates": 453,
+      "trials": 453,
+      "episodes": 21570,
+      "episode_rewards": 4351,
+      "dispositions": {
+        "reject": 453
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 452,
+        "pass_all": 1
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "D|live555": {
+      "target": "live555",
+      "arm": "D",
+      "runs_available": 12,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 12
+      },
+      "exit_code": {
+        "": 12
+      },
+      "runtime_min": {
+        "n": 12,
+        "mean": 1501.8333333333333,
+        "sd": 4.8021459849327846,
+        "min": 1489.0,
+        "max": 1505.0
+      },
+      "branches": {
+        "n": 12,
+        "mean": 3067.0833333333335,
+        "sd": 29.49717500597868,
+        "min": 3023.0,
+        "max": 3122.0
+      },
+      "ipsm_edges": {
+        "n": 12,
+        "mean": 170.08333333333334,
+        "sd": 11.114759502026068,
+        "min": 160.0,
+        "max": 196.0
+      },
+      "auc_branch_hours": {
+        "n": 12,
+        "mean": 75436.12596064815,
+        "sd": 712.155304239567,
+        "min": 74334.16555555555,
+        "max": 76331.47111111111
+      },
+      "model_calls": {
+        "n": 12,
+        "mean": 145.91666666666666,
+        "sd": 19.284748252220332,
+        "min": 123.0,
+        "max": 189.0
+      },
+      "prompt_tokens": {
+        "n": 12,
+        "mean": 131941.66666666666,
+        "sd": 10656.883864290241,
+        "min": 105813.0,
+        "max": 147305.0
+      },
+      "completion_tokens": {
+        "n": 12,
+        "mean": 184944.0,
+        "sd": 57569.432714687304,
+        "min": 133703.0,
+        "max": 310129.0
+      },
+      "candidates": 851,
+      "trials": 851,
+      "episodes": 7687,
+      "episode_rewards": 3354,
+      "dispositions": {
+        "reject": 844,
+        "durable": 7
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 788,
+        "pass_all": 63
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "D|proftpd": {
+      "target": "proftpd",
+      "arm": "D",
+      "runs_available": 12,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 12
+      },
+      "exit_code": {
+        "": 12
+      },
+      "runtime_min": {
+        "n": 12,
+        "mean": 1505.5,
+        "sd": 8.140806303599618,
+        "min": 1489.0,
+        "max": 1518.0
+      },
+      "branches": {
+        "n": 12,
+        "mean": 5428.083333333333,
+        "sd": 104.04846627093228,
+        "min": 5241.0,
+        "max": 5589.0
+      },
+      "ipsm_edges": {
+        "n": 12,
+        "mean": 305.3333333333333,
+        "sd": 20.27687143401356,
+        "min": 271.0,
+        "max": 346.0
+      },
+      "auc_branch_hours": {
+        "n": 12,
+        "mean": 132539.20399305556,
+        "sd": 2868.9155785848257,
+        "min": 128072.37319444444,
+        "max": 137306.9909722222
+      },
+      "model_calls": {
+        "n": 12,
+        "mean": 190.16666666666666,
+        "sd": 1.0298573010888745,
+        "min": 188.0,
+        "max": 192.0
+      },
+      "prompt_tokens": {
+        "n": 12,
+        "mean": 76520.75,
+        "sd": 3846.804107425941,
+        "min": 71143.0,
+        "max": 83045.0
+      },
+      "completion_tokens": {
+        "n": 12,
+        "mean": 104411.16666666667,
+        "sd": 6955.2412654491045,
+        "min": 93810.0,
+        "max": 115773.0
+      },
+      "candidates": 0,
+      "trials": 0,
+      "episodes": 2395,
+      "episode_rewards": 787,
+      "dispositions": {},
+      "first_failed_logged_predicate": {},
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "D|pure-ftpd": {
+      "target": "pure-ftpd",
+      "arm": "D",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1466.6,
+        "sd": 4.060651288757616,
+        "min": 1460.0,
+        "max": 1472.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 1223.3,
+        "sd": 29.657489217171886,
+        "min": 1178.0,
+        "max": 1263.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 321.4,
+        "sd": 11.147495981908524,
+        "min": 305.0,
+        "max": 337.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 27863.892430555556,
+        "sd": 1496.859191324599,
+        "min": 25446.54,
+        "max": 29651.362777777777
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 229.0,
+        "sd": 10.583005244258363,
+        "min": 207.0,
+        "max": 242.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 134578.8,
+        "sd": 17438.614444196344,
+        "min": 100379.0,
+        "max": 156403.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 104923.6,
+        "sd": 6515.306647511774,
+        "min": 94482.0,
+        "max": 116535.0
+      },
+      "candidates": 173,
+      "trials": 173,
+      "episodes": 5378,
+      "episode_rewards": 1863,
+      "dispositions": {
+        "reject": 166,
+        "durable": 7
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 89,
+        "pass_all": 84
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "E|bftpd": {
+      "target": "bftpd",
+      "arm": "E",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 9,
+        "oom_killed": 1
+      },
+      "exit_code": {
+        "0": 9,
+        "137": 1
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1509.8,
+        "sd": 3.6147844564602556,
+        "min": 1503.0,
+        "max": 1514.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 503.7,
+        "sd": 7.10320741324337,
+        "min": 490.0,
+        "max": 512.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 215.8,
+        "sd": 7.4803446147591055,
+        "min": 200.0,
+        "max": 228.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 12416.627777777778,
+        "sd": 220.88493844816043,
+        "min": 12020.086666666666,
+        "max": 12754.703472222222
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 224.6,
+        "sd": 11.992590304943391,
+        "min": 205.0,
+        "max": 241.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 111800.9,
+        "sd": 16237.031450429055,
+        "min": 85107.0,
+        "max": 135717.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 101359.6,
+        "sd": 7378.781594695849,
+        "min": 94389.0,
+        "max": 112003.0
+      },
+      "candidates": 9,
+      "trials": 9,
+      "episodes": 2960,
+      "episode_rewards": 1171,
+      "dispositions": {
+        "reject": 9
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 9
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "E|exim": {
+      "target": "exim",
+      "arm": "E",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1502.0,
+        "sd": 3.620926830400072,
+        "min": 1497.0,
+        "max": 1508.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 3858.3,
+        "sd": 32.7517599187857,
+        "min": 3802.0,
+        "max": 3906.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 138.6,
+        "sd": 14.268847185389575,
+        "min": 109.0,
+        "max": 159.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 93123.582875,
+        "sd": 924.5947042405242,
+        "min": 90932.37666666666,
+        "max": 94232.55833333333
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 101.0,
+        "sd": 4.47213595499958,
+        "min": 95.0,
+        "max": 108.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 46062.0,
+        "sd": 4754.165985977164,
+        "min": 40063.0,
+        "max": 53821.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 77188.3,
+        "sd": 4858.605196510162,
+        "min": 71500.0,
+        "max": 87994.0
+      },
+      "candidates": 8,
+      "trials": 8,
+      "episodes": 1371,
+      "episode_rewards": 731,
+      "dispositions": {
+        "reject": 8
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 8
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "E|forked-daapd": {
+      "target": "forked-daapd",
+      "arm": "E",
+      "runs_available": 6,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 6
+      },
+      "exit_code": {
+        "0": 3,
+        "": 3
+      },
+      "runtime_min": {
+        "n": 6,
+        "mean": 1496.3333333333333,
+        "sd": 23.070905198250603,
+        "min": 1474.0,
+        "max": 1520.0
+      },
+      "branches": {
+        "n": 6,
+        "mean": 2648.1666666666665,
+        "sd": 116.04381356481984,
+        "min": 2525.0,
+        "max": 2798.0
+      },
+      "ipsm_edges": {
+        "n": 6,
+        "mean": 22.5,
+        "sd": 2.073644135332772,
+        "min": 20.0,
+        "max": 26.0
+      },
+      "auc_branch_hours": {
+        "n": 6,
+        "mean": 62349.546111111114,
+        "sd": 1726.9474427967955,
+        "min": 60178.688472222224,
+        "max": 64535.42847222222
+      },
+      "model_calls": {
+        "n": 6,
+        "mean": 54.5,
+        "sd": 19.745885647395003,
+        "min": 34.0,
+        "max": 79.0
+      },
+      "prompt_tokens": {
+        "n": 6,
+        "mean": 82968.16666666667,
+        "sd": 38091.52516986773,
+        "min": 45819.0,
+        "max": 131201.0
+      },
+      "completion_tokens": {
+        "n": 6,
+        "mean": 102273.83333333333,
+        "sd": 51868.744000280814,
+        "min": 54883.0,
+        "max": 170682.0
+      },
+      "candidates": 35,
+      "trials": 34,
+      "episodes": 1276,
+      "episode_rewards": 426,
+      "dispositions": {
+        "reject": 34
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 30,
+        "pass_all": 4
+      },
+      "unmatched_candidates": 1,
+      "orphan_trials": 0
+    },
+    "E|kamailio": {
+      "target": "kamailio",
+      "arm": "E",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1490.3,
+        "sd": 3.093002855909879,
+        "min": 1486.0,
+        "max": 1495.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 10830.0,
+        "sd": 91.33090021089978,
+        "min": 10694.0,
+        "max": 10971.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 130.9,
+        "sd": 9.011720763045819,
+        "min": 114.0,
+        "max": 142.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 259377.1745,
+        "sd": 2649.5521571934887,
+        "min": 256093.1188888889,
+        "max": 263444.6279166667
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 62.3,
+        "sd": 7.832269431297958,
+        "min": 52.0,
+        "max": 74.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 88887.8,
+        "sd": 15870.480639644577,
+        "min": 67453.0,
+        "max": 111470.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 78308.5,
+        "sd": 6287.979171049755,
+        "min": 68579.0,
+        "max": 85781.0
+      },
+      "candidates": 254,
+      "trials": 254,
+      "episodes": 7691,
+      "episode_rewards": 5083,
+      "dispositions": {
+        "reject": 251,
+        "durable": 3
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 254
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "E|lightftp": {
+      "target": "lightftp",
+      "arm": "E",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1508.5,
+        "sd": 7.214953607304454,
+        "min": 1491.0,
+        "max": 1517.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 73.9,
+        "sd": 4.458450154232722,
+        "min": 71.0,
+        "max": 81.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 210.9,
+        "sd": 9.290975310602338,
+        "min": 196.0,
+        "max": 228.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 1825.0354583333333,
+        "sd": 107.56152454376382,
+        "min": 1726.6734722222222,
+        "max": 1998.8245833333333
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 155.0,
+        "sd": 4.0276819911981905,
+        "min": 147.0,
+        "max": 162.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 118350.4,
+        "sd": 7669.902378054683,
+        "min": 104896.0,
+        "max": 126970.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 55999.0,
+        "sd": 5392.476075257286,
+        "min": 48454.0,
+        "max": 64373.0
+      },
+      "candidates": 41,
+      "trials": 41,
+      "episodes": 6828,
+      "episode_rewards": 1601,
+      "dispositions": {
+        "reject": 40,
+        "durable": 1
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 41
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "E|lighttpd1": {
+      "target": "lighttpd1",
+      "arm": "E",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1506.0,
+        "sd": 6.4635731432217725,
+        "min": 1496.0,
+        "max": 1515.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 2068.1,
+        "sd": 44.53575342725588,
+        "min": 2015.0,
+        "max": 2153.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 27.1,
+        "sd": 4.3576242252962665,
+        "min": 19.0,
+        "max": 34.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 50385.05134722222,
+        "sd": 941.2550812191137,
+        "min": 49344.27847222222,
+        "max": 52391.693194444444
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 127.1,
+        "sd": 19.381835711705833,
+        "min": 95.0,
+        "max": 145.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 78530.1,
+        "sd": 11299.235455453514,
+        "min": 58276.0,
+        "max": 91855.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 65860.4,
+        "sd": 21575.092244942494,
+        "min": 38741.0,
+        "max": 106156.0
+      },
+      "candidates": 34,
+      "trials": 34,
+      "episodes": 2462,
+      "episode_rewards": 1190,
+      "dispositions": {
+        "reject": 34
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 34
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "E|live555": {
+      "target": "live555",
+      "arm": "E",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "0": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1455.4,
+        "sd": 19.945481248198103,
+        "min": 1412.0,
+        "max": 1477.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 3054.2,
+        "sd": 20.49823840669675,
+        "min": 3031.0,
+        "max": 3094.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 162.1,
+        "sd": 4.3576242252962665,
+        "min": 158.0,
+        "max": 172.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 72378.54270833333,
+        "sd": 1049.8411503628229,
+        "min": 70591.99819444444,
+        "max": 73557.37569444445
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 165.6,
+        "sd": 42.42954945161057,
+        "min": 117.0,
+        "max": 262.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 107989.0,
+        "sd": 23739.82310614616,
+        "min": 73721.0,
+        "max": 156267.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 264114.6,
+        "sd": 87581.77642282541,
+        "min": 182629.0,
+        "max": 454460.0
+      },
+      "candidates": 290,
+      "trials": 290,
+      "episodes": 2674,
+      "episode_rewards": 1536,
+      "dispositions": {
+        "reject": 288,
+        "durable": 2
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 275,
+        "pass_all": 15
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "E|proftpd": {
+      "target": "proftpd",
+      "arm": "E",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "exit_137_near_limit": 5,
+        "completed": 5
+      },
+      "exit_code": {
+        "137": 5,
+        "0": 5
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1490.3,
+        "sd": 3.0568684048294332,
+        "min": 1485.0,
+        "max": 1495.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 5469.8,
+        "sd": 215.6668212261167,
+        "min": 5073.0,
+        "max": 5726.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 307.8,
+        "sd": 21.274920028574073,
+        "min": 271.0,
+        "max": 337.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 130564.66598611111,
+        "sd": 4604.091135920269,
+        "min": 122612.33972222223,
+        "max": 136347.2176388889
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 186.5,
+        "sd": 3.4721111093332766,
+        "min": 181.0,
+        "max": 192.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 72339.4,
+        "sd": 3968.696433059321,
+        "min": 68351.0,
+        "max": 81824.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 93725.4,
+        "sd": 7382.969730700814,
+        "min": 80664.0,
+        "max": 107371.0
+      },
+      "candidates": 0,
+      "trials": 0,
+      "episodes": 2186,
+      "episode_rewards": 834,
+      "dispositions": {},
+      "first_failed_logged_predicate": {},
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "E|pure-ftpd": {
+      "target": "pure-ftpd",
+      "arm": "E",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "exit_137_near_limit": 5,
+        "completed": 5
+      },
+      "exit_code": {
+        "137": 5,
+        "0": 5
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1501.8,
+        "sd": 3.0840089349921005,
+        "min": 1498.0,
+        "max": 1508.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 1215.4,
+        "sd": 63.687082241569556,
+        "min": 1081.0,
+        "max": 1328.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 311.6,
+        "sd": 22.421220107547917,
+        "min": 266.0,
+        "max": 342.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 27894.28802777778,
+        "sd": 1737.6043857321345,
+        "min": 24789.800416666665,
+        "max": 30171.685833333333
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 209.1,
+        "sd": 9.527154174603593,
+        "min": 194.0,
+        "max": 224.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 111525.7,
+        "sd": 12679.632101655527,
+        "min": 91345.0,
+        "max": 132525.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 99653.4,
+        "sd": 5596.67353980122,
+        "min": 93819.0,
+        "max": 109259.0
+      },
+      "candidates": 64,
+      "trials": 64,
+      "episodes": 4378,
+      "episode_rewards": 1629,
+      "dispositions": {
+        "reject": 61,
+        "durable": 3
+      },
+      "first_failed_logged_predicate": {
+        "pass_all": 28,
+        "u_pass": 36
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "E-gamma099|bftpd": {
+      "target": "bftpd",
+      "arm": "E-gamma099",
+      "runs_available": 20,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 18,
+        "exit_137_near_limit": 2
+      },
+      "exit_code": {
+        "0": 1,
+        "": 17,
+        "137": 2
+      },
+      "runtime_min": {
+        "n": 20,
+        "mean": 1515.25,
+        "sd": 6.0513156464219895,
+        "min": 1508.0,
+        "max": 1524.0
+      },
+      "branches": {
+        "n": 20,
+        "mean": 498.55,
+        "sd": 7.639750615935327,
+        "min": 483.0,
+        "max": 513.0
+      },
+      "ipsm_edges": {
+        "n": 20,
+        "mean": 223.55,
+        "sd": 9.97087864998023,
+        "min": 207.0,
+        "max": 239.0
+      },
+      "auc_branch_hours": {
+        "n": 20,
+        "mean": 12314.05836111111,
+        "sd": 296.6277083967262,
+        "min": 11407.747222222222,
+        "max": 12700.332916666666
+      },
+      "model_calls": {
+        "n": 20,
+        "mean": 216.35,
+        "sd": 17.275705484870944,
+        "min": 180.0,
+        "max": 252.0
+      },
+      "prompt_tokens": {
+        "n": 20,
+        "mean": 117714.95,
+        "sd": 21711.062308793546,
+        "min": 76764.0,
+        "max": 167247.0
+      },
+      "completion_tokens": {
+        "n": 20,
+        "mean": 100649.55,
+        "sd": 7084.167146197438,
+        "min": 92154.0,
+        "max": 113438.0
+      },
+      "candidates": 26,
+      "trials": 26,
+      "episodes": 5892,
+      "episode_rewards": 2387,
+      "dispositions": {
+        "reject": 26
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 26
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "E-gamma099|exim": {
+      "target": "exim",
+      "arm": "E-gamma099",
+      "runs_available": 20,
+      "runs_nominal": 10,
+      "status": {
+        "exit_137_near_limit": 3,
+        "completed": 17
+      },
+      "exit_code": {
+        "137": 3,
+        "": 17
+      },
+      "runtime_min": {
+        "n": 20,
+        "mean": 1522.6,
+        "sd": 8.216799223157652,
+        "min": 1507.0,
+        "max": 1530.0
+      },
+      "branches": {
+        "n": 20,
+        "mean": 3846.7,
+        "sd": 30.93643738206998,
+        "min": 3775.0,
+        "max": 3900.0
+      },
+      "ipsm_edges": {
+        "n": 20,
+        "mean": 157.4,
+        "sd": 12.77497553813705,
+        "min": 130.0,
+        "max": 178.0
+      },
+      "auc_branch_hours": {
+        "n": 20,
+        "mean": 94251.78339583334,
+        "sd": 941.1709676331926,
+        "min": 92455.92416666666,
+        "max": 95690.7701388889
+      },
+      "model_calls": {
+        "n": 20,
+        "mean": 105.7,
+        "sd": 2.4516374764204993,
+        "min": 99.0,
+        "max": 110.0
+      },
+      "prompt_tokens": {
+        "n": 20,
+        "mean": 41317.4,
+        "sd": 3888.825169636712,
+        "min": 36037.0,
+        "max": 50379.0
+      },
+      "completion_tokens": {
+        "n": 20,
+        "mean": 68204.35,
+        "sd": 9613.215192886137,
+        "min": 50834.0,
+        "max": 88103.0
+      },
+      "candidates": 17,
+      "trials": 17,
+      "episodes": 2690,
+      "episode_rewards": 1392,
+      "dispositions": {
+        "reject": 16,
+        "durable": 1
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 17
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "E-gamma099|kamailio": {
+      "target": "kamailio",
+      "arm": "E-gamma099",
+      "runs_available": 5,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 4,
+        "sigabrt": 1
+      },
+      "exit_code": {
+        "0": 2,
+        "134": 1,
+        "": 2
+      },
+      "runtime_min": {
+        "n": 5,
+        "mean": 1507.6,
+        "sd": 6.5038450166036395,
+        "min": 1501.0,
+        "max": 1514.0
+      },
+      "branches": {
+        "n": 5,
+        "mean": 10907.6,
+        "sd": 53.770809925088535,
+        "min": 10849.0,
+        "max": 10990.0
+      },
+      "ipsm_edges": {
+        "n": 5,
+        "mean": 136.2,
+        "sd": 5.932958789676531,
+        "min": 127.0,
+        "max": 143.0
+      },
+      "auc_branch_hours": {
+        "n": 5,
+        "mean": 265303.6531111111,
+        "sd": 2194.0713008623375,
+        "min": 261737.0625,
+        "max": 267352.6069444444
+      },
+      "model_calls": {
+        "n": 5,
+        "mean": 58.6,
+        "sd": 3.7815340802378072,
+        "min": 56.0,
+        "max": 65.0
+      },
+      "prompt_tokens": {
+        "n": 5,
+        "mean": 74112.4,
+        "sd": 7193.369676306092,
+        "min": 64692.0,
+        "max": 83254.0
+      },
+      "completion_tokens": {
+        "n": 5,
+        "mean": 92457.0,
+        "sd": 3181.1627591181186,
+        "min": 87334.0,
+        "max": 96087.0
+      },
+      "candidates": 62,
+      "trials": 62,
+      "episodes": 3052,
+      "episode_rewards": 2187,
+      "dispositions": {
+        "reject": 61,
+        "durable": 1
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 62
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "E-gamma099|lightftp": {
+      "target": "lightftp",
+      "arm": "E-gamma099",
+      "runs_available": 8,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 8
+      },
+      "exit_code": {
+        "0": 3,
+        "": 5
+      },
+      "runtime_min": {
+        "n": 8,
+        "mean": 1509.5,
+        "sd": 12.409673645990857,
+        "min": 1499.0,
+        "max": 1529.0
+      },
+      "branches": {
+        "n": 8,
+        "mean": 71.0,
+        "sd": 0.0,
+        "min": 71.0,
+        "max": 71.0
+      },
+      "ipsm_edges": {
+        "n": 8,
+        "mean": 211.5,
+        "sd": 13.65911521920174,
+        "min": 180.0,
+        "max": 223.0
+      },
+      "auc_branch_hours": {
+        "n": 8,
+        "mean": 1743.4095312499999,
+        "sd": 53.49311633636181,
+        "min": 1614.7273611111111,
+        "max": 1784.8611111111113
+      },
+      "model_calls": {
+        "n": 8,
+        "mean": 139.625,
+        "sd": 31.84308626463746,
+        "min": 62.0,
+        "max": 161.0
+      },
+      "prompt_tokens": {
+        "n": 8,
+        "mean": 118350.0,
+        "sd": 12753.953784723275,
+        "min": 93943.0,
+        "max": 134769.0
+      },
+      "completion_tokens": {
+        "n": 8,
+        "mean": 47102.75,
+        "sd": 16164.075155815663,
+        "min": 11519.0,
+        "max": 64706.0
+      },
+      "candidates": 20,
+      "trials": 20,
+      "episodes": 5874,
+      "episode_rewards": 1185,
+      "dispositions": {
+        "reject": 20
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 20
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "E-gamma099|lighttpd1": {
+      "target": "lighttpd1",
+      "arm": "E-gamma099",
+      "runs_available": 12,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 12
+      },
+      "exit_code": {
+        "0": 3,
+        "": 9
+      },
+      "runtime_min": {
+        "n": 12,
+        "mean": 1508.4166666666667,
+        "sd": 10.908364874829969,
+        "min": 1493.0,
+        "max": 1525.0
+      },
+      "branches": {
+        "n": 12,
+        "mean": 2069.5,
+        "sd": 57.978836264152925,
+        "min": 2014.0,
+        "max": 2227.0
+      },
+      "ipsm_edges": {
+        "n": 12,
+        "mean": 27.5,
+        "sd": 5.300085762599421,
+        "min": 21.0,
+        "max": 41.0
+      },
+      "auc_branch_hours": {
+        "n": 12,
+        "mean": 50428.90195601852,
+        "sd": 1260.2003608081902,
+        "min": 48703.235555555555,
+        "max": 53540.830972222226
+      },
+      "model_calls": {
+        "n": 12,
+        "mean": 124.33333333333333,
+        "sd": 23.59635308237014,
+        "min": 95.0,
+        "max": 152.0
+      },
+      "prompt_tokens": {
+        "n": 12,
+        "mean": 76435.91666666667,
+        "sd": 15395.926311606725,
+        "min": 56827.0,
+        "max": 100915.0
+      },
+      "completion_tokens": {
+        "n": 12,
+        "mean": 68455.16666666667,
+        "sd": 27761.02085113171,
+        "min": 36923.0,
+        "max": 107135.0
+      },
+      "candidates": 32,
+      "trials": 32,
+      "episodes": 2833,
+      "episode_rewards": 1433,
+      "dispositions": {
+        "reject": 32
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 32
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "E-gamma099|live555": {
+      "target": "live555",
+      "arm": "E-gamma099",
+      "runs_available": 3,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 3
+      },
+      "exit_code": {
+        "0": 3
+      },
+      "runtime_min": {
+        "n": 3,
+        "mean": 1466.6666666666667,
+        "sd": 7.023769168568492,
+        "min": 1460.0,
+        "max": 1474.0
+      },
+      "branches": {
+        "n": 3,
+        "mean": 3117.0,
+        "sd": 11.532562594670797,
+        "min": 3108.0,
+        "max": 3130.0
+      },
+      "ipsm_edges": {
+        "n": 3,
+        "mean": 171.33333333333334,
+        "sd": 9.073771725877465,
+        "min": 161.0,
+        "max": 178.0
+      },
+      "auc_branch_hours": {
+        "n": 3,
+        "mean": 74558.87037037036,
+        "sd": 497.90490107640045,
+        "min": 74177.01875,
+        "max": 75122.02097222222
+      },
+      "model_calls": {
+        "n": 3,
+        "mean": 156.0,
+        "sd": 23.065125189341593,
+        "min": 134.0,
+        "max": 180.0
+      },
+      "prompt_tokens": {
+        "n": 3,
+        "mean": 95697.0,
+        "sd": 19806.690107132992,
+        "min": 79464.0,
+        "max": 117766.0
+      },
+      "completion_tokens": {
+        "n": 3,
+        "mean": 251373.0,
+        "sd": 40421.4975106069,
+        "min": 204833.0,
+        "max": 277712.0
+      },
+      "candidates": 68,
+      "trials": 68,
+      "episodes": 817,
+      "episode_rewards": 482,
+      "dispositions": {
+        "reject": 67,
+        "durable": 1
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 67,
+        "pass_all": 1
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "E-gamma099|proftpd": {
+      "target": "proftpd",
+      "arm": "E-gamma099",
+      "runs_available": 20,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 19,
+        "exit_137_near_limit": 1
+      },
+      "exit_code": {
+        "0": 2,
+        "": 17,
+        "137": 1
+      },
+      "runtime_min": {
+        "n": 20,
+        "mean": 1514.3,
+        "sd": 6.649891174416236,
+        "min": 1507.0,
+        "max": 1525.0
+      },
+      "branches": {
+        "n": 20,
+        "mean": 5467.15,
+        "sd": 147.22817057386237,
+        "min": 5144.0,
+        "max": 5794.0
+      },
+      "ipsm_edges": {
+        "n": 20,
+        "mean": 307.45,
+        "sd": 20.587361989439312,
+        "min": 269.0,
+        "max": 344.0
+      },
+      "auc_branch_hours": {
+        "n": 20,
+        "mean": 133069.09271527777,
+        "sd": 3936.2830565172335,
+        "min": 126869.6036111111,
+        "max": 140933.92916666667
+      },
+      "model_calls": {
+        "n": 20,
+        "mean": 182.1,
+        "sd": 7.129626844889459,
+        "min": 171.0,
+        "max": 193.0
+      },
+      "prompt_tokens": {
+        "n": 20,
+        "mean": 69864.9,
+        "sd": 4012.0446670652004,
+        "min": 64093.0,
+        "max": 77473.0
+      },
+      "completion_tokens": {
+        "n": 20,
+        "mean": 93461.05,
+        "sd": 5417.58611497389,
+        "min": 83921.0,
+        "max": 106118.0
+      },
+      "candidates": 2,
+      "trials": 2,
+      "episodes": 4170,
+      "episode_rewards": 1488,
+      "dispositions": {
+        "reject": 2
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 2
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "E-gamma099|pure-ftpd": {
+      "target": "pure-ftpd",
+      "arm": "E-gamma099",
+      "runs_available": 20,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 20
+      },
+      "exit_code": {
+        "0": 3,
+        "": 17
+      },
+      "runtime_min": {
+        "n": 20,
+        "mean": 1509.85,
+        "sd": 17.780163399876724,
+        "min": 1476.0,
+        "max": 1524.0
+      },
+      "branches": {
+        "n": 20,
+        "mean": 1200.3,
+        "sd": 31.24790519294643,
+        "min": 1147.0,
+        "max": 1257.0
+      },
+      "ipsm_edges": {
+        "n": 20,
+        "mean": 306.65,
+        "sd": 18.224549665940057,
+        "min": 278.0,
+        "max": 345.0
+      },
+      "auc_branch_hours": {
+        "n": 20,
+        "mean": 27522.095847222223,
+        "sd": 1399.1698440342036,
+        "min": 24725.335555555557,
+        "max": 29434.965694444443
+      },
+      "model_calls": {
+        "n": 20,
+        "mean": 209.15,
+        "sd": 12.49957894027677,
+        "min": 190.0,
+        "max": 236.0
+      },
+      "prompt_tokens": {
+        "n": 20,
+        "mean": 104079.8,
+        "sd": 20175.94116920343,
+        "min": 75579.0,
+        "max": 141996.0
+      },
+      "completion_tokens": {
+        "n": 20,
+        "mean": 101018.75,
+        "sd": 7406.617118815907,
+        "min": 84528.0,
+        "max": 115696.0
+      },
+      "candidates": 92,
+      "trials": 92,
+      "episodes": 8276,
+      "episode_rewards": 2938,
+      "dispositions": {
+        "reject": 91,
+        "durable": 1
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 64,
+        "pass_all": 28
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "E-gamma100|bftpd": {
+      "target": "bftpd",
+      "arm": "E-gamma100",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 9,
+        "exit_137_near_limit": 1
+      },
+      "exit_code": {
+        "0": 2,
+        "": 7,
+        "137": 1
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1515.2,
+        "sd": 6.356099432828281,
+        "min": 1508.0,
+        "max": 1524.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 500.3,
+        "sd": 5.657836257007719,
+        "min": 489.0,
+        "max": 510.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 223.1,
+        "sd": 10.629623177182195,
+        "min": 210.0,
+        "max": 239.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 12417.210805555556,
+        "sd": 192.5686722375674,
+        "min": 12115.175416666667,
+        "max": 12700.332916666666
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 217.6,
+        "sd": 20.391719452322363,
+        "min": 180.0,
+        "max": 252.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 119181.7,
+        "sd": 25807.306286958523,
+        "min": 76764.0,
+        "max": 167247.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 102401.1,
+        "sd": 7379.822317192557,
+        "min": 93853.0,
+        "max": 113438.0
+      },
+      "candidates": 19,
+      "trials": 19,
+      "episodes": 3021,
+      "episode_rewards": 1212,
+      "dispositions": {
+        "reject": 19
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 19
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "E-gamma100|exim": {
+      "target": "exim",
+      "arm": "E-gamma100",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 10
+      },
+      "exit_code": {
+        "": 10
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1522.9,
+        "sd": 7.400450436741447,
+        "min": 1510.0,
+        "max": 1529.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 3837.1,
+        "sd": 33.073823150306914,
+        "min": 3775.0,
+        "max": 3886.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 155.9,
+        "sd": 12.573782247199926,
+        "min": 130.0,
+        "max": 174.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 93785.62475,
+        "sd": 875.8746665115178,
+        "min": 92455.92416666666,
+        "max": 95690.7701388889
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 106.8,
+        "sd": 1.9888578520235063,
+        "min": 104.0,
+        "max": 110.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 42418.8,
+        "sd": 4777.192732138824,
+        "min": 36037.0,
+        "max": 50379.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 69616.7,
+        "sd": 8246.19686144939,
+        "min": 59379.0,
+        "max": 88103.0
+      },
+      "candidates": 8,
+      "trials": 8,
+      "episodes": 1363,
+      "episode_rewards": 691,
+      "dispositions": {
+        "reject": 8
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 8
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "E-gamma100|kamailio": {
+      "target": "kamailio",
+      "arm": "E-gamma100",
+      "runs_available": 3,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 3
+      },
+      "exit_code": {
+        "0": 3
+      },
+      "runtime_min": {
+        "n": 3,
+        "mean": 1507.6666666666667,
+        "sd": 6.506407098647712,
+        "min": 1501.0,
+        "max": 1514.0
+      },
+      "branches": {
+        "n": 3,
+        "mean": 10909.666666666666,
+        "sd": 72.52815545244022,
+        "min": 10849.0,
+        "max": 10990.0
+      },
+      "ipsm_edges": {
+        "n": 3,
+        "mean": 135.66666666666666,
+        "sd": 8.082903768654761,
+        "min": 127.0,
+        "max": 143.0
+      },
+      "auc_branch_hours": {
+        "n": 3,
+        "mean": 264791.4474074074,
+        "sd": 2646.5100336369906,
+        "min": 261737.0625,
+        "max": 266402.69333333336
+      },
+      "model_calls": {
+        "n": 3,
+        "mean": 60.333333333333336,
+        "sd": 4.163331998932265,
+        "min": 57.0,
+        "max": 65.0
+      },
+      "prompt_tokens": {
+        "n": 3,
+        "mean": 78448.66666666667,
+        "sd": 4947.1250573776015,
+        "min": 73371.0,
+        "max": 83254.0
+      },
+      "completion_tokens": {
+        "n": 3,
+        "mean": 92954.66666666667,
+        "sd": 396.3209978456016,
+        "min": 92680.0,
+        "max": 93409.0
+      },
+      "candidates": 42,
+      "trials": 42,
+      "episodes": 1875,
+      "episode_rewards": 1295,
+      "dispositions": {
+        "reject": 42
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 42
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "E-gamma100|lightftp": {
+      "target": "lightftp",
+      "arm": "E-gamma100",
+      "runs_available": 4,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 4
+      },
+      "exit_code": {
+        "0": 3,
+        "": 1
+      },
+      "runtime_min": {
+        "n": 4,
+        "mean": 1507.5,
+        "sd": 13.723459233492601,
+        "min": 1499.0,
+        "max": 1528.0
+      },
+      "branches": {
+        "n": 4,
+        "mean": 71.0,
+        "sd": 0.0,
+        "min": 71.0,
+        "max": 71.0
+      },
+      "ipsm_edges": {
+        "n": 4,
+        "mean": 215.25,
+        "sd": 7.041543391425869,
+        "min": 206.0,
+        "max": 223.0
+      },
+      "auc_branch_hours": {
+        "n": 4,
+        "mean": 1726.1698958333334,
+        "sd": 74.81028693213935,
+        "min": 1614.7273611111111,
+        "max": 1773.4306944444445
+      },
+      "model_calls": {
+        "n": 4,
+        "mean": 149.75,
+        "sd": 8.180260794538684,
+        "min": 142.0,
+        "max": 161.0
+      },
+      "prompt_tokens": {
+        "n": 4,
+        "mean": 119991.0,
+        "sd": 11491.945556200075,
+        "min": 106739.0,
+        "max": 134769.0
+      },
+      "completion_tokens": {
+        "n": 4,
+        "mean": 51288.0,
+        "sd": 9031.434253022422,
+        "min": 45723.0,
+        "max": 64706.0
+      },
+      "candidates": 11,
+      "trials": 11,
+      "episodes": 2867,
+      "episode_rewards": 582,
+      "dispositions": {
+        "reject": 11
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 11
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "E-gamma100|lighttpd1": {
+      "target": "lighttpd1",
+      "arm": "E-gamma100",
+      "runs_available": 6,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 6
+      },
+      "exit_code": {
+        "0": 3,
+        "": 3
+      },
+      "runtime_min": {
+        "n": 6,
+        "mean": 1508.0,
+        "sd": 11.135528725660043,
+        "min": 1493.0,
+        "max": 1520.0
+      },
+      "branches": {
+        "n": 6,
+        "mean": 2065.6666666666665,
+        "sd": 80.86449571144722,
+        "min": 2014.0,
+        "max": 2227.0
+      },
+      "ipsm_edges": {
+        "n": 6,
+        "mean": 26.5,
+        "sd": 3.082207001484488,
+        "min": 21.0,
+        "max": 30.0
+      },
+      "auc_branch_hours": {
+        "n": 6,
+        "mean": 50258.05284722222,
+        "sd": 1724.8751549511535,
+        "min": 48703.235555555555,
+        "max": 53540.830972222226
+      },
+      "model_calls": {
+        "n": 6,
+        "mean": 127.83333333333333,
+        "sd": 25.44340124013821,
+        "min": 95.0,
+        "max": 145.0
+      },
+      "prompt_tokens": {
+        "n": 6,
+        "mean": 77692.33333333333,
+        "sd": 15737.48416573204,
+        "min": 56827.0,
+        "max": 90418.0
+      },
+      "completion_tokens": {
+        "n": 6,
+        "mean": 76359.0,
+        "sd": 30517.235562874957,
+        "min": 37824.0,
+        "max": 107135.0
+      },
+      "candidates": 7,
+      "trials": 7,
+      "episodes": 1411,
+      "episode_rewards": 747,
+      "dispositions": {
+        "reject": 7
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 7
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "E-gamma100|live555": {
+      "target": "live555",
+      "arm": "E-gamma100",
+      "runs_available": 2,
+      "runs_nominal": 10,
+      "status": {
+        "completed": 2
+      },
+      "exit_code": {
+        "0": 2
+      },
+      "runtime_min": {
+        "n": 2,
+        "mean": 1463.0,
+        "sd": 4.242640687119285,
+        "min": 1460.0,
+        "max": 1466.0
+      },
+      "branches": {
+        "n": 2,
+        "mean": 3110.5,
+        "sd": 3.5355339059327378,
+        "min": 3108.0,
+        "max": 3113.0
+      },
+      "ipsm_edges": {
+        "n": 2,
+        "mean": 169.5,
+        "sd": 12.020815280171307,
+        "min": 161.0,
+        "max": 178.0
+      },
+      "auc_branch_hours": {
+        "n": 2,
+        "mean": 74277.29506944444,
+        "sd": 141.81213094318602,
+        "min": 74177.01875,
+        "max": 74377.57138888889
+      },
+      "model_calls": {
+        "n": 2,
+        "mean": 167.0,
+        "sd": 18.384776310850235,
+        "min": 154.0,
+        "max": 180.0
+      },
+      "prompt_tokens": {
+        "n": 2,
+        "mean": 98615.0,
+        "sd": 27083.603933007143,
+        "min": 79464.0,
+        "max": 117766.0
+      },
+      "completion_tokens": {
+        "n": 2,
+        "mean": 274643.0,
+        "sd": 4340.2214229230285,
+        "min": 271574.0,
+        "max": 277712.0
+      },
+      "candidates": 37,
+      "trials": 37,
+      "episodes": 523,
+      "episode_rewards": 314,
+      "dispositions": {
+        "reject": 37
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 37
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "E-gamma100|proftpd": {
+      "target": "proftpd",
+      "arm": "E-gamma100",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "exit_137_near_limit": 2,
+        "completed": 8
+      },
+      "exit_code": {
+        "137": 2,
+        "": 7,
+        "0": 1
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1514.6,
+        "sd": 6.818276093624318,
+        "min": 1509.0,
+        "max": 1525.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 5429.7,
+        "sd": 158.66740195908056,
+        "min": 5144.0,
+        "max": 5615.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 304.4,
+        "sd": 22.48060892809129,
+        "min": 269.0,
+        "max": 342.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 131751.587875,
+        "sd": 3888.9198114421847,
+        "min": 126869.6036111111,
+        "max": 138217.27958333335
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 181.6,
+        "sd": 7.396695959082752,
+        "min": 172.0,
+        "max": 193.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 69279.1,
+        "sd": 4229.19074081818,
+        "min": 65013.0,
+        "max": 77473.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 93248.3,
+        "sd": 6295.2710479110165,
+        "min": 83921.0,
+        "max": 106118.0
+      },
+      "candidates": 0,
+      "trials": 0,
+      "episodes": 1947,
+      "episode_rewards": 652,
+      "dispositions": {},
+      "first_failed_logged_predicate": {},
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    },
+    "E-gamma100|pure-ftpd": {
+      "target": "pure-ftpd",
+      "arm": "E-gamma100",
+      "runs_available": 10,
+      "runs_nominal": 10,
+      "status": {
+        "exit_137_near_limit": 1,
+        "completed": 9
+      },
+      "exit_code": {
+        "137": 1,
+        "": 7,
+        "0": 2
+      },
+      "runtime_min": {
+        "n": 10,
+        "mean": 1509.9,
+        "sd": 18.205310580523843,
+        "min": 1476.0,
+        "max": 1523.0
+      },
+      "branches": {
+        "n": 10,
+        "mean": 1181.2,
+        "sd": 23.61637849741855,
+        "min": 1147.0,
+        "max": 1209.0
+      },
+      "ipsm_edges": {
+        "n": 10,
+        "mean": 302.8,
+        "sd": 16.665333279995732,
+        "min": 278.0,
+        "max": 337.0
+      },
+      "auc_branch_hours": {
+        "n": 10,
+        "mean": 26741.334652777776,
+        "sd": 1359.371319826551,
+        "min": 24725.335555555557,
+        "max": 28623.734305555554
+      },
+      "model_calls": {
+        "n": 10,
+        "mean": 208.5,
+        "sd": 13.680886910820755,
+        "min": 190.0,
+        "max": 236.0
+      },
+      "prompt_tokens": {
+        "n": 10,
+        "mean": 102031.7,
+        "sd": 20796.634225812173,
+        "min": 76962.0,
+        "max": 136580.0
+      },
+      "completion_tokens": {
+        "n": 10,
+        "mean": 101407.5,
+        "sd": 6666.201954636538,
+        "min": 94737.0,
+        "max": 115036.0
+      },
+      "candidates": 36,
+      "trials": 36,
+      "episodes": 4065,
+      "episode_rewards": 1409,
+      "dispositions": {
+        "reject": 36
+      },
+      "first_failed_logged_predicate": {
+        "u_pass": 29,
+        "pass_all": 7
+      },
+      "unmatched_candidates": 0,
+      "orphan_trials": 0
+    }
+  }
+}

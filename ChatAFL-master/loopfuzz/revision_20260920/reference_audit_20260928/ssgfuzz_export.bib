@@ -1,0 +1,19 @@
+@InProceedings{10.1007/978-3-031-98208-8_21,
+author="Jian, Kunpeng
+and Zou, Yanyan
+and Wang, Chen
+and Li, Ning
+and Li, Menghao
+and Huo, Wei",
+editor="R{\"u}mmer, Philipp
+and Wu, Zhilin",
+title="State Significance-Guided Fuzzing for Stateful Protocol Program",
+booktitle="Theoretical Aspects of Software Engineering",
+year="2026",
+publisher="Springer Nature Switzerland",
+address="Cham",
+pages="361--379",
+abstract="Stateful protocols are fundamental to network, yet their vulnerabilities can lead to severe security risks. Fuzzing, an effective testing technique, is widely used to uncover vulnerabilities in stateful protocol programs, enhancing their robustness and security. Existing fuzzers for stateful protocols typically employ state-guided strategies, selecting a state for testing in each iteration. However, these approaches often struggle with inaccurate state identification, failing to align with the actual protocol states of the program. Additionally, not all states carry equal risk; some are more likely to harbor vulnerabilities. Current methods overlook this variation in state significance during state selection, which diminishes the overall efficiency of fuzzing. To overcome these limitations, we propose a state importance-based fuzzing approach for stateful protocols and implement a prototype tool, SSGFuzz. SSGFuzz identifies state variables and states from the program by leveraging the characteristics of stateful protocols and evaluates the importance of each state across multiple dimensions. During the fuzzing process, SSGFuzz prioritizes state selection and test case mutation based on state importance, focusing on those states most likely to contain vulnerabilities. We conducted comparative experiments between SSGFuzz and existing fuzzers. The results show that SSGFuzz achieves an average increase of 36.4{\%} in state coverage and 4.8{\%} in code coverage, while also triggering more crashes, which facilitates the discovery of additional vulnerabilities.",
+isbn="978-3-031-98208-8"
+}
+

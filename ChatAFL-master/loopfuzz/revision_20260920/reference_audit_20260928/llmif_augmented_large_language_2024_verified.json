@@ -1,0 +1,541 @@
+{
+  "url": "https://api.crossref.org/works/10.1109%2Fsp54263.2024.00211",
+  "accessed": "2026-09-28",
+  "response": {
+    "status": "ok",
+    "message-type": "work",
+    "message-version": "1.0.0",
+    "message": {
+      "indexed": {
+        "date-parts": [
+          [
+            2026,
+            9,
+            23
+          ]
+        ],
+        "date-time": "2026-09-23T17:38:04Z",
+        "timestamp": 1790185084323,
+        "version": "4.1.0"
+      },
+      "reference-count": 52,
+      "publisher": "IEEE",
+      "license": [
+        {
+          "start": {
+            "date-parts": [
+              [
+                2024,
+                5,
+                19
+              ]
+            ],
+            "date-time": "2024-05-19T00:00:00Z",
+            "timestamp": 1716076800000
+          },
+          "content-version": "stm-asf",
+          "delay-in-days": 0,
+          "URL": "https://doi.org/10.15223/policy-009"
+        },
+        {
+          "start": {
+            "date-parts": [
+              [
+                2024,
+                5,
+                19
+              ]
+            ],
+            "date-time": "2024-05-19T00:00:00Z",
+            "timestamp": 1716076800000
+          },
+          "content-version": "stm-asf",
+          "delay-in-days": 0,
+          "URL": "https://doi.org/10.15223/policy-001"
+        }
+      ],
+      "funder": [
+        {
+          "DOI": "10.13039/501100001809",
+          "name": "National Natural Science Foundation of China",
+          "doi-asserted-by": "publisher",
+          "id": [
+            {
+              "id": "10.13039/501100001809",
+              "id-type": "DOI",
+              "asserted-by": "publisher"
+            }
+          ]
+        },
+        {
+          "DOI": "10.13039/501100008048",
+          "name": "Nanjing University",
+          "doi-asserted-by": "publisher",
+          "id": [
+            {
+              "id": "10.13039/501100008048",
+              "id-type": "DOI",
+              "asserted-by": "publisher"
+            }
+          ]
+        }
+      ],
+      "content-domain": {
+        "domain": [],
+        "crossmark-restriction": false
+      },
+      "short-container-title": [],
+      "published-print": {
+        "date-parts": [
+          [
+            2024,
+            5,
+            19
+          ]
+        ]
+      },
+      "DOI": "10.1109/sp54263.2024.00211",
+      "type": "proceedings-article",
+      "created": {
+        "date-parts": [
+          [
+            2024,
+            9,
+            5
+          ]
+        ],
+        "date-time": "2024-09-05T13:56:32Z",
+        "timestamp": 1725544592000
+      },
+      "page": "881-896",
+      "source": "Crossref",
+      "is-referenced-by-count": 64,
+      "title": [
+        "LLMIF: Augmented Large Language Model for Fuzzing IoT Devices"
+      ],
+      "prefix": "10.1109",
+      "author": [
+        {
+          "given": "Jincheng",
+          "family": "Wang",
+          "sequence": "first",
+          "affiliation": [
+            {
+              "name": "The Hong Kong Polytechnic University"
+            }
+          ],
+          "role": [
+            {
+              "vocabulary": "crossref",
+              "role": "author"
+            }
+          ]
+        },
+        {
+          "given": "Le",
+          "family": "Yu",
+          "sequence": "additional",
+          "affiliation": [
+            {
+              "name": "Nanjing University of Posts and Telecommunications"
+            }
+          ],
+          "role": [
+            {
+              "vocabulary": "crossref",
+              "role": "author"
+            }
+          ]
+        },
+        {
+          "given": "Xiapu",
+          "family": "Luo",
+          "sequence": "additional",
+          "affiliation": [
+            {
+              "name": "The Hong Kong Polytechnic University"
+            }
+          ],
+          "role": [
+            {
+              "vocabulary": "crossref",
+              "role": "author"
+            }
+          ]
+        }
+      ],
+      "member": "263",
+      "reference": [
+        {
+          "key": "ref1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/3462513"
+        },
+        {
+          "key": "ref2",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1109/DSN58367.2023.00053"
+        },
+        {
+          "key": "ref3",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/3460120.3484543"
+        },
+        {
+          "key": "ref4",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/3448300.3468296"
+        },
+        {
+          "key": "ref5",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/3548606.3560703"
+        },
+        {
+          "key": "ref6",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.14722/ndss.2024.24556"
+        },
+        {
+          "key": "ref7",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1109/ICST46399.2020.00062"
+        },
+        {
+          "key": "ref8",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/3538644"
+        },
+        {
+          "key": "ref9",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1109/ASE51524.2021.9678910"
+        },
+        {
+          "key": "ref10",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/3581791.3596857"
+        },
+        {
+          "key": "ref11",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/3512345"
+        },
+        {
+          "key": "ref12",
+          "article-title": "Learning to fuzz: Application-independent fuzz testing with probabilistic, generative models of input data",
+          "volume-title": "TU Darmstadt, Department of Computer Science, Tech. Rep. TUD-CS-2016-14664",
+          "author": "Patra",
+          "year": "2016"
+        },
+        {
+          "key": "ref13",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/3545948.3545953"
+        },
+        {
+          "key": "ref14",
+          "volume-title": "Zigbee wireless networking",
+          "author": "Gislason",
+          "year": "2008"
+        },
+        {
+          "key": "ref15",
+          "article-title": "LLMIF",
+          "year": "2024"
+        },
+        {
+          "key": "ref16",
+          "article-title": "Zigbee Cluster Specification",
+          "author": "Alliance",
+          "year": "2021"
+        },
+        {
+          "key": "ref17",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.18653/v1/2024.naacl-long.478"
+        },
+        {
+          "key": "ref18",
+          "author": "Van Veen",
+          "year": "2023",
+          "journal-title": "Clinical text summarization: Adapting large language models can outperform human experts"
+        },
+        {
+          "key": "ref19",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.18653/v1/2023.findings-emnlp.86"
+        },
+        {
+          "key": "ref20",
+          "author": "Lamichhane",
+          "year": "2023",
+          "journal-title": "Evaluation of chatgpt for nlp-based mental health applications"
+        },
+        {
+          "key": "ref21",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.18653/v1/2023.emnlp-industry.29"
+        },
+        {
+          "key": "ref22",
+          "author": "Deng",
+          "year": "2023",
+          "journal-title": "Pentestgpt: An llm-empowered automatic penetration testing tool"
+        },
+        {
+          "key": "ref23",
+          "first-page": "1877",
+          "article-title": "Language models are few-shot learners",
+          "volume": "33",
+          "author": "Brown",
+          "year": "2020",
+          "journal-title": "Advances in neural information processing systems"
+        },
+        {
+          "key": "ref24",
+          "author": "ZHAO",
+          "year": "2023",
+          "journal-title": "Domain specialization as the key to make large language models disruptive: A comprehensive survey"
+        },
+        {
+          "key": "ref25",
+          "author": "Luo",
+          "year": "2023",
+          "journal-title": "Augmented large language models with parametric knowledge guiding"
+        },
+        {
+          "key": "ref26",
+          "article-title": "ChatGPT",
+          "year": "2023"
+        },
+        {
+          "key": "ref27",
+          "article-title": "LLama 2 - Meta AI",
+          "year": "2023"
+        },
+        {
+          "key": "ref28",
+          "article-title": "AI ACROSS GOOGLE: PaLM 2",
+          "year": "2023"
+        },
+        {
+          "key": "ref29",
+          "article-title": "Meet Claude",
+          "year": "2023"
+        },
+        {
+          "key": "ref30",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.18653/v1/2021.eacl-main.74"
+        },
+        {
+          "key": "ref31",
+          "first-page": "2206",
+          "article-title": "Improving language models by retrieving from trillions of tokens",
+          "volume-title": "International conference on machine learning",
+          "author": "Borgeaud"
+        },
+        {
+          "key": "ref32",
+          "first-page": "25 968",
+          "article-title": "End-to-end training of multi-document reader and retriever for open-domain question answering",
+          "volume": "34",
+          "author": "Singh",
+          "year": "2021",
+          "journal-title": "Advances in Neural Information Processing Systems"
+        },
+        {
+          "key": "ref33",
+          "article-title": "Unified language model pre-training for natural language understanding and generation",
+          "volume": "32",
+          "author": "Dong",
+          "year": "2019",
+          "journal-title": "Advances in neural information processing systems"
+        },
+        {
+          "key": "ref34",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.18653/v1/2020.acl-main.703"
+        },
+        {
+          "key": "ref35",
+          "article-title": "Lora: Low-rank adaptation of large language models",
+          "volume-title": "International Conference on Learning Representations",
+          "author": "Hu"
+        },
+        {
+          "key": "ref36",
+          "author": "Ding",
+          "year": "2022",
+          "journal-title": "Delta tuning: A comprehensive study of parameter efficient methods for pre-trained language models"
+        },
+        {
+          "key": "ref37",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/3386252"
+        },
+        {
+          "key": "ref38",
+          "first-page": "24 824",
+          "article-title": "Chain-of-thought prompting elicits reasoning in large language models",
+          "volume": "35",
+          "author": "Wei",
+          "year": "2022",
+          "journal-title": "Advances in Neural Information Processing Systems"
+        },
+        {
+          "key": "ref39",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.14722/ndss.2024.24556"
+        },
+        {
+          "key": "ref40",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/1375581.1375607"
+        },
+        {
+          "key": "ref41",
+          "article-title": "A fully compliant ZigBee 3.x solution: Z-Stack",
+          "year": "2017"
+        },
+        {
+          "key": "ref42",
+          "article-title": "boofuzz documentation",
+          "author": "Pereyda",
+          "year": "2019",
+          "journal-title": "THIS REFERENCE STILL NEEDS TO BE FIXED"
+        },
+        {
+          "key": "ref43",
+          "article-title": "Z-Wave Specifications",
+          "author": "Alliance",
+          "year": "2023"
+        },
+        {
+          "key": "ref44",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.14722/ndss.2018.23159"
+        },
+        {
+          "key": "ref45",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1109/ICSE48619.2023.00085"
+        },
+        {
+          "key": "ref46",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/3597926.3598067"
+        },
+        {
+          "key": "ref47",
+          "author": "Hu",
+          "year": "2023",
+          "journal-title": "Augmenting greybox fuzzing with generative ai"
+        },
+        {
+          "key": "ref48",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/3597503.3639121"
+        },
+        {
+          "key": "ref49",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1162/tacl_a_00476"
+        },
+        {
+          "key": "ref50",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.18653/v1/2022.acl-long.579"
+        },
+        {
+          "key": "ref51",
+          "article-title": "Binding language models in symbolic languages",
+          "volume-title": "The Eleventh International Conference on Learning Representations",
+          "author": "Cheng"
+        },
+        {
+          "key": "ref52",
+          "author": "Li",
+          "year": "2023",
+          "journal-title": "Can llm already serve as a database interface? a big bench for large-scale database grounded text-to-sqls"
+        }
+      ],
+      "event": {
+        "name": "2024 IEEE Symposium on Security and Privacy (SP)",
+        "location": "San Francisco, CA, USA",
+        "start": {
+          "date-parts": [
+            [
+              2024,
+              5,
+              19
+            ]
+          ]
+        },
+        "end": {
+          "date-parts": [
+            [
+              2024,
+              5,
+              23
+            ]
+          ]
+        }
+      },
+      "container-title": [
+        "2024 IEEE Symposium on Security and Privacy (SP)"
+      ],
+      "original-title": [],
+      "link": [
+        {
+          "URL": "http://xplorestaging.ieee.org/ielx8/10646615/10646598/10646659.pdf?arnumber=10646659",
+          "content-type": "unspecified",
+          "content-version": "vor",
+          "intended-application": "similarity-checking"
+        }
+      ],
+      "deposited": {
+        "date-parts": [
+          [
+            2025,
+            5,
+            30
+          ]
+        ],
+        "date-time": "2025-05-30T01:23:49Z",
+        "timestamp": 1748568229000
+      },
+      "score": 1,
+      "resource": {
+        "primary": {
+          "URL": "https://ieeexplore.ieee.org/document/10646659/"
+        }
+      },
+      "subtitle": [],
+      "short-title": [],
+      "issued": {
+        "date-parts": [
+          [
+            2024,
+            5,
+            19
+          ]
+        ]
+      },
+      "references-count": 52,
+      "URL": "https://doi.org/10.1109/sp54263.2024.00211",
+      "relation": {},
+      "subject": [],
+      "published": {
+        "date-parts": [
+          [
+            2024,
+            5,
+            19
+          ]
+        ]
+      }
+    }
+  }
+}

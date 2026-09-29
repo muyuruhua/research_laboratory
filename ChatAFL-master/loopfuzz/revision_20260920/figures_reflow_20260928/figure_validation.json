@@ -1,0 +1,21 @@
+{
+  "status": "PASS",
+  "new_vector_figures": 6,
+  "formats": [
+    "PDF",
+    "SVG"
+  ],
+  "embedded_raster_images": 0,
+  "primary_archives": 469,
+  "cost_observations": 375,
+  "positive_execution_E_episodes": 23113,
+  "nominal_n": 10,
+  "checked": "source agreement, per-time missingness, quantiles, Brier, count reconciliation, vector contents, LaTeX log",
+  "source_endpoint_discrepancies": [
+    {
+      "source_rel": "benchmark/results-lighttpd1_Sep-17_02-35-46/out-lighttpd1-loopfuzz_11.tar.gz",
+      "trajectory": 2115.0,
+      "summary": "2139"
+    }
+  ]
+}

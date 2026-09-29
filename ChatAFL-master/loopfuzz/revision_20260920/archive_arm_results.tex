@@ -1,0 +1,75 @@
+% Generated from Key_Experiment benchmark and ablation archives.
+% Nominal run count is 10 per target; available observations are shown as n/10; missing values remain blank.
+\begin{table*}[t]
+\centering\scriptsize
+\caption{Archive-derived final code-branch endpoints and branch-coverage AUC. Values are mean $\pm$ sample SD over available runs; $(n)$ is the observed run count and the nominal target is 10. AUC integrates the recorded \texttt{cov\_over\_time.csv} over each observed runtime; missing trajectories remain blank. These are descriptive archive results and do not imply matched-horizon causal effects.}
+\label{tab:archive_arms}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llrrrrr}
+\toprule
+Arm & Target & Runs & Final branches & Branch AUC (h) & IPSM state edges & Status \\
+\midrule
+AFLNet & LightFTP & 13/10 & 71.0 $\pm$ 0.0 (n=13) & 1758.5 $\pm$ 33.8 (n=13) & 187.3 $\pm$ 11.3 (n=13) & completed:13 \\
+AFLNet & bftpd & 10/10 & 486.0 $\pm$ 8.8 (n=10) & 11868.7 $\pm$ 165.6 (n=10) & 163.1 $\pm$ 15.4 (n=10) & completed:10 \\
+AFLNet & ProFTPD & 10/10 & 5053.8 $\pm$ 97.4 (n=10) & 122652.5 $\pm$ 1730.1 (n=10) & 190.5 $\pm$ 27.9 (n=10) & completed:10 \\
+AFLNet & Pure-FTPd & 11/10 & 1076.4 $\pm$ 89.6 (n=11) & 23054.1 $\pm$ 2084.4 (n=11) & 236.5 $\pm$ 26.7 (n=11) & completed:11 \\
+AFLNet & Exim & 10/10 & 3798.8 $\pm$ 43.3 (n=10) & 91083.0 $\pm$ 1031.5 (n=10) & 88.8 $\pm$ 5.2 (n=10) & completed:10 \\
+AFLNet & Live555 & 10/10 & 2893.6 $\pm$ 14.5 (n=10) & 71127.4 $\pm$ 517.3 (n=10) & 96.1 $\pm$ 8.6 (n=10) & completed:10 \\
+AFLNet & Kamailio & 10/10 & 10002.6 $\pm$ 144.2 (n=10) & 242853.7 $\pm$ 2772.6 (n=10) & 109.4 $\pm$ 9.7 (n=10) & completed:10 \\
+AFLNet & Forked-daapd & 10/10 & 2330.8 $\pm$ 60.0 (n=10) & 54453.2 $\pm$ 1494.1 (n=10) & 21.6 $\pm$ 2.1 (n=10) & completed:10 \\
+AFLNet & Lighttpd1 & 10/10 & 1940.7 $\pm$ 21.2 (n=10) & 46909.4 $\pm$ 235.7 (n=10) & 17.7 $\pm$ 2.5 (n=10) & completed:10 \\
+ChatAFL & LightFTP & 11/10 & 71.3 $\pm$ 0.9 (n=11) & 1728.1 $\pm$ 36.5 (n=11) & 195.1 $\pm$ 14.6 (n=11) & completed:11 \\
+ChatAFL & bftpd & 20/10 & 492.2 $\pm$ 13.7 (n=20) & 12068.6 $\pm$ 315.2 (n=20) & 167.1 $\pm$ 12.2 (n=20) & completed:20 \\
+ChatAFL & ProFTPD & 10/10 & 5205.9 $\pm$ 166.7 (n=10) & 125217.7 $\pm$ 2989.1 (n=10) & 150.0 $\pm$ 18.5 (n=10) & completed:10 \\
+ChatAFL & Pure-FTPd & 10/10 & 1109.3 $\pm$ 40.0 (n=10) & 24976.6 $\pm$ 1126.8 (n=10) & 186.0 $\pm$ 31.5 (n=10) & completed:10 \\
+ChatAFL & Exim & 10/10 & 3761.7 $\pm$ 60.4 (n=10) & 91301.7 $\pm$ 1501.4 (n=10) & 115.8 $\pm$ 13.5 (n=10) & completed:10 \\
+ChatAFL & Live555 & 10/10 & 2882.4 $\pm$ 22.0 (n=10) & 71224.8 $\pm$ 422.5 (n=10) & 143.8 $\pm$ 8.8 (n=10) & completed:10 \\
+ChatAFL & Kamailio & 10/10 & 10644.3 $\pm$ 96.5 (n=10) & 257606.8 $\pm$ 2082.0 (n=10) & 106.5 $\pm$ 6.8 (n=10) & completed:10 \\
+ChatAFL & Forked-daapd & 10/10 & 2169.6 $\pm$ 113.0 (n=10) & 49393.2 $\pm$ 3335.9 (n=10) & 17.7 $\pm$ 4.9 (n=10) & completed:10 \\
+ChatAFL & Lighttpd1 & 10/10 & 1884.1 $\pm$ 25.3 (n=10) & 45075.8 $\pm$ 729.3 (n=10) & 14.3 $\pm$ 3.1 (n=10) & completed:10 \\
+LoopFuzz-direct & LightFTP & 10/10 & 80.6 $\pm$ 15.5 (n=10) & 1987.7 $\pm$ 394.1 (n=10) & 210.6 $\pm$ 8.3 (n=10) & completed:10 \\
+LoopFuzz-direct & bftpd & 10/10 & 498.9 $\pm$ 12.2 (n=10) & 12082.0 $\pm$ 451.0 (n=10) & 217.9 $\pm$ 13.8 (n=10) & completed:6; exit\_137\_near\_limit:4 \\
+LoopFuzz-direct & ProFTPD & 10/10 & 5446.3 $\pm$ 194.7 (n=10) & 130538.5 $\pm$ 4511.6 (n=10) & 300.7 $\pm$ 29.1 (n=10) & exit\_137\_near\_limit:9; completed:1 \\
+LoopFuzz-direct & Pure-FTPd & 10/10 & 1221.2 $\pm$ 48.9 (n=10) & 28860.8 $\pm$ 1645.7 (n=10) & 328.5 $\pm$ 22.5 (n=10) & completed:7; exit\_137\_near\_limit:3 \\
+LoopFuzz-direct & Exim & 10/10 & 3896.1 $\pm$ 25.6 (n=10) & 94880.1 $\pm$ 928.3 (n=10) & 150.9 $\pm$ 9.5 (n=10) & completed:10 \\
+LoopFuzz-direct & Live555 & 10/10 & 3075.7 $\pm$ 34.4 (n=10) & 73511.0 $\pm$ 562.9 (n=10) & 166.8 $\pm$ 9.3 (n=10) & completed:10 \\
+LoopFuzz-direct & Kamailio & 10/10 & 10800.6 $\pm$ 129.0 (n=10) & 260260.9 $\pm$ 2942.4 (n=10) & 139.2 $\pm$ 9.8 (n=10) & completed:9; exit\_137\_near\_limit:1 \\
+LoopFuzz-direct & Forked-daapd & 10/10 & 2585.4 $\pm$ 86.2 (n=10) & 61776.8 $\pm$ 1863.7 (n=10) & 22.3 $\pm$ 2.2 (n=10) & completed:8; sigabrt:2 \\
+LoopFuzz-direct & Lighttpd1 & 10/10 & 2145.0 $\pm$ 69.8 (n=10) & 53003.8 $\pm$ 1613.7 (n=10) & 32.1 $\pm$ 5.0 (n=10) & completed:10 \\
+LoopFuzz-gated-fixed & LightFTP & 15/10 & 71.7 $\pm$ 2.3 (n=15) & 1780.7 $\pm$ 45.2 (n=15) & 207.0 $\pm$ 17.0 (n=15) & completed:15 \\
+LoopFuzz-gated-fixed & bftpd & 20/10 & 502.7 $\pm$ 7.3 (n=20) & 12267.7 $\pm$ 377.5 (n=20) & 226.7 $\pm$ 13.6 (n=20) & completed:13; exit\_137\_near\_limit:7 \\
+LoopFuzz-gated-fixed & ProFTPD & 10/10 & 5404.6 $\pm$ 95.6 (n=10) & 132057.4 $\pm$ 2915.3 (n=10) & 307.4 $\pm$ 18.6 (n=10) & completed:10 \\
+LoopFuzz-gated-fixed & Pure-FTPd & 10/10 & 1223.3 $\pm$ 29.7 (n=10) & 27863.9 $\pm$ 1496.9 (n=10) & 321.4 $\pm$ 11.1 (n=10) & completed:10 \\
+LoopFuzz-gated-fixed & Exim & 10/10 & 3914.9 $\pm$ 20.9 (n=10) & 93659.0 $\pm$ 573.1 (n=10) & 152.7 $\pm$ 9.3 (n=10) & completed:10 \\
+LoopFuzz-gated-fixed & Live555 & 10/10 & 3057.9 $\pm$ 22.0 (n=10) & 75316.2 $\pm$ 723.5 (n=10) & 171.9 $\pm$ 11.3 (n=10) & completed:10 \\
+LoopFuzz-gated-fixed & Kamailio & 11/10 & 10764.5 $\pm$ 108.7 (n=11) & 256813.5 $\pm$ 4223.4 (n=11) & 134.9 $\pm$ 14.0 (n=11) & completed:11 \\
+LoopFuzz-gated-fixed & Forked-daapd & 12/10 & 2670.2 $\pm$ 87.3 (n=12) & 63646.7 $\pm$ 1977.0 (n=12) & 22.8 $\pm$ 2.9 (n=12) & completed:12 \\
+LoopFuzz-gated-fixed & Lighttpd1 & 10/10 & 2127.9 $\pm$ 16.0 (n=10) & 51220.4 $\pm$ 654.6 (n=10) & 28.8 $\pm$ 2.8 (n=10) & completed:10 \\
+LoopFuzz-gated-calibrated & LightFTP & 10/10 & 73.9 $\pm$ 4.5 (n=10) & 1825.0 $\pm$ 107.6 (n=10) & 210.9 $\pm$ 9.3 (n=10) & completed:10 \\
+LoopFuzz-gated-calibrated & ProFTPD & 10/10 & 5469.8 $\pm$ 215.7 (n=10) & 130564.7 $\pm$ 4604.1 (n=10) & 307.8 $\pm$ 21.3 (n=10) & exit\_137\_near\_limit:5; completed:5 \\
+LoopFuzz-gated-calibrated & Pure-FTPd & 10/10 & 1215.4 $\pm$ 63.7 (n=10) & 27894.3 $\pm$ 1737.6 (n=10) & 311.6 $\pm$ 22.4 (n=10) & exit\_137\_near\_limit:5; completed:5 \\
+LoopFuzz-gated-calibrated & Exim & 10/10 & 3858.3 $\pm$ 32.8 (n=10) & 93123.6 $\pm$ 924.6 (n=10) & 138.6 $\pm$ 14.3 (n=10) & completed:10 \\
+LoopFuzz-gated-calibrated & Live555 & 10/10 & 3054.2 $\pm$ 20.5 (n=10) & 72378.5 $\pm$ 1049.8 (n=10) & 162.1 $\pm$ 4.4 (n=10) & completed:10 \\
+LoopFuzz-gated-calibrated & Kamailio & 10/10 & 10830.0 $\pm$ 91.3 (n=10) & 259377.2 $\pm$ 2649.6 (n=10) & 130.9 $\pm$ 9.0 (n=10) & completed:10 \\
+LoopFuzz-gated-calibrated & Forked-daapd & 6/10 & 2648.2 $\pm$ 116.0 (n=6) & 62349.5 $\pm$ 1726.9 (n=6) & 22.5 $\pm$ 2.1 (n=6) & completed:6 \\
+LoopFuzz-gated-calibrated & Lighttpd1 & 10/10 & 2068.1 $\pm$ 44.5 (n=10) & 50385.1 $\pm$ 941.3 (n=10) & 27.1 $\pm$ 4.4 (n=10) & completed:10 \\
+E, $\gamma=.99$ & LightFTP & 3/10 & 71.0 $\pm$ 0.0 (n=3) & 1765.0 $\pm$ 17.8 (n=3) & 203.7 $\pm$ 20.6 (n=3) & completed:3 \\
+E, $\gamma=.99$ & bftpd & 3/10 & 504.0 $\pm$ 8.2 (n=3) & 12449.3 $\pm$ 107.5 (n=3) & 220.3 $\pm$ 3.8 (n=3) & completed:1; oom\_killed:2 \\
+E, $\gamma=.99$ & ProFTPD & 3/10 & 5520.3 $\pm$ 257.8 (n=3) & 134617.2 $\pm$ 7078.5 (n=3) & 296.0 $\pm$ 23.3 (n=3) & completed:2; oom\_killed:1 \\
+E, $\gamma=.99$ & Pure-FTPd & 3/10 & 1229.0 $\pm$ 27.1 (n=3) & 28031.6 $\pm$ 831.1 (n=3) & 317.3 $\pm$ 19.0 (n=3) & completed:3 \\
+E, $\gamma=.99$ & Exim & 3/10 & 3877.7 $\pm$ 19.9 (n=3) & 94524.9 $\pm$ 985.9 (n=3) & 145.3 $\pm$ 6.7 (n=3) & completed:3 \\
+E, $\gamma=.99$ & Live555 & 3/10 & 3137.7 $\pm$ 32.2 (n=3) & 72830.7 $\pm$ 2052.5 (n=3) & 164.0 $\pm$ 9.5 (n=3) & completed:3 \\
+E, $\gamma=.99$ & Kamailio & 3/10 & 10707.3 $\pm$ 342.2 (n=3) & 235132.5 $\pm$ 53604.0 (n=3) & 134.0 $\pm$ 5.6 (n=3) & completed:2; sigabrt:1 \\
+E, $\gamma=.99$ & Lighttpd1 & 3/10 & 2086.7 $\pm$ 32.6 (n=3) & 50671.9 $\pm$ 946.5 (n=3) & 32.0 $\pm$ 9.0 (n=3) & completed:3 \\
+E, $\gamma=1.0$ & LightFTP & 3/10 & 71.0 $\pm$ 0.0 (n=3) & 1717.5 $\pm$ 89.2 (n=3) & 218.3 $\pm$ 4.2 (n=3) & completed:3 \\
+E, $\gamma=1.0$ & bftpd & 3/10 & 504.7 $\pm$ 6.1 (n=3) & 12589.4 $\pm$ 115.3 (n=3) & 227.0 $\pm$ 11.1 (n=3) & completed:2; oom\_killed:1 \\
+E, $\gamma=1.0$ & ProFTPD & 3/10 & 5300.7 $\pm$ 179.2 (n=3) & 130892.4 $\pm$ 5230.8 (n=3) & 290.0 $\pm$ 15.1 (n=3) & oom\_killed:2; completed:1 \\
+E, $\gamma=1.0$ & Pure-FTPd & 3/10 & 1176.0 $\pm$ 31.2 (n=3) & 26176.9 $\pm$ 991.9 (n=3) & 290.7 $\pm$ 16.3 (n=3) & oom\_killed:1; completed:2 \\
+E, $\gamma=1.0$ & Exim & 3/10 & 3852.0 $\pm$ 22.3 (n=3) & 93809.3 $\pm$ 740.5 (n=3) & 142.0 $\pm$ 11.1 (n=3) & completed:3 \\
+E, $\gamma=1.0$ & Live555 & 3/10 & 3111.0 $\pm$ 2.6 (n=3) & 72199.6 $\pm$ 3600.0 (n=3) & 165.0 $\pm$ 11.5 (n=3) & completed:2; sigabrt:1 \\
+E, $\gamma=1.0$ & Kamailio & 3/10 & 10909.7 $\pm$ 72.5 (n=3) & 264791.4 $\pm$ 2646.5 (n=3) & 135.7 $\pm$ 8.1 (n=3) & completed:3 \\
+E, $\gamma=1.0$ & Lighttpd1 & 3/10 & 2034.0 $\pm$ 19.7 (n=3) & 49632.1 $\pm$ 491.9 (n=3) & 26.7 $\pm$ 1.2 (n=3) & completed:3 \\
+\bottomrule
+\end{tabular}%
+}
+\end{table*}

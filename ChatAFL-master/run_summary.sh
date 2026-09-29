@@ -1,142 +1,204 @@
 #!/bin/bash
 set -euo pipefail
 
-if [[ $# -lt 1 ]]; then
-  echo "Usage: ./run_summary.sh <results-dir-or-parent> [<results-dir-or-parent> ...]"
-  echo ""
-  echo "  Each argument can be either:"
-  echo "    • A direct results directory (contains out-*.tar.gz or out-*/ dirs)"
-  echo "      → generates run_summary.csv inside it"
-  echo "    • A parent directory containing multiple results directories"
-  echo "      → generates run_summary.csv inside each qualifying child"
-  echo ""
-  echo "  Examples:"
-  echo "    ./run_summary.sh benchmark/results-mosquitto_full"
-  echo "    ./run_summary.sh benchmark/                    # auto-discover all results dirs"
-  echo "    ./run_summary.sh results-a results-b results-c"
-  exit 1
-fi
+# run_summary.sh — Generate/rebuild run_summary.csv for results directories
+#
+# Usage:
+#   ./run_summary.sh <results-dir>              → dedup + renumber + regenerate csv
+#   ./run_summary.sh <results-dir> <min_min>    → dedup + filter short runs + renumber + regenerate csv
+#   ./run_summary.sh <parent-dir>               → process all results dirs under parent
+#   ./run_summary.sh <parent-dir> <min_min>     → process all + dedup + filter + renumber + regenerate
+#
+# Dedup rule: within the same target+fuzzer group, if two tarballs have identical
+# MD5 checksums (byte-for-byte duplicates from merge), keep the first and remove
+# the rest.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GET_RT_PY="$SCRIPT_DIR/scripts/get_rt.py"
 
-# ── Path resolution ──────────────────────────────────────────────
+log()  { echo "[$(date +%H:%M:%S)] $*"; }
+warn() { echo "[$(date +%H:%M:%S)] WARN: $*" >&2; }
+die()  { echo "[$(date +%H:%M:%S)] ERROR: $*" >&2; exit 1; }
 
 resolve_results_dir() {
   local raw="$1"
-  local resolved=""
-
-  for candidate in \
-    "$raw" \
-    "benchmark/$raw" \
-    "../benchmark/$raw" \
-    "./benchmark/$raw"; do
+  for candidate in "$raw" "benchmark/$raw" "../benchmark/$raw"; do
     if [[ -d "$candidate" ]]; then
-      resolved="$candidate"
-      break
+      (cd "$candidate" && pwd) && return 0
     fi
   done
-
-  if [[ -z "$resolved" ]]; then
-    echo "Error: results directory not found: $raw" >&2
-    return 1
-  fi
-
-  (cd "$resolved" && pwd)
+  die "results directory not found: $raw"
 }
 
 resolve_summary_py() {
-  for candidate in \
-    "$SCRIPT_DIR/benchmark/scripts/analysis/run_summary.py" \
-    "$SCRIPT_DIR/../benchmark/scripts/analysis/run_summary.py"; do
-    if [[ -f "$candidate" ]]; then
-      echo "$candidate"
-      return 0
-    fi
+  for candidate in "$SCRIPT_DIR/benchmark/scripts/analysis/run_summary.py"; do
+    [[ -f "$candidate" ]] && { echo "$candidate"; return 0; }
   done
-
-  echo "Error: cannot find benchmark/scripts/analysis/run_summary.py" >&2
-  return 1
+  die "cannot find run_summary.py"
 }
 
-# ── Detection ────────────────────────────────────────────────────
-
-# A "direct results directory" contains at least one entry matching
-# the pattern that run_summary.py scans: out-<subject>-<fuzzer>_<N>.tar.gz
-# or an extracted out-<subject>-<fuzzer>-<N>/ directory.
 is_direct_results_dir() {
   local dir="$1"
   [[ -d "$dir" ]] || return 1
-
-  local found
-  found=$(
-    cd "$dir" 2>/dev/null || exit 1
-    ls -1 2>/dev/null
-  ) || return 1
-
-  # Match either packed tarballs or extracted run directories
-  echo "$found" | grep -qE '^out-.+_[0-9]+\.tar\.gz$|^out-.+-[0-9]+/$'
+  ls "$dir"/out-*.tar.gz >/dev/null 2>&1
 }
 
-# Discover qualifying child results directories under a parent.
-discover_children() {
-  local parent="$1"
-  [[ -d "$parent" ]] || return 1
+get_fuzzer() {
+  echo "$1" | sed -E 's/^out-.+-([a-z0-9_-]+)_[0-9]+\.tar\.gz$/\1/'
+}
 
-  for child in "$parent"/*/; do
-    child="${child%/}"                       # strip trailing /
-    if is_direct_results_dir "$child"; then
-      echo "$child"
-    fi
+get_runtime_min() {
+  python3 "$GET_RT_PY" "$1" 2>/dev/null || echo -2
+}
+
+# Deduplicate tarballs by MD5 within the same fuzzer group.
+# Keeps the first occurrence, removes subsequent duplicates.
+dedup_dir() {
+  local dir="$1"
+  local dedup_count=0
+
+  # Group files by fuzzer first
+  declare -A fuzzer_lists
+  for f in "$dir"/out-*.tar.gz; do
+    [[ -e "$f" ]] || continue
+    local fuzzer
+    fuzzer=$(get_fuzzer "$(basename "$f")")
+    fuzzer_lists[$fuzzer]="${fuzzer_lists[$fuzzer]:-} $f"
   done
+
+  for fuzzer in "${!fuzzer_lists[@]}"; do
+    declare -A seen_md5
+    for f in $(echo "${fuzzer_lists[$fuzzer]}" | tr ' ' '\n' | sort -V); do
+      [[ -z "$f" ]] && continue
+      local md5
+      md5=$(md5sum "$f" | awk '{print $1}')
+      if [[ -n "${seen_md5[$md5]:-}" ]]; then
+        log "  dedup: $(basename "$f") = duplicate of ${seen_md5[$md5]}"
+        rm -f "$f"
+        dedup_count=$((dedup_count + 1))
+      else
+        seen_md5[$md5]=$(basename "$f")
+      fi
+    done
+    unset seen_md5
+  done
+
+  [ "$dedup_count" -gt 0 ] && log "  dedup: removed $dedup_count duplicate(s)"
+  return 0
 }
 
-# ── Core ─────────────────────────────────────────────────────────
+# Filter by runtime + dedup + renumber + report
+process_tarballs() {
+  local dir="$1"
+  local min_minutes="${2:-0}"
+  log "Processing: $dir"
 
-process_results_dir() {
-  local results_dir="$1"
-  local summary_py="$2"
-  local output_file="$results_dir/run_summary.csv"
+  local rename_list="/tmp/rs_renames_$$.txt"
+  rm -f "$rename_list"
 
-  python3 "$summary_py" "$results_dir" -o "$output_file"
-  echo "Generated: $output_file"
-}
-
-# Orchestrator: given a resolved path, decide whether it's a single
-# results dir or a parent, then generate summaries accordingly.
-process_path() {
-  local resolved="$1"
-  local summary_py="$2"
-
-  if is_direct_results_dir "$resolved"; then
-    # ── Case 1: Direct results directory ──
-    process_results_dir "$resolved" "$summary_py"
-    return 0
+  # ── Step 1: Filter by runtime ──
+  local total_filtered=0
+  if [[ "$min_minutes" -gt 0 ]]; then
+    for f in "$dir"/out-*.tar.gz; do
+      [[ -e "$f" ]] || continue
+      local rt
+      rt=$(get_runtime_min "$f")
+      if [[ "$rt" -ge 0 && "$rt" -lt "$min_minutes" ]]; then
+        log "  filter: $(basename "$f") (${rt}min < ${min_minutes}min)"
+        rm -f "$f"
+        total_filtered=$((total_filtered + 1))
+      elif [[ "$rt" -lt 0 ]]; then
+        warn "  no runtime: $(basename "$f") (keeping)"
+      fi
+    done
   fi
 
-  # ── Case 2: Parent directory → discover children ──
-  local children
-  children=$(discover_children "$resolved")
+  # ── Step 2: Dedup by MD5 ──
+  dedup_dir "$dir"
 
-  if [[ -z "$children" ]]; then
-    echo "Warning: No results directories found under $resolved — skipping" >&2
-    return 0
+  # ── Step 3: Renumber per fuzzer ──
+  declare -A fuzzer_files
+  local total_kept=0
+
+  for f in "$dir"/out-*.tar.gz; do
+    [[ -e "$f" ]] || continue
+    local fuzzer
+    fuzzer=$(get_fuzzer "$(basename "$f")")
+    fuzzer_files[$fuzzer]="${fuzzer_files[$fuzzer]:-} $f"
+    total_kept=$((total_kept + 1))
+  done
+
+  for fuzzer in "${!fuzzer_files[@]}"; do
+    local counter=0
+    for f in $(echo "${fuzzer_files[$fuzzer]}" | tr ' ' '\n' | sort -V); do
+      [[ -z "$f" ]] && continue
+      local fname prefix new_name tmp_name
+      fname=$(basename "$f")
+      prefix="${fname%_*}"
+      counter=$((counter + 1))
+      new_name="${prefix}_${counter}.tar.gz"
+      if [[ "$fname" != "$new_name" ]]; then
+        tmp_name="${prefix}_tmpren_${counter}.tar.gz"
+        mv "$f" "$dir/$tmp_name"
+        echo "$dir/$tmp_name $dir/$new_name" >> "$rename_list"
+      fi
+    done
+    log "  $fuzzer: $counter runs"
+  done
+
+  # Two-phase rename to avoid collisions
+  if [[ -s "$rename_list" ]]; then
+    while read -r tmp final; do
+      [[ -z "$tmp" ]] && continue
+      mv "$tmp" "$final" 2>/dev/null || warn "rename failed: $tmp"
+    done < "$rename_list"
   fi
+  rm -f "$rename_list"
 
-  local count
-  count=$(echo "$children" | wc -l)
-  echo "[$resolved] Discovered $count results director$( (( count != 1 )) && echo 'ies'):"
-  echo "$children" | sed 's/^/  /'
-
-  while IFS= read -r child; do
-    process_results_dir "$child" "$summary_py"
-  done <<< "$children"
+  log "  result: kept=$total_kept filtered=$total_filtered"
 }
 
-# ── Main ─────────────────────────────────────────────────────────
+generate_summary() {
+  local dir="$1"
+  local summary_py="$2"
+  python3 "$summary_py" "$dir" -o "$dir/run_summary.csv"
+  log "  csv: $dir/run_summary.csv"
+}
+
+process_dir() {
+  local dir="$1"
+  local summary_py="$2"
+  local min_minutes="${3:-0}"
+  process_tarballs "$dir" "$min_minutes"
+  generate_summary "$dir" "$summary_py"
+}
+
+# ── Main ──
+if [[ $# -lt 1 ]]; then
+  echo "Usage: ./run_summary.sh <results-dir-or-parent> [min_minutes]"
+  echo "  <dir>           dedup + renumber + regenerate run_summary.csv"
+  echo "  <dir> <min>     dedup + filter runs < min minutes + renumber + regenerate"
+  echo "  Known fuzzers: aflnet chatafl loopfuzz"
+  exit 1
+fi
 
 SUMMARY_PY="$(resolve_summary_py)"
+RAW_DIR="$1"
+MIN_MINUTES="${2:-0}"
+[[ "$MIN_MINUTES" =~ ^[0-9]+$ ]] || die "invalid min_minutes: $MIN_MINUTES"
+RESOLVED="$(resolve_results_dir "$RAW_DIR")"
 
-for raw_arg in "$@"; do
-  resolved="$(resolve_results_dir "$raw_arg")"  # aborts on failure (set -e)
-  process_path "$resolved" "$SUMMARY_PY"
-done
+if is_direct_results_dir "$RESOLVED"; then
+  process_dir "$RESOLVED" "$SUMMARY_PY" "$MIN_MINUTES"
+else
+  log "Scanning parent: $RESOLVED"
+  n=0
+  for child in "$RESOLVED"/*/; do
+    child="${child%/}"
+    is_direct_results_dir "$child" || continue
+    n=$((n + 1))
+    process_dir "$child" "$SUMMARY_PY" "$MIN_MINUTES"
+  done
+  [[ "$n" -eq 0 ]] && warn "no results dirs found under $RESOLVED"
+  [[ "$n" -gt 0 ]] && log "Processed $n directories"
+fi

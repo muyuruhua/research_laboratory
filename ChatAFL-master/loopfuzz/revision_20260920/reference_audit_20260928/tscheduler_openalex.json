@@ -1,0 +1,3488 @@
+{
+  "url": "https://api.openalex.org/works?search=T-Scheduler%20fuzzing&per-page=3",
+  "accessed": "2026-09-28",
+  "response": {
+    "meta": {
+      "count": 6760,
+      "db_response_time_ms": 534,
+      "page": 1,
+      "per_page": 3,
+      "groups_count": null,
+      "x_query": {
+        "oql": "works where full text has (T-Scheduler fuzzing)",
+        "oqo": {
+          "get_rows": "works",
+          "filter_rows": [
+            {
+              "column_id": "fulltext.search",
+              "value": "T-Scheduler fuzzing",
+              "operator": "has"
+            }
+          ]
+        },
+        "url": "/works?filter=fulltext.search:T-Scheduler fuzzing&per_page=3"
+      },
+      "cost_usd": 0.001
+    },
+    "results": [
+      {
+        "id": "https://openalex.org/W2964241064",
+        "doi": "https://doi.org/10.1145/3243734.3243804",
+        "title": "Evaluating Fuzz Testing",
+        "display_name": "Evaluating Fuzz Testing",
+        "relevance_score": 521.7322,
+        "publication_year": 2018,
+        "publication_date": "2018-10-15",
+        "ids": {
+          "openalex": "https://openalex.org/W2964241064",
+          "doi": "https://doi.org/10.1145/3243734.3243804",
+          "mag": "2964241064"
+        },
+        "language": "en",
+        "primary_location": {
+          "id": "doi:10.1145/3243734.3243804",
+          "is_oa": true,
+          "landing_page_url": "https://doi.org/10.1145/3243734.3243804",
+          "pdf_url": "https://dl.acm.org/doi/pdf/10.1145/3243734.3243804",
+          "source": null,
+          "license": null,
+          "license_id": null,
+          "version": "publishedVersion",
+          "is_accepted": true,
+          "is_published": true,
+          "raw_source_name": "Proceedings of the 2018 ACM SIGSAC Conference on Computer and Communications Security",
+          "raw_type": "proceedings-article"
+        },
+        "type": "conference-paper",
+        "indexed_in": [
+          "crossref"
+        ],
+        "open_access": {
+          "is_oa": true,
+          "oa_status": "gold",
+          "oa_url": "https://dl.acm.org/doi/pdf/10.1145/3243734.3243804",
+          "any_repository_has_fulltext": null
+        },
+        "authorships": [
+          {
+            "author_position": "first",
+            "author": {
+              "id": "https://openalex.org/A5032379358",
+              "display_name": "George Klees",
+              "orcid": "https://orcid.org/0000-0002-5070-0107",
+              "observed_orcids": [
+                "https://orcid.org/0000-0002-5070-0107"
+              ]
+            },
+            "institutions": [
+              {
+                "id": "https://openalex.org/I66946132",
+                "display_name": "University of Maryland, College Park",
+                "ror": "https://ror.org/047s2c258",
+                "country_code": "US",
+                "type": "education",
+                "lineage": [
+                  "https://openalex.org/I66946132"
+                ]
+              }
+            ],
+            "countries": [
+              "US"
+            ],
+            "is_corresponding": false,
+            "raw_author_name": "George Klees",
+            "raw_affiliation_strings": [
+              "University of Maryland, College Park, MD, USA"
+            ],
+            "raw_orcid": null,
+            "affiliations": [
+              {
+                "raw_affiliation_string": "University of Maryland, College Park, MD, USA",
+                "institution_ids": [
+                  "https://openalex.org/I66946132"
+                ]
+              }
+            ]
+          },
+          {
+            "author_position": "middle",
+            "author": {
+              "id": "https://openalex.org/A5059542428",
+              "display_name": "Andrew Ruef",
+              "orcid": null,
+              "observed_orcids": []
+            },
+            "institutions": [
+              {
+                "id": "https://openalex.org/I66946132",
+                "display_name": "University of Maryland, College Park",
+                "ror": "https://ror.org/047s2c258",
+                "country_code": "US",
+                "type": "education",
+                "lineage": [
+                  "https://openalex.org/I66946132"
+                ]
+              }
+            ],
+            "countries": [
+              "US"
+            ],
+            "is_corresponding": false,
+            "raw_author_name": "Andrew Ruef",
+            "raw_affiliation_strings": [
+              "University of Maryland, College Park, MD, USA"
+            ],
+            "raw_orcid": null,
+            "affiliations": [
+              {
+                "raw_affiliation_string": "University of Maryland, College Park, MD, USA",
+                "institution_ids": [
+                  "https://openalex.org/I66946132"
+                ]
+              }
+            ]
+          },
+          {
+            "author_position": "middle",
+            "author": {
+              "id": "https://openalex.org/A5077684843",
+              "display_name": "Benji Cooper",
+              "orcid": null,
+              "observed_orcids": []
+            },
+            "institutions": [
+              {
+                "id": "https://openalex.org/I66946132",
+                "display_name": "University of Maryland, College Park",
+                "ror": "https://ror.org/047s2c258",
+                "country_code": "US",
+                "type": "education",
+                "lineage": [
+                  "https://openalex.org/I66946132"
+                ]
+              }
+            ],
+            "countries": [
+              "US"
+            ],
+            "is_corresponding": false,
+            "raw_author_name": "Benji Cooper",
+            "raw_affiliation_strings": [
+              "University of Maryland, College Park, MD, USA"
+            ],
+            "raw_orcid": null,
+            "affiliations": [
+              {
+                "raw_affiliation_string": "University of Maryland, College Park, MD, USA",
+                "institution_ids": [
+                  "https://openalex.org/I66946132"
+                ]
+              }
+            ]
+          },
+          {
+            "author_position": "middle",
+            "author": {
+              "id": "https://openalex.org/A5033317811",
+              "display_name": "Shiyi Wei",
+              "orcid": "https://orcid.org/0000-0002-2826-1857",
+              "observed_orcids": [
+                "https://orcid.org/0000-0002-2826-1857"
+              ]
+            },
+            "institutions": [],
+            "countries": [],
+            "is_corresponding": false,
+            "raw_author_name": "Shiyi Wei",
+            "raw_affiliation_strings": [
+              "University of Texas at Dallas, Dallas, TX, USA"
+            ],
+            "raw_orcid": null,
+            "affiliations": [
+              {
+                "raw_affiliation_string": "University of Texas at Dallas, Dallas, TX, USA",
+                "institution_ids": []
+              }
+            ]
+          },
+          {
+            "author_position": "last",
+            "author": {
+              "id": "https://openalex.org/A5046625836",
+              "display_name": "Michael Hicks",
+              "orcid": "https://orcid.org/0000-0002-2759-9223",
+              "observed_orcids": [
+                "https://orcid.org/0000-0002-2759-9223"
+              ]
+            },
+            "institutions": [
+              {
+                "id": "https://openalex.org/I66946132",
+                "display_name": "University of Maryland, College Park",
+                "ror": "https://ror.org/047s2c258",
+                "country_code": "US",
+                "type": "education",
+                "lineage": [
+                  "https://openalex.org/I66946132"
+                ]
+              }
+            ],
+            "countries": [
+              "US"
+            ],
+            "is_corresponding": false,
+            "raw_author_name": "Michael Hicks",
+            "raw_affiliation_strings": [
+              "University of Maryland, College Park, MD, USA"
+            ],
+            "raw_orcid": null,
+            "affiliations": [
+              {
+                "raw_affiliation_string": "University of Maryland, College Park, MD, USA",
+                "institution_ids": [
+                  "https://openalex.org/I66946132"
+                ]
+              }
+            ]
+          }
+        ],
+        "institutions": [],
+        "countries_distinct_count": 1,
+        "institutions_distinct_count": 1,
+        "corresponding_author_ids": [],
+        "corresponding_institution_ids": [],
+        "apc_list": null,
+        "apc_paid": null,
+        "fwci": 38.353,
+        "has_fulltext": true,
+        "cited_by_count": 627,
+        "citation_normalized_percentile": {
+          "value": 0.99950763,
+          "is_in_top_1_percent": true,
+          "is_in_top_10_percent": true
+        },
+        "cited_by_percentile_year": {
+          "min": 94,
+          "max": 100
+        },
+        "biblio": {
+          "volume": null,
+          "issue": null,
+          "first_page": "2123",
+          "last_page": "2138"
+        },
+        "is_retracted": false,
+        "is_paratext": false,
+        "is_xpac": false,
+        "primary_topic": {
+          "id": "https://openalex.org/T10743",
+          "display_name": "Software Testing and Debugging Techniques",
+          "score": 1.0,
+          "subfield": {
+            "id": "https://openalex.org/subfields/1712",
+            "display_name": "Software"
+          },
+          "field": {
+            "id": "https://openalex.org/fields/17",
+            "display_name": "Computer Science"
+          },
+          "domain": {
+            "id": "https://openalex.org/domains/3",
+            "display_name": "Physical Sciences"
+          }
+        },
+        "topics": [
+          {
+            "id": "https://openalex.org/T10743",
+            "display_name": "Software Testing and Debugging Techniques",
+            "score": 1.0,
+            "subfield": {
+              "id": "https://openalex.org/subfields/1712",
+              "display_name": "Software"
+            },
+            "field": {
+              "id": "https://openalex.org/fields/17",
+              "display_name": "Computer Science"
+            },
+            "domain": {
+              "id": "https://openalex.org/domains/3",
+              "display_name": "Physical Sciences"
+            }
+          },
+          {
+            "id": "https://openalex.org/T11241",
+            "display_name": "Advanced Malware Detection Techniques",
+            "score": 0.9997000098228455,
+            "subfield": {
+              "id": "https://openalex.org/subfields/1711",
+              "display_name": "Signal Processing"
+            },
+            "field": {
+              "id": "https://openalex.org/fields/17",
+              "display_name": "Computer Science"
+            },
+            "domain": {
+              "id": "https://openalex.org/domains/3",
+              "display_name": "Physical Sciences"
+            }
+          },
+          {
+            "id": "https://openalex.org/T12423",
+            "display_name": "Software Reliability and Analysis Research",
+            "score": 0.9984999895095825,
+            "subfield": {
+              "id": "https://openalex.org/subfields/1712",
+              "display_name": "Software"
+            },
+            "field": {
+              "id": "https://openalex.org/fields/17",
+              "display_name": "Computer Science"
+            },
+            "domain": {
+              "id": "https://openalex.org/domains/3",
+              "display_name": "Physical Sciences"
+            }
+          }
+        ],
+        "keywords": [
+          {
+            "id": "https://openalex.org/keywords/fuzz-testing",
+            "display_name": "Fuzz testing",
+            "score": 0.9955649375915527
+          },
+          {
+            "id": "https://openalex.org/keywords/computer-science",
+            "display_name": "Computer science",
+            "score": 0.7549874782562256
+          },
+          {
+            "id": "https://openalex.org/keywords/software-testing",
+            "display_name": "Software testing",
+            "score": 0.6749497652053833
+          },
+          {
+            "id": "https://openalex.org/keywords/trustworthiness",
+            "display_name": "Trustworthiness",
+            "score": 0.6502484083175659
+          },
+          {
+            "id": "https://openalex.org/keywords/software-bug",
+            "display_name": "Software bug",
+            "score": 0.437882661819458
+          },
+          {
+            "id": "https://openalex.org/keywords/software-engineering",
+            "display_name": "Software engineering",
+            "score": 0.3928314745426178
+          },
+          {
+            "id": "https://openalex.org/keywords/software",
+            "display_name": "Software",
+            "score": 0.3720240592956543
+          },
+          {
+            "id": "https://openalex.org/keywords/machine-learning",
+            "display_name": "Machine learning",
+            "score": 0.3619242012500763
+          },
+          {
+            "id": "https://openalex.org/keywords/data-science",
+            "display_name": "Data science",
+            "score": 0.3347894549369812
+          },
+          {
+            "id": "https://openalex.org/keywords/computer-security",
+            "display_name": "Computer security",
+            "score": 0.2610609531402588
+          },
+          {
+            "id": "https://openalex.org/keywords/programming-language",
+            "display_name": "Programming language",
+            "score": 0.09574726223945618
+          }
+        ],
+        "concepts": [
+          {
+            "id": "https://openalex.org/C111065885",
+            "wikidata": "https://www.wikidata.org/wiki/Q1189053",
+            "display_name": "Fuzz testing",
+            "level": 3,
+            "score": 0.9955649375915527
+          },
+          {
+            "id": "https://openalex.org/C41008148",
+            "wikidata": "https://www.wikidata.org/wiki/Q21198",
+            "display_name": "Computer science",
+            "level": 0,
+            "score": 0.7549874782562256
+          },
+          {
+            "id": "https://openalex.org/C2984328558",
+            "wikidata": "https://www.wikidata.org/wiki/Q188522",
+            "display_name": "Software testing",
+            "level": 3,
+            "score": 0.6749497652053833
+          },
+          {
+            "id": "https://openalex.org/C153701036",
+            "wikidata": "https://www.wikidata.org/wiki/Q659974",
+            "display_name": "Trustworthiness",
+            "level": 2,
+            "score": 0.6502484083175659
+          },
+          {
+            "id": "https://openalex.org/C1009929",
+            "wikidata": "https://www.wikidata.org/wiki/Q179550",
+            "display_name": "Software bug",
+            "level": 3,
+            "score": 0.437882661819458
+          },
+          {
+            "id": "https://openalex.org/C115903868",
+            "wikidata": "https://www.wikidata.org/wiki/Q80993",
+            "display_name": "Software engineering",
+            "level": 1,
+            "score": 0.3928314745426178
+          },
+          {
+            "id": "https://openalex.org/C2777904410",
+            "wikidata": "https://www.wikidata.org/wiki/Q7397",
+            "display_name": "Software",
+            "level": 2,
+            "score": 0.3720240592956543
+          },
+          {
+            "id": "https://openalex.org/C119857082",
+            "wikidata": "https://www.wikidata.org/wiki/Q2539",
+            "display_name": "Machine learning",
+            "level": 1,
+            "score": 0.3619242012500763
+          },
+          {
+            "id": "https://openalex.org/C2522767166",
+            "wikidata": "https://www.wikidata.org/wiki/Q2374463",
+            "display_name": "Data science",
+            "level": 1,
+            "score": 0.3347894549369812
+          },
+          {
+            "id": "https://openalex.org/C38652104",
+            "wikidata": "https://www.wikidata.org/wiki/Q3510521",
+            "display_name": "Computer security",
+            "level": 1,
+            "score": 0.2610609531402588
+          },
+          {
+            "id": "https://openalex.org/C199360897",
+            "wikidata": "https://www.wikidata.org/wiki/Q9143",
+            "display_name": "Programming language",
+            "level": 1,
+            "score": 0.09574726223945618
+          }
+        ],
+        "mesh": [],
+        "locations_count": 1,
+        "locations": [
+          {
+            "id": "doi:10.1145/3243734.3243804",
+            "is_oa": true,
+            "landing_page_url": "https://doi.org/10.1145/3243734.3243804",
+            "pdf_url": "https://dl.acm.org/doi/pdf/10.1145/3243734.3243804",
+            "source": null,
+            "license": null,
+            "license_id": null,
+            "version": "publishedVersion",
+            "is_accepted": true,
+            "is_published": true,
+            "raw_source_name": "Proceedings of the 2018 ACM SIGSAC Conference on Computer and Communications Security",
+            "raw_type": "proceedings-article"
+          }
+        ],
+        "best_oa_location": {
+          "id": "doi:10.1145/3243734.3243804",
+          "is_oa": true,
+          "landing_page_url": "https://doi.org/10.1145/3243734.3243804",
+          "pdf_url": "https://dl.acm.org/doi/pdf/10.1145/3243734.3243804",
+          "source": null,
+          "license": null,
+          "license_id": null,
+          "version": "publishedVersion",
+          "is_accepted": true,
+          "is_published": true,
+          "raw_source_name": "Proceedings of the 2018 ACM SIGSAC Conference on Computer and Communications Security",
+          "raw_type": "proceedings-article"
+        },
+        "sustainable_development_goals": [],
+        "x_sdgs": [],
+        "study_designs": [],
+        "awards": [
+          {
+            "id": "https://openalex.org/G3854465928",
+            "display_name": "TWC: Medium: Collaborative: New Protocols and Systems for RAM-Based Secure Computation",
+            "funder_award_id": "1563722",
+            "funder_id": "https://openalex.org/F4320306076",
+            "funder_display_name": "National Science Foundation"
+          },
+          {
+            "id": "https://openalex.org/G4713059963",
+            "display_name": null,
+            "funder_award_id": "FA8750",
+            "funder_id": "https://openalex.org/F4320332180",
+            "funder_display_name": "Defense Advanced Research Projects Agency"
+          },
+          {
+            "id": "https://openalex.org/G5302100214",
+            "display_name": null,
+            "funder_award_id": "FA8750-15-2-0104",
+            "funder_id": "https://openalex.org/F4320332180",
+            "funder_display_name": "Defense Advanced Research Projects Agency"
+          },
+          {
+            "id": "https://openalex.org/G6394259273",
+            "display_name": null,
+            "funder_award_id": "FA8750-15-2-0104 and FA8750-16-C-0022",
+            "funder_id": "https://openalex.org/F4320332180",
+            "funder_display_name": "Defense Advanced Research Projects Agency"
+          },
+          {
+            "id": "https://openalex.org/G7184889194",
+            "display_name": "TWC: Medium: Collaborative: DIORE: Digital Insertion and Observation Resistant Execution",
+            "funder_award_id": "1314857",
+            "funder_id": "https://openalex.org/F4320306076",
+            "funder_display_name": "National Science Foundation"
+          },
+          {
+            "id": "https://openalex.org/G8039803440",
+            "display_name": null,
+            "funder_award_id": "FA8750-16-C-0022",
+            "funder_id": "https://openalex.org/F4320332180",
+            "funder_display_name": "Defense Advanced Research Projects Agency"
+          }
+        ],
+        "funders": [
+          {
+            "id": "https://openalex.org/F4320306076",
+            "display_name": "National Science Foundation",
+            "ror": "https://ror.org/021nxhr62"
+          },
+          {
+            "id": "https://openalex.org/F4320332180",
+            "display_name": "Defense Advanced Research Projects Agency",
+            "ror": "https://ror.org/02caytj08"
+          }
+        ],
+        "has_content": {
+          "pdf": true,
+          "grobid_xml": true
+        },
+        "content_urls": {
+          "pdf": "https://content.openalex.org/works/W2964241064.pdf",
+          "grobid_xml": "https://content.openalex.org/works/W2964241064.grobid-xml"
+        },
+        "referenced_works_count": 56,
+        "referenced_works": [
+          "https://openalex.org/W90244446",
+          "https://openalex.org/W614438062",
+          "https://openalex.org/W1506510492",
+          "https://openalex.org/W1507845365",
+          "https://openalex.org/W1507934533",
+          "https://openalex.org/W1546956568",
+          "https://openalex.org/W1878544538",
+          "https://openalex.org/W1965335252",
+          "https://openalex.org/W1989171126",
+          "https://openalex.org/W2053597677",
+          "https://openalex.org/W2063068372",
+          "https://openalex.org/W2064604033",
+          "https://openalex.org/W2071952624",
+          "https://openalex.org/W2106072155",
+          "https://openalex.org/W2113864883",
+          "https://openalex.org/W2128128820",
+          "https://openalex.org/W2138428785",
+          "https://openalex.org/W2153530968",
+          "https://openalex.org/W2166091242",
+          "https://openalex.org/W2274381509",
+          "https://openalex.org/W2350778671",
+          "https://openalex.org/W2511770387",
+          "https://openalex.org/W2515236103",
+          "https://openalex.org/W2515650212",
+          "https://openalex.org/W2535617737",
+          "https://openalex.org/W2560874070",
+          "https://openalex.org/W2574017551",
+          "https://openalex.org/W2603700459",
+          "https://openalex.org/W2613534458",
+          "https://openalex.org/W2701082322",
+          "https://openalex.org/W2701225458",
+          "https://openalex.org/W2741068848",
+          "https://openalex.org/W2751862727",
+          "https://openalex.org/W2752340395",
+          "https://openalex.org/W2757104921",
+          "https://openalex.org/W2759245396",
+          "https://openalex.org/W2760842181",
+          "https://openalex.org/W2762831631",
+          "https://openalex.org/W2765435026",
+          "https://openalex.org/W2766540688",
+          "https://openalex.org/W2766647240",
+          "https://openalex.org/W2766711930",
+          "https://openalex.org/W2770003285",
+          "https://openalex.org/W2777046235",
+          "https://openalex.org/W2786738105",
+          "https://openalex.org/W2792800398",
+          "https://openalex.org/W2795192879",
+          "https://openalex.org/W2888230423",
+          "https://openalex.org/W2913803263",
+          "https://openalex.org/W2964097210",
+          "https://openalex.org/W3044967078",
+          "https://openalex.org/W3104664063",
+          "https://openalex.org/W3106010854",
+          "https://openalex.org/W4251988601",
+          "https://openalex.org/W4400681692",
+          "https://openalex.org/W6833780757"
+        ],
+        "related_works": [
+          "https://openalex.org/W614438062",
+          "https://openalex.org/W3173990398",
+          "https://openalex.org/W4319791806",
+          "https://openalex.org/W4205454537",
+          "https://openalex.org/W4381785649",
+          "https://openalex.org/W4385301282",
+          "https://openalex.org/W3170526652",
+          "https://openalex.org/W2964241064",
+          "https://openalex.org/W4384155735",
+          "https://openalex.org/W4226494072"
+        ],
+        "abstract_inverted_index": {
+          "Fuzz": [
+            0
+          ],
+          "testing": [
+            1,
+            123
+          ],
+          "has": [
+            2
+          ],
+          "enjoyed": [
+            3
+          ],
+          "great": [
+            4
+          ],
+          "success": [
+            5
+          ],
+          "at": [
+            6
+          ],
+          "discovering": [
+            7
+          ],
+          "security": [
+            8
+          ],
+          "critical": [
+            9
+          ],
+          "bugs": [
+            10
+          ],
+          "in": [
+            11,
+            69,
+            95
+          ],
+          "real": [
+            12
+          ],
+          "software.": [
+            13
+          ],
+          "Recently,": [
+            14
+          ],
+          "researchers": [
+            15
+          ],
+          "have": [
+            16
+          ],
+          "devoted": [
+            17
+          ],
+          "significant": [
+            18
+          ],
+          "effort": [
+            19
+          ],
+          "to": [
+            20,
+            45,
+            102
+          ],
+          "devising": [
+            21
+          ],
+          "new": [
+            22,
+            29
+          ],
+          "fuzzing": [
+            23,
+            64
+          ],
+          "techniques,": [
+            24
+          ],
+          "strategies,": [
+            25
+          ],
+          "and": [
+            26,
+            55
+          ],
+          "algorithms.": [
+            27
+          ],
+          "Such": [
+            28
+          ],
+          "ideas": [
+            30
+          ],
+          "are": [
+            31
+          ],
+          "primarily": [
+            32
+          ],
+          "evaluated": [
+            33
+          ],
+          "experimentally": [
+            34
+          ],
+          "so": [
+            35
+          ],
+          "an": [
+            36,
+            83
+          ],
+          "important": [
+            37
+          ],
+          "question": [
+            38
+          ],
+          "is:": [
+            39
+          ],
+          "What": [
+            40
+          ],
+          "experimental": [
+            41,
+            58,
+            80,
+            97,
+            119
+          ],
+          "setup": [
+            42
+          ],
+          "is": [
+            43
+          ],
+          "needed": [
+            44
+          ],
+          "produce": [
+            46
+          ],
+          "trustworthy": [
+            47
+          ],
+          "results?": [
+            48
+          ],
+          "We": [
+            49,
+            66,
+            74,
+            108
+          ],
+          "surveyed": [
+            50
+          ],
+          "the": [
+            51,
+            57,
+            90
+          ],
+          "recent": [
+            52
+          ],
+          "research": [
+            53
+          ],
+          "literature": [
+            54
+          ],
+          "assessed": [
+            56
+          ],
+          "evaluations": [
+            59,
+            98,
+            120
+          ],
+          "carried": [
+            60
+          ],
+          "out": [
+            61
+          ],
+          "by": [
+            62
+          ],
+          "32": [
+            63
+          ],
+          "papers.": [
+            65
+          ],
+          "found": [
+            67,
+            94
+          ],
+          "problems": [
+            68,
+            92
+          ],
+          "every": [
+            70
+          ],
+          "evaluation": [
+            71,
+            81
+          ],
+          "we": [
+            72,
+            93,
+            114
+          ],
+          "considered.": [
+            73
+          ],
+          "then": [
+            75
+          ],
+          "performed": [
+            76
+          ],
+          "our": [
+            77
+          ],
+          "own": [
+            78
+          ],
+          "extensive": [
+            79
+          ],
+          "using": [
+            82
+          ],
+          "existing": [
+            84,
+            96
+          ],
+          "fuzzer.": [
+            85
+          ],
+          "Our": [
+            86
+          ],
+          "results": [
+            87,
+            127
+          ],
+          "showed": [
+            88
+          ],
+          "that": [
+            89,
+            113
+          ],
+          "general": [
+            91
+          ],
+          "can": [
+            99
+          ],
+          "indeed": [
+            100
+          ],
+          "translate": [
+            101
+          ],
+          "actual": [
+            103
+          ],
+          "wrong": [
+            104
+          ],
+          "or": [
+            105
+          ],
+          "misleading": [
+            106
+          ],
+          "assessments.": [
+            107
+          ],
+          "conclude": [
+            109
+          ],
+          "with": [
+            110
+          ],
+          "some": [
+            111
+          ],
+          "guidelines": [
+            112
+          ],
+          "hope": [
+            115
+          ],
+          "will": [
+            116
+          ],
+          "help": [
+            117
+          ],
+          "improve": [
+            118
+          ],
+          "of": [
+            121
+          ],
+          "fuzz": [
+            122
+          ],
+          "algorithms,": [
+            124
+          ],
+          "making": [
+            125
+          ],
+          "reported": [
+            126
+          ],
+          "more": [
+            128
+          ],
+          "robust.": [
+            129
+          ]
+        },
+        "counts_by_year": [
+          {
+            "year": 2026,
+            "cited_by_count": 47
+          },
+          {
+            "year": 2025,
+            "cited_by_count": 92
+          },
+          {
+            "year": 2024,
+            "cited_by_count": 98
+          },
+          {
+            "year": 2023,
+            "cited_by_count": 89
+          },
+          {
+            "year": 2022,
+            "cited_by_count": 84
+          },
+          {
+            "year": 2021,
+            "cited_by_count": 90
+          },
+          {
+            "year": 2020,
+            "cited_by_count": 78
+          },
+          {
+            "year": 2019,
+            "cited_by_count": 47
+          },
+          {
+            "year": 2018,
+            "cited_by_count": 2
+          }
+        ],
+        "updated_date": "2026-09-25T08:18:29.962427",
+        "created_date": "2025-10-10T00:00:00"
+      },
+      {
+        "id": "https://openalex.org/W2964097210",
+        "doi": "https://doi.org/10.1109/sp.2018.00046",
+        "title": "Angora: Efficient Fuzzing by Principled Search",
+        "display_name": "Angora: Efficient Fuzzing by Principled Search",
+        "relevance_score": 448.73383,
+        "publication_year": 2018,
+        "publication_date": "2018-05-01",
+        "ids": {
+          "openalex": "https://openalex.org/W2964097210",
+          "doi": "https://doi.org/10.1109/sp.2018.00046",
+          "mag": "2964097210"
+        },
+        "language": "en",
+        "primary_location": {
+          "id": "doi:10.1109/sp.2018.00046",
+          "is_oa": true,
+          "landing_page_url": "https://doi.org/10.1109/sp.2018.00046",
+          "pdf_url": "https://ieeexplore.ieee.org/ielx7/8418581/8418583/08418633.pdf",
+          "source": null,
+          "license": null,
+          "license_id": null,
+          "version": "publishedVersion",
+          "is_accepted": true,
+          "is_published": true,
+          "raw_source_name": "2018 IEEE Symposium on Security and Privacy (SP)",
+          "raw_type": "proceedings-article"
+        },
+        "type": "conference-paper",
+        "indexed_in": [
+          "crossref"
+        ],
+        "open_access": {
+          "is_oa": true,
+          "oa_status": "gold",
+          "oa_url": "https://ieeexplore.ieee.org/ielx7/8418581/8418583/08418633.pdf",
+          "any_repository_has_fulltext": null
+        },
+        "authorships": [
+          {
+            "author_position": "first",
+            "author": {
+              "id": "https://openalex.org/A5024986740",
+              "display_name": "Peng Chen",
+              "orcid": "https://orcid.org/0000-0002-4298-1834",
+              "observed_orcids": [
+                "https://orcid.org/0000-0002-4298-1834"
+              ]
+            },
+            "institutions": [
+              {
+                "id": "https://openalex.org/I30809798",
+                "display_name": "ShanghaiTech University",
+                "ror": "https://ror.org/030bhh786",
+                "country_code": "CN",
+                "type": "education",
+                "lineage": [
+                  "https://openalex.org/I30809798"
+                ]
+              }
+            ],
+            "countries": [
+              "CN"
+            ],
+            "is_corresponding": false,
+            "raw_author_name": "Peng Chen",
+            "raw_affiliation_strings": [
+              "ShanghaiTech University"
+            ],
+            "raw_orcid": null,
+            "affiliations": [
+              {
+                "raw_affiliation_string": "ShanghaiTech University",
+                "institution_ids": [
+                  "https://openalex.org/I30809798"
+                ]
+              }
+            ]
+          },
+          {
+            "author_position": "last",
+            "author": {
+              "id": "https://openalex.org/A5100353550",
+              "display_name": "Hao Chen",
+              "orcid": "https://orcid.org/0000-0002-4072-0710",
+              "observed_orcids": [
+                "https://orcid.org/0000-0002-4072-0710"
+              ]
+            },
+            "institutions": [
+              {
+                "id": "https://openalex.org/I2803209242",
+                "display_name": "University of California System",
+                "ror": "https://ror.org/00pjdza24",
+                "country_code": "US",
+                "type": "education",
+                "lineage": [
+                  "https://openalex.org/I2803209242"
+                ]
+              }
+            ],
+            "countries": [
+              "US"
+            ],
+            "is_corresponding": false,
+            "raw_author_name": "Hao Chen",
+            "raw_affiliation_strings": [
+              "University of California"
+            ],
+            "raw_orcid": null,
+            "affiliations": [
+              {
+                "raw_affiliation_string": "University of California",
+                "institution_ids": [
+                  "https://openalex.org/I2803209242"
+                ]
+              }
+            ]
+          }
+        ],
+        "institutions": [],
+        "countries_distinct_count": 2,
+        "institutions_distinct_count": 2,
+        "corresponding_author_ids": [],
+        "corresponding_institution_ids": [],
+        "apc_list": null,
+        "apc_paid": null,
+        "fwci": 41.4166,
+        "has_fulltext": true,
+        "cited_by_count": 554,
+        "citation_normalized_percentile": {
+          "value": 1.0,
+          "is_in_top_1_percent": true,
+          "is_in_top_10_percent": true
+        },
+        "cited_by_percentile_year": {
+          "min": 99,
+          "max": 100
+        },
+        "biblio": {
+          "volume": null,
+          "issue": null,
+          "first_page": "711",
+          "last_page": "725"
+        },
+        "is_retracted": false,
+        "is_paratext": false,
+        "is_xpac": false,
+        "primary_topic": {
+          "id": "https://openalex.org/T10743",
+          "display_name": "Software Testing and Debugging Techniques",
+          "score": 0.9998999834060669,
+          "subfield": {
+            "id": "https://openalex.org/subfields/1712",
+            "display_name": "Software"
+          },
+          "field": {
+            "id": "https://openalex.org/fields/17",
+            "display_name": "Computer Science"
+          },
+          "domain": {
+            "id": "https://openalex.org/domains/3",
+            "display_name": "Physical Sciences"
+          }
+        },
+        "topics": [
+          {
+            "id": "https://openalex.org/T10743",
+            "display_name": "Software Testing and Debugging Techniques",
+            "score": 0.9998999834060669,
+            "subfield": {
+              "id": "https://openalex.org/subfields/1712",
+              "display_name": "Software"
+            },
+            "field": {
+              "id": "https://openalex.org/fields/17",
+              "display_name": "Computer Science"
+            },
+            "domain": {
+              "id": "https://openalex.org/domains/3",
+              "display_name": "Physical Sciences"
+            }
+          },
+          {
+            "id": "https://openalex.org/T11241",
+            "display_name": "Advanced Malware Detection Techniques",
+            "score": 0.9968000054359436,
+            "subfield": {
+              "id": "https://openalex.org/subfields/1711",
+              "display_name": "Signal Processing"
+            },
+            "field": {
+              "id": "https://openalex.org/fields/17",
+              "display_name": "Computer Science"
+            },
+            "domain": {
+              "id": "https://openalex.org/domains/3",
+              "display_name": "Physical Sciences"
+            }
+          },
+          {
+            "id": "https://openalex.org/T10260",
+            "display_name": "Software Engineering Research",
+            "score": 0.9951000213623047,
+            "subfield": {
+              "id": "https://openalex.org/subfields/1710",
+              "display_name": "Information Systems"
+            },
+            "field": {
+              "id": "https://openalex.org/fields/17",
+              "display_name": "Computer Science"
+            },
+            "domain": {
+              "id": "https://openalex.org/domains/3",
+              "display_name": "Physical Sciences"
+            }
+          }
+        ],
+        "keywords": [
+          {
+            "id": "https://openalex.org/keywords/fuzz-testing",
+            "display_name": "Fuzz testing",
+            "score": 0.8369653224945068
+          },
+          {
+            "id": "https://openalex.org/keywords/computer-science",
+            "display_name": "Computer science",
+            "score": 0.8357238173484802
+          },
+          {
+            "id": "https://openalex.org/keywords/symbolic-execution",
+            "display_name": "Symbolic execution",
+            "score": 0.5104748010635376
+          },
+          {
+            "id": "https://openalex.org/keywords/software-bug",
+            "display_name": "Software bug",
+            "score": 0.43071314692497253
+          },
+          {
+            "id": "https://openalex.org/keywords/programming-language",
+            "display_name": "Programming language",
+            "score": 0.3758178651332855
+          },
+          {
+            "id": "https://openalex.org/keywords/artificial-intelligence",
+            "display_name": "Artificial intelligence",
+            "score": 0.35366010665893555
+          },
+          {
+            "id": "https://openalex.org/keywords/software",
+            "display_name": "Software",
+            "score": 0.34098994731903076
+          }
+        ],
+        "concepts": [
+          {
+            "id": "https://openalex.org/C111065885",
+            "wikidata": "https://www.wikidata.org/wiki/Q1189053",
+            "display_name": "Fuzz testing",
+            "level": 3,
+            "score": 0.8369653224945068
+          },
+          {
+            "id": "https://openalex.org/C41008148",
+            "wikidata": "https://www.wikidata.org/wiki/Q21198",
+            "display_name": "Computer science",
+            "level": 0,
+            "score": 0.8357238173484802
+          },
+          {
+            "id": "https://openalex.org/C2779639559",
+            "wikidata": "https://www.wikidata.org/wiki/Q7661178",
+            "display_name": "Symbolic execution",
+            "level": 3,
+            "score": 0.5104748010635376
+          },
+          {
+            "id": "https://openalex.org/C1009929",
+            "wikidata": "https://www.wikidata.org/wiki/Q179550",
+            "display_name": "Software bug",
+            "level": 3,
+            "score": 0.43071314692497253
+          },
+          {
+            "id": "https://openalex.org/C199360897",
+            "wikidata": "https://www.wikidata.org/wiki/Q9143",
+            "display_name": "Programming language",
+            "level": 1,
+            "score": 0.3758178651332855
+          },
+          {
+            "id": "https://openalex.org/C154945302",
+            "wikidata": "https://www.wikidata.org/wiki/Q11660",
+            "display_name": "Artificial intelligence",
+            "level": 1,
+            "score": 0.35366010665893555
+          },
+          {
+            "id": "https://openalex.org/C2777904410",
+            "wikidata": "https://www.wikidata.org/wiki/Q7397",
+            "display_name": "Software",
+            "level": 2,
+            "score": 0.34098994731903076
+          }
+        ],
+        "mesh": [],
+        "locations_count": 2,
+        "locations": [
+          {
+            "id": "doi:10.1109/sp.2018.00046",
+            "is_oa": true,
+            "landing_page_url": "https://doi.org/10.1109/sp.2018.00046",
+            "pdf_url": "https://ieeexplore.ieee.org/ielx7/8418581/8418583/08418633.pdf",
+            "source": null,
+            "license": null,
+            "license_id": null,
+            "version": "publishedVersion",
+            "is_accepted": true,
+            "is_published": true,
+            "raw_source_name": "2018 IEEE Symposium on Security and Privacy (SP)",
+            "raw_type": "proceedings-article"
+          },
+          {
+            "id": "pmh:oai:hub.hku.hk:10722/346716",
+            "is_oa": false,
+            "landing_page_url": "https://hub.hku.hk/handle/10722/346716",
+            "pdf_url": null,
+            "source": {
+              "id": "https://openalex.org/S4377196271",
+              "display_name": "The HKU Scholars Hub (University of Hong Kong)",
+              "issn_l": null,
+              "issn": null,
+              "is_oa": false,
+              "is_in_doaj": false,
+              "is_core": false,
+              "listed_in": [],
+              "host_organization": "https://openalex.org/I889458895",
+              "host_organization_name": "University of Hong Kong",
+              "host_organization_lineage": [
+                "https://openalex.org/I889458895"
+              ],
+              "host_organization_lineage_names": [],
+              "type": "repository"
+            },
+            "license": null,
+            "license_id": null,
+            "version": "submittedVersion",
+            "is_accepted": false,
+            "is_published": false,
+            "raw_source_name": null,
+            "raw_type": "Conference_Paper"
+          }
+        ],
+        "best_oa_location": {
+          "id": "doi:10.1109/sp.2018.00046",
+          "is_oa": true,
+          "landing_page_url": "https://doi.org/10.1109/sp.2018.00046",
+          "pdf_url": "https://ieeexplore.ieee.org/ielx7/8418581/8418583/08418633.pdf",
+          "source": null,
+          "license": null,
+          "license_id": null,
+          "version": "publishedVersion",
+          "is_accepted": true,
+          "is_published": true,
+          "raw_source_name": "2018 IEEE Symposium on Security and Privacy (SP)",
+          "raw_type": "proceedings-article"
+        },
+        "sustainable_development_goals": [],
+        "x_sdgs": [],
+        "study_designs": [],
+        "awards": [],
+        "funders": [],
+        "has_content": {
+          "pdf": true,
+          "grobid_xml": true
+        },
+        "content_urls": {
+          "pdf": "https://content.openalex.org/works/W2964097210.pdf",
+          "grobid_xml": "https://content.openalex.org/works/W2964097210.grobid-xml"
+        },
+        "referenced_works_count": 33,
+        "referenced_works": [
+          "https://openalex.org/W157156687",
+          "https://openalex.org/W614438062",
+          "https://openalex.org/W1507845365",
+          "https://openalex.org/W1546956568",
+          "https://openalex.org/W1584150393",
+          "https://openalex.org/W1710734607",
+          "https://openalex.org/W1976878954",
+          "https://openalex.org/W2046862377",
+          "https://openalex.org/W2060692877",
+          "https://openalex.org/W2096449544",
+          "https://openalex.org/W2107147876",
+          "https://openalex.org/W2107510936",
+          "https://openalex.org/W2113864883",
+          "https://openalex.org/W2128128820",
+          "https://openalex.org/W2128985333",
+          "https://openalex.org/W2133217855",
+          "https://openalex.org/W2148488259",
+          "https://openalex.org/W2153185479",
+          "https://openalex.org/W2170364043",
+          "https://openalex.org/W2514974017",
+          "https://openalex.org/W2515236103",
+          "https://openalex.org/W2533311740",
+          "https://openalex.org/W2535617737",
+          "https://openalex.org/W2574017551",
+          "https://openalex.org/W2613534458",
+          "https://openalex.org/W2741068848",
+          "https://openalex.org/W4244461107",
+          "https://openalex.org/W4246166885",
+          "https://openalex.org/W4246748641",
+          "https://openalex.org/W6630124987",
+          "https://openalex.org/W6637688222",
+          "https://openalex.org/W6682062327",
+          "https://openalex.org/W6737694244"
+        ],
+        "related_works": [
+          "https://openalex.org/W2785720764",
+          "https://openalex.org/W2777046235",
+          "https://openalex.org/W2186070848",
+          "https://openalex.org/W4285245977",
+          "https://openalex.org/W3203826058",
+          "https://openalex.org/W3104446232",
+          "https://openalex.org/W4290048282",
+          "https://openalex.org/W2914996832",
+          "https://openalex.org/W2768829148",
+          "https://openalex.org/W4240738830"
+        ],
+        "abstract_inverted_index": {
+          "Fuzzing": [
+            0
+          ],
+          "is": [
+            1,
+            68
+          ],
+          "a": [
+            2,
+            17,
+            50,
+            60
+          ],
+          "popular": [
+            3
+          ],
+          "technique": [
+            4
+          ],
+          "for": [
+            5
+          ],
+          "finding": [
+            6
+          ],
+          "software": [
+            7
+          ],
+          "bugs.": [
+            8
+          ],
+          "However,": [
+            9
+          ],
+          "the": [
+            10,
+            13,
+            56,
+            107,
+            115,
+            137,
+            141,
+            150,
+            183
+          ],
+          "performance": [
+            11
+          ],
+          "of": [
+            12,
+            66,
+            185
+          ],
+          "state-of-the-art": [
+            14,
+            57
+          ],
+          "fuzzers": [
+            15,
+            34,
+            58
+          ],
+          "leaves": [
+            16
+          ],
+          "lot": [
+            18
+          ],
+          "to": [
+            19,
+            69,
+            194
+          ],
+          "be": [
+            20
+          ],
+          "desired.": [
+            21
+          ],
+          "Fuzzers": [
+            22
+          ],
+          "based": [
+            23,
+            35,
+            98
+          ],
+          "on": [
+            24,
+            36,
+            99,
+            162
+          ],
+          "symbolic": [
+            25,
+            78
+          ],
+          "execution": [
+            26
+          ],
+          "produce": [
+            27
+          ],
+          "quality": [
+            28,
+            45
+          ],
+          "inputs": [
+            29
+          ],
+          "but": [
+            30,
+            41,
+            154
+          ],
+          "run": [
+            31,
+            39
+          ],
+          "slow,": [
+            32
+          ],
+          "while": [
+            33
+          ],
+          "random": [
+            37
+          ],
+          "mutation": [
+            38
+          ],
+          "fast": [
+            40
+          ],
+          "have": [
+            42
+          ],
+          "difficulty": [
+            43
+          ],
+          "producing": [
+            44
+          ],
+          "inputs.": [
+            46
+          ],
+          "We": [
+            47,
+            158,
+            181
+          ],
+          "propose": [
+            48
+          ],
+          "Angora,": [
+            49
+          ],
+          "new": [
+            51,
+            177
+          ],
+          "mutation-based": [
+            52
+          ],
+          "fuzzer": [
+            53,
+            124,
+            139
+          ],
+          "that": [
+            54,
+            125,
+            149
+          ],
+          "outperforms": [
+            55
+          ],
+          "by": [
+            59,
+            73
+          ],
+          "wide": [
+            61
+          ],
+          "margin.": [
+            62
+          ],
+          "The": [
+            63
+          ],
+          "main": [
+            64
+          ],
+          "goal": [
+            65
+          ],
+          "Angora": [
+            67,
+            111,
+            144,
+            161,
+            169,
+            186
+          ],
+          "increase": [
+            70
+          ],
+          "branch": [
+            71,
+            95
+          ],
+          "coverage": [
+            72,
+            184
+          ],
+          "solving": [
+            74
+          ],
+          "path": [
+            75,
+            82
+          ],
+          "constraints": [
+            76,
+            83
+          ],
+          "without": [
+            77
+          ],
+          "execution.": [
+            79
+          ],
+          "To": [
+            80
+          ],
+          "solve": [
+            81
+          ],
+          "efficiently,": [
+            84
+          ],
+          "we": [
+            85,
+            126
+          ],
+          "introduce": [
+            86
+          ],
+          "several": [
+            87
+          ],
+          "key": [
+            88,
+            191
+          ],
+          "techniques:": [
+            89
+          ],
+          "scalable": [
+            90
+          ],
+          "byte-level": [
+            91
+          ],
+          "taint": [
+            92
+          ],
+          "tracking,": [
+            93
+          ],
+          "context-sensitive": [
+            94
+          ],
+          "count,": [
+            96
+          ],
+          "search": [
+            97
+          ],
+          "gradient": [
+            100
+          ],
+          "descent,": [
+            101
+          ],
+          "and": [
+            102,
+            129,
+            175,
+            187
+          ],
+          "input": [
+            103
+          ],
+          "length": [
+            104
+          ],
+          "exploration.": [
+            105
+          ],
+          "On": [
+            106
+          ],
+          "LAVA-M": [
+            108
+          ],
+          "data": [
+            109
+          ],
+          "set,": [
+            110
+          ],
+          "found": [
+            112,
+            118,
+            130,
+            146,
+            170
+          ],
+          "almost": [
+            113
+          ],
+          "all": [
+            114
+          ],
+          "injected": [
+            116,
+            153
+          ],
+          "bugs,": [
+            117
+          ],
+          "more": [
+            119
+          ],
+          "bugs": [
+            120,
+            135,
+            148,
+            178
+          ],
+          "than": [
+            121
+          ],
+          "any": [
+            122
+          ],
+          "other": [
+            123
+          ],
+          "compared": [
+            127
+          ],
+          "with,": [
+            128
+          ],
+          "eight": [
+            131,
+            163
+          ],
+          "times": [
+            132
+          ],
+          "as": [
+            133,
+            136
+          ],
+          "many": [
+            134
+          ],
+          "second-best": [
+            138
+          ],
+          "in": [
+            140
+          ],
+          "program": [
+            142
+          ],
+          "who.": [
+            143
+          ],
+          "also": [
+            145,
+            159
+          ],
+          "103": [
+            147
+          ],
+          "LAVA": [
+            151
+          ],
+          "authors": [
+            152
+          ],
+          "could": [
+            155
+          ],
+          "not": [
+            156
+          ],
+          "trigger.": [
+            157
+          ],
+          "tested": [
+            160
+          ],
+          "popular,": [
+            164
+          ],
+          "mature": [
+            165
+          ],
+          "open": [
+            166
+          ],
+          "source": [
+            167
+          ],
+          "programs.": [
+            168
+          ],
+          "6,": [
+            171
+          ],
+          "52,": [
+            172
+          ],
+          "29,": [
+            173
+          ],
+          "40": [
+            174
+          ],
+          "48": [
+            176
+          ],
+          "infile,jhead,nm,objdumpandsize,": [
+            179
+          ],
+          "respectively.": [
+            180
+          ],
+          "measured": [
+            182
+          ],
+          "evaluated": [
+            188
+          ],
+          "how": [
+            189
+          ],
+          "its": [
+            190,
+            195
+          ],
+          "techniques": [
+            192
+          ],
+          "contribute": [
+            193
+          ],
+          "impressive": [
+            196
+          ],
+          "performance.": [
+            197
+          ]
+        },
+        "counts_by_year": [
+          {
+            "year": 2026,
+            "cited_by_count": 32
+          },
+          {
+            "year": 2025,
+            "cited_by_count": 58
+          },
+          {
+            "year": 2024,
+            "cited_by_count": 79
+          },
+          {
+            "year": 2023,
+            "cited_by_count": 74
+          },
+          {
+            "year": 2022,
+            "cited_by_count": 76
+          },
+          {
+            "year": 2021,
+            "cited_by_count": 76
+          },
+          {
+            "year": 2020,
+            "cited_by_count": 82
+          },
+          {
+            "year": 2019,
+            "cited_by_count": 63
+          },
+          {
+            "year": 2018,
+            "cited_by_count": 14
+          }
+        ],
+        "updated_date": "2026-09-26T08:19:03.415552",
+        "created_date": "2025-10-10T00:00:00"
+      },
+      {
+        "id": "https://openalex.org/W2928702109",
+        "doi": "https://doi.org/10.1109/tse.2019.2946563",
+        "title": "The Art, Science, and Engineering of Fuzzing: A Survey",
+        "display_name": "The Art, Science, and Engineering of Fuzzing: A Survey",
+        "relevance_score": 444.55017,
+        "publication_year": 2019,
+        "publication_date": "2019-10-10",
+        "ids": {
+          "openalex": "https://openalex.org/W2928702109",
+          "doi": "https://doi.org/10.1109/tse.2019.2946563",
+          "mag": "2928702109"
+        },
+        "language": "en",
+        "primary_location": {
+          "id": "doi:10.1109/tse.2019.2946563",
+          "is_oa": false,
+          "landing_page_url": "https://doi.org/10.1109/tse.2019.2946563",
+          "pdf_url": null,
+          "source": {
+            "id": "https://openalex.org/S8351582",
+            "display_name": "IEEE Transactions on Software Engineering",
+            "issn_l": "0098-5589",
+            "issn": [
+              "0098-5589",
+              "1939-3520",
+              "2326-3881"
+            ],
+            "is_oa": false,
+            "is_in_doaj": false,
+            "is_core": true,
+            "listed_in": [
+              "cwts-core",
+              "jufo-3",
+              "norway-2"
+            ],
+            "host_organization": "https://openalex.org/P4310320439",
+            "host_organization_name": "IEEE Computer Society",
+            "host_organization_lineage": [
+              "https://openalex.org/P4310320439",
+              "https://openalex.org/P4310319808"
+            ],
+            "host_organization_lineage_names": [
+              "IEEE Computer Society",
+              "Institute of Electrical and Electronics Engineers"
+            ],
+            "type": "journal"
+          },
+          "license": null,
+          "license_id": null,
+          "version": "publishedVersion",
+          "is_accepted": true,
+          "is_published": true,
+          "raw_source_name": "IEEE Transactions on Software Engineering",
+          "raw_type": "journal-article"
+        },
+        "type": "article",
+        "indexed_in": [
+          "arxiv",
+          "crossref",
+          "datacite"
+        ],
+        "open_access": {
+          "is_oa": true,
+          "oa_status": "green",
+          "oa_url": "https://arxiv.org/pdf/1812.00140",
+          "any_repository_has_fulltext": true
+        },
+        "authorships": [
+          {
+            "author_position": "first",
+            "author": {
+              "id": "https://openalex.org/A5003156582",
+              "display_name": "Valentin J. M. Manès",
+              "orcid": "https://orcid.org/0000-0002-2932-5568",
+              "observed_orcids": [
+                "https://orcid.org/0000-0002-2932-5568"
+              ]
+            },
+            "institutions": [
+              {
+                "id": "https://openalex.org/I157485424",
+                "display_name": "Korea Advanced Institute of Science and Technology",
+                "ror": "https://ror.org/05apxxy63",
+                "country_code": "KR",
+                "type": "education",
+                "lineage": [
+                  "https://openalex.org/I157485424"
+                ]
+              },
+              {
+                "id": "https://openalex.org/I58716616",
+                "display_name": "Korea Institute of Science and Technology",
+                "ror": "https://ror.org/05kzfa883",
+                "country_code": "KR",
+                "type": "facility",
+                "lineage": [
+                  "https://openalex.org/I27494661",
+                  "https://openalex.org/I2801339556",
+                  "https://openalex.org/I4210144908",
+                  "https://openalex.org/I4387152098",
+                  "https://openalex.org/I58716616"
+                ]
+              }
+            ],
+            "countries": [
+              "KR"
+            ],
+            "is_corresponding": false,
+            "raw_author_name": "Valentin J.M. Manes",
+            "raw_affiliation_strings": [
+              "KAIST Cyber Security Research Center, Daejeon, Korea",
+              "Korea Adv. Inst. of Sci. and Technol"
+            ],
+            "raw_orcid": "https://orcid.org/0000-0002-2932-5568",
+            "affiliations": [
+              {
+                "raw_affiliation_string": "KAIST Cyber Security Research Center, Daejeon, Korea",
+                "institution_ids": [
+                  "https://openalex.org/I157485424"
+                ]
+              },
+              {
+                "raw_affiliation_string": "Korea Adv. Inst. of Sci. and Technol",
+                "institution_ids": [
+                  "https://openalex.org/I157485424",
+                  "https://openalex.org/I58716616"
+                ]
+              }
+            ]
+          },
+          {
+            "author_position": "middle",
+            "author": {
+              "id": "https://openalex.org/A5035614471",
+              "display_name": "Hyung-Seok Han",
+              "orcid": "https://orcid.org/0000-0003-4138-4197",
+              "observed_orcids": [
+                "https://orcid.org/0000-0003-4138-4197"
+              ]
+            },
+            "institutions": [
+              {
+                "id": "https://openalex.org/I157485424",
+                "display_name": "Korea Advanced Institute of Science and Technology",
+                "ror": "https://ror.org/05apxxy63",
+                "country_code": "KR",
+                "type": "education",
+                "lineage": [
+                  "https://openalex.org/I157485424"
+                ]
+              },
+              {
+                "id": "https://openalex.org/I58716616",
+                "display_name": "Korea Institute of Science and Technology",
+                "ror": "https://ror.org/05kzfa883",
+                "country_code": "KR",
+                "type": "facility",
+                "lineage": [
+                  "https://openalex.org/I27494661",
+                  "https://openalex.org/I2801339556",
+                  "https://openalex.org/I4210144908",
+                  "https://openalex.org/I4387152098",
+                  "https://openalex.org/I58716616"
+                ]
+              }
+            ],
+            "countries": [
+              "KR"
+            ],
+            "is_corresponding": false,
+            "raw_author_name": "HyungSeok Han",
+            "raw_affiliation_strings": [
+              "KAIST, Daejeon, Korea",
+              "Korea Adv. Inst. of Sci. and Technol"
+            ],
+            "raw_orcid": null,
+            "affiliations": [
+              {
+                "raw_affiliation_string": "KAIST, Daejeon, Korea",
+                "institution_ids": [
+                  "https://openalex.org/I157485424"
+                ]
+              },
+              {
+                "raw_affiliation_string": "Korea Adv. Inst. of Sci. and Technol",
+                "institution_ids": [
+                  "https://openalex.org/I157485424",
+                  "https://openalex.org/I58716616"
+                ]
+              }
+            ]
+          },
+          {
+            "author_position": "middle",
+            "author": {
+              "id": "https://openalex.org/A5071196745",
+              "display_name": "Choongwoo Han",
+              "orcid": null,
+              "observed_orcids": []
+            },
+            "institutions": [
+              {
+                "id": "https://openalex.org/I157485424",
+                "display_name": "Korea Advanced Institute of Science and Technology",
+                "ror": "https://ror.org/05apxxy63",
+                "country_code": "KR",
+                "type": "education",
+                "lineage": [
+                  "https://openalex.org/I157485424"
+                ]
+              },
+              {
+                "id": "https://openalex.org/I58716616",
+                "display_name": "Korea Institute of Science and Technology",
+                "ror": "https://ror.org/05kzfa883",
+                "country_code": "KR",
+                "type": "facility",
+                "lineage": [
+                  "https://openalex.org/I27494661",
+                  "https://openalex.org/I2801339556",
+                  "https://openalex.org/I4210144908",
+                  "https://openalex.org/I4387152098",
+                  "https://openalex.org/I58716616"
+                ]
+              },
+              {
+                "id": "https://openalex.org/I60922564",
+                "display_name": "Naver (South Korea)",
+                "ror": "https://ror.org/04nzrnx83",
+                "country_code": "KR",
+                "type": "company",
+                "lineage": [
+                  "https://openalex.org/I60922564"
+                ]
+              }
+            ],
+            "countries": [
+              "KR"
+            ],
+            "is_corresponding": false,
+            "raw_author_name": "Choongwoo Han",
+            "raw_affiliation_strings": [
+              "Naver Corp., Daejeon, Korea",
+              "Korea Adv. Inst. of Sci. and Technol"
+            ],
+            "raw_orcid": null,
+            "affiliations": [
+              {
+                "raw_affiliation_string": "Naver Corp., Daejeon, Korea",
+                "institution_ids": [
+                  "https://openalex.org/I60922564"
+                ]
+              },
+              {
+                "raw_affiliation_string": "Korea Adv. Inst. of Sci. and Technol",
+                "institution_ids": [
+                  "https://openalex.org/I157485424",
+                  "https://openalex.org/I58716616"
+                ]
+              }
+            ]
+          },
+          {
+            "author_position": "middle",
+            "author": {
+              "id": "https://openalex.org/A5031854438",
+              "display_name": "Sang Cheol Kil",
+              "orcid": "https://orcid.org/0000-0002-6012-7228",
+              "observed_orcids": [
+                "https://orcid.org/0000-0002-6012-7228"
+              ]
+            },
+            "institutions": [
+              {
+                "id": "https://openalex.org/I157485424",
+                "display_name": "Korea Advanced Institute of Science and Technology",
+                "ror": "https://ror.org/05apxxy63",
+                "country_code": "KR",
+                "type": "education",
+                "lineage": [
+                  "https://openalex.org/I157485424"
+                ]
+              }
+            ],
+            "countries": [
+              "KR"
+            ],
+            "is_corresponding": false,
+            "raw_author_name": "Sang Kil Cha",
+            "raw_affiliation_strings": [
+              "KAIST, Daejeon, Korea",
+              "NAVER CORPORATION"
+            ],
+            "raw_orcid": "https://orcid.org/0000-0002-6012-7228",
+            "affiliations": [
+              {
+                "raw_affiliation_string": "KAIST, Daejeon, Korea",
+                "institution_ids": [
+                  "https://openalex.org/I157485424"
+                ]
+              },
+              {
+                "raw_affiliation_string": "NAVER CORPORATION",
+                "institution_ids": []
+              }
+            ]
+          },
+          {
+            "author_position": "middle",
+            "author": {
+              "id": "https://openalex.org/A5044975798",
+              "display_name": "Manuel Egele",
+              "orcid": "https://orcid.org/0000-0001-5038-2682",
+              "observed_orcids": [
+                "https://orcid.org/0000-0001-5038-2682"
+              ]
+            },
+            "institutions": [
+              {
+                "id": "https://openalex.org/I111088046",
+                "display_name": "Boston University",
+                "ror": "https://ror.org/05qwgg493",
+                "country_code": "US",
+                "type": "education",
+                "lineage": [
+                  "https://openalex.org/I111088046"
+                ]
+              }
+            ],
+            "countries": [
+              "US"
+            ],
+            "is_corresponding": false,
+            "raw_author_name": "Manuel Egele",
+            "raw_affiliation_strings": [
+              "Boston University, Boston, MA, USA",
+              "Boston Univ"
+            ],
+            "raw_orcid": null,
+            "affiliations": [
+              {
+                "raw_affiliation_string": "Boston University, Boston, MA, USA",
+                "institution_ids": [
+                  "https://openalex.org/I111088046"
+                ]
+              },
+              {
+                "raw_affiliation_string": "Boston Univ",
+                "institution_ids": []
+              }
+            ]
+          },
+          {
+            "author_position": "middle",
+            "author": {
+              "id": "https://openalex.org/A5061771254",
+              "display_name": "Edward J. Schwartz",
+              "orcid": "https://orcid.org/0000-0003-0094-4805",
+              "observed_orcids": [
+                "https://orcid.org/0000-0003-0094-4805"
+              ]
+            },
+            "institutions": [
+              {
+                "id": "https://openalex.org/I114772536",
+                "display_name": "Software Engineering Institute",
+                "ror": "https://ror.org/01xqjjn94",
+                "country_code": "US",
+                "type": "facility",
+                "lineage": [
+                  "https://openalex.org/I114772536",
+                  "https://openalex.org/I74973139"
+                ]
+              },
+              {
+                "id": "https://openalex.org/I74973139",
+                "display_name": "Carnegie Mellon University",
+                "ror": "https://ror.org/05x2bcf33",
+                "country_code": "US",
+                "type": "education",
+                "lineage": [
+                  "https://openalex.org/I74973139"
+                ]
+              }
+            ],
+            "countries": [
+              "US"
+            ],
+            "is_corresponding": false,
+            "raw_author_name": "Edward J. Schwartz",
+            "raw_affiliation_strings": [
+              "Software Engineering Institute, Carnegie Mellon University, Pittsburgh, PA, USA",
+              "Carnegie Mellon University"
+            ],
+            "raw_orcid": "https://orcid.org/0000-0003-0094-4805",
+            "affiliations": [
+              {
+                "raw_affiliation_string": "Software Engineering Institute, Carnegie Mellon University, Pittsburgh, PA, USA",
+                "institution_ids": [
+                  "https://openalex.org/I114772536",
+                  "https://openalex.org/I74973139"
+                ]
+              },
+              {
+                "raw_affiliation_string": "Carnegie Mellon University",
+                "institution_ids": [
+                  "https://openalex.org/I74973139"
+                ]
+              }
+            ]
+          },
+          {
+            "author_position": "last",
+            "author": {
+              "id": "https://openalex.org/A5006792030",
+              "display_name": "Maverick Woo",
+              "orcid": "https://orcid.org/0000-0002-0237-444X",
+              "observed_orcids": [
+                "https://orcid.org/0000-0002-0237-444X"
+              ]
+            },
+            "institutions": [
+              {
+                "id": "https://openalex.org/I74973139",
+                "display_name": "Carnegie Mellon University",
+                "ror": "https://ror.org/05x2bcf33",
+                "country_code": "US",
+                "type": "education",
+                "lineage": [
+                  "https://openalex.org/I74973139"
+                ]
+              }
+            ],
+            "countries": [
+              "US"
+            ],
+            "is_corresponding": false,
+            "raw_author_name": "Maverick Woo",
+            "raw_affiliation_strings": [
+              "Carnegie Mellon University, Pittsburgh, PA, USA",
+              "Carnegie Mellon University"
+            ],
+            "raw_orcid": "https://orcid.org/0000-0002-0237-444X",
+            "affiliations": [
+              {
+                "raw_affiliation_string": "Carnegie Mellon University, Pittsburgh, PA, USA",
+                "institution_ids": [
+                  "https://openalex.org/I74973139"
+                ]
+              },
+              {
+                "raw_affiliation_string": "Carnegie Mellon University",
+                "institution_ids": [
+                  "https://openalex.org/I74973139"
+                ]
+              }
+            ]
+          }
+        ],
+        "institutions": [],
+        "countries_distinct_count": 2,
+        "institutions_distinct_count": 6,
+        "corresponding_author_ids": [],
+        "corresponding_institution_ids": [],
+        "apc_list": {
+          "value": 2045,
+          "currency": "USD",
+          "value_usd": 2045
+        },
+        "apc_paid": null,
+        "fwci": 82.0281,
+        "has_fulltext": true,
+        "cited_by_count": 564,
+        "citation_normalized_percentile": {
+          "value": 1.0,
+          "is_in_top_1_percent": true,
+          "is_in_top_10_percent": true
+        },
+        "cited_by_percentile_year": {
+          "min": 99,
+          "max": 100
+        },
+        "biblio": {
+          "volume": "47",
+          "issue": "11",
+          "first_page": "2312",
+          "last_page": "2331"
+        },
+        "is_retracted": false,
+        "is_paratext": false,
+        "is_xpac": false,
+        "primary_topic": {
+          "id": "https://openalex.org/T10743",
+          "display_name": "Software Testing and Debugging Techniques",
+          "score": 0.9998999834060669,
+          "subfield": {
+            "id": "https://openalex.org/subfields/1712",
+            "display_name": "Software"
+          },
+          "field": {
+            "id": "https://openalex.org/fields/17",
+            "display_name": "Computer Science"
+          },
+          "domain": {
+            "id": "https://openalex.org/domains/3",
+            "display_name": "Physical Sciences"
+          }
+        },
+        "topics": [
+          {
+            "id": "https://openalex.org/T10743",
+            "display_name": "Software Testing and Debugging Techniques",
+            "score": 0.9998999834060669,
+            "subfield": {
+              "id": "https://openalex.org/subfields/1712",
+              "display_name": "Software"
+            },
+            "field": {
+              "id": "https://openalex.org/fields/17",
+              "display_name": "Computer Science"
+            },
+            "domain": {
+              "id": "https://openalex.org/domains/3",
+              "display_name": "Physical Sciences"
+            }
+          },
+          {
+            "id": "https://openalex.org/T11241",
+            "display_name": "Advanced Malware Detection Techniques",
+            "score": 0.9997000098228455,
+            "subfield": {
+              "id": "https://openalex.org/subfields/1711",
+              "display_name": "Signal Processing"
+            },
+            "field": {
+              "id": "https://openalex.org/fields/17",
+              "display_name": "Computer Science"
+            },
+            "domain": {
+              "id": "https://openalex.org/domains/3",
+              "display_name": "Physical Sciences"
+            }
+          },
+          {
+            "id": "https://openalex.org/T10260",
+            "display_name": "Software Engineering Research",
+            "score": 0.9991999864578247,
+            "subfield": {
+              "id": "https://openalex.org/subfields/1710",
+              "display_name": "Information Systems"
+            },
+            "field": {
+              "id": "https://openalex.org/fields/17",
+              "display_name": "Computer Science"
+            },
+            "domain": {
+              "id": "https://openalex.org/domains/3",
+              "display_name": "Physical Sciences"
+            }
+          }
+        ],
+        "keywords": [
+          {
+            "id": "https://openalex.org/keywords/fuzz-testing",
+            "display_name": "Fuzz testing",
+            "score": 0.9964092969894409
+          },
+          {
+            "id": "https://openalex.org/keywords/computer-science",
+            "display_name": "Computer science",
+            "score": 0.7315666079521179
+          },
+          {
+            "id": "https://openalex.org/keywords/software-engineering",
+            "display_name": "Software engineering",
+            "score": 0.48415833711624146
+          },
+          {
+            "id": "https://openalex.org/keywords/process",
+            "display_name": "Process (computing)",
+            "score": 0.41599732637405396
+          },
+          {
+            "id": "https://openalex.org/keywords/data-science",
+            "display_name": "Data science",
+            "score": 0.4014233350753784
+          },
+          {
+            "id": "https://openalex.org/keywords/software",
+            "display_name": "Software",
+            "score": 0.3699803948402405
+          },
+          {
+            "id": "https://openalex.org/keywords/programming-language",
+            "display_name": "Programming language",
+            "score": 0.08421912789344788
+          }
+        ],
+        "concepts": [
+          {
+            "id": "https://openalex.org/C111065885",
+            "wikidata": "https://www.wikidata.org/wiki/Q1189053",
+            "display_name": "Fuzz testing",
+            "level": 3,
+            "score": 0.9964092969894409
+          },
+          {
+            "id": "https://openalex.org/C41008148",
+            "wikidata": "https://www.wikidata.org/wiki/Q21198",
+            "display_name": "Computer science",
+            "level": 0,
+            "score": 0.7315666079521179
+          },
+          {
+            "id": "https://openalex.org/C115903868",
+            "wikidata": "https://www.wikidata.org/wiki/Q80993",
+            "display_name": "Software engineering",
+            "level": 1,
+            "score": 0.48415833711624146
+          },
+          {
+            "id": "https://openalex.org/C98045186",
+            "wikidata": "https://www.wikidata.org/wiki/Q205663",
+            "display_name": "Process (computing)",
+            "level": 2,
+            "score": 0.41599732637405396
+          },
+          {
+            "id": "https://openalex.org/C2522767166",
+            "wikidata": "https://www.wikidata.org/wiki/Q2374463",
+            "display_name": "Data science",
+            "level": 1,
+            "score": 0.4014233350753784
+          },
+          {
+            "id": "https://openalex.org/C2777904410",
+            "wikidata": "https://www.wikidata.org/wiki/Q7397",
+            "display_name": "Software",
+            "level": 2,
+            "score": 0.3699803948402405
+          },
+          {
+            "id": "https://openalex.org/C199360897",
+            "wikidata": "https://www.wikidata.org/wiki/Q9143",
+            "display_name": "Programming language",
+            "level": 1,
+            "score": 0.08421912789344788
+          }
+        ],
+        "mesh": [],
+        "locations_count": 4,
+        "locations": [
+          {
+            "id": "doi:10.1109/tse.2019.2946563",
+            "is_oa": false,
+            "landing_page_url": "https://doi.org/10.1109/tse.2019.2946563",
+            "pdf_url": null,
+            "source": {
+              "id": "https://openalex.org/S8351582",
+              "display_name": "IEEE Transactions on Software Engineering",
+              "issn_l": "0098-5589",
+              "issn": [
+                "0098-5589",
+                "1939-3520",
+                "2326-3881"
+              ],
+              "is_oa": false,
+              "is_in_doaj": false,
+              "is_core": true,
+              "listed_in": [
+                "cwts-core",
+                "jufo-3",
+                "norway-2"
+              ],
+              "host_organization": "https://openalex.org/P4310320439",
+              "host_organization_name": "IEEE Computer Society",
+              "host_organization_lineage": [
+                "https://openalex.org/P4310320439",
+                "https://openalex.org/P4310319808"
+              ],
+              "host_organization_lineage_names": [
+                "IEEE Computer Society",
+                "Institute of Electrical and Electronics Engineers"
+              ],
+              "type": "journal"
+            },
+            "license": null,
+            "license_id": null,
+            "version": "publishedVersion",
+            "is_accepted": true,
+            "is_published": true,
+            "raw_source_name": "IEEE Transactions on Software Engineering",
+            "raw_type": "journal-article"
+          },
+          {
+            "id": "pmh:oai:arXiv.org:1812.00140",
+            "is_oa": true,
+            "landing_page_url": "http://arxiv.org/abs/1812.00140",
+            "pdf_url": "https://arxiv.org/pdf/1812.00140",
+            "source": {
+              "id": "https://openalex.org/S4306400194",
+              "display_name": "arXiv (Cornell University)",
+              "issn_l": "2331-8422",
+              "issn": [
+                "2331-8422"
+              ],
+              "is_oa": true,
+              "is_in_doaj": false,
+              "is_core": false,
+              "listed_in": [],
+              "host_organization": "https://openalex.org/I205783295",
+              "host_organization_name": "Cornell University",
+              "host_organization_lineage": [
+                "https://openalex.org/I205783295"
+              ],
+              "host_organization_lineage_names": [],
+              "type": "repository"
+            },
+            "license": null,
+            "license_id": null,
+            "version": "submittedVersion",
+            "is_accepted": false,
+            "is_published": false,
+            "raw_source_name": null,
+            "raw_type": "text"
+          },
+          {
+            "id": "mag:2928702109",
+            "is_oa": true,
+            "landing_page_url": "http://export.arxiv.org/pdf/1812.00140",
+            "pdf_url": null,
+            "source": {
+              "id": "https://openalex.org/S4306400194",
+              "display_name": "arXiv (Cornell University)",
+              "issn_l": "2331-8422",
+              "issn": [
+                "2331-8422"
+              ],
+              "is_oa": true,
+              "is_in_doaj": false,
+              "is_core": false,
+              "listed_in": [],
+              "host_organization": "https://openalex.org/I205783295",
+              "host_organization_name": "Cornell University",
+              "host_organization_lineage": [
+                "https://openalex.org/I205783295"
+              ],
+              "host_organization_lineage_names": [],
+              "type": "repository"
+            },
+            "license": null,
+            "license_id": null,
+            "version": "submittedVersion",
+            "is_accepted": false,
+            "is_published": false,
+            "raw_source_name": "arXiv (Cornell University)",
+            "raw_type": null
+          },
+          {
+            "id": "doi:10.48550/arxiv.1812.00140",
+            "is_oa": true,
+            "landing_page_url": "https://doi.org/10.48550/arxiv.1812.00140",
+            "pdf_url": null,
+            "source": {
+              "id": "https://openalex.org/S4306400194",
+              "display_name": "arXiv (Cornell University)",
+              "issn_l": "2331-8422",
+              "issn": [
+                "2331-8422"
+              ],
+              "is_oa": true,
+              "is_in_doaj": false,
+              "is_core": false,
+              "listed_in": [],
+              "host_organization": "https://openalex.org/I205783295",
+              "host_organization_name": "Cornell University",
+              "host_organization_lineage": [
+                "https://openalex.org/I205783295"
+              ],
+              "host_organization_lineage_names": [],
+              "type": "repository"
+            },
+            "license": null,
+            "license_id": null,
+            "version": null,
+            "is_accepted": false,
+            "is_published": null,
+            "raw_source_name": null,
+            "raw_type": "Preprint"
+          }
+        ],
+        "best_oa_location": {
+          "id": "pmh:oai:arXiv.org:1812.00140",
+          "is_oa": true,
+          "landing_page_url": "http://arxiv.org/abs/1812.00140",
+          "pdf_url": "https://arxiv.org/pdf/1812.00140",
+          "source": {
+            "id": "https://openalex.org/S4306400194",
+            "display_name": "arXiv (Cornell University)",
+            "issn_l": "2331-8422",
+            "issn": [
+              "2331-8422"
+            ],
+            "is_oa": true,
+            "is_in_doaj": false,
+            "is_core": false,
+            "listed_in": [],
+            "host_organization": "https://openalex.org/I205783295",
+            "host_organization_name": "Cornell University",
+            "host_organization_lineage": [
+              "https://openalex.org/I205783295"
+            ],
+            "host_organization_lineage_names": [],
+            "type": "repository"
+          },
+          "license": null,
+          "license_id": null,
+          "version": "submittedVersion",
+          "is_accepted": false,
+          "is_published": false,
+          "raw_source_name": null,
+          "raw_type": "text"
+        },
+        "sustainable_development_goals": [
+          {
+            "id": "https://metadata.un.org/sdg/9",
+            "display_name": "Industry, innovation and infrastructure",
+            "score": 0.47999998927116394
+          }
+        ],
+        "x_sdgs": [],
+        "study_designs": [],
+        "awards": [],
+        "funders": [
+          {
+            "id": "https://openalex.org/F4320322923",
+            "display_name": "Siemens",
+            "ror": "https://ror.org/059mq0909"
+          }
+        ],
+        "has_content": {
+          "pdf": true,
+          "grobid_xml": true
+        },
+        "content_urls": {
+          "pdf": "https://content.openalex.org/works/W2928702109.pdf",
+          "grobid_xml": "https://content.openalex.org/works/W2928702109.grobid-xml"
+        },
+        "referenced_works_count": 224,
+        "referenced_works": [
+          "https://openalex.org/W109452506",
+          "https://openalex.org/W116656696",
+          "https://openalex.org/W133973414",
+          "https://openalex.org/W154245331",
+          "https://openalex.org/W157156687",
+          "https://openalex.org/W196342399",
+          "https://openalex.org/W248070422",
+          "https://openalex.org/W332253968",
+          "https://openalex.org/W614438062",
+          "https://openalex.org/W1431078357",
+          "https://openalex.org/W1506510492",
+          "https://openalex.org/W1507845365",
+          "https://openalex.org/W1512013758",
+          "https://openalex.org/W1522250664",
+          "https://openalex.org/W1531203382",
+          "https://openalex.org/W1546956568",
+          "https://openalex.org/W1688725932",
+          "https://openalex.org/W1710734607",
+          "https://openalex.org/W1769343819",
+          "https://openalex.org/W1816718056",
+          "https://openalex.org/W1861561811",
+          "https://openalex.org/W1878544538",
+          "https://openalex.org/W1884983968",
+          "https://openalex.org/W1964740600",
+          "https://openalex.org/W1966021031",
+          "https://openalex.org/W1970005004",
+          "https://openalex.org/W1976878954",
+          "https://openalex.org/W1976919795",
+          "https://openalex.org/W1978364288",
+          "https://openalex.org/W1979345446",
+          "https://openalex.org/W1984762903",
+          "https://openalex.org/W1988524530",
+          "https://openalex.org/W1998965451",
+          "https://openalex.org/W2000181257",
+          "https://openalex.org/W2000414759",
+          "https://openalex.org/W2002934700",
+          "https://openalex.org/W2005335403",
+          "https://openalex.org/W2009489720",
+          "https://openalex.org/W2012210872",
+          "https://openalex.org/W2015903771",
+          "https://openalex.org/W2025819261",
+          "https://openalex.org/W2036017480",
+          "https://openalex.org/W2036894992",
+          "https://openalex.org/W2036910349",
+          "https://openalex.org/W2049867480",
+          "https://openalex.org/W2052897520",
+          "https://openalex.org/W2053597677",
+          "https://openalex.org/W2057330156",
+          "https://openalex.org/W2058879737",
+          "https://openalex.org/W2065555413",
+          "https://openalex.org/W2065948900",
+          "https://openalex.org/W2069661885",
+          "https://openalex.org/W2071952624",
+          "https://openalex.org/W2076253536",
+          "https://openalex.org/W2094382938",
+          "https://openalex.org/W2096449544",
+          "https://openalex.org/W2098639318",
+          "https://openalex.org/W2101512909",
+          "https://openalex.org/W2101577935",
+          "https://openalex.org/W2102970979",
+          "https://openalex.org/W2104831091",
+          "https://openalex.org/W2107709519",
+          "https://openalex.org/W2109219878",
+          "https://openalex.org/W2109405521",
+          "https://openalex.org/W2110311336",
+          "https://openalex.org/W2111900492",
+          "https://openalex.org/W2113864883",
+          "https://openalex.org/W2114275288",
+          "https://openalex.org/W2114345296",
+          "https://openalex.org/W2114780348",
+          "https://openalex.org/W2115601816",
+          "https://openalex.org/W2115675703",
+          "https://openalex.org/W2118595631",
+          "https://openalex.org/W2119494620",
+          "https://openalex.org/W2120027538",
+          "https://openalex.org/W2122757982",
+          "https://openalex.org/W2123327468",
+          "https://openalex.org/W2124837944",
+          "https://openalex.org/W2128128820",
+          "https://openalex.org/W2128985333",
+          "https://openalex.org/W2129975948",
+          "https://openalex.org/W2134633067",
+          "https://openalex.org/W2135395375",
+          "https://openalex.org/W2136096788",
+          "https://openalex.org/W2137351629",
+          "https://openalex.org/W2137530017",
+          "https://openalex.org/W2137837392",
+          "https://openalex.org/W2138788987",
+          "https://openalex.org/W2140095007",
+          "https://openalex.org/W2140323279",
+          "https://openalex.org/W2140839850",
+          "https://openalex.org/W2140908857",
+          "https://openalex.org/W2142144161",
+          "https://openalex.org/W2145071552",
+          "https://openalex.org/W2149801502",
+          "https://openalex.org/W2149918819",
+          "https://openalex.org/W2153315398",
+          "https://openalex.org/W2153400751",
+          "https://openalex.org/W2155851497",
+          "https://openalex.org/W2155877593",
+          "https://openalex.org/W2155943969",
+          "https://openalex.org/W2156858199",
+          "https://openalex.org/W2158124716",
+          "https://openalex.org/W2158963586",
+          "https://openalex.org/W2159059513",
+          "https://openalex.org/W2164836255",
+          "https://openalex.org/W2166509025",
+          "https://openalex.org/W2170224888",
+          "https://openalex.org/W2247455710",
+          "https://openalex.org/W2249862487",
+          "https://openalex.org/W2293493339",
+          "https://openalex.org/W2295974667",
+          "https://openalex.org/W2383417445",
+          "https://openalex.org/W2399231848",
+          "https://openalex.org/W2405282478",
+          "https://openalex.org/W2414287720",
+          "https://openalex.org/W2495127127",
+          "https://openalex.org/W2499791918",
+          "https://openalex.org/W2515650212",
+          "https://openalex.org/W2517087431",
+          "https://openalex.org/W2519952770",
+          "https://openalex.org/W2532335977",
+          "https://openalex.org/W2534135179",
+          "https://openalex.org/W2535617737",
+          "https://openalex.org/W2550375157",
+          "https://openalex.org/W2550762816",
+          "https://openalex.org/W2571682498",
+          "https://openalex.org/W2574017551",
+          "https://openalex.org/W2583649498",
+          "https://openalex.org/W2612205004",
+          "https://openalex.org/W2613534458",
+          "https://openalex.org/W2616028256",
+          "https://openalex.org/W2618126787",
+          "https://openalex.org/W2619271281",
+          "https://openalex.org/W2670925489",
+          "https://openalex.org/W2701082322",
+          "https://openalex.org/W2701225458",
+          "https://openalex.org/W2740510556",
+          "https://openalex.org/W2740565296",
+          "https://openalex.org/W2741068848",
+          "https://openalex.org/W2751862727",
+          "https://openalex.org/W2753308995",
+          "https://openalex.org/W2757104921",
+          "https://openalex.org/W2765435026",
+          "https://openalex.org/W2765838743",
+          "https://openalex.org/W2766540688",
+          "https://openalex.org/W2766647240",
+          "https://openalex.org/W2766711930",
+          "https://openalex.org/W2767180444",
+          "https://openalex.org/W2767357513",
+          "https://openalex.org/W2768049211",
+          "https://openalex.org/W2782780792",
+          "https://openalex.org/W2791018263",
+          "https://openalex.org/W2792800398",
+          "https://openalex.org/W2794517102",
+          "https://openalex.org/W2794670092",
+          "https://openalex.org/W2795052548",
+          "https://openalex.org/W2795192879",
+          "https://openalex.org/W2806377938",
+          "https://openalex.org/W2806746626",
+          "https://openalex.org/W2865298191",
+          "https://openalex.org/W2888230423",
+          "https://openalex.org/W2888824816",
+          "https://openalex.org/W2888875512",
+          "https://openalex.org/W2888922197",
+          "https://openalex.org/W2891235722",
+          "https://openalex.org/W2898689050",
+          "https://openalex.org/W2899781671",
+          "https://openalex.org/W2947109320",
+          "https://openalex.org/W2947182139",
+          "https://openalex.org/W2947265301",
+          "https://openalex.org/W2947814692",
+          "https://openalex.org/W2963147982",
+          "https://openalex.org/W2963237187",
+          "https://openalex.org/W2963934162",
+          "https://openalex.org/W2964097210",
+          "https://openalex.org/W2964241064",
+          "https://openalex.org/W3010856131",
+          "https://openalex.org/W3104664063",
+          "https://openalex.org/W3140570045",
+          "https://openalex.org/W3142903977",
+          "https://openalex.org/W3151416809",
+          "https://openalex.org/W4230648425",
+          "https://openalex.org/W4231037075",
+          "https://openalex.org/W4231241365",
+          "https://openalex.org/W4237492309",
+          "https://openalex.org/W4239813889",
+          "https://openalex.org/W4240738830",
+          "https://openalex.org/W4246270964",
+          "https://openalex.org/W4251147200",
+          "https://openalex.org/W4285719527",
+          "https://openalex.org/W4301702567",
+          "https://openalex.org/W6604335577",
+          "https://openalex.org/W6606213487",
+          "https://openalex.org/W6606430823",
+          "https://openalex.org/W6608003788",
+          "https://openalex.org/W6619192471",
+          "https://openalex.org/W6628570494",
+          "https://openalex.org/W6630124987",
+          "https://openalex.org/W6630436094",
+          "https://openalex.org/W6631155369",
+          "https://openalex.org/W6631721891",
+          "https://openalex.org/W6637520226",
+          "https://openalex.org/W6637688222",
+          "https://openalex.org/W6638487575",
+          "https://openalex.org/W6639560864",
+          "https://openalex.org/W6667984497",
+          "https://openalex.org/W6675416627",
+          "https://openalex.org/W6676050319",
+          "https://openalex.org/W6682619475",
+          "https://openalex.org/W6682798926",
+          "https://openalex.org/W6684757631",
+          "https://openalex.org/W6696942718",
+          "https://openalex.org/W6712739088",
+          "https://openalex.org/W6713211458",
+          "https://openalex.org/W6729325818",
+          "https://openalex.org/W6730109064",
+          "https://openalex.org/W6741818149",
+          "https://openalex.org/W6743674107",
+          "https://openalex.org/W6743782076",
+          "https://openalex.org/W6753913213",
+          "https://openalex.org/W6754293714",
+          "https://openalex.org/W6996043511",
+          "https://openalex.org/W7039847649"
+        ],
+        "related_works": [
+          "https://openalex.org/W2902065464",
+          "https://openalex.org/W201012906",
+          "https://openalex.org/W2884894912",
+          "https://openalex.org/W2535386169",
+          "https://openalex.org/W2883476426",
+          "https://openalex.org/W2127907005",
+          "https://openalex.org/W2338196709",
+          "https://openalex.org/W1545536263",
+          "https://openalex.org/W2588792468",
+          "https://openalex.org/W2397219120",
+          "https://openalex.org/W3181041638",
+          "https://openalex.org/W2154225983",
+          "https://openalex.org/W2971166452",
+          "https://openalex.org/W1989021020",
+          "https://openalex.org/W2978700448",
+          "https://openalex.org/W3199288808",
+          "https://openalex.org/W2068364944",
+          "https://openalex.org/W3011050576",
+          "https://openalex.org/W2946936727",
+          "https://openalex.org/W2088356384"
+        ],
+        "abstract_inverted_index": {
+          "Among": [
+            0
+          ],
+          "the": [
+            1,
+            100,
+            119,
+            126,
+            138,
+            144
+          ],
+          "many": [
+            2
+          ],
+          "software": [
+            3,
+            31
+          ],
+          "testing": [
+            4
+          ],
+          "techniques": [
+            5
+          ],
+          "available": [
+            6
+          ],
+          "today,fuzzinghas": [
+            7
+          ],
+          "remained": [
+            8
+          ],
+          "highly": [
+            9
+          ],
+          "popular": [
+            10
+          ],
+          "due": [
+            11
+          ],
+          "to": [
+            12,
+            19,
+            39,
+            84,
+            99
+          ],
+          "its": [
+            13,
+            16,
+            22
+          ],
+          "conceptual": [
+            14
+          ],
+          "simplicity,": [
+            15
+          ],
+          "low": [
+            17
+          ],
+          "barrier": [
+            18
+          ],
+          "deployment,": [
+            20
+          ],
+          "and": [
+            21,
+            59,
+            66,
+            88,
+            96,
+            141,
+            147
+          ],
+          "vast": [
+            23,
+            101
+          ],
+          "amount": [
+            24
+          ],
+          "of": [
+            25,
+            42,
+            77,
+            91,
+            103,
+            112,
+            118,
+            132
+          ],
+          "empirical": [
+            26
+          ],
+          "evidence": [
+            27
+          ],
+          "in": [
+            28,
+            72,
+            143
+          ],
+          "discovering": [
+            29
+          ],
+          "real-world": [
+            30
+          ],
+          "vulnerabilities.": [
+            32
+          ],
+          "At": [
+            33
+          ],
+          "a": [
+            34,
+            40,
+            45,
+            64,
+            86,
+            108,
+            116
+          ],
+          "high": [
+            35
+          ],
+          "level,": [
+            36
+          ],
+          "fuzzing": [
+            37,
+            71,
+            113,
+            121
+          ],
+          "refers": [
+            38
+          ],
+          "process": [
+            41
+          ],
+          "repeatedly": [
+            43
+          ],
+          "running": [
+            44
+          ],
+          "program": [
+            46
+          ],
+          "with": [
+            47,
+            115
+          ],
+          "generated": [
+            48
+          ],
+          "inputs": [
+            49
+          ],
+          "that": [
+            50,
+            149
+          ],
+          "may": [
+            51
+          ],
+          "be": [
+            52
+          ],
+          "syntactically": [
+            53
+          ],
+          "or": [
+            54
+          ],
+          "semantically": [
+            55
+          ],
+          "malformed.": [
+            56
+          ],
+          "While": [
+            57
+          ],
+          "researchers": [
+            58
+          ],
+          "practitioners": [
+            60
+          ],
+          "alike": [
+            61
+          ],
+          "have": [
+            62
+          ],
+          "invested": [
+            63
+          ],
+          "large": [
+            65
+          ],
+          "diverse": [
+            67
+          ],
+          "effort": [
+            68
+          ],
+          "towards": [
+            69
+          ],
+          "improving": [
+            70
+          ],
+          "recent": [
+            73
+          ],
+          "years,": [
+            74
+          ],
+          "this": [
+            75,
+            105
+          ],
+          "surge": [
+            76
+          ],
+          "work": [
+            78
+          ],
+          "has": [
+            79
+          ],
+          "also": [
+            80
+          ],
+          "made": [
+            81
+          ],
+          "it": [
+            82
+          ],
+          "difficult": [
+            83
+          ],
+          "gain": [
+            85
+          ],
+          "comprehensive": [
+            87
+          ],
+          "coherent": [
+            89
+          ],
+          "view": [
+            90
+          ],
+          "fuzzing.": [
+            92
+          ],
+          "To": [
+            93
+          ],
+          "help": [
+            94
+          ],
+          "preserve": [
+            95
+          ],
+          "bring": [
+            97
+          ],
+          "coherence": [
+            98
+          ],
+          "literature": [
+            102,
+            140
+          ],
+          "fuzzing,": [
+            104
+          ],
+          "paper": [
+            106
+          ],
+          "presents": [
+            107
+          ],
+          "unified,": [
+            109
+          ],
+          "general-purpose": [
+            110
+          ],
+          "model": [
+            111,
+            134
+          ],
+          "together": [
+            114
+          ],
+          "taxonomy": [
+            117
+          ],
+          "current": [
+            120
+          ],
+          "literature.": [
+            122
+          ],
+          "We": [
+            123
+          ],
+          "methodically": [
+            124
+          ],
+          "explore": [
+            125
+          ],
+          "design": [
+            127
+          ],
+          "decisions": [
+            128
+          ],
+          "at": [
+            129
+          ],
+          "every": [
+            130
+          ],
+          "stage": [
+            131
+          ],
+          "our": [
+            133
+          ],
+          "fuzzer": [
+            135
+          ],
+          "by": [
+            136
+          ],
+          "surveying": [
+            137
+          ],
+          "related": [
+            139
+          ],
+          "innovations": [
+            142
+          ],
+          "art,": [
+            145
+          ],
+          "science,": [
+            146
+          ],
+          "engineering": [
+            148
+          ],
+          "make": [
+            150
+          ],
+          "modern-day": [
+            151
+          ],
+          "fuzzers": [
+            152
+          ],
+          "effective.": [
+            153
+          ]
+        },
+        "counts_by_year": [
+          {
+            "year": 2026,
+            "cited_by_count": 64
+          },
+          {
+            "year": 2025,
+            "cited_by_count": 107
+          },
+          {
+            "year": 2024,
+            "cited_by_count": 107
+          },
+          {
+            "year": 2023,
+            "cited_by_count": 110
+          },
+          {
+            "year": 2022,
+            "cited_by_count": 69
+          },
+          {
+            "year": 2021,
+            "cited_by_count": 55
+          },
+          {
+            "year": 2020,
+            "cited_by_count": 43
+          },
+          {
+            "year": 2019,
+            "cited_by_count": 9
+          }
+        ],
+        "updated_date": "2026-09-26T08:19:03.415552",
+        "created_date": "2025-10-10T00:00:00"
+      }
+    ],
+    "group_by": []
+  }
+}

@@ -3066,6 +3066,10 @@ static void run_config_log(const char *phase, const char *termination_reason) {
    * rule — without this field a run-config cannot tell whether the S2c
    * mutation operator was active. */
   json_object_object_add(j, "no_escape_amp", json_object_new_boolean(mut_no_escape_amp != 0));
+  json_object_object_add(j, "no_lexkill", json_object_new_boolean(mut_no_lexkill != 0));
+  json_object_object_add(j, "no_nestimb", json_object_new_boolean(mut_no_nestimb != 0));
+  json_object_object_add(j, "no_transportsat", json_object_new_boolean(mut_no_transportsat != 0));
+  json_object_object_add(j, "no_tunnelswitch", json_object_new_boolean(mut_no_tunnelswitch != 0));
   /* Calibration + two-tier admission parameters. */
   admission_json_add_f64(j, "cal_gamma", cal_gamma);
   admission_json_add_f64(j, "cal_epsilon", cal_epsilon);
@@ -11003,6 +11007,10 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
              "oracle_abstained_saved : %llu\n"
              "cve_mutations_applied : %llu\n"
              "escape_amp_applied    : %llu\n"
+             "lexkill_applied       : %llu\n"
+             "nestimb_applied       : %llu\n"
+             "transportsat_applied  : %llu\n"
+             "tunnelswitch_applied  : %llu\n"
              "auth_prefix_restores_havoc : %llu\n"
              "auth_prefix_calls : %llu\n"
              "auth_prefix_found : %llu\n"
@@ -11023,6 +11031,10 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps)
           (unsigned long long)oracle_abstained_saved,
           (unsigned long long)cve_mutations_applied,
           (unsigned long long)escape_amp_applied,
+          (unsigned long long)lexkill_applied,
+          (unsigned long long)nestimb_applied,
+          (unsigned long long)transportsat_applied,
+          (unsigned long long)tunnelswitch_applied,
           (unsigned long long)auth_prefix_restores_havoc,
           (unsigned long long)auth_prefix_calls,
           (unsigned long long)auth_prefix_found,
@@ -18737,6 +18749,22 @@ int main(int argc, char **argv)
   if (getenv("CHATAFL_NO_ESCAPE_AMP")) {
     mut_no_escape_amp = 1;
     OKF("ABLATION: S2c quote-internal escape-run amplifier DISABLED");
+  }
+  if (getenv("CHATAFL_NO_LEXKILL")) {
+    mut_no_lexkill = 1;
+    OKF("ABLATION: S12 lexer-killer token injection DISABLED");
+  }
+  if (getenv("CHATAFL_NO_NESTIMB")) {
+    mut_no_nestimb = 1;
+    OKF("ABLATION: S13 nesting-imbalance injection DISABLED");
+  }
+  if (getenv("CHATAFL_NO_TRANSPORTSAT")) {
+    mut_no_transportsat = 1;
+    OKF("ABLATION: S1b Transport parameter saturation DISABLED");
+  }
+  if (getenv("CHATAFL_NO_TUNNELSWITCH")) {
+    mut_no_tunnelswitch = 1;
+    OKF("ABLATION: S15 tunnel-switch append DISABLED");
   }
   /* Semantic-oracle sampling rate (default 1 = every execution).  The indexed
    * precise oracle is cheap; this is an optional safety valve for very slow

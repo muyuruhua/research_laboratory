@@ -19,6 +19,22 @@ uint32_t cve_mutations_applied = 0;
 int mut_no_escape_amp = 0;
 uint64_t escape_amp_applied = 0;
 
+/* S12 lexer-killer ablation switch (CHATAFL_NO_LEXKILL) + counter */
+int mut_no_lexkill = 0;
+uint64_t lexkill_applied = 0;
+
+/* S13 nesting-imbalance ablation switch (CHATAFL_NO_NESTIMB) + counter */
+int mut_no_nestimb = 0;
+uint64_t nestimb_applied = 0;
+
+/* S1b Transport saturation (CHATAFL_NO_TRANSPORTSAT) + counter */
+int mut_no_transportsat = 0;
+uint64_t transportsat_applied = 0;
+
+/* S15 tunnel-switch (CHATAFL_NO_TUNNELSWITCH) + counter */
+int mut_no_tunnelswitch = 0;
+uint64_t tunnelswitch_applied = 0;
+
 /* Weak default RNG; afl-fuzz.c and tests override with strong defs. */
 __attribute__((weak)) uint32_t mut_ur(uint32_t bound) {
   return bound ? (uint32_t)(rand() % bound) : 0;
@@ -206,6 +222,374 @@ int mut_marker_scan(const uint8_t *buf, uint32_t len, const char *proto) {
     return 0;
 }
 
+/* S2c/S11 shared body: quote-internal escape-run amplification.
+ * Escape-decode-mismatch bug class — parsers that consume "\X" as two
+ * bytes but store one keep consumed >> strlen(word), so lengths derived
+ * from (buflen - strlen(word)) overshoot the buffer on read (proftpd
+ * CVE-2023-51713, make_ftp_cmd OOB read). Amplification target
+ * [30KB, 60KB) is calibrated so the overshoot crosses an ASAN pool
+ * block boundary under CommandBufferSize 65535 (empirically 30000
+ * escapes fire, ~250 stay pool-invisible). Class-generic: random
+ * escape letters, no verb or buffer size hardcoded. Auth-prefixed
+ * lines (USER/PASS/ACCT/AUTH) are skipped — auth_prefix_protect would
+ * restore them, wasting the fire. */
+static uint8_t escape_amplify_apply(uint8_t *buf, uint32_t *len_ref,
+                                    uint32_t buf_cap) {
+    uint32_t len = *len_ref;
+    uint32_t cand_start[64], cand_stop[64];
+    int n_cand = 0;
+    uint32_t ls = 0;
+    while (ls < len && n_cand < 64) {
+        uint32_t le = ls;
+        while (le < len && buf[le] != '\n') le++;
+        uint32_t body_end = (le > ls && buf[le - 1] == '\r') ? le - 1 : le;
+        if (body_end > ls &&
+            !line_starts_with(buf, len, ls, "USER ") &&
+            !line_starts_with(buf, len, ls, "PASS ") &&
+            !line_starts_with(buf, len, ls, "ACCT ") &&
+            !line_starts_with(buf, len, ls, "AUTH ") &&
+            !line_starts_with(buf, len, ls, "EHLO ") &&
+            !line_starts_with(buf, len, ls, "HELO ")) {
+            cand_start[n_cand] = ls;
+            cand_stop[n_cand] = (le < len) ? le + 1 : len;
+            n_cand++;
+        }
+        ls = (le < len) ? le + 1 : len;
+    }
+    if (n_cand == 0) return 0;
+    {
+        int c = mut_ur(n_cand);
+        uint32_t line_start = cand_start[c];
+        uint32_t line_stop = cand_stop[c];
+        uint32_t target = 30720 + mut_ur(30720); /* [30K, 60K) */
+        uint32_t n_esc = (target > 6) ? (target - 6) / 2 : 0;
+        uint32_t new_len = len - (line_stop - line_start) + (n_esc * 2 + 6);
+        if (n_esc < 4096 || new_len >= buf_cap) return 0;
+        /* rebuild: prefix | '"' ('\X')*n '"' SP X CRLF | suffix */
+        uint8_t *tmp = (uint8_t *)malloc(new_len);
+        if (!tmp) return 0;
+        {
+            uint32_t o = 0, i;
+            memcpy(tmp + o, buf, line_start);
+            o += line_start;
+            tmp[o++] = '"';
+            for (i = 0; i < n_esc; i++) {
+                tmp[o++] = '\\';
+                tmp[o++] = (uint8_t)('A' + mut_ur(26));
+            }
+            tmp[o++] = '"';
+            tmp[o++] = ' ';
+            tmp[o++] = 'X';
+            tmp[o++] = '\r';
+            tmp[o++] = '\n';
+            memcpy(tmp + o, buf + line_stop, len - line_stop);
+            o += len - line_stop;
+            memcpy(buf, tmp, o);
+            free(tmp);
+            *len_ref = o;
+            cve_mutations_applied++;
+            escape_amp_applied++;
+            return 1;
+        }
+    }
+}
+
+/* S1b (2026-09-25): Transport parameter saturation.  Numeric fields in
+ * the RTSP/SIP Transport header (interleaved=, client_port=) are driven
+ * to type boundaries — negative values (the CVE-2026-38998 trigger uses
+ * interleaved=-1), zero, and 16/32-bit limits.  If no numeric param is
+ * present, ";interleaved=-1" is appended.  Bug class: signed/unsigned
+ * parameter validation gaps in transport parameter parsers
+ * (live555 CVE-2026-38998 heap-UAF, tcpReadHandler1). */
+static uint8_t transport_saturate(uint8_t *buf, uint32_t *len_ref,
+                                  uint32_t buf_cap) {
+    uint32_t len = *len_ref;
+    static const char *sat_values[] = {
+        "-1", "0", "65535", "65536", "2147483647", "4294967295"
+    };
+    const char *new_val = sat_values[mut_ur(6)];
+    uint32_t new_vlen = strlen(new_val);
+
+    /* find first Transport: header line */
+    uint32_t ls = 0;
+    while (ls < len) {
+        uint32_t le = ls;
+        while (le < len && buf[le] != '\n') le++;
+        uint32_t body_end = (le > ls && buf[le-1] == '\r') ? le - 1 : le;
+        if (body_end > ls + 10 &&
+            strncasecmp((char *)buf + ls, "Transport:", 10) == 0) {
+            uint32_t v = ls + 10;
+            while (v < body_end && buf[v] == ' ') v++;
+            /* scan for param=NUM inside the value */
+            uint32_t p = v;
+            while (p < body_end) {
+                if ((p == v || buf[p-1] == ';' || buf[p-1] == ' ') &&
+                    buf[p] != ';' && buf[p] != ' ' && buf[p] != '\r') {
+                    /* start of a param name; look for '=' */
+                    uint32_t q = p;
+                    while (q < body_end && buf[q] != '=' && buf[q] != ';')
+                        q++;
+                    if (q < body_end && buf[q] == '=') {
+                        /* found param=value; saturate the value */
+                        uint32_t vs = q + 1;
+                        uint32_t ve = vs;
+                        while (ve < body_end && buf[ve] != ';' &&
+                               buf[ve] != ' ' && buf[ve] != '\r')
+                            ve++;
+                        if (ve > vs) {
+                            /* replace [vs, ve) with new_val */
+                            uint32_t old_len = ve - vs;
+                            uint32_t new_len = len - old_len + new_vlen;
+                            if (new_len >= buf_cap) return 0;
+                            memmove(buf + vs + new_vlen, buf + ve,
+                                    len - ve);
+                            memcpy(buf + vs, new_val, new_vlen);
+                            *len_ref = new_len;
+                            cve_mutations_applied++;
+                            transportsat_applied++;
+                            return 1;
+                        }
+                    }
+                    p = q;
+                } else {
+                    p++;
+                }
+            }
+            /* no numeric param found — append ;interleaved=<sat> */
+            {
+                uint32_t add = 1 + 11 + new_vlen; /* ";interleaved=" + val */
+                uint32_t new_len = len + add;
+                if (new_len >= buf_cap) return 0;
+                uint32_t ins = body_end;
+                memmove(buf + ins + add, buf + ins, len - ins);
+                buf[ins] = ';';
+                memcpy(buf + ins + 1, "interleaved=", 12);
+                memcpy(buf + ins + 13, new_val, new_vlen);
+                *len_ref = new_len;
+                cve_mutations_applied++;
+                transportsat_applied++;
+                return 1;
+            }
+        }
+        ls = (le < len) ? le + 1 : len;
+    }
+    return 0;
+}
+
+/* S15 (2026-09-25): RTSP-over-HTTP tunnel-switch probe.  After an RTSP
+ * session is established (buffer contains Session: header), appends a
+ * POST request with x-sessioncookie — the HTTP-tunnel path that
+ * live555's testOnDemandRTSPServer accepts on the same TCP port.  This
+ * protocol-switch message is the final trigger component for
+ * CVE-2026-38998 (heap-UAF in tcpReadHandler1 via the alternative-byte
+ * handler when RTP-over-TCP data races the HTTP-tunnel POST). */
+static uint8_t tunnel_switch_append(uint8_t *buf, uint32_t *len_ref,
+                                    uint32_t buf_cap) {
+    uint32_t len = *len_ref;
+
+    /* precondition: buffer must contain a Session: header */
+    if (!memmem(buf, len, "Session:", 8)) return 0;
+
+    /* generate a random 16-hex cookie */
+    char cookie[17];
+    uint32_t i;
+    for (i = 0; i < 16; i++)
+        cookie[i] = "0123456789ABCDEF"[mut_ur(16)];
+    cookie[16] = 0;
+
+    static const char *paths[] = { "/index.html", "/x", "/", "/api" };
+    const char *path = paths[mut_ur(4)];
+
+    uint32_t add = snprintf(NULL, 0,
+        "POST %s HTTP/1.1\r\nx-sessioncookie: %s\r\n\r\n",
+        path, cookie);
+    uint32_t new_len = len + add;
+    if (new_len >= buf_cap) return 0;
+
+    snprintf((char *)buf + len, add + 1,
+             "POST %s HTTP/1.1\r\nx-sessioncookie: %s\r\n\r\n",
+             path, cookie);
+    *len_ref = new_len;
+    cve_mutations_applied++;
+    tunnelswitch_applied++;
+    return 1;
+}
+
+/* Expression-parameter-aware URI bounds for S12 (2026-09-26, option B):
+ * When the URI contains an "expression=" style query parameter (a parameter
+ * whose value feeds a secondary parser — SMARTPL, SPARQL, regex, filter),
+ * return the VALUE region of that parameter as the injection target.
+ * This targets secondary-parser endpoints without hardcoding any specific
+ * target: "expression-like parameters invoke deeper parsers" is a
+ * class-level property of web APIs.  Falls back to full URI bounds when
+ * no such parameter exists (original S12 behavior). */
+static int expression_param_bounds(const uint8_t *buf, uint32_t len,
+                                   uint32_t uri_lo, uint32_t uri_hi,
+                                   uint32_t *lo, uint32_t *hi) {
+    static const char *expr_keys[] = {
+        "expression=", "query=", "search=", "filter=", "where=", "match="
+    };
+    uint32_t n_keys = sizeof(expr_keys) / sizeof(expr_keys[0]);
+    uint32_t k;
+
+    for (k = 0; k < n_keys; k++) {
+        uint32_t klen = strlen(expr_keys[k]);
+        const uint8_t *hit = memmem(buf + uri_lo, uri_hi - uri_lo,
+                                    expr_keys[k], klen);
+        if (hit && hit + klen < buf + uri_hi) {
+            uint32_t v = (uint32_t)(hit - buf) + klen;
+            uint32_t ve = v;
+            while (ve < uri_hi && buf[ve] != '&' && buf[ve] != ' ' &&
+                   buf[ve] != '\r' && buf[ve] != '\n')
+                ve++;
+            if (ve > v + 4) {           /* value >= 5 bytes to be interesting */
+                *lo = v;
+                *hi = ve;
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+/* S12 (2026-09-24): lexer-killer token injection.  Bug class: lexer
+ * error-recovery recursion — lexers/parsers that enter recursive error
+ * recovery on malformed tokens never return and permanently wedge the
+ * worker (forked-daapd/owntone SMARTPL ANTLRv3 deadlock, verified 5/5
+ * single-request global DoS on the benchmark mirror; advisory draft
+ * 2026-09-20).  Poison injected at a random position of the request
+ * URI: a bare '?' mid-token, a non-ASCII byte (0x81), a long same-char
+ * run defeating bounded lookahead, and a trailing '?'. */
+static uint8_t lexkill_apply_uri(uint8_t *buf, uint32_t *len_ref,
+                                 uint32_t buf_cap,
+                                 uint32_t uri_lo, uint32_t uri_hi) {
+    uint32_t len = *len_ref;
+    uint32_t n_run, n_ins, new_len, pos, o;
+    uint8_t *tmp;
+
+    if (uri_hi <= uri_lo + 4 || uri_hi > len) return 0;
+    n_run = 24 + mut_ur(40);
+    n_ins = 2 + n_run + 1;                    /* '?' 0x81 i*n '?' */
+    new_len = len + n_ins;
+    if (new_len >= buf_cap) return 0;
+
+    pos = uri_lo + mut_ur(uri_hi - uri_lo);
+    tmp = (uint8_t *)malloc(new_len);
+    if (!tmp) return 0;
+    memcpy(tmp, buf, pos);
+    o = pos;
+    tmp[o++] = '?';
+    tmp[o++] = 0x81;
+    { uint32_t i; for (i = 0; i < n_run; i++) tmp[o++] = 'i'; }
+    tmp[o++] = '?';
+    memcpy(tmp + o, buf + pos, len - pos);
+    o += len - pos;
+    memcpy(buf, tmp, o);
+    free(tmp);
+    *len_ref = o;
+    cve_mutations_applied++;
+    lexkill_applied++;
+    return 1;
+}
+
+/* First request line's URI bounds: between space #1 and space #2 of the
+ * first line ("METHOD uri VER").  Returns 0 if not found/too short. */
+static int first_uri_bounds(const uint8_t *buf, uint32_t len,
+                            uint32_t *lo, uint32_t *hi) {
+    uint32_t le = 0, s1, s2;
+    while (le < len && buf[le] != '\n') le++;
+    if (le == 0) return 0;
+    s1 = 0;
+    while (s1 < le && buf[s1] != ' ') s1++;
+    if (s1 >= le) return 0;
+    s2 = s1 + 1;
+    while (s2 < le && buf[s2] != ' ' && buf[s2] != '\r') s2++;
+    if (s2 <= s1 + 5) return 0;
+    *lo = s1 + 1;
+    *hi = s2;
+    return 1;
+}
+
+/* Header-value bounds: first "Name: value" line with value >= 8 bytes
+ * (value runs from after ": " to EOL, CR stripped).  Feeds the same
+ * poison injector as URIs — quoted param values (Transport mode=),
+ * display names, address local-parts all live here. */
+static int header_value_bounds(const uint8_t *buf, uint32_t len,
+                               uint32_t *lo, uint32_t *hi) {
+    uint32_t ls = 0;
+    while (ls < len) {
+        uint32_t le = ls;
+        while (le < len && buf[le] != '\n') le++;
+        const uint8_t *colon = memchr(buf + ls, ':', le - ls);
+        if (colon && colon > buf + ls && colon < buf + le - 1) {
+            uint32_t v = (uint32_t)(colon - buf) + 1;
+            while (v < le && buf[v] == ' ') v++;
+            uint32_t vend = le;
+            if (vend > ls && buf[vend - 1] == '\r') vend--;
+            if (vend >= v + 8) { *lo = v; *hi = vend; return 1; }
+        }
+        ls = (le < len) ? le + 1 : len;
+    }
+    return 0;
+}
+
+/* S13 (2026-09-25): nesting-imbalance injection.  Bug class: parsers
+ * that recurse per nesting level or toggle quote-parity per escape —
+ * deep unbalanced structures drive stack overflow / state confusion.
+ * Shapes: '\"' x N (escape-parity attack), '"' x N (quote-parity),
+ * '([{' cycled x N (bracket ladder for recursive descent).  Aims at
+ * header values first, then request URIs, then any line >= 16 bytes. */
+static uint8_t nest_imbalance_apply(uint8_t *buf, uint32_t *len_ref,
+                                    uint32_t buf_cap) {
+    uint32_t len = *len_ref;
+    uint32_t lo = 0, hi = 0;
+    uint32_t n, new_len, pos, o, i, shape;
+    uint8_t *tmp;
+
+    if (!header_value_bounds(buf, len, &lo, &hi) &&
+        !first_uri_bounds(buf, len, &lo, &hi)) {
+        /* fallback: first line >= 16 bytes */
+        uint32_t ls = 0;
+        while (ls < len) {
+            uint32_t le = ls;
+            while (le < len && buf[le] != '\n') le++;
+            uint32_t vend = le;
+            if (vend > ls && buf[vend - 1] == '\r') vend--;
+            if (vend - ls >= 16) { lo = ls; hi = vend; break; }
+            ls = (le < len) ? le + 1 : len;
+        }
+    }
+    if (hi <= lo + 8) return 0;
+
+    n = 64 + mut_ur(448);                 /* [64, 512) */
+    shape = mut_ur(3);                    /* 0='\"'xN  1='"'xN  2='([{'xN */
+    new_len = len + 3 * n + 8;
+    if (new_len >= buf_cap) return 0;
+
+    pos = lo + mut_ur(hi - lo);
+    tmp = (uint8_t *)malloc(new_len);
+    if (!tmp) return 0;
+    memcpy(tmp, buf, pos);
+    o = pos;
+    if (shape == 0) {
+        for (i = 0; i < n; i++) { tmp[o++] = '\\'; tmp[o++] = '"'; }
+    } else if (shape == 1) {
+        for (i = 0; i < n; i++) tmp[o++] = '"';
+    } else {
+        for (i = 0; i < n; i++) {
+            tmp[o++] = '('; tmp[o++] = '['; tmp[o++] = '{';
+        }
+    }
+    memcpy(tmp + o, buf + pos, len - pos);
+    o += len - pos;
+    memcpy(buf, tmp, o);
+    free(tmp);
+    *len_ref = o;
+    cve_mutations_applied++;
+    nestimb_applied++;
+    return 1;
+}
+
 uint8_t cve_targeted_mutate(uint8_t *buf, uint32_t *len_ref,
                             uint32_t buf_cap, const char *proto) {
     if (!buf || !len_ref || !proto || *len_ref < 8) return 0;
@@ -346,68 +730,10 @@ uint8_t cve_targeted_mutate(uint8_t *buf, uint32_t *len_ref,
          * as two bytes but store one keep consumed >> strlen(word), so
          * lengths derived from (buflen - strlen(word)) overshoot the
          * buffer on read (proftpd CVE-2023-51713, make_ftp_cmd OOB
-         * read). Amplification target [30KB, 60KB) is calibrated so
-         * the overshoot crosses an ASAN pool-block boundary under
-         * CommandBufferSize 65535 (empirically 30000 escapes fire,
-         * ~250 stay pool-invisible). Class-generic: random escape
-         * letters, no verb or buffer size hardcoded. */
-        if (!mut_no_escape_amp) {
-            uint32_t cand_start[64], cand_stop[64];
-            int n_cand = 0;
-            uint32_t ls = 0;
-            while (ls < len && n_cand < 64) {
-                uint32_t le = ls;
-                while (le < len && buf[le] != '\n') le++;
-                uint32_t body_end = (le > ls && buf[le - 1] == '\r')
-                                        ? le - 1 : le;
-                if (body_end > ls &&
-                    !line_starts_with(buf, len, ls, "USER ") &&
-                    !line_starts_with(buf, len, ls, "PASS ") &&
-                    !line_starts_with(buf, len, ls, "ACCT ") &&
-                    !line_starts_with(buf, len, ls, "AUTH ")) {
-                    cand_start[n_cand] = ls;
-                    cand_stop[n_cand] = (le < len) ? le + 1 : len;
-                    n_cand++;
-                }
-                ls = (le < len) ? le + 1 : len;
-            }
-            if (n_cand > 0) {
-                int c = mut_ur(n_cand);
-                uint32_t line_start = cand_start[c];
-                uint32_t line_stop = cand_stop[c];
-                uint32_t target = 30720 + mut_ur(30720); /* [30K, 60K) */
-                uint32_t n_esc = (target > 6) ? (target - 6) / 2 : 0;
-                uint32_t new_len =
-                    len - (line_stop - line_start) + (n_esc * 2 + 6);
-                if (n_esc >= 4096 && new_len < buf_cap) {
-                    /* rebuild: prefix | '"' ('\X')*n '"' SP X CRLF | suffix */
-                    uint8_t *tmp = (uint8_t *)malloc(new_len);
-                    if (tmp) {
-                        uint32_t o = 0, i;
-                        memcpy(tmp + o, buf, line_start);
-                        o += line_start;
-                        tmp[o++] = '"';
-                        for (i = 0; i < n_esc; i++) {
-                            tmp[o++] = '\\';
-                            tmp[o++] = (uint8_t)('A' + mut_ur(26));
-                        }
-                        tmp[o++] = '"';
-                        tmp[o++] = ' ';
-                        tmp[o++] = 'X';
-                        tmp[o++] = '\r';
-                        tmp[o++] = '\n';
-                        memcpy(tmp + o, buf + line_stop, len - line_stop);
-                        o += len - line_stop;
-                        memcpy(buf, tmp, o);
-                        free(tmp);
-                        *len_ref = o;
-                        cve_mutations_applied++;
-                        escape_amp_applied++;
-                        return 1;
-                    }
-                }
-            }
-        }
+         * read). See escape_amplify_apply() for the shared body. */
+        if (!mut_no_escape_amp &&
+            escape_amplify_apply(buf, len_ref, buf_cap))
+            return 1;
     }
 
     /* ── SMTP strategies ── */
@@ -549,6 +875,18 @@ uint8_t cve_targeted_mutate(uint8_t *buf, uint32_t *len_ref,
 
     /* ── RTSP strategy ── */
     if (strcasecmp(proto, "RTSP") == 0) {
+        /* S1b: Transport parameter saturation (live555 CVE-2026-38998) */
+        if (!mut_no_transportsat && mut_ur(4) == 0) {
+            if (transport_saturate(buf, len_ref, buf_cap))
+                return 1;
+        }
+
+        /* S15: tunnel-switch append after session established */
+        if (!mut_no_tunnelswitch && mut_ur(4) == 0) {
+            if (tunnel_switch_append(buf, len_ref, buf_cap))
+                return 1;
+        }
+
         /* S4: Session token mutation (live555 CVE-2026-41470) */
         const char *sess_marker = "Session: ";
         for (uint32_t i = 0; i + 9 < len; i++) {
@@ -593,6 +931,25 @@ uint8_t cve_targeted_mutate(uint8_t *buf, uint32_t *len_ref,
                     path_end++;
                 if (path_end <= path_start || path_end >= len) continue;
 
+                /* S12 (lexer-killer): 25% split ahead of S10/S9 — those
+                 * strategies intercept every request-line engine hit
+                 * unconditionally, which would make a tail-positioned
+                 * S12 dead code for request-bearing buffers. */
+                if (!mut_no_lexkill && mut_ur(4) == 0) {
+                    /* Option B: prefer expression-param value region when
+                     * present, else full URI (original behavior) */
+                    uint32_t elo, ehi;
+                    if (expression_param_bounds(buf, len, path_start,
+                                                path_end, &elo, &ehi)) {
+                        if (lexkill_apply_uri(buf, len_ref, buf_cap,
+                                              elo, ehi))
+                            return 1;
+                    }
+                    if (lexkill_apply_uri(buf, len_ref, buf_cap,
+                                          path_start, path_end))
+                        return 1;
+                }
+
                 /* S10: query parameter omission (owntone CVE-2026-26829 —
                  * NULL-deref when a required query parameter is absent). */
                 uint8_t *qmark = memchr(buf + path_start, '?',
@@ -624,6 +981,61 @@ uint8_t cve_targeted_mutate(uint8_t *buf, uint32_t *len_ref,
                 *len_ref = len - old_plen + new_plen;
                 cve_mutations_applied++;
                 return 1;
+            }
+        }
+    }
+
+    /* ── S11 (2026-09-24): generalized escape-run amplification ────
+     * Extends the S2c bug-class operator (verified on proftpd
+     * CVE-2023-51713) to every text protocol with quoted-string
+     * grammar — SMTP (address/param quoting), RTSP (Transport/session
+     * params), SIP (display names), HTTP (header values), DAAP
+     * (query params). Exploratory: no known in-window target on these
+     * mirrors yet; the operator covers the class wherever a parser
+     * mis-accounts escape-decoded lengths. FTP is excluded here — its
+     * in-branch S2c already ran (ordered after S2a/S8). MQTT is a
+     * binary protocol with no quoted-string grammar. Shares the
+     * CHATAFL_NO_ESCAPE_AMP ablation switch and the
+     * escape_amp_applied counter with S2c. */
+    /* Tail strategies for text protocols (no MQTT).  S11 has no
+     * probability gate, so a fair 1/3 dice orders the three arms and
+     * each declines through to the next: S12-URI (SIP only, the
+     * HTTP/DAAP URIs already had their in-block chance) -> S12b
+     * header-value scope (Transport mode=, display names, address
+     * local-parts) -> S13 nesting imbalance -> S11 escape flood. */
+    if (strcasecmp(proto, "MQTT") != 0) {
+        int arm = (int)mut_ur(4);
+        int k;
+        for (k = 0; k < 4; k++) {
+            int a = (arm + k) % 4;
+            if (a == 0 && !mut_no_lexkill &&
+                strcasecmp(proto, "SIP") == 0) {
+                uint32_t ulo, uhi;
+                if (first_uri_bounds(buf, len, &ulo, &uhi)) {
+                    uint32_t elo, ehi;
+                    if (expression_param_bounds(buf, len, ulo, uhi,
+                                                &elo, &ehi)) {
+                        if (lexkill_apply_uri(buf, len_ref, buf_cap,
+                                              elo, ehi))
+                            return 1;
+                    }
+                    if (lexkill_apply_uri(buf, len_ref, buf_cap,
+                                          ulo, uhi))
+                        return 1;
+                }
+            } else if (a == 1 && !mut_no_lexkill) {
+                uint32_t hlo, hhi;
+                if (header_value_bounds(buf, len, &hlo, &hhi) &&
+                    lexkill_apply_uri(buf, len_ref, buf_cap, hlo, hhi))
+                    return 1;
+            } else if (a == 2 && !mut_no_nestimb) {
+                if (nest_imbalance_apply(buf, len_ref, buf_cap))
+                    return 1;
+            } else {
+                if (!mut_no_escape_amp &&
+                    strcasecmp(proto, "FTP") != 0 &&
+                    escape_amplify_apply(buf, len_ref, buf_cap))
+                    return 1;
             }
         }
     }

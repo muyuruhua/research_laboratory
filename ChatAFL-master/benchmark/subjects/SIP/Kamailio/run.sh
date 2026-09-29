@@ -42,10 +42,18 @@ if strstr "$FUZZER" "afl" || strstr "$FUZZER" "llm" || [ "$FUZZER" = "loopfuzz" 
         ${WORKDIR}/kamailio-basic.cfg > ${WORKDIR}/kamailio-tcp.cfg
     KAM_NET="-N tcp://127.0.0.1/5060"
     KAM_CFG="-f ${WORKDIR}/kamailio-tcp.cfg"
+    # Strip existing -t from OPTIONS (campaign_opts passes -t 5000+), then
+    # set the wider TCP-arm timeout — two -t flags make AFL abort with
+    # "Multiple -t options not supported" (fix 2026-09-26).
+    # Also strip -l (local source port): kamailio's UDP response routing
+    # uses it, but in TCP mode the fuzzer must NOT bind a fixed local port
+    # (two replicas would race for 5061 → "Unable to bind socket on
+    # local source port" abort, fix 2026-09-26).
+    OPTIONS=$(echo "$OPTIONS" | sed 's/-t [0-9]*+*//g; s/-l [0-9]*//g')
     KAM_EXTRA_TMO="-t 12000+"
     KAM_NODAEMON=""
   else
-    KAM_NET="-N udp://127.0.0.1:5060"
+    KAM_NET="-N udp://127.0.0.1/5060"
     KAM_CFG="-f ${WORKDIR}/kamailio-basic.cfg"
     KAM_EXTRA_TMO=""
     KAM_NODAEMON="-D"

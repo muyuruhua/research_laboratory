@@ -1,0 +1,4566 @@
+{
+  "url": "https://api.openalex.org/works?search=%22T-Scheduler%22&per-page=5",
+  "response": {
+    "meta": {
+      "count": 3061,
+      "db_response_time_ms": 1617,
+      "page": 1,
+      "per_page": 5,
+      "groups_count": null,
+      "x_query": {
+        "oql": "works where full text has (stemmed \"T-Scheduler\")",
+        "oqo": {
+          "get_rows": "works",
+          "filter_rows": [
+            {
+              "column_id": "fulltext.search",
+              "value": "\"T-Scheduler\"",
+              "operator": "has"
+            }
+          ]
+        },
+        "url": "/works?filter=fulltext.search:%22T-Scheduler%22&per_page=5"
+      },
+      "cost_usd": 0.001
+    },
+    "results": [
+      {
+        "id": "https://openalex.org/W2155677642",
+        "doi": null,
+        "title": "Note on Learning Rate Schedules for Stochastic Optimization",
+        "display_name": "Note on Learning Rate Schedules for Stochastic Optimization",
+        "relevance_score": 74.110146,
+        "publication_year": 1990,
+        "publication_date": "1990-10-01",
+        "ids": {
+          "openalex": "https://openalex.org/W2155677642",
+          "mag": "2155677642"
+        },
+        "language": "en",
+        "primary_location": {
+          "id": "mag:2155677642",
+          "is_oa": false,
+          "landing_page_url": "https://papers.nips.cc/paper/400-note-on-learning-rate-schedules-for-stochastic-optimization.pdf",
+          "pdf_url": null,
+          "source": {
+            "id": "https://openalex.org/S4306420609",
+            "display_name": "Neural Information Processing Systems",
+            "issn_l": null,
+            "issn": null,
+            "is_oa": false,
+            "is_in_doaj": false,
+            "is_core": false,
+            "listed_in": [],
+            "host_organization": null,
+            "host_organization_name": null,
+            "host_organization_lineage": [],
+            "host_organization_lineage_names": [],
+            "type": "conference"
+          },
+          "license": null,
+          "license_id": null,
+          "version": null,
+          "is_accepted": false,
+          "is_published": false,
+          "raw_source_name": "Neural Information Processing Systems",
+          "raw_type": null
+        },
+        "type": "article",
+        "indexed_in": [],
+        "open_access": {
+          "is_oa": false,
+          "oa_status": "closed",
+          "oa_url": null,
+          "any_repository_has_fulltext": false
+        },
+        "authorships": [
+          {
+            "author_position": "first",
+            "author": {
+              "id": "https://openalex.org/A5114126643",
+              "display_name": "Christian J. Darken",
+              "orcid": null,
+              "observed_orcids": []
+            },
+            "institutions": [
+              {
+                "id": "https://openalex.org/I32971472",
+                "display_name": "Yale University",
+                "ror": "https://ror.org/03v76x132",
+                "country_code": "US",
+                "type": "education",
+                "lineage": [
+                  "https://openalex.org/I32971472"
+                ]
+              }
+            ],
+            "countries": [
+              "US"
+            ],
+            "is_corresponding": false,
+            "raw_author_name": "Christian J. Darken",
+            "raw_affiliation_strings": [
+              "Yale Univ., New Haven, CT"
+            ],
+            "raw_orcid": null,
+            "affiliations": [
+              {
+                "raw_affiliation_string": "Yale Univ., New Haven, CT",
+                "institution_ids": [
+                  "https://openalex.org/I32971472"
+                ]
+              }
+            ]
+          },
+          {
+            "author_position": "last",
+            "author": {
+              "id": "https://openalex.org/A5056861449",
+              "display_name": "John E. Moody",
+              "orcid": null,
+              "observed_orcids": []
+            },
+            "institutions": [
+              {
+                "id": "https://openalex.org/I32971472",
+                "display_name": "Yale University",
+                "ror": "https://ror.org/03v76x132",
+                "country_code": "US",
+                "type": "education",
+                "lineage": [
+                  "https://openalex.org/I32971472"
+                ]
+              }
+            ],
+            "countries": [
+              "US"
+            ],
+            "is_corresponding": false,
+            "raw_author_name": "John Moody",
+            "raw_affiliation_strings": [
+              "Yale Univ., New Haven, CT"
+            ],
+            "raw_orcid": null,
+            "affiliations": [
+              {
+                "raw_affiliation_string": "Yale Univ., New Haven, CT",
+                "institution_ids": [
+                  "https://openalex.org/I32971472"
+                ]
+              }
+            ]
+          }
+        ],
+        "institutions": [],
+        "countries_distinct_count": 1,
+        "institutions_distinct_count": 1,
+        "corresponding_author_ids": [],
+        "corresponding_institution_ids": [
+          "https://openalex.org/I32971472"
+        ],
+        "apc_list": null,
+        "apc_paid": null,
+        "fwci": 2.0949,
+        "has_fulltext": false,
+        "cited_by_count": 134,
+        "citation_normalized_percentile": {
+          "value": 0.8952568,
+          "is_in_top_1_percent": false,
+          "is_in_top_10_percent": false
+        },
+        "cited_by_percentile_year": {
+          "min": 89,
+          "max": 99
+        },
+        "biblio": {
+          "volume": "3",
+          "issue": null,
+          "first_page": "832",
+          "last_page": "838"
+        },
+        "is_retracted": false,
+        "is_paratext": false,
+        "is_xpac": false,
+        "primary_topic": {
+          "id": "https://openalex.org/T11612",
+          "display_name": "Stochastic Gradient Optimization Techniques",
+          "score": 0.9998999834060669,
+          "subfield": {
+            "id": "https://openalex.org/subfields/1702",
+            "display_name": "Artificial Intelligence"
+          },
+          "field": {
+            "id": "https://openalex.org/fields/17",
+            "display_name": "Computer Science"
+          },
+          "domain": {
+            "id": "https://openalex.org/domains/3",
+            "display_name": "Physical Sciences"
+          }
+        },
+        "topics": [
+          {
+            "id": "https://openalex.org/T11612",
+            "display_name": "Stochastic Gradient Optimization Techniques",
+            "score": 0.9998999834060669,
+            "subfield": {
+              "id": "https://openalex.org/subfields/1702",
+              "display_name": "Artificial Intelligence"
+            },
+            "field": {
+              "id": "https://openalex.org/fields/17",
+              "display_name": "Computer Science"
+            },
+            "domain": {
+              "id": "https://openalex.org/domains/3",
+              "display_name": "Physical Sciences"
+            }
+          },
+          {
+            "id": "https://openalex.org/T10320",
+            "display_name": "Neural Networks and Applications",
+            "score": 0.996399998664856,
+            "subfield": {
+              "id": "https://openalex.org/subfields/1702",
+              "display_name": "Artificial Intelligence"
+            },
+            "field": {
+              "id": "https://openalex.org/fields/17",
+              "display_name": "Computer Science"
+            },
+            "domain": {
+              "id": "https://openalex.org/domains/3",
+              "display_name": "Physical Sciences"
+            }
+          },
+          {
+            "id": "https://openalex.org/T10057",
+            "display_name": "Face and Expression Recognition",
+            "score": 0.9947999715805054,
+            "subfield": {
+              "id": "https://openalex.org/subfields/1707",
+              "display_name": "Computer Vision and Pattern Recognition"
+            },
+            "field": {
+              "id": "https://openalex.org/fields/17",
+              "display_name": "Computer Science"
+            },
+            "domain": {
+              "id": "https://openalex.org/domains/3",
+              "display_name": "Physical Sciences"
+            }
+          }
+        ],
+        "keywords": [
+          {
+            "id": "https://openalex.org/keywords/backpropagation",
+            "display_name": "Backpropagation",
+            "score": 0.7266802191734314
+          },
+          {
+            "id": "https://openalex.org/keywords/computer-science",
+            "display_name": "Computer science",
+            "score": 0.6958546042442322
+          },
+          {
+            "id": "https://openalex.org/keywords/stochastic-gradient-descent",
+            "display_name": "Stochastic gradient descent",
+            "score": 0.6167672276496887
+          },
+          {
+            "id": "https://openalex.org/keywords/convergence",
+            "display_name": "Convergence (economics)",
+            "score": 0.5802284479141235
+          },
+          {
+            "id": "https://openalex.org/keywords/gradient-descent",
+            "display_name": "Gradient descent",
+            "score": 0.5670862197875977
+          },
+          {
+            "id": "https://openalex.org/keywords/cluster-analysis",
+            "display_name": "Cluster analysis",
+            "score": 0.5596621036529541
+          },
+          {
+            "id": "https://openalex.org/keywords/constant",
+            "display_name": "Constant (computer programming)",
+            "score": 0.5206198692321777
+          },
+          {
+            "id": "https://openalex.org/keywords/mathematical-optimization",
+            "display_name": "Mathematical optimization",
+            "score": 0.5111332535743713
+          },
+          {
+            "id": "https://openalex.org/keywords/rate-of-convergence",
+            "display_name": "Rate of convergence",
+            "score": 0.48533692955970764
+          },
+          {
+            "id": "https://openalex.org/keywords/descent",
+            "display_name": "Descent (aeronautics)",
+            "score": 0.44579318165779114
+          },
+          {
+            "id": "https://openalex.org/keywords/schedule",
+            "display_name": "Schedule",
+            "score": 0.42375749349594116
+          },
+          {
+            "id": "https://openalex.org/keywords/artificial-intelligence",
+            "display_name": "Artificial intelligence",
+            "score": 0.41493749618530273
+          },
+          {
+            "id": "https://openalex.org/keywords/artificial-neural-network",
+            "display_name": "Artificial neural network",
+            "score": 0.34611988067626953
+          },
+          {
+            "id": "https://openalex.org/keywords/mathematics",
+            "display_name": "Mathematics",
+            "score": 0.237242192029953
+          }
+        ],
+        "concepts": [
+          {
+            "id": "https://openalex.org/C155032097",
+            "wikidata": "https://www.wikidata.org/wiki/Q798503",
+            "display_name": "Backpropagation",
+            "level": 3,
+            "score": 0.7266802191734314
+          },
+          {
+            "id": "https://openalex.org/C41008148",
+            "wikidata": "https://www.wikidata.org/wiki/Q21198",
+            "display_name": "Computer science",
+            "level": 0,
+            "score": 0.6958546042442322
+          },
+          {
+            "id": "https://openalex.org/C206688291",
+            "wikidata": "https://www.wikidata.org/wiki/Q7617819",
+            "display_name": "Stochastic gradient descent",
+            "level": 3,
+            "score": 0.6167672276496887
+          },
+          {
+            "id": "https://openalex.org/C2777303404",
+            "wikidata": "https://www.wikidata.org/wiki/Q759757",
+            "display_name": "Convergence (economics)",
+            "level": 2,
+            "score": 0.5802284479141235
+          },
+          {
+            "id": "https://openalex.org/C153258448",
+            "wikidata": "https://www.wikidata.org/wiki/Q1199743",
+            "display_name": "Gradient descent",
+            "level": 3,
+            "score": 0.5670862197875977
+          },
+          {
+            "id": "https://openalex.org/C73555534",
+            "wikidata": "https://www.wikidata.org/wiki/Q622825",
+            "display_name": "Cluster analysis",
+            "level": 2,
+            "score": 0.5596621036529541
+          },
+          {
+            "id": "https://openalex.org/C2777027219",
+            "wikidata": "https://www.wikidata.org/wiki/Q1284190",
+            "display_name": "Constant (computer programming)",
+            "level": 2,
+            "score": 0.5206198692321777
+          },
+          {
+            "id": "https://openalex.org/C126255220",
+            "wikidata": "https://www.wikidata.org/wiki/Q141495",
+            "display_name": "Mathematical optimization",
+            "level": 1,
+            "score": 0.5111332535743713
+          },
+          {
+            "id": "https://openalex.org/C57869625",
+            "wikidata": "https://www.wikidata.org/wiki/Q1783502",
+            "display_name": "Rate of convergence",
+            "level": 3,
+            "score": 0.48533692955970764
+          },
+          {
+            "id": "https://openalex.org/C2776637919",
+            "wikidata": "https://www.wikidata.org/wiki/Q624380",
+            "display_name": "Descent (aeronautics)",
+            "level": 2,
+            "score": 0.44579318165779114
+          },
+          {
+            "id": "https://openalex.org/C68387754",
+            "wikidata": "https://www.wikidata.org/wiki/Q7271585",
+            "display_name": "Schedule",
+            "level": 2,
+            "score": 0.42375749349594116
+          },
+          {
+            "id": "https://openalex.org/C154945302",
+            "wikidata": "https://www.wikidata.org/wiki/Q11660",
+            "display_name": "Artificial intelligence",
+            "level": 1,
+            "score": 0.41493749618530273
+          },
+          {
+            "id": "https://openalex.org/C50644808",
+            "wikidata": "https://www.wikidata.org/wiki/Q192776",
+            "display_name": "Artificial neural network",
+            "level": 2,
+            "score": 0.34611988067626953
+          },
+          {
+            "id": "https://openalex.org/C33923547",
+            "wikidata": "https://www.wikidata.org/wiki/Q395",
+            "display_name": "Mathematics",
+            "level": 0,
+            "score": 0.237242192029953
+          },
+          {
+            "id": "https://openalex.org/C127162648",
+            "wikidata": "https://www.wikidata.org/wiki/Q16858953",
+            "display_name": "Channel (broadcasting)",
+            "level": 2,
+            "score": 0.0
+          },
+          {
+            "id": "https://openalex.org/C31258907",
+            "wikidata": "https://www.wikidata.org/wiki/Q1301371",
+            "display_name": "Computer network",
+            "level": 1,
+            "score": 0.0
+          },
+          {
+            "id": "https://openalex.org/C111919701",
+            "wikidata": "https://www.wikidata.org/wiki/Q9135",
+            "display_name": "Operating system",
+            "level": 1,
+            "score": 0.0
+          },
+          {
+            "id": "https://openalex.org/C50522688",
+            "wikidata": "https://www.wikidata.org/wiki/Q189833",
+            "display_name": "Economic growth",
+            "level": 1,
+            "score": 0.0
+          },
+          {
+            "id": "https://openalex.org/C199360897",
+            "wikidata": "https://www.wikidata.org/wiki/Q9143",
+            "display_name": "Programming language",
+            "level": 1,
+            "score": 0.0
+          },
+          {
+            "id": "https://openalex.org/C146978453",
+            "wikidata": "https://www.wikidata.org/wiki/Q3798668",
+            "display_name": "Aerospace engineering",
+            "level": 1,
+            "score": 0.0
+          },
+          {
+            "id": "https://openalex.org/C162324750",
+            "wikidata": "https://www.wikidata.org/wiki/Q8134",
+            "display_name": "Economics",
+            "level": 0,
+            "score": 0.0
+          },
+          {
+            "id": "https://openalex.org/C127413603",
+            "wikidata": "https://www.wikidata.org/wiki/Q11023",
+            "display_name": "Engineering",
+            "level": 0,
+            "score": 0.0
+          }
+        ],
+        "mesh": [],
+        "locations_count": 1,
+        "locations": [
+          {
+            "id": "mag:2155677642",
+            "is_oa": false,
+            "landing_page_url": "https://papers.nips.cc/paper/400-note-on-learning-rate-schedules-for-stochastic-optimization.pdf",
+            "pdf_url": null,
+            "source": {
+              "id": "https://openalex.org/S4306420609",
+              "display_name": "Neural Information Processing Systems",
+              "issn_l": null,
+              "issn": null,
+              "is_oa": false,
+              "is_in_doaj": false,
+              "is_core": false,
+              "listed_in": [],
+              "host_organization": null,
+              "host_organization_name": null,
+              "host_organization_lineage": [],
+              "host_organization_lineage_names": [],
+              "type": "conference"
+            },
+            "license": null,
+            "license_id": null,
+            "version": null,
+            "is_accepted": false,
+            "is_published": null,
+            "raw_source_name": "Neural Information Processing Systems",
+            "raw_type": null
+          }
+        ],
+        "best_oa_location": null,
+        "sustainable_development_goals": [],
+        "x_sdgs": [],
+        "study_designs": [],
+        "awards": [],
+        "funders": [],
+        "has_content": {
+          "grobid_xml": false,
+          "pdf": false
+        },
+        "content_urls": null,
+        "referenced_works_count": 5,
+        "referenced_works": [
+          "https://openalex.org/W1994616650",
+          "https://openalex.org/W1995643764",
+          "https://openalex.org/W2020246210",
+          "https://openalex.org/W2125812768",
+          "https://openalex.org/W2127218421"
+        ],
+        "related_works": [
+          "https://openalex.org/W2160208155",
+          "https://openalex.org/W1994616650",
+          "https://openalex.org/W2148141518",
+          "https://openalex.org/W2766736793",
+          "https://openalex.org/W2121863487",
+          "https://openalex.org/W6908809",
+          "https://openalex.org/W3029645440",
+          "https://openalex.org/W2534068475",
+          "https://openalex.org/W2124776405",
+          "https://openalex.org/W2083918846",
+          "https://openalex.org/W2024060531",
+          "https://openalex.org/W2020246210",
+          "https://openalex.org/W2137983211",
+          "https://openalex.org/W2087946919",
+          "https://openalex.org/W196761320",
+          "https://openalex.org/W2067619114",
+          "https://openalex.org/W2010581677",
+          "https://openalex.org/W1982370770",
+          "https://openalex.org/W1970789124",
+          "https://openalex.org/W1554663460"
+        ],
+        "abstract_inverted_index": {
+          "We": [
+            0,
+            25
+          ],
+          "present": [
+            1
+          ],
+          "and": [
+            2,
+            19,
+            35,
+            45
+          ],
+          "compare": [
+            3
+          ],
+          "learning": [
+            4
+          ],
+          "rate": [
+            5
+          ],
+          "schedules": [
+            6,
+            29,
+            39
+          ],
+          "for": [
+            7
+          ],
+          "stochastic": [
+            8
+          ],
+          "gradient": [
+            9
+          ],
+          "descent,": [
+            10
+          ],
+          "a": [
+            11
+          ],
+          "general": [
+            12
+          ],
+          "algorithm": [
+            13
+          ],
+          "which": [
+            14,
+            30
+          ],
+          "includes": [
+            15
+          ],
+          "LMS,": [
+            16
+          ],
+          "on-line": [
+            17
+          ],
+          "backpropagation": [
+            18
+          ],
+          "k-means": [
+            20
+          ],
+          "clustering": [
+            21
+          ],
+          "as": [
+            22
+          ],
+          "special": [
+            23
+          ],
+          "cases.": [
+            24
+          ],
+          "introduce": [
+            26
+          ],
+          "search-then-converge": [
+            27
+          ],
+          "type": [
+            28
+          ],
+          "outperform": [
+            31
+          ],
+          "the": [
+            32
+          ],
+          "classical": [
+            33
+          ],
+          "constant": [
+            34
+          ],
+          "running": [
+            36
+          ],
+          "average": [
+            37
+          ],
+          "(1/t)": [
+            38
+          ],
+          "both": [
+            40
+          ],
+          "in": [
+            41
+          ],
+          "speed": [
+            42
+          ],
+          "of": [
+            43,
+            47
+          ],
+          "convergence": [
+            44
+          ],
+          "quality": [
+            46
+          ],
+          "solution.": [
+            48
+          ]
+        },
+        "counts_by_year": [
+          {
+            "year": 2025,
+            "cited_by_count": 2
+          },
+          {
+            "year": 2024,
+            "cited_by_count": 1
+          },
+          {
+            "year": 2023,
+            "cited_by_count": 6
+          },
+          {
+            "year": 2022,
+            "cited_by_count": 3
+          },
+          {
+            "year": 2021,
+            "cited_by_count": 5
+          },
+          {
+            "year": 2020,
+            "cited_by_count": 7
+          },
+          {
+            "year": 2019,
+            "cited_by_count": 8
+          },
+          {
+            "year": 2018,
+            "cited_by_count": 6
+          },
+          {
+            "year": 2017,
+            "cited_by_count": 3
+          },
+          {
+            "year": 2016,
+            "cited_by_count": 3
+          },
+          {
+            "year": 2015,
+            "cited_by_count": 7
+          },
+          {
+            "year": 2014,
+            "cited_by_count": 2
+          },
+          {
+            "year": 2013,
+            "cited_by_count": 1
+          },
+          {
+            "year": 2012,
+            "cited_by_count": 2
+          }
+        ],
+        "updated_date": "2026-09-25T08:18:29.962427",
+        "created_date": "2025-10-10T00:00:00"
+      },
+      {
+        "id": "https://openalex.org/W2157671570",
+        "doi": "https://doi.org/10.1016/j.ejor.2009.04.007",
+        "title": "The single-machine total tardiness scheduling problem: Review and extensions",
+        "display_name": "The single-machine total tardiness scheduling problem: Review and extensions",
+        "relevance_score": 58.902416,
+        "publication_year": 2009,
+        "publication_date": "2009-04-25",
+        "ids": {
+          "openalex": "https://openalex.org/W2157671570",
+          "doi": "https://doi.org/10.1016/j.ejor.2009.04.007",
+          "mag": "2157671570"
+        },
+        "language": "en",
+        "primary_location": {
+          "id": "doi:10.1016/j.ejor.2009.04.007",
+          "is_oa": false,
+          "landing_page_url": "https://doi.org/10.1016/j.ejor.2009.04.007",
+          "pdf_url": null,
+          "source": {
+            "id": "https://openalex.org/S103321696",
+            "display_name": "European Journal of Operational Research",
+            "issn_l": "0377-2217",
+            "issn": [
+              "0377-2217",
+              "1872-6860"
+            ],
+            "is_oa": false,
+            "is_in_doaj": false,
+            "is_core": true,
+            "listed_in": [
+              "cwts-core",
+              "jufo-2",
+              "norway-2"
+            ],
+            "host_organization": "https://openalex.org/P4310320990",
+            "host_organization_name": "Elsevier BV",
+            "host_organization_lineage": [
+              "https://openalex.org/P4310320990"
+            ],
+            "host_organization_lineage_names": [
+              "Elsevier BV"
+            ],
+            "type": "journal"
+          },
+          "license": null,
+          "license_id": null,
+          "version": "publishedVersion",
+          "is_accepted": true,
+          "is_published": true,
+          "raw_source_name": "European Journal of Operational Research",
+          "raw_type": "journal-article"
+        },
+        "type": "article",
+        "indexed_in": [
+          "crossref"
+        ],
+        "open_access": {
+          "is_oa": false,
+          "oa_status": "closed",
+          "oa_url": null,
+          "any_repository_has_fulltext": false
+        },
+        "authorships": [
+          {
+            "author_position": "first",
+            "author": {
+              "id": "https://openalex.org/A5103093827",
+              "display_name": "CHRISTOS P. KOULAMAS",
+              "orcid": "https://orcid.org/0000-0003-2102-9462"
+            },
+            "institutions": [
+              {
+                "id": "https://openalex.org/I19700959",
+                "display_name": "Florida International University",
+                "ror": "https://ror.org/02gz6gg07",
+                "country_code": "US",
+                "type": "education",
+                "lineage": [
+                  "https://openalex.org/I19700959"
+                ]
+              },
+              {
+                "id": "https://openalex.org/I4210133369",
+                "display_name": "Decision Sciences (United States)",
+                "ror": "https://ror.org/03gcvf773",
+                "country_code": "US",
+                "type": "company",
+                "lineage": [
+                  "https://openalex.org/I4210133369"
+                ]
+              }
+            ],
+            "countries": [
+              "US"
+            ],
+            "is_corresponding": true,
+            "raw_author_name": "Christos Koulamas",
+            "raw_affiliation_strings": [
+              "College of Business Administration, Department of Decision Sciences and Information Systems, Florida International University, Miami, FL 33199, United States"
+            ],
+            "raw_orcid": null,
+            "affiliations": [
+              {
+                "raw_affiliation_string": "College of Business Administration, Department of Decision Sciences and Information Systems, Florida International University, Miami, FL 33199, United States",
+                "institution_ids": [
+                  "https://openalex.org/I19700959",
+                  "https://openalex.org/I4210133369"
+                ]
+              }
+            ]
+          }
+        ],
+        "institutions": [],
+        "countries_distinct_count": 1,
+        "institutions_distinct_count": 2,
+        "corresponding_author_ids": [
+          "https://openalex.org/A5103093827"
+        ],
+        "corresponding_institution_ids": [
+          "https://openalex.org/I19700959",
+          "https://openalex.org/I4210133369"
+        ],
+        "apc_list": {
+          "value": 3290,
+          "currency": "USD",
+          "value_usd": 3290
+        },
+        "apc_paid": null,
+        "fwci": 11.717,
+        "has_fulltext": false,
+        "cited_by_count": 108,
+        "citation_normalized_percentile": {
+          "value": 0.98240503,
+          "is_in_top_1_percent": false,
+          "is_in_top_10_percent": true
+        },
+        "cited_by_percentile_year": {
+          "min": 95,
+          "max": 100
+        },
+        "biblio": {
+          "volume": "202",
+          "issue": "1",
+          "first_page": "1",
+          "last_page": "7"
+        },
+        "is_retracted": false,
+        "is_paratext": false,
+        "is_xpac": false,
+        "primary_topic": {
+          "id": "https://openalex.org/T10551",
+          "display_name": "Scheduling and Optimization Algorithms",
+          "score": 0.9998000264167786,
+          "subfield": {
+            "id": "https://openalex.org/subfields/2209",
+            "display_name": "Industrial and Manufacturing Engineering"
+          },
+          "field": {
+            "id": "https://openalex.org/fields/22",
+            "display_name": "Engineering"
+          },
+          "domain": {
+            "id": "https://openalex.org/domains/3",
+            "display_name": "Physical Sciences"
+          }
+        },
+        "topics": [
+          {
+            "id": "https://openalex.org/T10551",
+            "display_name": "Scheduling and Optimization Algorithms",
+            "score": 0.9998000264167786,
+            "subfield": {
+              "id": "https://openalex.org/subfields/2209",
+              "display_name": "Industrial and Manufacturing Engineering"
+            },
+            "field": {
+              "id": "https://openalex.org/fields/22",
+              "display_name": "Engineering"
+            },
+            "domain": {
+              "id": "https://openalex.org/domains/3",
+              "display_name": "Physical Sciences"
+            }
+          },
+          {
+            "id": "https://openalex.org/T12288",
+            "display_name": "Optimization and Search Problems",
+            "score": 0.992900013923645,
+            "subfield": {
+              "id": "https://openalex.org/subfields/1705",
+              "display_name": "Computer Networks and Communications"
+            },
+            "field": {
+              "id": "https://openalex.org/fields/17",
+              "display_name": "Computer Science"
+            },
+            "domain": {
+              "id": "https://openalex.org/domains/3",
+              "display_name": "Physical Sciences"
+            }
+          },
+          {
+            "id": "https://openalex.org/T11814",
+            "display_name": "Advanced Manufacturing and Logistics Optimization",
+            "score": 0.9617999792098999,
+            "subfield": {
+              "id": "https://openalex.org/subfields/2209",
+              "display_name": "Industrial and Manufacturing Engineering"
+            },
+            "field": {
+              "id": "https://openalex.org/fields/22",
+              "display_name": "Engineering"
+            },
+            "domain": {
+              "id": "https://openalex.org/domains/3",
+              "display_name": "Physical Sciences"
+            }
+          }
+        ],
+        "keywords": [
+          {
+            "id": "https://openalex.org/keywords/tardiness",
+            "display_name": "Tardiness",
+            "score": 0.9479794502258301
+          },
+          {
+            "id": "https://openalex.org/keywords/mathematical-optimization",
+            "display_name": "Mathematical optimization",
+            "score": 0.6514434218406677
+          },
+          {
+            "id": "https://openalex.org/keywords/computer-science",
+            "display_name": "Computer science",
+            "score": 0.6490811109542847
+          },
+          {
+            "id": "https://openalex.org/keywords/single-machine-scheduling",
+            "display_name": "Single-machine scheduling",
+            "score": 0.6330026984214783
+          },
+          {
+            "id": "https://openalex.org/keywords/scheduling",
+            "display_name": "Scheduling (production processes)",
+            "score": 0.5795245170593262
+          },
+          {
+            "id": "https://openalex.org/keywords/job-shop-scheduling",
+            "display_name": "Job shop scheduling",
+            "score": 0.5382914543151855
+          },
+          {
+            "id": "https://openalex.org/keywords/heuristic",
+            "display_name": "Heuristic",
+            "score": 0.47419124841690063
+          },
+          {
+            "id": "https://openalex.org/keywords/due-date",
+            "display_name": "Due date",
+            "score": 0.4327557682991028
+          },
+          {
+            "id": "https://openalex.org/keywords/perspective",
+            "display_name": "Perspective (graphical)",
+            "score": 0.43184950947761536
+          },
+          {
+            "id": "https://openalex.org/keywords/mathematics",
+            "display_name": "Mathematics",
+            "score": 0.2779110372066498
+          },
+          {
+            "id": "https://openalex.org/keywords/artificial-intelligence",
+            "display_name": "Artificial intelligence",
+            "score": 0.13934090733528137
+          }
+        ],
+        "concepts": [
+          {
+            "id": "https://openalex.org/C2778047078",
+            "wikidata": "https://www.wikidata.org/wiki/Q82299449",
+            "display_name": "Tardiness",
+            "level": 4,
+            "score": 0.9479794502258301
+          },
+          {
+            "id": "https://openalex.org/C126255220",
+            "wikidata": "https://www.wikidata.org/wiki/Q141495",
+            "display_name": "Mathematical optimization",
+            "level": 1,
+            "score": 0.6514434218406677
+          },
+          {
+            "id": "https://openalex.org/C41008148",
+            "wikidata": "https://www.wikidata.org/wiki/Q21198",
+            "display_name": "Computer science",
+            "level": 0,
+            "score": 0.6490811109542847
+          },
+          {
+            "id": "https://openalex.org/C2780271269",
+            "wikidata": "https://www.wikidata.org/wiki/Q19295956",
+            "display_name": "Single-machine scheduling",
+            "level": 4,
+            "score": 0.6330026984214783
+          },
+          {
+            "id": "https://openalex.org/C206729178",
+            "wikidata": "https://www.wikidata.org/wiki/Q2271896",
+            "display_name": "Scheduling (production processes)",
+            "level": 2,
+            "score": 0.5795245170593262
+          },
+          {
+            "id": "https://openalex.org/C55416958",
+            "wikidata": "https://www.wikidata.org/wiki/Q6206757",
+            "display_name": "Job shop scheduling",
+            "level": 3,
+            "score": 0.5382914543151855
+          },
+          {
+            "id": "https://openalex.org/C173801870",
+            "wikidata": "https://www.wikidata.org/wiki/Q201413",
+            "display_name": "Heuristic",
+            "level": 2,
+            "score": 0.47419124841690063
+          },
+          {
+            "id": "https://openalex.org/C3019208289",
+            "wikidata": "https://www.wikidata.org/wiki/Q56612115",
+            "display_name": "Due date",
+            "level": 3,
+            "score": 0.4327557682991028
+          },
+          {
+            "id": "https://openalex.org/C12713177",
+            "wikidata": "https://www.wikidata.org/wiki/Q1900281",
+            "display_name": "Perspective (graphical)",
+            "level": 2,
+            "score": 0.43184950947761536
+          },
+          {
+            "id": "https://openalex.org/C33923547",
+            "wikidata": "https://www.wikidata.org/wiki/Q395",
+            "display_name": "Mathematics",
+            "level": 0,
+            "score": 0.2779110372066498
+          },
+          {
+            "id": "https://openalex.org/C154945302",
+            "wikidata": "https://www.wikidata.org/wiki/Q11660",
+            "display_name": "Artificial intelligence",
+            "level": 1,
+            "score": 0.13934090733528137
+          },
+          {
+            "id": "https://openalex.org/C111919701",
+            "wikidata": "https://www.wikidata.org/wiki/Q9135",
+            "display_name": "Operating system",
+            "level": 1,
+            "score": 0.0
+          },
+          {
+            "id": "https://openalex.org/C68387754",
+            "wikidata": "https://www.wikidata.org/wiki/Q7271585",
+            "display_name": "Schedule",
+            "level": 2,
+            "score": 0.0
+          },
+          {
+            "id": "https://openalex.org/C160403385",
+            "wikidata": "https://www.wikidata.org/wiki/Q220543",
+            "display_name": "Queue",
+            "level": 2,
+            "score": 0.0
+          },
+          {
+            "id": "https://openalex.org/C199360897",
+            "wikidata": "https://www.wikidata.org/wiki/Q9143",
+            "display_name": "Programming language",
+            "level": 1,
+            "score": 0.0
+          }
+        ],
+        "mesh": [],
+        "locations_count": 2,
+        "locations": [
+          {
+            "id": "doi:10.1016/j.ejor.2009.04.007",
+            "is_oa": false,
+            "landing_page_url": "https://doi.org/10.1016/j.ejor.2009.04.007",
+            "pdf_url": null,
+            "source": {
+              "id": "https://openalex.org/S103321696",
+              "display_name": "European Journal of Operational Research",
+              "issn_l": "0377-2217",
+              "issn": [
+                "0377-2217",
+                "1872-6860"
+              ],
+              "is_oa": false,
+              "is_in_doaj": false,
+              "is_core": true,
+              "listed_in": [
+                "cwts-core",
+                "jufo-2",
+                "norway-2"
+              ],
+              "host_organization": "https://openalex.org/P4310320990",
+              "host_organization_name": "Elsevier BV",
+              "host_organization_lineage": [
+                "https://openalex.org/P4310320990"
+              ],
+              "host_organization_lineage_names": [
+                "Elsevier BV"
+              ],
+              "type": "journal"
+            },
+            "license": null,
+            "license_id": null,
+            "version": "publishedVersion",
+            "is_accepted": true,
+            "is_published": true,
+            "raw_source_name": "European Journal of Operational Research",
+            "raw_type": "journal-article"
+          },
+          {
+            "id": "pmh:oai:RePEc:eee:ejores:v:202:y:2010:i:1:p:1-7",
+            "is_oa": false,
+            "landing_page_url": "http://www.sciencedirect.com/science/article/pii/S0377-2217(09)00264-1",
+            "pdf_url": null,
+            "source": {
+              "id": "https://openalex.org/S4306401271",
+              "display_name": "RePEc: Research Papers in Economics",
+              "issn_l": null,
+              "issn": null,
+              "is_oa": false,
+              "is_in_doaj": false,
+              "is_core": false,
+              "listed_in": [],
+              "host_organization": "https://openalex.org/I77793887",
+              "host_organization_name": "Federal Reserve Bank of St. Louis",
+              "host_organization_lineage": [
+                "https://openalex.org/I77793887"
+              ],
+              "host_organization_lineage_names": [],
+              "type": "repository"
+            },
+            "license": null,
+            "license_id": null,
+            "version": "submittedVersion",
+            "is_accepted": false,
+            "is_published": false,
+            "raw_source_name": null,
+            "raw_type": "article"
+          }
+        ],
+        "best_oa_location": null,
+        "sustainable_development_goals": [
+          {
+            "display_name": "Industry, innovation and infrastructure",
+            "score": 0.49000000953674316,
+            "id": "https://metadata.un.org/sdg/9"
+          }
+        ],
+        "x_sdgs": [],
+        "study_designs": [],
+        "awards": [],
+        "funders": [],
+        "has_content": {
+          "grobid_xml": false,
+          "pdf": false
+        },
+        "content_urls": null,
+        "referenced_works_count": 68,
+        "referenced_works": [
+          "https://openalex.org/W40309320",
+          "https://openalex.org/W152583862",
+          "https://openalex.org/W331797721",
+          "https://openalex.org/W603056026",
+          "https://openalex.org/W1488422606",
+          "https://openalex.org/W1604211948",
+          "https://openalex.org/W1855741192",
+          "https://openalex.org/W1963826638",
+          "https://openalex.org/W1966885540",
+          "https://openalex.org/W1973497631",
+          "https://openalex.org/W1976596296",
+          "https://openalex.org/W1981858350",
+          "https://openalex.org/W1994488876",
+          "https://openalex.org/W1997707819",
+          "https://openalex.org/W1999247335",
+          "https://openalex.org/W2001821047",
+          "https://openalex.org/W2007309895",
+          "https://openalex.org/W2007518229",
+          "https://openalex.org/W2011135536",
+          "https://openalex.org/W2016108029",
+          "https://openalex.org/W2016197135",
+          "https://openalex.org/W2017470706",
+          "https://openalex.org/W2019537266",
+          "https://openalex.org/W2021945696",
+          "https://openalex.org/W2022265817",
+          "https://openalex.org/W2023872705",
+          "https://openalex.org/W2024604250",
+          "https://openalex.org/W2030250600",
+          "https://openalex.org/W2034663627",
+          "https://openalex.org/W2036912539",
+          "https://openalex.org/W2039157515",
+          "https://openalex.org/W2042776370",
+          "https://openalex.org/W2044416289",
+          "https://openalex.org/W2050497389",
+          "https://openalex.org/W2050893476",
+          "https://openalex.org/W2056466128",
+          "https://openalex.org/W2057187417",
+          "https://openalex.org/W2057370073",
+          "https://openalex.org/W2058817479",
+          "https://openalex.org/W2063806955",
+          "https://openalex.org/W2065975980",
+          "https://openalex.org/W2068013459",
+          "https://openalex.org/W2076149487",
+          "https://openalex.org/W2076896841",
+          "https://openalex.org/W2077281181",
+          "https://openalex.org/W2081034799",
+          "https://openalex.org/W2085784710",
+          "https://openalex.org/W2086104103",
+          "https://openalex.org/W2090128411",
+          "https://openalex.org/W2092208520",
+          "https://openalex.org/W2093215438",
+          "https://openalex.org/W2093811690",
+          "https://openalex.org/W2095192428",
+          "https://openalex.org/W2098073550",
+          "https://openalex.org/W2110472530",
+          "https://openalex.org/W2116444923",
+          "https://openalex.org/W2117416910",
+          "https://openalex.org/W2130789352",
+          "https://openalex.org/W2136658137",
+          "https://openalex.org/W2160800316",
+          "https://openalex.org/W2164483807",
+          "https://openalex.org/W2168079536",
+          "https://openalex.org/W2170188992",
+          "https://openalex.org/W2621839118",
+          "https://openalex.org/W2743045177",
+          "https://openalex.org/W2771480990",
+          "https://openalex.org/W3005602086",
+          "https://openalex.org/W4244968676"
+        ],
+        "related_works": [
+          "https://openalex.org/W2060337406",
+          "https://openalex.org/W2153799489",
+          "https://openalex.org/W1992259816",
+          "https://openalex.org/W2057653555",
+          "https://openalex.org/W4381616416",
+          "https://openalex.org/W2131482998",
+          "https://openalex.org/W4251798786",
+          "https://openalex.org/W2377478537",
+          "https://openalex.org/W2051555966",
+          "https://openalex.org/W1991096018"
+        ],
+        "abstract_inverted_index": null,
+        "counts_by_year": [
+          {
+            "year": 2026,
+            "cited_by_count": 3
+          },
+          {
+            "year": 2025,
+            "cited_by_count": 3
+          },
+          {
+            "year": 2024,
+            "cited_by_count": 6
+          },
+          {
+            "year": 2023,
+            "cited_by_count": 3
+          },
+          {
+            "year": 2022,
+            "cited_by_count": 10
+          },
+          {
+            "year": 2021,
+            "cited_by_count": 6
+          },
+          {
+            "year": 2020,
+            "cited_by_count": 6
+          },
+          {
+            "year": 2019,
+            "cited_by_count": 5
+          },
+          {
+            "year": 2018,
+            "cited_by_count": 15
+          },
+          {
+            "year": 2017,
+            "cited_by_count": 5
+          },
+          {
+            "year": 2016,
+            "cited_by_count": 8
+          },
+          {
+            "year": 2015,
+            "cited_by_count": 7
+          },
+          {
+            "year": 2014,
+            "cited_by_count": 8
+          },
+          {
+            "year": 2013,
+            "cited_by_count": 7
+          },
+          {
+            "year": 2012,
+            "cited_by_count": 11
+          }
+        ],
+        "updated_date": "2026-09-22T06:50:58.402377",
+        "created_date": "2025-10-10T00:00:00"
+      },
+      {
+        "id": "https://openalex.org/W176021971",
+        "doi": "https://doi.org/10.1182/blood.v51.5.835.835",
+        "title": "\"Concentration x time\" methotrexate via a subcutaneous reservoir: a less toxic regimen for intraventricular chemotherapy of central nervous system neoplasms",
+        "display_name": "\"Concentration x time\" methotrexate via a subcutaneous reservoir: a less toxic regimen for intraventricular chemotherapy of central nervous system neoplasms",
+        "relevance_score": 53.165577,
+        "publication_year": 1978,
+        "publication_date": "1978-05-01",
+        "ids": {
+          "openalex": "https://openalex.org/W176021971",
+          "doi": "https://doi.org/10.1182/blood.v51.5.835.835",
+          "mag": "176021971",
+          "pmid": "https://pubmed.ncbi.nlm.nih.gov/638249"
+        },
+        "language": "en",
+        "primary_location": {
+          "id": "doi:10.1182/blood.v51.5.835.835",
+          "is_oa": true,
+          "landing_page_url": "https://doi.org/10.1182/blood.v51.5.835.835",
+          "pdf_url": "https://ashpublications.org/blood/article-pdf/51/5/835/581197/835.pdf",
+          "source": {
+            "id": "https://openalex.org/S200071133",
+            "display_name": "Blood",
+            "issn_l": "0006-4971",
+            "issn": [
+              "0006-4971",
+              "1528-0020"
+            ],
+            "is_oa": false,
+            "is_in_doaj": false,
+            "is_core": true,
+            "listed_in": [
+              "cwts-core",
+              "doyens",
+              "jufo-3",
+              "ki-jl-3",
+              "medline",
+              "norway-2"
+            ],
+            "host_organization": "https://openalex.org/P4310320990",
+            "host_organization_name": "Elsevier BV",
+            "host_organization_lineage": [
+              "https://openalex.org/P4310320990"
+            ],
+            "host_organization_lineage_names": [
+              "Elsevier BV"
+            ],
+            "type": "journal"
+          },
+          "license": null,
+          "license_id": null,
+          "version": "publishedVersion",
+          "is_accepted": true,
+          "is_published": true,
+          "raw_source_name": "Blood",
+          "raw_type": "journal-article"
+        },
+        "type": "article",
+        "indexed_in": [
+          "crossref",
+          "pubmed"
+        ],
+        "open_access": {
+          "is_oa": true,
+          "oa_status": "bronze",
+          "oa_url": "https://ashpublications.org/blood/article-pdf/51/5/835/581197/835.pdf",
+          "any_repository_has_fulltext": false
+        },
+        "authorships": [
+          {
+            "author_position": "first",
+            "author": {
+              "id": "https://openalex.org/A5072781889",
+              "display_name": "W. Archie Bleyer",
+              "orcid": null,
+              "observed_orcids": []
+            },
+            "institutions": [
+              {
+                "id": "https://openalex.org/I4210109034",
+                "display_name": "Seattle Children's Hospital",
+                "ror": null,
+                "country_code": "US",
+                "type": null,
+                "lineage": [
+                  "https://openalex.org/I4210109034"
+                ]
+              }
+            ],
+            "countries": [
+              "US"
+            ],
+            "is_corresponding": false,
+            "raw_author_name": "WA Bleyer",
+            "raw_affiliation_strings": [
+              "Children's Orthopedic Hospital and Medi- cal Center , P.O. Box C-537/ , Seattle , Wash",
+              "Division of Hematology/Oncology, Children’s Orthopedic Hospital and Medical Center, and the University of Washington, Seattle, Wash"
+            ],
+            "raw_orcid": null,
+            "affiliations": [
+              {
+                "raw_affiliation_string": "Children's Orthopedic Hospital and Medi- cal Center , P.O. Box C-537/ , Seattle , Wash",
+                "institution_ids": [
+                  "https://openalex.org/I4210109034"
+                ]
+              },
+              {
+                "raw_affiliation_string": "Division of Hematology/Oncology, Children’s Orthopedic Hospital and Medical Center, and the University of Washington, Seattle, Wash",
+                "institution_ids": [
+                  "https://openalex.org/I4210109034"
+                ]
+              }
+            ]
+          },
+          {
+            "author_position": "middle",
+            "author": {
+              "id": "https://openalex.org/A5111496887",
+              "display_name": "DG Poplack",
+              "orcid": null,
+              "observed_orcids": []
+            },
+            "institutions": [
+              {
+                "id": "https://openalex.org/I4210109034",
+                "display_name": "Seattle Children's Hospital",
+                "ror": null,
+                "country_code": "US",
+                "type": null,
+                "lineage": [
+                  "https://openalex.org/I4210109034"
+                ]
+              }
+            ],
+            "countries": [
+              "US"
+            ],
+            "is_corresponding": false,
+            "raw_author_name": "DG Poplack",
+            "raw_affiliation_strings": [
+              "Children's Orthopedic Hospital and Medi- cal Center , P.O. Box C-537/ , Seattle , Wash",
+              "Division of Hematology/Oncology, Children’s Orthopedic Hospital and Medical Center, and the University of Washington, Seattle, Wash"
+            ],
+            "raw_orcid": null,
+            "affiliations": [
+              {
+                "raw_affiliation_string": "Children's Orthopedic Hospital and Medi- cal Center , P.O. Box C-537/ , Seattle , Wash",
+                "institution_ids": [
+                  "https://openalex.org/I4210109034"
+                ]
+              },
+              {
+                "raw_affiliation_string": "Division of Hematology/Oncology, Children’s Orthopedic Hospital and Medical Center, and the University of Washington, Seattle, Wash",
+                "institution_ids": [
+                  "https://openalex.org/I4210109034"
+                ]
+              }
+            ]
+          },
+          {
+            "author_position": "last",
+            "author": {
+              "id": "https://openalex.org/A5007038072",
+              "display_name": "RM Simon",
+              "orcid": null,
+              "observed_orcids": []
+            },
+            "institutions": [
+              {
+                "id": "https://openalex.org/I4210109034",
+                "display_name": "Seattle Children's Hospital",
+                "ror": null,
+                "country_code": "US",
+                "type": null,
+                "lineage": [
+                  "https://openalex.org/I4210109034"
+                ]
+              }
+            ],
+            "countries": [
+              "US"
+            ],
+            "is_corresponding": false,
+            "raw_author_name": "RM Simon",
+            "raw_affiliation_strings": [
+              "Children's Orthopedic Hospital and Medi- cal Center , P.O. Box C-537/ , Seattle , Wash",
+              "Division of Hematology/Oncology, Children’s Orthopedic Hospital and Medical Center, and the University of Washington, Seattle, Wash"
+            ],
+            "raw_orcid": null,
+            "affiliations": [
+              {
+                "raw_affiliation_string": "Children's Orthopedic Hospital and Medi- cal Center , P.O. Box C-537/ , Seattle , Wash",
+                "institution_ids": [
+                  "https://openalex.org/I4210109034"
+                ]
+              },
+              {
+                "raw_affiliation_string": "Division of Hematology/Oncology, Children’s Orthopedic Hospital and Medical Center, and the University of Washington, Seattle, Wash",
+                "institution_ids": [
+                  "https://openalex.org/I4210109034"
+                ]
+              }
+            ]
+          }
+        ],
+        "institutions": [],
+        "countries_distinct_count": 1,
+        "institutions_distinct_count": 1,
+        "corresponding_author_ids": [],
+        "corresponding_institution_ids": [
+          "https://openalex.org/I4210109034"
+        ],
+        "apc_list": {
+          "value": 5500,
+          "currency": "USD",
+          "value_usd": 5500
+        },
+        "apc_paid": null,
+        "fwci": 3.4108,
+        "has_fulltext": true,
+        "cited_by_count": 152,
+        "citation_normalized_percentile": {
+          "value": 0.90744921,
+          "is_in_top_1_percent": false,
+          "is_in_top_10_percent": true
+        },
+        "cited_by_percentile_year": {
+          "min": 88,
+          "max": 98
+        },
+        "biblio": {
+          "volume": "51",
+          "issue": "5",
+          "first_page": "835",
+          "last_page": "842"
+        },
+        "is_retracted": false,
+        "is_paratext": false,
+        "is_xpac": false,
+        "primary_topic": {
+          "id": "https://openalex.org/T11600",
+          "display_name": "Brain Metastases and Treatment",
+          "score": 0.7764999866485596,
+          "subfield": {
+            "id": "https://openalex.org/subfields/2740",
+            "display_name": "Pulmonary and Respiratory Medicine"
+          },
+          "field": {
+            "id": "https://openalex.org/fields/27",
+            "display_name": "Medicine"
+          },
+          "domain": {
+            "id": "https://openalex.org/domains/4",
+            "display_name": "Health Sciences"
+          }
+        },
+        "topics": [
+          {
+            "id": "https://openalex.org/T11600",
+            "display_name": "Brain Metastases and Treatment",
+            "score": 0.7764999866485596,
+            "subfield": {
+              "id": "https://openalex.org/subfields/2740",
+              "display_name": "Pulmonary and Respiratory Medicine"
+            },
+            "field": {
+              "id": "https://openalex.org/fields/27",
+              "display_name": "Medicine"
+            },
+            "domain": {
+              "id": "https://openalex.org/domains/4",
+              "display_name": "Health Sciences"
+            }
+          },
+          {
+            "id": "https://openalex.org/T10950",
+            "display_name": "Acute Lymphoblastic Leukemia research",
+            "score": 0.16120000183582306,
+            "subfield": {
+              "id": "https://openalex.org/subfields/2739",
+              "display_name": "Public Health, Environmental and Occupational Health"
+            },
+            "field": {
+              "id": "https://openalex.org/fields/27",
+              "display_name": "Medicine"
+            },
+            "domain": {
+              "id": "https://openalex.org/domains/4",
+              "display_name": "Health Sciences"
+            }
+          },
+          {
+            "id": "https://openalex.org/T10129",
+            "display_name": "Glioma Diagnosis and Treatment",
+            "score": 0.009100000374019146,
+            "subfield": {
+              "id": "https://openalex.org/subfields/2716",
+              "display_name": "Genetics"
+            },
+            "field": {
+              "id": "https://openalex.org/fields/27",
+              "display_name": "Medicine"
+            },
+            "domain": {
+              "id": "https://openalex.org/domains/4",
+              "display_name": "Health Sciences"
+            }
+          }
+        ],
+        "keywords": [
+          {
+            "id": "https://openalex.org/keywords/ommaya-reservoir",
+            "display_name": "Ommaya reservoir",
+            "score": 0.8845041394233704
+          },
+          {
+            "id": "https://openalex.org/keywords/methotrexate",
+            "display_name": "Methotrexate",
+            "score": 0.8559610843658447
+          },
+          {
+            "id": "https://openalex.org/keywords/medicine",
+            "display_name": "Medicine",
+            "score": 0.7066933512687683
+          },
+          {
+            "id": "https://openalex.org/keywords/regimen",
+            "display_name": "Regimen",
+            "score": 0.5680416822433472
+          },
+          {
+            "id": "https://openalex.org/keywords/chemotherapy",
+            "display_name": "Chemotherapy",
+            "score": 0.562935471534729
+          },
+          {
+            "id": "https://openalex.org/keywords/cytarabine",
+            "display_name": "Cytarabine",
+            "score": 0.536185085773468
+          },
+          {
+            "id": "https://openalex.org/keywords/neurotoxicity",
+            "display_name": "Neurotoxicity",
+            "score": 0.5192010998725891
+          },
+          {
+            "id": "https://openalex.org/keywords/toxicity",
+            "display_name": "Toxicity",
+            "score": 0.5045422315597534
+          },
+          {
+            "id": "https://openalex.org/keywords/anesthesia",
+            "display_name": "Anesthesia",
+            "score": 0.501960277557373
+          },
+          {
+            "id": "https://openalex.org/keywords/cerebrospinal-fluid",
+            "display_name": "Cerebrospinal fluid",
+            "score": 0.4647248387336731
+          },
+          {
+            "id": "https://openalex.org/keywords/gastroenterology",
+            "display_name": "Gastroenterology",
+            "score": 0.45545879006385803
+          },
+          {
+            "id": "https://openalex.org/keywords/cumulative-dose",
+            "display_name": "Cumulative dose",
+            "score": 0.4460667371749878
+          },
+          {
+            "id": "https://openalex.org/keywords/leukemia",
+            "display_name": "Leukemia",
+            "score": 0.430310994386673
+          },
+          {
+            "id": "https://openalex.org/keywords/surgery",
+            "display_name": "Surgery",
+            "score": 0.38768264651298523
+          },
+          {
+            "id": "https://openalex.org/keywords/internal-medicine",
+            "display_name": "Internal medicine",
+            "score": 0.3281748592853546
+          },
+          {
+            "id": "https://openalex.org/keywords/urology",
+            "display_name": "Urology",
+            "score": 0.32143256068229675
+          }
+        ],
+        "concepts": [
+          {
+            "id": "https://openalex.org/C2781393001",
+            "wikidata": "https://www.wikidata.org/wiki/Q139032",
+            "display_name": "Ommaya reservoir",
+            "level": 3,
+            "score": 0.8845041394233704
+          },
+          {
+            "id": "https://openalex.org/C2781059491",
+            "wikidata": "https://www.wikidata.org/wiki/Q422232",
+            "display_name": "Methotrexate",
+            "level": 2,
+            "score": 0.8559610843658447
+          },
+          {
+            "id": "https://openalex.org/C71924100",
+            "wikidata": "https://www.wikidata.org/wiki/Q11190",
+            "display_name": "Medicine",
+            "level": 0,
+            "score": 0.7066933512687683
+          },
+          {
+            "id": "https://openalex.org/C2781413609",
+            "wikidata": "https://www.wikidata.org/wiki/Q7308373",
+            "display_name": "Regimen",
+            "level": 2,
+            "score": 0.5680416822433472
+          },
+          {
+            "id": "https://openalex.org/C2776694085",
+            "wikidata": "https://www.wikidata.org/wiki/Q974135",
+            "display_name": "Chemotherapy",
+            "level": 2,
+            "score": 0.562935471534729
+          },
+          {
+            "id": "https://openalex.org/C2778041864",
+            "wikidata": "https://www.wikidata.org/wiki/Q180983",
+            "display_name": "Cytarabine",
+            "level": 3,
+            "score": 0.536185085773468
+          },
+          {
+            "id": "https://openalex.org/C2779491297",
+            "wikidata": "https://www.wikidata.org/wiki/Q3338704",
+            "display_name": "Neurotoxicity",
+            "level": 3,
+            "score": 0.5192010998725891
+          },
+          {
+            "id": "https://openalex.org/C29730261",
+            "wikidata": "https://www.wikidata.org/wiki/Q274160",
+            "display_name": "Toxicity",
+            "level": 2,
+            "score": 0.5045422315597534
+          },
+          {
+            "id": "https://openalex.org/C42219234",
+            "wikidata": "https://www.wikidata.org/wiki/Q131130",
+            "display_name": "Anesthesia",
+            "level": 1,
+            "score": 0.501960277557373
+          },
+          {
+            "id": "https://openalex.org/C2779651940",
+            "wikidata": "https://www.wikidata.org/wiki/Q54196",
+            "display_name": "Cerebrospinal fluid",
+            "level": 2,
+            "score": 0.4647248387336731
+          },
+          {
+            "id": "https://openalex.org/C90924648",
+            "wikidata": "https://www.wikidata.org/wiki/Q120569",
+            "display_name": "Gastroenterology",
+            "level": 1,
+            "score": 0.45545879006385803
+          },
+          {
+            "id": "https://openalex.org/C151032500",
+            "wikidata": "https://www.wikidata.org/wiki/Q5194182",
+            "display_name": "Cumulative dose",
+            "level": 2,
+            "score": 0.4460667371749878
+          },
+          {
+            "id": "https://openalex.org/C2778461978",
+            "wikidata": "https://www.wikidata.org/wiki/Q29496",
+            "display_name": "Leukemia",
+            "level": 2,
+            "score": 0.430310994386673
+          },
+          {
+            "id": "https://openalex.org/C141071460",
+            "wikidata": "https://www.wikidata.org/wiki/Q40821",
+            "display_name": "Surgery",
+            "level": 1,
+            "score": 0.38768264651298523
+          },
+          {
+            "id": "https://openalex.org/C126322002",
+            "wikidata": "https://www.wikidata.org/wiki/Q11180",
+            "display_name": "Internal medicine",
+            "level": 1,
+            "score": 0.3281748592853546
+          },
+          {
+            "id": "https://openalex.org/C126894567",
+            "wikidata": "https://www.wikidata.org/wiki/Q105650",
+            "display_name": "Urology",
+            "level": 1,
+            "score": 0.32143256068229675
+          }
+        ],
+        "mesh": [
+          {
+            "descriptor_ui": "D000293",
+            "descriptor_name": "Adolescent",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D000293",
+            "descriptor_name": "Adolescent",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D000293",
+            "descriptor_name": "Adolescent",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D000328",
+            "descriptor_name": "Adult",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D000328",
+            "descriptor_name": "Adult",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D000328",
+            "descriptor_name": "Adult",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D002555",
+            "descriptor_name": "Cerebrospinal Fluid",
+            "qualifier_ui": "Q000187",
+            "qualifier_name": "drug effects",
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D002555",
+            "descriptor_name": "Cerebrospinal Fluid",
+            "qualifier_ui": "Q000187",
+            "qualifier_name": "drug effects",
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D002555",
+            "descriptor_name": "Cerebrospinal Fluid",
+            "qualifier_ui": "Q000187",
+            "qualifier_name": "drug effects",
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D002648",
+            "descriptor_name": "Child",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D002648",
+            "descriptor_name": "Child",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D002648",
+            "descriptor_name": "Child",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D002675",
+            "descriptor_name": "Child, Preschool",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D002675",
+            "descriptor_name": "Child, Preschool",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D002675",
+            "descriptor_name": "Child, Preschool",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D004305",
+            "descriptor_name": "Dose-Response Relationship, Drug",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D004305",
+            "descriptor_name": "Dose-Response Relationship, Drug",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D004305",
+            "descriptor_name": "Dose-Response Relationship, Drug",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D005260",
+            "descriptor_name": "Female",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D005260",
+            "descriptor_name": "Female",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D005260",
+            "descriptor_name": "Female",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D006801",
+            "descriptor_name": "Humans",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D006801",
+            "descriptor_name": "Humans",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D006801",
+            "descriptor_name": "Humans",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D008297",
+            "descriptor_name": "Male",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D008297",
+            "descriptor_name": "Male",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D008297",
+            "descriptor_name": "Male",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D008577",
+            "descriptor_name": "Meningeal Neoplasms",
+            "qualifier_ui": "Q000188",
+            "qualifier_name": "drug therapy",
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D008577",
+            "descriptor_name": "Meningeal Neoplasms",
+            "qualifier_ui": "Q000188",
+            "qualifier_name": "drug therapy",
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D008577",
+            "descriptor_name": "Meningeal Neoplasms",
+            "qualifier_ui": "Q000188",
+            "qualifier_name": "drug therapy",
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D008727",
+            "descriptor_name": "Methotrexate",
+            "qualifier_ui": "Q000009",
+            "qualifier_name": "adverse effects",
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D008727",
+            "descriptor_name": "Methotrexate",
+            "qualifier_ui": "Q000009",
+            "qualifier_name": "adverse effects",
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D008727",
+            "descriptor_name": "Methotrexate",
+            "qualifier_ui": "Q000009",
+            "qualifier_name": "adverse effects",
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D009498",
+            "descriptor_name": "Neurotoxins",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": true
+          },
+          {
+            "descriptor_ui": "D009498",
+            "descriptor_name": "Neurotoxins",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": true
+          },
+          {
+            "descriptor_ui": "D009498",
+            "descriptor_name": "Neurotoxins",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": true
+          },
+          {
+            "descriptor_ui": "D012075",
+            "descriptor_name": "Remission, Spontaneous",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D012075",
+            "descriptor_name": "Remission, Spontaneous",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D012075",
+            "descriptor_name": "Remission, Spontaneous",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D013997",
+            "descriptor_name": "Time Factors",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D013997",
+            "descriptor_name": "Time Factors",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          },
+          {
+            "descriptor_ui": "D013997",
+            "descriptor_name": "Time Factors",
+            "qualifier_ui": null,
+            "qualifier_name": null,
+            "is_major_topic": false
+          }
+        ],
+        "locations_count": 2,
+        "locations": [
+          {
+            "id": "doi:10.1182/blood.v51.5.835.835",
+            "is_oa": true,
+            "landing_page_url": "https://doi.org/10.1182/blood.v51.5.835.835",
+            "pdf_url": "https://ashpublications.org/blood/article-pdf/51/5/835/581197/835.pdf",
+            "source": {
+              "id": "https://openalex.org/S200071133",
+              "display_name": "Blood",
+              "issn_l": "0006-4971",
+              "issn": [
+                "0006-4971",
+                "1528-0020"
+              ],
+              "is_oa": false,
+              "is_in_doaj": false,
+              "is_core": true,
+              "listed_in": [
+                "cwts-core",
+                "doyens",
+                "jufo-3",
+                "ki-jl-3",
+                "medline",
+                "norway-2"
+              ],
+              "host_organization": "https://openalex.org/P4310320990",
+              "host_organization_name": "Elsevier BV",
+              "host_organization_lineage": [
+                "https://openalex.org/P4310320990"
+              ],
+              "host_organization_lineage_names": [
+                "Elsevier BV"
+              ],
+              "type": "journal"
+            },
+            "license": null,
+            "license_id": null,
+            "version": "publishedVersion",
+            "is_accepted": true,
+            "is_published": true,
+            "raw_source_name": "Blood",
+            "raw_type": "journal-article"
+          },
+          {
+            "id": "pmid:638249",
+            "is_oa": false,
+            "landing_page_url": "https://pubmed.ncbi.nlm.nih.gov/638249",
+            "pdf_url": null,
+            "source": {
+              "id": "https://openalex.org/S4306525036",
+              "display_name": "PubMed",
+              "issn_l": null,
+              "issn": null,
+              "is_oa": false,
+              "is_in_doaj": false,
+              "is_core": false,
+              "listed_in": [],
+              "host_organization": "https://openalex.org/I1299303238",
+              "host_organization_name": "National Institutes of Health",
+              "host_organization_lineage": [
+                "https://openalex.org/I1299303238"
+              ],
+              "host_organization_lineage_names": [],
+              "type": "repository"
+            },
+            "license": null,
+            "license_id": null,
+            "version": "publishedVersion",
+            "is_accepted": true,
+            "is_published": true,
+            "raw_source_name": "Blood",
+            "raw_type": "Clinical Trial"
+          }
+        ],
+        "best_oa_location": {
+          "id": "doi:10.1182/blood.v51.5.835.835",
+          "is_oa": true,
+          "landing_page_url": "https://doi.org/10.1182/blood.v51.5.835.835",
+          "pdf_url": "https://ashpublications.org/blood/article-pdf/51/5/835/581197/835.pdf",
+          "source": {
+            "id": "https://openalex.org/S200071133",
+            "display_name": "Blood",
+            "issn_l": "0006-4971",
+            "issn": [
+              "0006-4971",
+              "1528-0020"
+            ],
+            "is_oa": false,
+            "is_in_doaj": false,
+            "is_core": true,
+            "listed_in": [
+              "cwts-core",
+              "doyens",
+              "jufo-3",
+              "ki-jl-3",
+              "medline",
+              "norway-2"
+            ],
+            "host_organization": "https://openalex.org/P4310320990",
+            "host_organization_name": "Elsevier BV",
+            "host_organization_lineage": [
+              "https://openalex.org/P4310320990"
+            ],
+            "host_organization_lineage_names": [
+              "Elsevier BV"
+            ],
+            "type": "journal"
+          },
+          "license": null,
+          "license_id": null,
+          "version": "publishedVersion",
+          "is_accepted": true,
+          "is_published": true,
+          "raw_source_name": "Blood",
+          "raw_type": "journal-article"
+        },
+        "sustainable_development_goals": [
+          {
+            "display_name": "Good health and well-being",
+            "score": 0.8299999833106995,
+            "id": "https://metadata.un.org/sdg/3"
+          }
+        ],
+        "x_sdgs": [],
+        "study_designs": [
+          {
+            "display_name": "Randomized Controlled Trial",
+            "id": "https://openalex.org/study-designs/randomized-controlled-trial"
+          },
+          {
+            "display_name": "Clinical Trial",
+            "id": "https://openalex.org/study-designs/clinical-trial"
+          }
+        ],
+        "awards": [],
+        "funders": [
+          {
+            "id": "https://openalex.org/F4320332505",
+            "display_name": "U.S. Public Health Service",
+            "ror": "https://ror.org/05xf94514"
+          }
+        ],
+        "has_content": {
+          "grobid_xml": true,
+          "pdf": true
+        },
+        "content_urls": {
+          "pdf": "https://content.openalex.org/works/W176021971.pdf",
+          "grobid_xml": "https://content.openalex.org/works/W176021971.grobid-xml"
+        },
+        "referenced_works_count": 13,
+        "referenced_works": [
+          "https://openalex.org/W1574973346",
+          "https://openalex.org/W1994704767",
+          "https://openalex.org/W2018708925",
+          "https://openalex.org/W2029194017",
+          "https://openalex.org/W2048825279",
+          "https://openalex.org/W2061533715",
+          "https://openalex.org/W2065761394",
+          "https://openalex.org/W2077258531",
+          "https://openalex.org/W2149558826",
+          "https://openalex.org/W2170048345",
+          "https://openalex.org/W2342032414",
+          "https://openalex.org/W2342378456",
+          "https://openalex.org/W2408207533"
+        ],
+        "related_works": [
+          "https://openalex.org/W2465489464",
+          "https://openalex.org/W2974196845",
+          "https://openalex.org/W2412468330",
+          "https://openalex.org/W2080810011",
+          "https://openalex.org/W2547701664",
+          "https://openalex.org/W1985971810",
+          "https://openalex.org/W1515981839",
+          "https://openalex.org/W2000659631",
+          "https://openalex.org/W2093321970",
+          "https://openalex.org/W2919170825"
+        ],
+        "abstract_inverted_index": {
+          "Neurotoxicity": [
+            0
+          ],
+          "associated": [
+            1
+          ],
+          "with": [
+            2,
+            11,
+            24,
+            34
+          ],
+          "intrathecal": [
+            3
+          ],
+          "methotrexate": [
+            4,
+            44,
+            108
+          ],
+          "therapy": [
+            5
+          ],
+          "has": [
+            6
+          ],
+          "been": [
+            7
+          ],
+          "shown": [
+            8
+          ],
+          "to": [
+            9,
+            39
+          ],
+          "correlate": [
+            10
+          ],
+          "elevated": [
+            12
+          ],
+          "concentrations": [
+            13
+          ],
+          "of": [
+            14,
+            42,
+            50,
+            54,
+            68,
+            90,
+            95,
+            100,
+            143,
+            156,
+            188
+          ],
+          "the": [
+            15,
+            18,
+            25,
+            83,
+            88,
+            93,
+            98,
+            117,
+            129,
+            144,
+            148,
+            160,
+            173,
+            186
+          ],
+          "drug": [
+            16
+          ],
+          "in": [
+            17,
+            87,
+            116,
+            128,
+            141,
+            147,
+            154,
+            159,
+            185
+          ],
+          "cerebrospinal": [
+            19
+          ],
+          "fluid": [
+            20
+          ],
+          "as": [
+            21,
+            23
+          ],
+          "well": [
+            22
+          ],
+          "total": [
+            26
+          ],
+          "cumulative": [
+            27,
+            107
+          ],
+          "dosage.": [
+            28
+          ],
+          "In": [
+            29
+          ],
+          "our": [
+            30
+          ],
+          "study": [
+            31
+          ],
+          "19": [
+            32
+          ],
+          "patients": [
+            33,
+            146,
+            158
+          ],
+          "meningeal": [
+            35
+          ],
+          "leukemia": [
+            36
+          ],
+          "were": [
+            37,
+            78
+          ],
+          "randomized": [
+            38
+          ],
+          "receive": [
+            40
+          ],
+          "courses": [
+            41
+          ],
+          "intraventricular": [
+            43
+          ],
+          "via": [
+            45
+          ],
+          "an": [
+            46
+          ],
+          "Ommaya": [
+            47
+          ],
+          "reservoir": [
+            48
+          ],
+          "consisting": [
+            49
+          ],
+          "either": [
+            51
+          ],
+          "single": [
+            52
+          ],
+          "injections": [
+            53
+          ],
+          "12": [
+            55,
+            72,
+            130,
+            161
+          ],
+          "mg/sq": [
+            56,
+            114,
+            126,
+            131,
+            162
+          ],
+          "m/dose": [
+            57,
+            132,
+            163
+          ],
+          "or": [
+            58,
+            97
+          ],
+          "a": [
+            59
+          ],
+          "low-dose": [
+            60
+          ],
+          "\"concentration": [
+            61
+          ],
+          "x": [
+            62,
+            65,
+            119,
+            150,
+            175
+          ],
+          "time\"": [
+            63
+          ],
+          "(C": [
+            64
+          ],
+          "T)": [
+            66
+          ],
+          "schedule": [
+            67,
+            178
+          ],
+          "1": [
+            69,
+            105
+          ],
+          "mg": [
+            70
+          ],
+          "every": [
+            71
+          ],
+          "hr": [
+            73
+          ],
+          "for": [
+            74
+          ],
+          "3": [
+            75
+          ],
+          "days.": [
+            76
+          ],
+          "There": [
+            77
+          ],
+          "no": [
+            79
+          ],
+          "significant": [
+            80
+          ],
+          "differences": [
+            81
+          ],
+          "between": [
+            82
+          ],
+          "two": [
+            84
+          ],
+          "treatment": [
+            85,
+            187
+          ],
+          "groups": [
+            86
+          ],
+          "rate": [
+            89
+          ],
+          "remission": [
+            91
+          ],
+          "induction,": [
+            92
+          ],
+          "number": [
+            94
+          ],
+          "relapses,": [
+            96
+          ],
+          "durations": [
+            99
+          ],
+          "remission.": [
+            101
+          ],
+          "The": [
+            102
+          ],
+          "mean": [
+            103
+          ],
+          "(+/-": [
+            104
+          ],
+          "SD)": [
+            106
+          ],
+          "dose": [
+            109
+          ],
+          "was": [
+            110
+          ],
+          "66": [
+            111
+          ],
+          "+/-": [
+            112,
+            124
+          ],
+          "41": [
+            113
+          ],
+          "m": [
+            115,
+            127
+          ],
+          "C": [
+            118,
+            149,
+            174
+          ],
+          "T": [
+            120,
+            151,
+            176
+          ],
+          "group": [
+            121,
+            133,
+            152,
+            164
+          ],
+          "and": [
+            122,
+            153,
+            182
+          ],
+          "173": [
+            123
+          ],
+          "64": [
+            125
+          ],
+          "(p": [
+            134,
+            165
+          ],
+          "less": [
+            135,
+            166,
+            180
+          ],
+          "than": [
+            136,
+            167
+          ],
+          "0.005).": [
+            137
+          ],
+          "Neurologic": [
+            138
+          ],
+          "toxicity": [
+            139
+          ],
+          "occurred": [
+            140
+          ],
+          "one": [
+            142
+          ],
+          "eight": [
+            145
+          ],
+          "seven": [
+            155
+          ],
+          "ten": [
+            157
+          ],
+          "0.05).": [
+            168
+          ],
+          "These": [
+            169
+          ],
+          "observations": [
+            170
+          ],
+          "suggest": [
+            171
+          ],
+          "that": [
+            172
+          ],
+          "dosage": [
+            177
+          ],
+          "is": [
+            179
+          ],
+          "neurotoxic": [
+            181
+          ],
+          "equally": [
+            183
+          ],
+          "effective": [
+            184
+          ],
+          "central": [
+            189
+          ],
+          "nervous": [
+            190
+          ],
+          "system": [
+            191
+          ],
+          "leukemia.": [
+            192
+          ]
+        },
+        "counts_by_year": [
+          {
+            "year": 2026,
+            "cited_by_count": 1
+          },
+          {
+            "year": 2025,
+            "cited_by_count": 4
+          },
+          {
+            "year": 2024,
+            "cited_by_count": 3
+          },
+          {
+            "year": 2023,
+            "cited_by_count": 1
+          },
+          {
+            "year": 2022,
+            "cited_by_count": 3
+          },
+          {
+            "year": 2021,
+            "cited_by_count": 1
+          },
+          {
+            "year": 2020,
+            "cited_by_count": 1
+          },
+          {
+            "year": 2019,
+            "cited_by_count": 6
+          },
+          {
+            "year": 2018,
+            "cited_by_count": 5
+          },
+          {
+            "year": 2017,
+            "cited_by_count": 3
+          },
+          {
+            "year": 2016,
+            "cited_by_count": 2
+          },
+          {
+            "year": 2015,
+            "cited_by_count": 2
+          },
+          {
+            "year": 2014,
+            "cited_by_count": 1
+          },
+          {
+            "year": 2013,
+            "cited_by_count": 5
+          },
+          {
+            "year": 2012,
+            "cited_by_count": 2
+          }
+        ],
+        "updated_date": "2026-09-26T08:19:03.415552",
+        "created_date": "2025-10-10T00:00:00"
+      },
+      {
+        "id": "https://openalex.org/W3217001319",
+        "doi": "https://doi.org/10.1016/j.jfueco.2021.100047",
+        "title": "Three classes of Earliness-Tardiness (E/T) scheduling problems",
+        "display_name": "Three classes of Earliness-Tardiness (E/T) scheduling problems",
+        "relevance_score": 49.351646,
+        "publication_year": 2021,
+        "publication_date": "2021-11-30",
+        "ids": {
+          "openalex": "https://openalex.org/W3217001319",
+          "doi": "https://doi.org/10.1016/j.jfueco.2021.100047",
+          "mag": "3217001319"
+        },
+        "language": "en",
+        "primary_location": {
+          "id": "doi:10.1016/j.jfueco.2021.100047",
+          "is_oa": true,
+          "landing_page_url": "https://doi.org/10.1016/j.jfueco.2021.100047",
+          "pdf_url": "https://www.sciencedirect.com/science/article/pii/S2666052021000406/pdf",
+          "source": {
+            "id": "https://openalex.org/S4210227637",
+            "display_name": "Fuel Communications",
+            "issn_l": "2666-0520",
+            "issn": [
+              "2666-0520"
+            ],
+            "is_oa": true,
+            "is_in_doaj": true,
+            "is_core": true,
+            "listed_in": [
+              "cwts-core",
+              "doaj",
+              "jufo-1"
+            ],
+            "host_organization": "https://openalex.org/P4310320990",
+            "host_organization_name": "Elsevier BV",
+            "host_organization_lineage": [
+              "https://openalex.org/P4310320990"
+            ],
+            "host_organization_lineage_names": [
+              "Elsevier BV"
+            ],
+            "type": "journal"
+          },
+          "license": "cc-by-nc-nd",
+          "license_id": "https://openalex.org/licenses/cc-by-nc-nd",
+          "version": "publishedVersion",
+          "is_accepted": true,
+          "is_published": true,
+          "raw_source_name": "Fuel Communications",
+          "raw_type": "journal-article"
+        },
+        "type": "article",
+        "indexed_in": [
+          "crossref",
+          "doaj"
+        ],
+        "open_access": {
+          "is_oa": true,
+          "oa_status": "gold",
+          "oa_url": "https://www.sciencedirect.com/science/article/pii/S2666052021000406/pdf",
+          "any_repository_has_fulltext": true
+        },
+        "authorships": [
+          {
+            "author_position": "first",
+            "author": {
+              "id": "https://openalex.org/A5068774330",
+              "display_name": "Saheed Akande",
+              "orcid": "https://orcid.org/0000-0002-4091-7302"
+            },
+            "institutions": [
+              {
+                "id": "https://openalex.org/I29787537",
+                "display_name": "Afe Babalola University",
+                "ror": "https://ror.org/03rsm0k65",
+                "country_code": "NG",
+                "type": "education",
+                "lineage": [
+                  "https://openalex.org/I29787537"
+                ]
+              }
+            ],
+            "countries": [
+              "NG"
+            ],
+            "is_corresponding": true,
+            "raw_author_name": "Saheed Akande",
+            "raw_affiliation_strings": [
+              "Department of Mechanical and Mechatronics Engineering, Afe Babalola University, Ado-Ekiti P.M.B 5454, Nigeria"
+            ],
+            "raw_orcid": null,
+            "affiliations": [
+              {
+                "raw_affiliation_string": "Department of Mechanical and Mechatronics Engineering, Afe Babalola University, Ado-Ekiti P.M.B 5454, Nigeria",
+                "institution_ids": [
+                  "https://openalex.org/I29787537"
+                ]
+              }
+            ]
+          },
+          {
+            "author_position": "last",
+            "author": {
+              "id": "https://openalex.org/A5079665298",
+              "display_name": "Ganiyu O. Ajisegiri",
+              "orcid": "https://orcid.org/0000-0002-6074-308X"
+            },
+            "institutions": [
+              {
+                "id": "https://openalex.org/I181631907",
+                "display_name": "University of Ibadan",
+                "ror": "https://ror.org/03wx2rr30",
+                "country_code": "NG",
+                "type": "education",
+                "lineage": [
+                  "https://openalex.org/I181631907"
+                ]
+              }
+            ],
+            "countries": [
+              "NG"
+            ],
+            "is_corresponding": false,
+            "raw_author_name": "Ganiyu Ajisegiri",
+            "raw_affiliation_strings": [
+              "Department of Industrial and Production Engineering, Faculty of Technology, University of Ibadan, Nigeria"
+            ],
+            "raw_orcid": null,
+            "affiliations": [
+              {
+                "raw_affiliation_string": "Department of Industrial and Production Engineering, Faculty of Technology, University of Ibadan, Nigeria",
+                "institution_ids": [
+                  "https://openalex.org/I181631907"
+                ]
+              }
+            ]
+          }
+        ],
+        "institutions": [],
+        "countries_distinct_count": 1,
+        "institutions_distinct_count": 2,
+        "corresponding_author_ids": [
+          "https://openalex.org/A5068774330"
+        ],
+        "corresponding_institution_ids": [
+          "https://openalex.org/I29787537"
+        ],
+        "apc_list": {
+          "value": 1700,
+          "currency": "USD",
+          "value_usd": 1700
+        },
+        "apc_paid": {
+          "value": 1700,
+          "currency": "USD",
+          "value_usd": 1700
+        },
+        "fwci": 0.5157,
+        "has_fulltext": true,
+        "cited_by_count": 7,
+        "citation_normalized_percentile": {
+          "value": 0.71610115,
+          "is_in_top_1_percent": false,
+          "is_in_top_10_percent": false
+        },
+        "cited_by_percentile_year": {
+          "min": 89,
+          "max": 98
+        },
+        "biblio": {
+          "volume": "10",
+          "issue": null,
+          "first_page": "100047",
+          "last_page": "100047"
+        },
+        "is_retracted": false,
+        "is_paratext": false,
+        "is_xpac": false,
+        "primary_topic": {
+          "id": "https://openalex.org/T10551",
+          "display_name": "Scheduling and Optimization Algorithms",
+          "score": 0.9998999834060669,
+          "subfield": {
+            "id": "https://openalex.org/subfields/2209",
+            "display_name": "Industrial and Manufacturing Engineering"
+          },
+          "field": {
+            "id": "https://openalex.org/fields/22",
+            "display_name": "Engineering"
+          },
+          "domain": {
+            "id": "https://openalex.org/domains/3",
+            "display_name": "Physical Sciences"
+          }
+        },
+        "topics": [
+          {
+            "id": "https://openalex.org/T10551",
+            "display_name": "Scheduling and Optimization Algorithms",
+            "score": 0.9998999834060669,
+            "subfield": {
+              "id": "https://openalex.org/subfields/2209",
+              "display_name": "Industrial and Manufacturing Engineering"
+            },
+            "field": {
+              "id": "https://openalex.org/fields/22",
+              "display_name": "Engineering"
+            },
+            "domain": {
+              "id": "https://openalex.org/domains/3",
+              "display_name": "Physical Sciences"
+            }
+          },
+          {
+            "id": "https://openalex.org/T10328",
+            "display_name": "Supply Chain and Inventory Management",
+            "score": 0.9962000250816345,
+            "subfield": {
+              "id": "https://openalex.org/subfields/1404",
+              "display_name": "Management Information Systems"
+            },
+            "field": {
+              "id": "https://openalex.org/fields/14",
+              "display_name": "Business, Management and Accounting"
+            },
+            "domain": {
+              "id": "https://openalex.org/domains/2",
+              "display_name": "Social Sciences"
+            }
+          },
+          {
+            "id": "https://openalex.org/T12782",
+            "display_name": "Assembly Line Balancing Optimization",
+            "score": 0.9878000020980835,
+            "subfield": {
+              "id": "https://openalex.org/subfields/2209",
+              "display_name": "Industrial and Manufacturing Engineering"
+            },
+            "field": {
+              "id": "https://openalex.org/fields/22",
+              "display_name": "Engineering"
+            },
+            "domain": {
+              "id": "https://openalex.org/domains/3",
+              "display_name": "Physical Sciences"
+            }
+          }
+        ],
+        "keywords": [
+          {
+            "id": "https://openalex.org/keywords/tardiness",
+            "display_name": "Tardiness",
+            "score": 0.917654275894165
+          },
+          {
+            "id": "https://openalex.org/keywords/mathematical-optimization",
+            "display_name": "Mathematical optimization",
+            "score": 0.6544991135597229
+          },
+          {
+            "id": "https://openalex.org/keywords/scheduling",
+            "display_name": "Scheduling (production processes)",
+            "score": 0.5611100792884827
+          },
+          {
+            "id": "https://openalex.org/keywords/computer-science",
+            "display_name": "Computer science",
+            "score": 0.5587196946144104
+          },
+          {
+            "id": "https://openalex.org/keywords/function",
+            "display_name": "Function (biology)",
+            "score": 0.44328972697257996
+          },
+          {
+            "id": "https://openalex.org/keywords/schedule",
+            "display_name": "Schedule",
+            "score": 0.37391066551208496
+          },
+          {
+            "id": "https://openalex.org/keywords/mathematics",
+            "display_name": "Mathematics",
+            "score": 0.36746644973754883
+          },
+          {
+            "id": "https://openalex.org/keywords/job-shop-scheduling",
+            "display_name": "Job shop scheduling",
+            "score": 0.2974318861961365
+          }
+        ],
+        "concepts": [
+          {
+            "id": "https://openalex.org/C2778047078",
+            "wikidata": "https://www.wikidata.org/wiki/Q82299449",
+            "display_name": "Tardiness",
+            "level": 4,
+            "score": 0.917654275894165
+          },
+          {
+            "id": "https://openalex.org/C126255220",
+            "wikidata": "https://www.wikidata.org/wiki/Q141495",
+            "display_name": "Mathematical optimization",
+            "level": 1,
+            "score": 0.6544991135597229
+          },
+          {
+            "id": "https://openalex.org/C206729178",
+            "wikidata": "https://www.wikidata.org/wiki/Q2271896",
+            "display_name": "Scheduling (production processes)",
+            "level": 2,
+            "score": 0.5611100792884827
+          },
+          {
+            "id": "https://openalex.org/C41008148",
+            "wikidata": "https://www.wikidata.org/wiki/Q21198",
+            "display_name": "Computer science",
+            "level": 0,
+            "score": 0.5587196946144104
+          },
+          {
+            "id": "https://openalex.org/C14036430",
+            "wikidata": "https://www.wikidata.org/wiki/Q3736076",
+            "display_name": "Function (biology)",
+            "level": 2,
+            "score": 0.44328972697257996
+          },
+          {
+            "id": "https://openalex.org/C68387754",
+            "wikidata": "https://www.wikidata.org/wiki/Q7271585",
+            "display_name": "Schedule",
+            "level": 2,
+            "score": 0.37391066551208496
+          },
+          {
+            "id": "https://openalex.org/C33923547",
+            "wikidata": "https://www.wikidata.org/wiki/Q395",
+            "display_name": "Mathematics",
+            "level": 0,
+            "score": 0.36746644973754883
+          },
+          {
+            "id": "https://openalex.org/C55416958",
+            "wikidata": "https://www.wikidata.org/wiki/Q6206757",
+            "display_name": "Job shop scheduling",
+            "level": 3,
+            "score": 0.2974318861961365
+          },
+          {
+            "id": "https://openalex.org/C78458016",
+            "wikidata": "https://www.wikidata.org/wiki/Q840400",
+            "display_name": "Evolutionary biology",
+            "level": 1,
+            "score": 0.0
+          },
+          {
+            "id": "https://openalex.org/C86803240",
+            "wikidata": "https://www.wikidata.org/wiki/Q420",
+            "display_name": "Biology",
+            "level": 0,
+            "score": 0.0
+          },
+          {
+            "id": "https://openalex.org/C111919701",
+            "wikidata": "https://www.wikidata.org/wiki/Q9135",
+            "display_name": "Operating system",
+            "level": 1,
+            "score": 0.0
+          }
+        ],
+        "mesh": [],
+        "locations_count": 2,
+        "locations": [
+          {
+            "id": "doi:10.1016/j.jfueco.2021.100047",
+            "is_oa": true,
+            "landing_page_url": "https://doi.org/10.1016/j.jfueco.2021.100047",
+            "pdf_url": "https://www.sciencedirect.com/science/article/pii/S2666052021000406/pdf",
+            "source": {
+              "id": "https://openalex.org/S4210227637",
+              "display_name": "Fuel Communications",
+              "issn_l": "2666-0520",
+              "issn": [
+                "2666-0520"
+              ],
+              "is_oa": true,
+              "is_in_doaj": true,
+              "is_core": true,
+              "listed_in": [
+                "cwts-core",
+                "doaj",
+                "jufo-1"
+              ],
+              "host_organization": "https://openalex.org/P4310320990",
+              "host_organization_name": "Elsevier BV",
+              "host_organization_lineage": [
+                "https://openalex.org/P4310320990"
+              ],
+              "host_organization_lineage_names": [
+                "Elsevier BV"
+              ],
+              "type": "journal"
+            },
+            "license": "cc-by-nc-nd",
+            "license_id": "https://openalex.org/licenses/cc-by-nc-nd",
+            "version": "publishedVersion",
+            "is_accepted": true,
+            "is_published": true,
+            "raw_source_name": "Fuel Communications",
+            "raw_type": "journal-article"
+          },
+          {
+            "id": "pmh:oai:doaj.org/article:3d87c078756d4fd39eb80c148d62f358",
+            "is_oa": true,
+            "landing_page_url": "https://doaj.org/article/3d87c078756d4fd39eb80c148d62f358",
+            "pdf_url": null,
+            "source": {
+              "id": "https://openalex.org/S4306401280",
+              "display_name": "DOAJ (DOAJ: Directory of Open Access Journals)",
+              "issn_l": null,
+              "issn": null,
+              "is_oa": false,
+              "is_in_doaj": false,
+              "is_core": false,
+              "listed_in": [],
+              "host_organization": null,
+              "host_organization_name": null,
+              "host_organization_lineage": [],
+              "host_organization_lineage_names": [],
+              "type": "repository"
+            },
+            "license": "cc-by-sa",
+            "license_id": "https://openalex.org/licenses/cc-by-sa",
+            "version": "submittedVersion",
+            "is_accepted": false,
+            "is_published": false,
+            "raw_source_name": "Fuel Communications, Vol 10, Iss , Pp 100047- (2022)",
+            "raw_type": "article"
+          }
+        ],
+        "best_oa_location": {
+          "id": "doi:10.1016/j.jfueco.2021.100047",
+          "is_oa": true,
+          "landing_page_url": "https://doi.org/10.1016/j.jfueco.2021.100047",
+          "pdf_url": "https://www.sciencedirect.com/science/article/pii/S2666052021000406/pdf",
+          "source": {
+            "id": "https://openalex.org/S4210227637",
+            "display_name": "Fuel Communications",
+            "issn_l": "2666-0520",
+            "issn": [
+              "2666-0520"
+            ],
+            "is_oa": true,
+            "is_in_doaj": true,
+            "is_core": true,
+            "listed_in": [
+              "cwts-core",
+              "doaj",
+              "jufo-1"
+            ],
+            "host_organization": "https://openalex.org/P4310320990",
+            "host_organization_name": "Elsevier BV",
+            "host_organization_lineage": [
+              "https://openalex.org/P4310320990"
+            ],
+            "host_organization_lineage_names": [
+              "Elsevier BV"
+            ],
+            "type": "journal"
+          },
+          "license": "cc-by-nc-nd",
+          "license_id": "https://openalex.org/licenses/cc-by-nc-nd",
+          "version": "publishedVersion",
+          "is_accepted": true,
+          "is_published": true,
+          "raw_source_name": "Fuel Communications",
+          "raw_type": "journal-article"
+        },
+        "sustainable_development_goals": [
+          {
+            "display_name": "Decent work and economic growth",
+            "score": 0.6000000238418579,
+            "id": "https://metadata.un.org/sdg/8"
+          }
+        ],
+        "x_sdgs": [],
+        "study_designs": [],
+        "awards": [],
+        "funders": [],
+        "has_content": {
+          "grobid_xml": true,
+          "pdf": true
+        },
+        "content_urls": {
+          "pdf": "https://content.openalex.org/works/W3217001319.pdf",
+          "grobid_xml": "https://content.openalex.org/works/W3217001319.grobid-xml"
+        },
+        "referenced_works_count": 19,
+        "referenced_works": [
+          "https://openalex.org/W1499387144",
+          "https://openalex.org/W2016104601",
+          "https://openalex.org/W2027120502",
+          "https://openalex.org/W2036912539",
+          "https://openalex.org/W2051889693",
+          "https://openalex.org/W2090642582",
+          "https://openalex.org/W2093563804",
+          "https://openalex.org/W2130789352",
+          "https://openalex.org/W2154881147",
+          "https://openalex.org/W2184510397",
+          "https://openalex.org/W2492103676",
+          "https://openalex.org/W2796716881",
+          "https://openalex.org/W3138287195",
+          "https://openalex.org/W4229644324",
+          "https://openalex.org/W4232221392",
+          "https://openalex.org/W4256550327",
+          "https://openalex.org/W6686857233",
+          "https://openalex.org/W6791965404",
+          "https://openalex.org/W6838328190"
+        ],
+        "related_works": [
+          "https://openalex.org/W2011810134",
+          "https://openalex.org/W2050497389",
+          "https://openalex.org/W1568976062",
+          "https://openalex.org/W2960025371",
+          "https://openalex.org/W2367625138",
+          "https://openalex.org/W2019537266",
+          "https://openalex.org/W2017891857",
+          "https://openalex.org/W3189805531",
+          "https://openalex.org/W3008231844",
+          "https://openalex.org/W2358315670"
+        ],
+        "abstract_inverted_index": {
+          "In": [
+            0
+          ],
+          "this": [
+            1,
+            82
+          ],
+          "work,": [
+            2
+          ],
+          "the": [
+            3,
+            8,
+            16,
+            20,
+            39,
+            50,
+            52,
+            58,
+            65,
+            73,
+            85,
+            91,
+            95,
+            101,
+            112,
+            118,
+            122,
+            125,
+            133,
+            136,
+            139,
+            147,
+            153,
+            162,
+            168,
+            175
+          ],
+          "tolerance": [
+            4,
+            119,
+            148
+          ],
+          "window": [
+            5
+          ],
+          "defined": [
+            6
+          ],
+          "as": [
+            7,
+            90,
+            174
+          ],
+          "variations": [
+            9
+          ],
+          "of": [
+            10,
+            19,
+            26,
+            38,
+            43,
+            60,
+            87,
+            117,
+            124,
+            135
+          ],
+          "gains": [
+            11
+          ],
+          "and": [
+            12,
+            64,
+            146
+          ],
+          "penalty": [
+            13,
+            143
+          ],
+          "associated": [
+            14
+          ],
+          "with": [
+            15,
+            54,
+            57,
+            67
+          ],
+          "earliness": [
+            17
+          ],
+          "component": [
+            18
+          ],
+          "Linear": [
+            21
+          ],
+          "Composite": [
+            22
+          ],
+          "Objective": [
+            23
+          ],
+          "Function": [
+            24
+          ],
+          "(LCOF)": [
+            25
+          ],
+          "Earliness–Tardiness": [
+            27
+          ],
+          "(E/T)": [
+            28
+          ],
+          "scheduling": [
+            29
+          ],
+          "problems": [
+            30,
+            45,
+            53,
+            66
+          ],
+          "were": [
+            31
+          ],
+          "explored": [
+            32
+          ],
+          "to": [
+            33,
+            160
+          ],
+          "establish": [
+            34
+          ],
+          "three": [
+            35,
+            163
+          ],
+          "different": [
+            36
+          ],
+          "classes": [
+            37
+          ],
+          "problem.": [
+            40
+          ],
+          "Two": [
+            41
+          ],
+          "variants": [
+            42
+          ],
+          "E/T": [
+            44,
+            74,
+            96
+          ],
+          "has": [
+            46
+          ],
+          "been": [
+            47
+          ],
+          "established": [
+            48
+          ],
+          "in": [
+            49,
+            81
+          ],
+          "literature;": [
+            51
+          ],
+          "unknown": [
+            55
+          ],
+          "due-date": [
+            56,
+            63,
+            70
+          ],
+          "objective": [
+            59
+          ],
+          "optimizing": [
+            61,
+            72,
+            94
+          ],
+          "jobs": [
+            62
+          ],
+          "a": [
+            68,
+            115,
+            130
+          ],
+          "known": [
+            69
+          ],
+          "for": [
+            71,
+            93
+          ],
+          "cost": [
+            75,
+            97,
+            144
+          ],
+          "function.": [
+            76,
+            98
+          ],
+          "The": [
+            77
+          ],
+          "latter": [
+            78
+          ],
+          "variant": [
+            79
+          ],
+          "considered": [
+            80
+          ],
+          "work": [
+            83,
+            151
+          ],
+          "applies": [
+            84
+          ],
+          "concept": [
+            86
+          ],
+          "Just-In-Time": [
+            88
+          ],
+          "(JIT)": [
+            89
+          ],
+          "basis": [
+            92
+          ],
+          "However,": [
+            99
+          ],
+          "while": [
+            100
+          ],
+          "ideal": [
+            102
+          ],
+          "JIT": [
+            103
+          ],
+          "schedule": [
+            104
+          ],
+          "which": [
+            105
+          ],
+          "tends": [
+            106
+          ],
+          "towards": [
+            107
+          ],
+          "zero": [
+            108
+          ],
+          "LCOF": [
+            109
+          ],
+          "is": [
+            110,
+            114,
+            129
+          ],
+          "notional,": [
+            111
+          ],
+          "deviation": [
+            113,
+            137
+          ],
+          "function": [
+            116,
+            145
+          ],
+          "window.": [
+            120,
+            149
+          ],
+          "To": [
+            121
+          ],
+          "best": [
+            123
+          ],
+          "researchers’": [
+            126
+          ],
+          "knowledge,": [
+            127
+          ],
+          "there": [
+            128
+          ],
+          "gap": [
+            131
+          ],
+          "between": [
+            132
+          ],
+          "measures": [
+            134
+          ],
+          "called": [
+            138
+          ],
+          "delivery": [
+            140
+          ],
+          "reliability": [
+            141
+          ],
+          "or": [
+            142
+          ],
+          "This": [
+            150
+          ],
+          "closes": [
+            152
+          ],
+          "gap.": [
+            154
+          ],
+          "A": [
+            155
+          ],
+          "numerical": [
+            156
+          ],
+          "example": [
+            157
+          ],
+          "was": [
+            158
+          ],
+          "solved": [
+            159
+          ],
+          "demonstrate": [
+            161
+          ],
+          "problem": [
+            164
+          ],
+          "classes’": [
+            165
+          ],
+          "utility": [
+            166
+          ],
+          "using": [
+            167
+          ],
+          "Early": [
+            169
+          ],
+          "Due": [
+            170
+          ],
+          "Date": [
+            171
+          ],
+          "(EDD)": [
+            172
+          ],
+          "algorithm": [
+            173
+          ],
+          "hypothetical": [
+            176
+          ],
+          "solution.": [
+            177
+          ]
+        },
+        "counts_by_year": [
+          {
+            "year": 2026,
+            "cited_by_count": 2
+          },
+          {
+            "year": 2025,
+            "cited_by_count": 1
+          },
+          {
+            "year": 2024,
+            "cited_by_count": 1
+          },
+          {
+            "year": 2023,
+            "cited_by_count": 2
+          },
+          {
+            "year": 2022,
+            "cited_by_count": 1
+          }
+        ],
+        "updated_date": "2026-08-28T12:50:07.497085",
+        "created_date": "2025-10-10T00:00:00"
+      },
+      {
+        "id": "https://openalex.org/W2048030509",
+        "doi": "https://doi.org/10.1016/s0305-0548(03)00117-5",
+        "title": "A branch-and-bound algorithm for the early/tardy machine scheduling problem with a common due-date and sequence-dependent setup time",
+        "display_name": "A branch-and-bound algorithm for the early/tardy machine scheduling problem with a common due-date and sequence-dependent setup time",
+        "relevance_score": 47.798973,
+        "publication_year": 2003,
+        "publication_date": "2003-05-27",
+        "ids": {
+          "openalex": "https://openalex.org/W2048030509",
+          "doi": "https://doi.org/10.1016/s0305-0548(03)00117-5",
+          "mag": "2048030509"
+        },
+        "language": "en",
+        "primary_location": {
+          "id": "doi:10.1016/s0305-0548(03)00117-5",
+          "is_oa": false,
+          "landing_page_url": "https://doi.org/10.1016/s0305-0548(03)00117-5",
+          "pdf_url": null,
+          "source": {
+            "id": "https://openalex.org/S173256270",
+            "display_name": "Computers & Operations Research",
+            "issn_l": "0305-0548",
+            "issn": [
+              "0305-0548",
+              "1873-765X"
+            ],
+            "is_oa": false,
+            "is_in_doaj": false,
+            "is_core": true,
+            "listed_in": [
+              "cwts-core",
+              "jufo-1",
+              "norway-2"
+            ],
+            "host_organization": "https://openalex.org/P4310320990",
+            "host_organization_name": "Elsevier BV",
+            "host_organization_lineage": [
+              "https://openalex.org/P4310320990"
+            ],
+            "host_organization_lineage_names": [
+              "Elsevier BV"
+            ],
+            "type": "journal"
+          },
+          "license": null,
+          "license_id": null,
+          "version": "publishedVersion",
+          "is_accepted": true,
+          "is_published": true,
+          "raw_source_name": "Computers &amp; Operations Research",
+          "raw_type": "journal-article"
+        },
+        "type": "article",
+        "indexed_in": [
+          "crossref"
+        ],
+        "open_access": {
+          "is_oa": true,
+          "oa_status": "green",
+          "oa_url": "https://stars.library.ucf.edu/facultybib2000/4725",
+          "any_repository_has_fulltext": true
+        },
+        "authorships": [
+          {
+            "author_position": "first",
+            "author": {
+              "id": "https://openalex.org/A5054798706",
+              "display_name": "Ghaith Rabadi",
+              "orcid": "https://orcid.org/0000-0001-8145-313X"
+            },
+            "institutions": [
+              {
+                "id": "https://openalex.org/I81365321",
+                "display_name": "Old Dominion University",
+                "ror": "https://ror.org/04zjtrb98",
+                "country_code": "US",
+                "type": "education",
+                "lineage": [
+                  "https://openalex.org/I81365321"
+                ]
+              }
+            ],
+            "countries": [
+              "US"
+            ],
+            "is_corresponding": true,
+            "raw_author_name": "Ghaith Rabadi",
+            "raw_affiliation_strings": [
+              "Department of Engineering Management & Systems Engineering, Old Dominion University, Norfolk, VA 23529, USA",
+              "Department of Engineering Management and Systems Engineering, Old Dominion University, Norfolk, VA,#TAB#"
+            ],
+            "raw_orcid": null,
+            "affiliations": [
+              {
+                "raw_affiliation_string": "Department of Engineering Management & Systems Engineering, Old Dominion University, Norfolk, VA 23529, USA",
+                "institution_ids": [
+                  "https://openalex.org/I81365321"
+                ]
+              },
+              {
+                "raw_affiliation_string": "Department of Engineering Management and Systems Engineering, Old Dominion University, Norfolk, VA,#TAB#",
+                "institution_ids": [
+                  "https://openalex.org/I81365321"
+                ]
+              }
+            ]
+          },
+          {
+            "author_position": "middle",
+            "author": {
+              "id": "https://openalex.org/A5007185566",
+              "display_name": "Mansooreh Mollaghasemi",
+              "orcid": null
+            },
+            "institutions": [
+              {
+                "id": "https://openalex.org/I106165777",
+                "display_name": "University of Central Florida",
+                "ror": "https://ror.org/036nfer12",
+                "country_code": "US",
+                "type": "education",
+                "lineage": [
+                  "https://openalex.org/I106165777"
+                ]
+              }
+            ],
+            "countries": [
+              "US"
+            ],
+            "is_corresponding": false,
+            "raw_author_name": "Mansooreh Mollaghasemi",
+            "raw_affiliation_strings": [
+              "Department of Industrial Engineering & Management Systems, University of Central Florida, Orlando, FL 32816, USA",
+              "Department of Industrial Engineering and Management Systems, University of Central Florida, Orlando, FL"
+            ],
+            "raw_orcid": null,
+            "affiliations": [
+              {
+                "raw_affiliation_string": "Department of Industrial Engineering & Management Systems, University of Central Florida, Orlando, FL 32816, USA",
+                "institution_ids": [
+                  "https://openalex.org/I106165777"
+                ]
+              },
+              {
+                "raw_affiliation_string": "Department of Industrial Engineering and Management Systems, University of Central Florida, Orlando, FL",
+                "institution_ids": [
+                  "https://openalex.org/I106165777"
+                ]
+              }
+            ]
+          },
+          {
+            "author_position": "last",
+            "author": {
+              "id": "https://openalex.org/A5102864967",
+              "display_name": "Georgios C. Anagnostopoulos",
+              "orcid": "https://orcid.org/0000-0001-6008-0303"
+            },
+            "institutions": [
+              {
+                "id": "https://openalex.org/I106959904",
+                "display_name": "Florida Institute of Technology",
+                "ror": "https://ror.org/04atsbb87",
+                "country_code": "US",
+                "type": "education",
+                "lineage": [
+                  "https://openalex.org/I106959904"
+                ]
+              }
+            ],
+            "countries": [
+              "US"
+            ],
+            "is_corresponding": false,
+            "raw_author_name": "Georgios C. Anagnostopoulos",
+            "raw_affiliation_strings": [
+              "Department of Electrical Engineering and Computer Engineering, Florida Institute of Technology, Melbourne, FL 32901-6975, USA",
+              "Department of Electrical Engineering and Computer Engineering, Florida Institute of Technology, Melbourne, FL"
+            ],
+            "raw_orcid": null,
+            "affiliations": [
+              {
+                "raw_affiliation_string": "Department of Electrical Engineering and Computer Engineering, Florida Institute of Technology, Melbourne, FL 32901-6975, USA",
+                "institution_ids": [
+                  "https://openalex.org/I106959904"
+                ]
+              },
+              {
+                "raw_affiliation_string": "Department of Electrical Engineering and Computer Engineering, Florida Institute of Technology, Melbourne, FL",
+                "institution_ids": [
+                  "https://openalex.org/I106959904"
+                ]
+              }
+            ]
+          }
+        ],
+        "institutions": [],
+        "countries_distinct_count": 1,
+        "institutions_distinct_count": 3,
+        "corresponding_author_ids": [
+          "https://openalex.org/A5054798706"
+        ],
+        "corresponding_institution_ids": [
+          "https://openalex.org/I81365321"
+        ],
+        "apc_list": {
+          "value": 3570,
+          "currency": "USD",
+          "value_usd": 3570
+        },
+        "apc_paid": null,
+        "fwci": 9.7103,
+        "has_fulltext": false,
+        "cited_by_count": 79,
+        "citation_normalized_percentile": {
+          "value": 0.97741875,
+          "is_in_top_1_percent": false,
+          "is_in_top_10_percent": true
+        },
+        "cited_by_percentile_year": {
+          "min": 89,
+          "max": 99
+        },
+        "biblio": {
+          "volume": "31",
+          "issue": "10",
+          "first_page": "1727",
+          "last_page": "1751"
+        },
+        "is_retracted": false,
+        "is_paratext": false,
+        "is_xpac": false,
+        "primary_topic": {
+          "id": "https://openalex.org/T10551",
+          "display_name": "Scheduling and Optimization Algorithms",
+          "score": 1.0,
+          "subfield": {
+            "id": "https://openalex.org/subfields/2209",
+            "display_name": "Industrial and Manufacturing Engineering"
+          },
+          "field": {
+            "id": "https://openalex.org/fields/22",
+            "display_name": "Engineering"
+          },
+          "domain": {
+            "id": "https://openalex.org/domains/3",
+            "display_name": "Physical Sciences"
+          }
+        },
+        "topics": [
+          {
+            "id": "https://openalex.org/T10551",
+            "display_name": "Scheduling and Optimization Algorithms",
+            "score": 1.0,
+            "subfield": {
+              "id": "https://openalex.org/subfields/2209",
+              "display_name": "Industrial and Manufacturing Engineering"
+            },
+            "field": {
+              "id": "https://openalex.org/fields/22",
+              "display_name": "Engineering"
+            },
+            "domain": {
+              "id": "https://openalex.org/domains/3",
+              "display_name": "Physical Sciences"
+            }
+          },
+          {
+            "id": "https://openalex.org/T12782",
+            "display_name": "Assembly Line Balancing Optimization",
+            "score": 0.9962999820709229,
+            "subfield": {
+              "id": "https://openalex.org/subfields/2209",
+              "display_name": "Industrial and Manufacturing Engineering"
+            },
+            "field": {
+              "id": "https://openalex.org/fields/22",
+              "display_name": "Engineering"
+            },
+            "domain": {
+              "id": "https://openalex.org/domains/3",
+              "display_name": "Physical Sciences"
+            }
+          },
+          {
+            "id": "https://openalex.org/T11814",
+            "display_name": "Advanced Manufacturing and Logistics Optimization",
+            "score": 0.9961000084877014,
+            "subfield": {
+              "id": "https://openalex.org/subfields/2209",
+              "display_name": "Industrial and Manufacturing Engineering"
+            },
+            "field": {
+              "id": "https://openalex.org/fields/22",
+              "display_name": "Engineering"
+            },
+            "domain": {
+              "id": "https://openalex.org/domains/3",
+              "display_name": "Physical Sciences"
+            }
+          }
+        ],
+        "keywords": [
+          {
+            "id": "https://openalex.org/keywords/tardiness",
+            "display_name": "Tardiness",
+            "score": 0.9848809838294983
+          },
+          {
+            "id": "https://openalex.org/keywords/branch-and-bound",
+            "display_name": "Branch and bound",
+            "score": 0.6956464052200317
+          },
+          {
+            "id": "https://openalex.org/keywords/sequence",
+            "display_name": "Sequence (biology)",
+            "score": 0.6924421787261963
+          },
+          {
+            "id": "https://openalex.org/keywords/due-date",
+            "display_name": "Due date",
+            "score": 0.6843888759613037
+          },
+          {
+            "id": "https://openalex.org/keywords/mathematical-optimization",
+            "display_name": "Mathematical optimization",
+            "score": 0.6224012970924377
+          },
+          {
+            "id": "https://openalex.org/keywords/scheduling",
+            "display_name": "Scheduling (production processes)",
+            "score": 0.5912144184112549
+          },
+          {
+            "id": "https://openalex.org/keywords/integer-programming",
+            "display_name": "Integer programming",
+            "score": 0.5867365002632141
+          },
+          {
+            "id": "https://openalex.org/keywords/computer-science",
+            "display_name": "Computer science",
+            "score": 0.5410295128822327
+          },
+          {
+            "id": "https://openalex.org/keywords/job-shop-scheduling",
+            "display_name": "Job shop scheduling",
+            "score": 0.5363956689834595
+          },
+          {
+            "id": "https://openalex.org/keywords/single-machine-scheduling",
+            "display_name": "Single-machine scheduling",
+            "score": 0.519989550113678
+          },
+          {
+            "id": "https://openalex.org/keywords/algorithm",
+            "display_name": "Algorithm",
+            "score": 0.5059515833854675
+          },
+          {
+            "id": "https://openalex.org/keywords/upper-and-lower-bounds",
+            "display_name": "Upper and lower bounds",
+            "score": 0.47908979654312134
+          },
+          {
+            "id": "https://openalex.org/keywords/dynamic-programming",
+            "display_name": "Dynamic programming",
+            "score": 0.455262690782547
+          },
+          {
+            "id": "https://openalex.org/keywords/mathematics",
+            "display_name": "Mathematics",
+            "score": 0.4453083276748657
+          },
+          {
+            "id": "https://openalex.org/keywords/schedule",
+            "display_name": "Schedule",
+            "score": 0.07668516039848328
+          }
+        ],
+        "concepts": [
+          {
+            "id": "https://openalex.org/C2778047078",
+            "wikidata": "https://www.wikidata.org/wiki/Q82299449",
+            "display_name": "Tardiness",
+            "level": 4,
+            "score": 0.9848809838294983
+          },
+          {
+            "id": "https://openalex.org/C93693863",
+            "wikidata": "https://www.wikidata.org/wiki/Q897659",
+            "display_name": "Branch and bound",
+            "level": 2,
+            "score": 0.6956464052200317
+          },
+          {
+            "id": "https://openalex.org/C2778112365",
+            "wikidata": "https://www.wikidata.org/wiki/Q3511065",
+            "display_name": "Sequence (biology)",
+            "level": 2,
+            "score": 0.6924421787261963
+          },
+          {
+            "id": "https://openalex.org/C3019208289",
+            "wikidata": "https://www.wikidata.org/wiki/Q56612115",
+            "display_name": "Due date",
+            "level": 3,
+            "score": 0.6843888759613037
+          },
+          {
+            "id": "https://openalex.org/C126255220",
+            "wikidata": "https://www.wikidata.org/wiki/Q141495",
+            "display_name": "Mathematical optimization",
+            "level": 1,
+            "score": 0.6224012970924377
+          },
+          {
+            "id": "https://openalex.org/C206729178",
+            "wikidata": "https://www.wikidata.org/wiki/Q2271896",
+            "display_name": "Scheduling (production processes)",
+            "level": 2,
+            "score": 0.5912144184112549
+          },
+          {
+            "id": "https://openalex.org/C56086750",
+            "wikidata": "https://www.wikidata.org/wiki/Q6042592",
+            "display_name": "Integer programming",
+            "level": 2,
+            "score": 0.5867365002632141
+          },
+          {
+            "id": "https://openalex.org/C41008148",
+            "wikidata": "https://www.wikidata.org/wiki/Q21198",
+            "display_name": "Computer science",
+            "level": 0,
+            "score": 0.5410295128822327
+          },
+          {
+            "id": "https://openalex.org/C55416958",
+            "wikidata": "https://www.wikidata.org/wiki/Q6206757",
+            "display_name": "Job shop scheduling",
+            "level": 3,
+            "score": 0.5363956689834595
+          },
+          {
+            "id": "https://openalex.org/C2780271269",
+            "wikidata": "https://www.wikidata.org/wiki/Q19295956",
+            "display_name": "Single-machine scheduling",
+            "level": 4,
+            "score": 0.519989550113678
+          },
+          {
+            "id": "https://openalex.org/C11413529",
+            "wikidata": "https://www.wikidata.org/wiki/Q8366",
+            "display_name": "Algorithm",
+            "level": 1,
+            "score": 0.5059515833854675
+          },
+          {
+            "id": "https://openalex.org/C77553402",
+            "wikidata": "https://www.wikidata.org/wiki/Q13222579",
+            "display_name": "Upper and lower bounds",
+            "level": 2,
+            "score": 0.47908979654312134
+          },
+          {
+            "id": "https://openalex.org/C37404715",
+            "wikidata": "https://www.wikidata.org/wiki/Q380679",
+            "display_name": "Dynamic programming",
+            "level": 2,
+            "score": 0.455262690782547
+          },
+          {
+            "id": "https://openalex.org/C33923547",
+            "wikidata": "https://www.wikidata.org/wiki/Q395",
+            "display_name": "Mathematics",
+            "level": 0,
+            "score": 0.4453083276748657
+          },
+          {
+            "id": "https://openalex.org/C68387754",
+            "wikidata": "https://www.wikidata.org/wiki/Q7271585",
+            "display_name": "Schedule",
+            "level": 2,
+            "score": 0.07668516039848328
+          },
+          {
+            "id": "https://openalex.org/C134306372",
+            "wikidata": "https://www.wikidata.org/wiki/Q7754",
+            "display_name": "Mathematical analysis",
+            "level": 1,
+            "score": 0.0
+          },
+          {
+            "id": "https://openalex.org/C86803240",
+            "wikidata": "https://www.wikidata.org/wiki/Q420",
+            "display_name": "Biology",
+            "level": 0,
+            "score": 0.0
+          },
+          {
+            "id": "https://openalex.org/C54355233",
+            "wikidata": "https://www.wikidata.org/wiki/Q7162",
+            "display_name": "Genetics",
+            "level": 1,
+            "score": 0.0
+          },
+          {
+            "id": "https://openalex.org/C111919701",
+            "wikidata": "https://www.wikidata.org/wiki/Q9135",
+            "display_name": "Operating system",
+            "level": 1,
+            "score": 0.0
+          }
+        ],
+        "mesh": [],
+        "locations_count": 3,
+        "locations": [
+          {
+            "id": "doi:10.1016/s0305-0548(03)00117-5",
+            "is_oa": false,
+            "landing_page_url": "https://doi.org/10.1016/s0305-0548(03)00117-5",
+            "pdf_url": null,
+            "source": {
+              "id": "https://openalex.org/S173256270",
+              "display_name": "Computers & Operations Research",
+              "issn_l": "0305-0548",
+              "issn": [
+                "0305-0548",
+                "1873-765X"
+              ],
+              "is_oa": false,
+              "is_in_doaj": false,
+              "is_core": true,
+              "listed_in": [
+                "cwts-core",
+                "jufo-1",
+                "norway-2"
+              ],
+              "host_organization": "https://openalex.org/P4310320990",
+              "host_organization_name": "Elsevier BV",
+              "host_organization_lineage": [
+                "https://openalex.org/P4310320990"
+              ],
+              "host_organization_lineage_names": [
+                "Elsevier BV"
+              ],
+              "type": "journal"
+            },
+            "license": null,
+            "license_id": null,
+            "version": "publishedVersion",
+            "is_accepted": true,
+            "is_published": true,
+            "raw_source_name": "Computers &amp; Operations Research",
+            "raw_type": "journal-article"
+          },
+          {
+            "id": "pmh:oai:stars.library.ucf.edu:facultybib2000-5724",
+            "is_oa": true,
+            "landing_page_url": "https://stars.library.ucf.edu/facultybib2000/4725",
+            "pdf_url": null,
+            "source": {
+              "id": "https://openalex.org/S4210172555",
+              "display_name": "Journal of International Crisis and Risk Communication Research",
+              "issn_l": "2576-0017",
+              "issn": [
+                "2576-0017",
+                "2576-0025"
+              ],
+              "is_oa": true,
+              "is_in_doaj": false,
+              "is_core": true,
+              "listed_in": [
+                "cwts-core"
+              ],
+              "host_organization": null,
+              "host_organization_name": null,
+              "host_organization_lineage": [],
+              "host_organization_lineage_names": [],
+              "type": "journal"
+            },
+            "license": null,
+            "license_id": null,
+            "version": "submittedVersion",
+            "is_accepted": false,
+            "is_published": false,
+            "raw_source_name": "Faculty Bibliography 2000s",
+            "raw_type": "text"
+          },
+          {
+            "id": "pmh:oai:stars.library.ucf.edu:scopus2000-6082",
+            "is_oa": true,
+            "landing_page_url": "https://stars.library.ucf.edu/scopus2000/5083",
+            "pdf_url": null,
+            "source": {
+              "id": "https://openalex.org/S4210172555",
+              "display_name": "Journal of International Crisis and Risk Communication Research",
+              "issn_l": "2576-0017",
+              "issn": [
+                "2576-0017",
+                "2576-0025"
+              ],
+              "is_oa": true,
+              "is_in_doaj": false,
+              "is_core": true,
+              "listed_in": [
+                "cwts-core"
+              ],
+              "host_organization": null,
+              "host_organization_name": null,
+              "host_organization_lineage": [],
+              "host_organization_lineage_names": [],
+              "type": "journal"
+            },
+            "license": null,
+            "license_id": null,
+            "version": "submittedVersion",
+            "is_accepted": false,
+            "is_published": false,
+            "raw_source_name": "Scopus Export 2000s",
+            "raw_type": "text"
+          }
+        ],
+        "best_oa_location": {
+          "id": "pmh:oai:stars.library.ucf.edu:facultybib2000-5724",
+          "is_oa": true,
+          "landing_page_url": "https://stars.library.ucf.edu/facultybib2000/4725",
+          "pdf_url": null,
+          "source": {
+            "id": "https://openalex.org/S4210172555",
+            "display_name": "Journal of International Crisis and Risk Communication Research",
+            "issn_l": "2576-0017",
+            "issn": [
+              "2576-0017",
+              "2576-0025"
+            ],
+            "is_oa": true,
+            "is_in_doaj": false,
+            "is_core": true,
+            "listed_in": [
+              "cwts-core"
+            ],
+            "host_organization": null,
+            "host_organization_name": null,
+            "host_organization_lineage": [],
+            "host_organization_lineage_names": [],
+            "type": "journal"
+          },
+          "license": null,
+          "license_id": null,
+          "version": "submittedVersion",
+          "is_accepted": false,
+          "is_published": false,
+          "raw_source_name": "Faculty Bibliography 2000s",
+          "raw_type": "text"
+        },
+        "sustainable_development_goals": [
+          {
+            "display_name": "Industry, innovation and infrastructure",
+            "score": 0.46000000834465027,
+            "id": "https://metadata.un.org/sdg/9"
+          }
+        ],
+        "x_sdgs": [],
+        "study_designs": [],
+        "awards": [],
+        "funders": [],
+        "has_content": {
+          "grobid_xml": false,
+          "pdf": false
+        },
+        "content_urls": null,
+        "referenced_works_count": 24,
+        "referenced_works": [
+          "https://openalex.org/W1964166152",
+          "https://openalex.org/W1984048943",
+          "https://openalex.org/W1984809851",
+          "https://openalex.org/W1987468199",
+          "https://openalex.org/W1992128882",
+          "https://openalex.org/W2008334824",
+          "https://openalex.org/W2028376777",
+          "https://openalex.org/W2033384380",
+          "https://openalex.org/W2033870051",
+          "https://openalex.org/W2036957865",
+          "https://openalex.org/W2084517692",
+          "https://openalex.org/W2090484759",
+          "https://openalex.org/W2091126329",
+          "https://openalex.org/W2091164478",
+          "https://openalex.org/W2093563804",
+          "https://openalex.org/W2094157672",
+          "https://openalex.org/W2107205433",
+          "https://openalex.org/W2112230124",
+          "https://openalex.org/W2124388232",
+          "https://openalex.org/W2340149117",
+          "https://openalex.org/W2732526670",
+          "https://openalex.org/W2998757566",
+          "https://openalex.org/W3023086018",
+          "https://openalex.org/W4300445707"
+        ],
+        "related_works": [
+          "https://openalex.org/W2060337406",
+          "https://openalex.org/W2153799489",
+          "https://openalex.org/W1992259816",
+          "https://openalex.org/W2057653555",
+          "https://openalex.org/W4381616416",
+          "https://openalex.org/W2131482998",
+          "https://openalex.org/W4251798786",
+          "https://openalex.org/W2377478537",
+          "https://openalex.org/W2051555966",
+          "https://openalex.org/W1991096018"
+        ],
+        "abstract_inverted_index": null,
+        "counts_by_year": [
+          {
+            "year": 2024,
+            "cited_by_count": 1
+          },
+          {
+            "year": 2021,
+            "cited_by_count": 2
+          },
+          {
+            "year": 2020,
+            "cited_by_count": 4
+          },
+          {
+            "year": 2019,
+            "cited_by_count": 3
+          },
+          {
+            "year": 2017,
+            "cited_by_count": 2
+          },
+          {
+            "year": 2016,
+            "cited_by_count": 6
+          },
+          {
+            "year": 2015,
+            "cited_by_count": 5
+          },
+          {
+            "year": 2014,
+            "cited_by_count": 4
+          },
+          {
+            "year": 2013,
+            "cited_by_count": 5
+          },
+          {
+            "year": 2012,
+            "cited_by_count": 8
+          }
+        ],
+        "updated_date": "2026-08-21T09:56:20.448147",
+        "created_date": "2025-10-10T00:00:00"
+      }
+    ],
+    "group_by": []
+  },
+  "accessed": "2026-09-28"
+}

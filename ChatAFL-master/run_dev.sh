@@ -80,7 +80,13 @@ FUZZER_LIST="$(normalize_fuzzer_list "$FUZZER_LIST")" || exit $?
 export FUZZER_LIST
 
 # ── LLM API Key 验证 ──────────────────────────────────────────────
-if [[ -z "${KEY}" ]]; then
+# CHATAFL_NO_LLM=1：短程验证专用。跳过交互确认，直接以无 LLM 模式运行
+# （启动期富集约省 30 分钟——70 分钟级预算下 live555/forked-daapd 等慢目标
+# 的有效 fuzz 时间会 otherwise 趋近于零，见 results-live555_Sep-25_01-08-15）。
+if [[ "${CHATAFL_NO_LLM:-0}" == "1" ]]; then
+    KEY=""
+    echo "[MODE] CHATAFL_NO_LLM=1：无 LLM 模式（无富集，语法假设/种子富集/高原突破全部关闭）"
+elif [[ -z "${KEY}" ]]; then
     echo ""
     echo "╔══════════════════════════════════════════════════════════════╗"
     echo "║  ⚠  WARNING: KEY 环境变量为空！                             ║"
@@ -127,7 +133,12 @@ PFBENCH=$PFBENCH PATH=$PATH NUM_CONTAINERS=$NUM_CONTAINERS TIMEOUT=$TIMEOUT \
   CHATAFL_NO_REFINEMENT="${CHATAFL_NO_REFINEMENT:-}" \
   CHATAFL_NO_FRONTIER="${CHATAFL_NO_FRONTIER:-}" \
   CHATAFL_NO_ESCAPE_AMP="${CHATAFL_NO_ESCAPE_AMP:-}" \
+  CHATAFL_NO_LEXKILL="${CHATAFL_NO_LEXKILL:-}" \
+  CHATAFL_NO_NESTIMB="${CHATAFL_NO_NESTIMB:-}" \
+  CHATAFL_NO_TRANSPORTSAT="${CHATAFL_NO_TRANSPORTSAT:-}" \
+  CHATAFL_NO_TUNNELSWITCH="${CHATAFL_NO_TUNNELSWITCH:-}" \
   KAMAILIO_TCP="${KAMAILIO_TCP:-}" \
+  CHATAFL_CLEAN_CONTAINERS="${CHATAFL_CLEAN_CONTAINERS:-}" \
   CHATAFL_NO_ADAPTIVE="${CHATAFL_NO_ADAPTIVE:-}" \
   CHATAFL_NO_STATE_PROMPT="${CHATAFL_NO_STATE_PROMPT:-}" \
   CHATAFL_NO_ADMISSION="${CHATAFL_NO_ADMISSION:-}" \

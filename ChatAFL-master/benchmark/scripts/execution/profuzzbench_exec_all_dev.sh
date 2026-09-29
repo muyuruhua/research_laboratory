@@ -565,7 +565,16 @@ do
 done
 
 # 等待所有后台任务完成（移到这里实现并行执行）
-wait
+# Collect per-job exit codes: a bare `wait` always returns 0 and swallows
+# failures (e.g. docker name-conflict aborts in profuzzbench_exec_common_dev.sh),
+# which made run_ablation.sh report failed groups as "完成".
+EXEC_FAIL=0
+for _pid in $(jobs -p); do
+    if ! wait "$_pid"; then
+        echo "[ERROR] Background exec job (pid=$_pid) FAILED (exit=$?)" >&2
+        EXEC_FAIL=1
+    fi
+done
 
 RECOVERY_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/recover_result_archives.sh"
 for RESULTS_DIR in "${RESULTS_ROOT}"/results-*_"${TIMESTAMP}"; do
@@ -579,5 +588,10 @@ done
 
 echo
 echo "=========================================="
+if [[ $EXEC_FAIL -ne 0 ]]; then
+    echo "❌ Volume挂载模式测试完成（存在失败的 exec 任务，退出码=1）"
+    echo "=========================================="
+    exit 1
+fi
 echo "✅ Volume挂载模式测试完成"
 echo "=========================================="

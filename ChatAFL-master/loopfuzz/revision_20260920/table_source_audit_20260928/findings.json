@@ -1,0 +1,299 @@
+{
+  "conclusion": "Results are derived from Key_Experiment, but the current filename-based join is incomplete and mismatches one Lighttpd1 run. Design/source-review/literature tables are not measured results.",
+  "disk_archives": 518,
+  "ledger_runs": 517,
+  "archive_parse_errors": 0,
+  "raw_to_ledger_mismatching_archives": 0,
+  "raw_to_summary_mismatching_archives": 1,
+  "coverage_hashes_verified": 469,
+  "E_episode_hashes_verified": 76,
+  "numeric_evidence_duplicate_groups": [
+    [
+      "benchmark/results-bftpd_Sep-17_02-35-46/out-bftpd-chatafl_1.tar.gz",
+      "benchmark/results-bftpd_Sep-19_23-10-58/out-bftpd-chatafl_10.tar.gz"
+    ],
+    [
+      "benchmark/results-bftpd_Sep-17_02-35-46/out-bftpd-chatafl_10.tar.gz",
+      "benchmark/results-bftpd_Sep-19_23-10-58/out-bftpd-chatafl_9.tar.gz"
+    ],
+    [
+      "benchmark/results-bftpd_Sep-17_02-35-46/out-bftpd-chatafl_2.tar.gz",
+      "benchmark/results-bftpd_Sep-19_23-10-58/out-bftpd-chatafl_1.tar.gz"
+    ],
+    [
+      "benchmark/results-bftpd_Sep-17_02-35-46/out-bftpd-chatafl_3.tar.gz",
+      "benchmark/results-bftpd_Sep-19_23-10-58/out-bftpd-chatafl_2.tar.gz"
+    ],
+    [
+      "benchmark/results-bftpd_Sep-17_02-35-46/out-bftpd-chatafl_4.tar.gz",
+      "benchmark/results-bftpd_Sep-19_23-10-58/out-bftpd-chatafl_3.tar.gz"
+    ],
+    [
+      "benchmark/results-bftpd_Sep-17_02-35-46/out-bftpd-chatafl_5.tar.gz",
+      "benchmark/results-bftpd_Sep-19_23-10-58/out-bftpd-chatafl_4.tar.gz"
+    ],
+    [
+      "benchmark/results-bftpd_Sep-17_02-35-46/out-bftpd-chatafl_6.tar.gz",
+      "benchmark/results-bftpd_Sep-19_23-10-58/out-bftpd-chatafl_5.tar.gz"
+    ],
+    [
+      "benchmark/results-bftpd_Sep-17_02-35-46/out-bftpd-chatafl_7.tar.gz",
+      "benchmark/results-bftpd_Sep-19_23-10-58/out-bftpd-chatafl_6.tar.gz"
+    ],
+    [
+      "benchmark/results-bftpd_Sep-17_02-35-46/out-bftpd-chatafl_8.tar.gz",
+      "benchmark/results-bftpd_Sep-19_23-10-58/out-bftpd-chatafl_7.tar.gz"
+    ],
+    [
+      "benchmark/results-bftpd_Sep-17_02-35-46/out-bftpd-chatafl_9.tar.gz",
+      "benchmark/results-bftpd_Sep-19_23-10-58/out-bftpd-chatafl_8.tar.gz"
+    ],
+    [
+      "benchmark/results-bftpd_Sep-17_02-35-46/out-bftpd-loopfuzz_1.tar.gz",
+      "benchmark/results-bftpd_Sep-18_18-25-58/out-bftpd-loopfuzz_10.tar.gz"
+    ],
+    [
+      "benchmark/results-bftpd_Sep-17_02-35-46/out-bftpd-loopfuzz_10.tar.gz",
+      "benchmark/results-bftpd_Sep-18_18-25-58/out-bftpd-loopfuzz_9.tar.gz"
+    ],
+    [
+      "benchmark/results-bftpd_Sep-17_02-35-46/out-bftpd-loopfuzz_2.tar.gz",
+      "benchmark/results-bftpd_Sep-18_18-25-58/out-bftpd-loopfuzz_1.tar.gz"
+    ],
+    [
+      "benchmark/results-bftpd_Sep-17_02-35-46/out-bftpd-loopfuzz_3.tar.gz",
+      "benchmark/results-bftpd_Sep-18_18-25-58/out-bftpd-loopfuzz_2.tar.gz"
+    ],
+    [
+      "benchmark/results-bftpd_Sep-17_02-35-46/out-bftpd-loopfuzz_4.tar.gz",
+      "benchmark/results-bftpd_Sep-18_18-25-58/out-bftpd-loopfuzz_3.tar.gz"
+    ],
+    [
+      "benchmark/results-bftpd_Sep-17_02-35-46/out-bftpd-loopfuzz_5.tar.gz",
+      "benchmark/results-bftpd_Sep-18_18-25-58/out-bftpd-loopfuzz_4.tar.gz"
+    ],
+    [
+      "benchmark/results-bftpd_Sep-17_02-35-46/out-bftpd-loopfuzz_6.tar.gz",
+      "benchmark/results-bftpd_Sep-18_18-25-58/out-bftpd-loopfuzz_5.tar.gz"
+    ],
+    [
+      "benchmark/results-bftpd_Sep-17_02-35-46/out-bftpd-loopfuzz_7.tar.gz",
+      "benchmark/results-bftpd_Sep-18_18-25-58/out-bftpd-loopfuzz_6.tar.gz"
+    ],
+    [
+      "benchmark/results-bftpd_Sep-17_02-35-46/out-bftpd-loopfuzz_8.tar.gz",
+      "benchmark/results-bftpd_Sep-18_18-25-58/out-bftpd-loopfuzz_7.tar.gz"
+    ],
+    [
+      "benchmark/results-bftpd_Sep-17_02-35-46/out-bftpd-loopfuzz_9.tar.gz",
+      "benchmark/results-bftpd_Sep-18_18-25-58/out-bftpd-loopfuzz_8.tar.gz"
+    ]
+  ],
+  "configuration_diagnostics": {
+    "C": {
+      "runs": 90,
+      "runs_with_end_config": 73,
+      "end_calibration": {
+        "False": 73
+      },
+      "end_no_refinement": {
+        "False": 73
+      },
+      "recorded_fuzzer_commits": [
+        "24be87668",
+        "4ec7e6567"
+      ]
+    },
+    "D": {
+      "runs": 108,
+      "runs_with_end_config": 82,
+      "end_calibration": {
+        "False": 82
+      },
+      "end_no_refinement": {
+        "False": 82
+      },
+      "recorded_fuzzer_commits": [
+        "22444fea6",
+        "3e2d8b48b",
+        "4ec7e6567"
+      ]
+    },
+    "E": {
+      "runs": 76,
+      "runs_with_end_config": 65,
+      "end_calibration": {
+        "True": 65
+      },
+      "end_no_refinement": {
+        "False": 65
+      },
+      "recorded_fuzzer_commits": [
+        "24be87668",
+        "4ec7e6567"
+      ]
+    }
+  },
+  "source_mapping": {
+    "out-lighttpd1-loopfuzz_11.tar.gz": {
+      "raw": {
+        "l_abs": 4084.0,
+        "b_abs": 2115.0,
+        "nodes": 9,
+        "edges": 30,
+        "start_time": 1789717877,
+        "last_update": 1789806821,
+        "runtime_min": 1482
+      },
+      "same_name_summary": {
+        "l_abs": "4112",
+        "b_abs": "2139",
+        "nodes": "9",
+        "edges": "29",
+        "start_time": "1789718087",
+        "last_update": "1789806823",
+        "runtime_min": "1478"
+      },
+      "summary_rows_matching_all_numeric_fields": [
+        "out-lighttpd1-loopfuzz_10.tar.gz"
+      ]
+    },
+    "out-lighttpd1-loopfuzz_12.tar.gz": {
+      "raw": {
+        "l_abs": 4112.0,
+        "b_abs": 2139.0,
+        "nodes": 9,
+        "edges": 29,
+        "start_time": 1789718087,
+        "last_update": 1789806823,
+        "runtime_min": 1478
+      },
+      "same_name_summary": null,
+      "summary_rows_matching_all_numeric_fields": [
+        "out-lighttpd1-loopfuzz_11.tar.gz"
+      ]
+    }
+  },
+  "byte_identical_duplicate_pairs": 20,
+  "distinct_numeric_archive_evidence": 498,
+  "table_and_sample_checks": {
+    "run_count_matrix": {
+      "lightftp": {
+        "A": 13,
+        "B": 11,
+        "C": 10,
+        "D": 15,
+        "E": 10,
+        "E-gamma099": 3,
+        "E-gamma100": 3
+      },
+      "bftpd": {
+        "A": 10,
+        "B": 20,
+        "C": 10,
+        "D": 20,
+        "E": 0,
+        "E-gamma099": 3,
+        "E-gamma100": 3
+      },
+      "proftpd": {
+        "A": 10,
+        "B": 10,
+        "C": 10,
+        "D": 10,
+        "E": 10,
+        "E-gamma099": 3,
+        "E-gamma100": 3
+      },
+      "pure-ftpd": {
+        "A": 11,
+        "B": 10,
+        "C": 10,
+        "D": 10,
+        "E": 10,
+        "E-gamma099": 3,
+        "E-gamma100": 3
+      },
+      "exim": {
+        "A": 10,
+        "B": 10,
+        "C": 10,
+        "D": 10,
+        "E": 10,
+        "E-gamma099": 3,
+        "E-gamma100": 3
+      },
+      "live555": {
+        "A": 10,
+        "B": 10,
+        "C": 10,
+        "D": 10,
+        "E": 10,
+        "E-gamma099": 3,
+        "E-gamma100": 3
+      },
+      "kamailio": {
+        "A": 10,
+        "B": 10,
+        "C": 10,
+        "D": 11,
+        "E": 10,
+        "E-gamma099": 3,
+        "E-gamma100": 3
+      },
+      "forked-daapd": {
+        "A": 10,
+        "B": 10,
+        "C": 10,
+        "D": 12,
+        "E": 6,
+        "E-gamma099": 0,
+        "E-gamma100": 0
+      },
+      "lighttpd1": {
+        "A": 10,
+        "B": 10,
+        "C": 10,
+        "D": 10,
+        "E": 10,
+        "E-gamma099": 3,
+        "E-gamma100": 3
+      }
+    },
+    "arms_totals": {
+      "A": 94,
+      "B": 101,
+      "C": 90,
+      "D": 108,
+      "E": 76,
+      "E-gamma099": 24,
+      "E-gamma100": 24
+    },
+    "nominal10_main_deficits": {
+      "bftpd|E": 10,
+      "forked-daapd|E": 4
+    },
+    "core20_count_deficit_not_validity_claim": {
+      "C": 90,
+      "D": 72,
+      "E": 104
+    },
+    "explicit_blank_cells": {
+      "tab:targets": 27,
+      "tab:llm": 9,
+      "tab:mechanisms": 27,
+      "tab:repair": 12,
+      "tab:cve": 36,
+      "tab:cveresults": 35
+    },
+    "calibration_table_checked_targets": 8,
+    "E_episodes_raw": 28866,
+    "E_episodes_positive_execution": 23113,
+    "E_zero_execution_excluded": 5753
+  },
+  "limitations": [
+    "Raw numeric/log verification does not establish identical builds, independent launches, authentic arm treatment, complete provider costs, or causal effects.",
+    "IPSM means in tables were checked against run_summary.csv; raw plot_data was additionally checked for the two mismapped Lighttpd1 archives.",
+    "Absence of lifecycle logs does not justify zero conversion or false-negative rates."
+  ]
+}

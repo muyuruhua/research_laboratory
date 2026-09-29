@@ -165,7 +165,11 @@ run_queued_groups() {
 
         cd "$BASE_DIR" || exit 1
         ./run_dev.sh "$RUNS" "$TIMEOUT" "$TARGET" loopfuzz
-
+        rc=$?
+        if [[ $rc -ne 0 ]]; then
+          echo "[ABLATION:${label}] 失败 (run_dev.sh exit=${rc})"
+          exit "$rc"
+        fi
         echo "[ABLATION:${label}] 完成"
       ) &
 

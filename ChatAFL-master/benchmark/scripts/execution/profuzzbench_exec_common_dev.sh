@@ -4,6 +4,44 @@ DOCIMAGE=$1   #name of the docker image
 RUNS=$2       #number of runs
 SAVETO=$3     #path to folder keeping the results
 
+# Container retention (2026-09-25): fuzz containers are STOPPED but KEPT
+# after result collection by default so truncated archives / wedged runs
+# can be autopsied (docker cp & docker logs work on stopped containers).
+# Set CHATAFL_CLEAN_CONTAINERS=1 to restore remove-immediately behaviour.
+# Container-name uniqueness: run_ablation.sh launches several groups for the
+# SAME target+fuzzer in the same second, and a seconds-granularity RUN_TS
+# alone makes ${DOCIMAGE}-${FUZZER}-run${i}-${RUN_TS} collide across groups
+# (docker "name already in use" kills the whole group). Append the ablation
+# TIMESTAMP label (group-unique) plus PID/$RANDOM as a collision-proof suffix.
+RUN_TS="$(date +%m%d-%H%M%S)"
+if [[ -n "${TIMESTAMP:-}" ]]; then
+  RUN_TS+="-$(printf '%s' "$TIMESTAMP" | tr -cs 'a-zA-Z0-9_.-' '-' | sed 's/^-//; s/-$//' | cut -c1-40)"
+fi
+RUN_TS+="-$$-${RANDOM}"
+CLEAN_CONTAINERS="${CHATAFL_CLEAN_CONTAINERS:-0}"
+
+keep_or_clean_container() {
+  local cid="$1"
+  [ -z "$cid" ] && return 0
+  docker stop "$cid" >/dev/null 2>&1 || true
+  if [[ "$CLEAN_CONTAINERS" == "1" ]]; then
+    docker rm -f "$cid" >/dev/null 2>&1 || true
+  fi
+}
+
+print_kept_containers() {
+  [[ "$CLEAN_CONTAINERS" == "1" ]] && return 0
+  printf "\n${LOG_TAG}: [KEEP] %d fuzz container(s) STOPPED but RETAINED for post-mortem:\n" "${#cids[@]}"
+  local id name
+  for id in "${cids[@]}"; do
+    name="$(docker inspect --format '{{.Name}}' "$id" 2>/dev/null | tr -d /)"
+    [ -n "$name" ] || name="$id"
+    printf "${LOG_TAG}: [KEEP]   %s  (docker logs %s ; docker cp %s:<path> .)\n" "$name" "$name" "$name"
+  done
+  printf "${LOG_TAG}: [KEEP] remove them with:  docker rm -f %s\n" "${cids[*]}"
+  printf "${LOG_TAG}: [KEEP] or export CHATAFL_CLEAN_CONTAINERS=1 to auto-remove next time.\n"
+}
+
 FUZZER=$4     #fuzzer name (e.g., aflnet) -- this name must match the name of the fuzzer folder inside the Docker container
 OUTDIR=$5     #name of the output folder created inside the docker container
 OPTIONS=$6    #all configured options for fuzzing
@@ -274,10 +312,10 @@ on_exit() {
   fi
   cleanup_watchdogs
   collect_results_with_recovery
-  # Remove fuzzer containers before network cleanup
   for id in "${cids[@]}"; do
-    docker rm -f "$id" >/dev/null 2>&1 || true
+    keep_or_clean_container "$id"
   done
+  print_kept_containers
   cleanup_mqtt_resources
   # Final safety net for network
   if [[ -n "${MQTT_AUTO_NETWORK:-}" ]] && docker network inspect "$MQTT_AUTO_NETWORK" >/dev/null 2>&1; then
@@ -746,6 +784,10 @@ for i in $(seq 1 $RUNS); do
   [[ -n "${CHATAFL_NO_REFINEMENT}" ]]      && ABLATION_FLAGS+=" -e CHATAFL_NO_REFINEMENT=1"
   [[ -n "${CHATAFL_NO_FRONTIER}" ]]        && ABLATION_FLAGS+=" -e CHATAFL_NO_FRONTIER=1"
   [[ -n "${CHATAFL_NO_ESCAPE_AMP}" ]]      && ABLATION_FLAGS+=" -e CHATAFL_NO_ESCAPE_AMP=1"
+  [[ -n "${CHATAFL_NO_LEXKILL}" ]]         && ABLATION_FLAGS+=" -e CHATAFL_NO_LEXKILL=1"
+  [[ -n "${CHATAFL_NO_NESTIMB}" ]]         && ABLATION_FLAGS+=" -e CHATAFL_NO_NESTIMB=1"
+  [[ -n "${CHATAFL_NO_TRANSPORTSAT}" ]]    && ABLATION_FLAGS+=" -e CHATAFL_NO_TRANSPORTSAT=1"
+  [[ -n "${CHATAFL_NO_TUNNELSWITCH}" ]]    && ABLATION_FLAGS+=" -e CHATAFL_NO_TUNNELSWITCH=1"
   [[ -n "${CHATAFL_NO_ADAPTIVE}" ]]        && ABLATION_FLAGS+=" -e CHATAFL_NO_ADAPTIVE=1"
   [[ -n "${CHATAFL_NO_STATE_PROMPT}" ]]    && ABLATION_FLAGS+=" -e CHATAFL_NO_STATE_PROMPT=1"
   [[ -n "${CHATAFL_NO_ADMISSION}" ]]       && ABLATION_FLAGS+=" -e CHATAFL_NO_ADMISSION=1"
@@ -830,6 +872,7 @@ for i in $(seq 1 $RUNS); do
 	    # --memory: 6g (6 groups × 6g + 6 × 0.25g brokers + 2g overhead ≈ 39.5 GB, safe with 44 GB host)
     # NOTE: 消融并行运行时6组×hetero broker fleet会引发kernel OOM，
     id=$(docker run --cpus=1 --memory=6g --memory-swap=6g \
+      --name "${DOCIMAGE}-${FUZZER}-run${i}-${RUN_TS}" \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
       -e LLM_MODEL="${LLM_MODEL:-codex-auto-review}" \
@@ -854,6 +897,7 @@ for i in $(seq 1 $RUNS); do
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   elif [[ "$FUZZER" == "chatafl" ]]; then
     id=$(docker run --cpus=1 --memory=6g --memory-swap=6g \
+      --name "${DOCIMAGE}-${FUZZER}-run${i}-${RUN_TS}" \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
       ${TARGET_ENV_FLAGS} \
@@ -870,6 +914,7 @@ for i in $(seq 1 $RUNS); do
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   elif [[ "$FUZZER" == "chatafl-cl1" ]]; then
     id=$(docker run --cpus=1 --memory=6g --memory-swap=6g \
+      --name "${DOCIMAGE}-${FUZZER}-run${i}-${RUN_TS}" \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
       ${TARGET_ENV_FLAGS} \
@@ -885,6 +930,7 @@ for i in $(seq 1 $RUNS); do
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   elif [[ "$FUZZER" == "chatafl-cl2" ]]; then
     id=$(docker run --cpus=1 --memory=6g --memory-swap=6g \
+      --name "${DOCIMAGE}-${FUZZER}-run${i}-${RUN_TS}" \
       ${DIAG_PTRACE_FLAGS} \
       -e KEY="${KEY}" \
       ${TARGET_ENV_FLAGS} \
@@ -899,7 +945,7 @@ for i in $(seq 1 $RUNS); do
         cd /home/ubuntu/chatafl-cl2 && make clean && make -j\$(nproc) && \
         cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   else
-    id=$(docker run --cpus=1 --memory=6g --memory-swap=6g ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${TARGET_ENV_FLAGS} ${TOKEN_FLAGS} ${LLM_NET_FLAGS} ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
+    id=$(docker run --cpus=1 --memory=6g --memory-swap=6g --name "${DOCIMAGE}-${FUZZER}-run${i}-${RUN_TS}" ${DIAG_PTRACE_FLAGS} -e KEY="${KEY}" ${TARGET_ENV_FLAGS} ${TOKEN_FLAGS} ${LLM_NET_FLAGS} ${MQTT_FLAGS} ${MQTT_RUN_FLAGS} ${SUBJECT_MOUNT} -d -it $DOCIMAGE /bin/bash -c "${SUBJECT_COPY}cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}; R=\$?; [ \$R -eq 139 ] && R=0; exit \$R")
   fi
   require_container_id "$id" "fuzz container run #${i}"
   cids+=("$id")
@@ -938,10 +984,11 @@ cleanup_watchdogs
 
 collect_results_with_recovery
 
-# Remove fuzzing containers FIRST (so network can be cleaned)
+# Retain fuzz containers (stopped) for post-mortem; opt-in removal.
 for id in "${cids[@]}"; do
-  docker rm -f "$id" >/dev/null 2>&1 || true
+  keep_or_clean_container "$id"
 done
+print_kept_containers
 
 # Now clean up MQTT infra (stable broker, hetero brokers, network)
 cleanup_mqtt_resources

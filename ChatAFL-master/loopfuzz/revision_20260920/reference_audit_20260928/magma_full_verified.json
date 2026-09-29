@@ -1,0 +1,614 @@
+{
+  "url": "https://api.crossref.org/works/10.1145%2F3428334",
+  "accessed": "2026-09-28",
+  "response": {
+    "status": "ok",
+    "message-type": "work",
+    "message-version": "1.0.0",
+    "message": {
+      "indexed": {
+        "date-parts": [
+          [
+            2026,
+            9,
+            26
+          ]
+        ],
+        "date-time": "2026-09-26T23:26:29Z",
+        "timestamp": 1790465189587,
+        "version": "4.1.0"
+      },
+      "reference-count": 66,
+      "publisher": "Association for Computing Machinery (ACM)",
+      "issue": "3",
+      "license": [
+        {
+          "start": {
+            "date-parts": [
+              [
+                2020,
+                11,
+                30
+              ]
+            ],
+            "date-time": "2020-11-30T00:00:00Z",
+            "timestamp": 1606694400000
+          },
+          "content-version": "vor",
+          "delay-in-days": 0,
+          "URL": "https://www.acm.org/publications/policies/copyright_policy#Background"
+        }
+      ],
+      "funder": [
+        {
+          "DOI": "10.13039/100011199",
+          "name": "European Research Council",
+          "doi-asserted-by": "publisher",
+          "award": [
+            "850868"
+          ],
+          "award-info": [
+            {
+              "award-number": [
+                "850868"
+              ]
+            }
+          ],
+          "id": [
+            {
+              "id": "10.13039/100011199",
+              "id-type": "DOI",
+              "asserted-by": "publisher"
+            }
+          ]
+        }
+      ],
+      "content-domain": {
+        "domain": [
+          "dl.acm.org"
+        ],
+        "crossmark-restriction": true
+      },
+      "short-container-title": [
+        "Proc. ACM Meas. Anal. Comput. Syst."
+      ],
+      "published-print": {
+        "date-parts": [
+          [
+            2020,
+            11,
+            30
+          ]
+        ]
+      },
+      "abstract": "<jats:p>High scalability and low running costs have made fuzz testing the de facto standard for discovering software bugs. Fuzzing techniques are constantly being improved in a race to build the ultimate bug-finding tool. However, while fuzzing excels at finding bugs in the wild, evaluating and comparing fuzzer performance is challenging due to the lack of metrics and benchmarks. For example, crash count---perhaps the most commonly-used performance metric---is inaccurate due to imperfections in deduplication techniques. Additionally, the lack of a unified set of targets results in ad hoc evaluations that hinder fair comparison. We tackle these problems by developing Magma, a ground-truth fuzzing benchmark that enables uniform fuzzer evaluation and comparison. By introducing real bugs into real software, Magma allows for the realistic evaluation of fuzzers against a broad set of targets. By instrumenting these bugs, Magma also enables the collection of bug-centric performance metrics independent of the fuzzer. Magma is an open benchmark consisting of seven targets that perform a variety of input manipulations and complex computations, presenting a challenge to state-of-the-art fuzzers. We evaluate seven widely-used mutation-based fuzzers (AFL, AFLFast, AFL++, FairFuzz, MOpt-AFL, honggfuzz, and SymCC-AFL) against Magma over 200,000 CPU-hours. Based on the number of bugs reached, triggered, and detected, we draw conclusions about the fuzzers' exploration and detection capabilities. This provides insight into fuzzer performance evaluation, highlighting the importance of ground truth in performing more accurate and meaningful evaluations.</jats:p>",
+      "DOI": "10.1145/3428334",
+      "type": "journal-article",
+      "created": {
+        "date-parts": [
+          [
+            2020,
+            11,
+            30
+          ]
+        ],
+        "date-time": "2020-11-30T14:54:15Z",
+        "timestamp": 1606748055000
+      },
+      "page": "1-29",
+      "update-policy": "https://doi.org/10.1145/crossmark-policy",
+      "source": "Crossref",
+      "is-referenced-by-count": 172,
+      "title": [
+        "Magma"
+      ],
+      "prefix": "10.1145",
+      "volume": "4",
+      "author": [
+        {
+          "given": "Ahmad",
+          "family": "Hazimeh",
+          "sequence": "first",
+          "affiliation": [
+            {
+              "name": "EPFL, Lausanne, Switzerland"
+            }
+          ],
+          "role": [
+            {
+              "vocabulary": "crossref",
+              "role": "author"
+            }
+          ]
+        },
+        {
+          "given": "Adrian",
+          "family": "Herrera",
+          "sequence": "additional",
+          "affiliation": [
+            {
+              "name": "Australian National University &amp; Defence Science and Technology Group, Canberra, Australia"
+            }
+          ],
+          "role": [
+            {
+              "vocabulary": "crossref",
+              "role": "author"
+            }
+          ]
+        },
+        {
+          "given": "Mathias",
+          "family": "Payer",
+          "sequence": "additional",
+          "affiliation": [
+            {
+              "name": "EPFL, Lausanne, Switzerland"
+            }
+          ],
+          "role": [
+            {
+              "vocabulary": "crossref",
+              "role": "author"
+            }
+          ]
+        }
+      ],
+      "member": "320",
+      "published-online": {
+        "date-parts": [
+          [
+            2020,
+            11,
+            30
+          ]
+        ]
+      },
+      "reference": [
+        {
+          "key": "e_1_2_1_1_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.5555/3485754.3485759"
+        },
+        {
+          "key": "e_1_2_1_2_1",
+          "volume-title": "Proc. ACM Meas. Anal. Comput. Syst.",
+          "volume": "4",
+          "author": "Aizatsky Mike",
+          "year": "2016",
+          "unstructured": "Mike Aizatsky, Kostya Serebryany, Oliver Chang, Abhishek Arya, and Meredith Whittaker. 2016. Announcing OSS-Fuzz: Continuous fuzzing for open source software. https://opensource.googleblog.com/2016/12/ announcing-oss-fuzz-continuous-fuzzing.html. Accessed: 2019-09-09. Proc. ACM Meas. Anal. Comput. Syst., Vol. 4, No. 3, Article 49. Publication date: December 2020. Magma: A Ground-Truth Fuzzing Benchmark 49:21"
+        },
+        {
+          "key": "e_1_2_1_3_1",
+          "unstructured": "Branden Archer and Darkkey. [n.d.]. radamsa: A Black-box mutational fuzzer. https://gitlab.com/akihe/radamsa. Accessed: 2019-09-09."
+        },
+        {
+          "key": "e_1_2_1_4_1",
+          "volume-title": "Adobe Reader and Acrobat Security Initiative",
+          "author": "Arkin Brad",
+          "unstructured": "Brad Arkin. 2009. Adobe Reader and Acrobat Security Initiative. http://blogs.adobe.com/security/2009/05/adobe_ reader_and_acrobat_secur.html. Accessed: 2019-09-09."
+        },
+        {
+          "key": "e_1_2_1_5_1",
+          "unstructured": "Abhishek Arya and Cris Neckar. 2012. Fuzzing for security. https://blog.chromium.org/2012/04/fuzzing-for-security. html. Accessed: 2019-09-09."
+        },
+        {
+          "key": "e_1_2_1_6_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/3338906.3340456"
+        },
+        {
+          "key": "e_1_2_1_7_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/1167473.1167488"
+        },
+        {
+          "key": "e_1_2_1_8_1",
+          "volume-title": "AURORA: Statistical Crash Analysis for Automated Root Cause Explanation. In 29th USENIX Security Symposium (USENIX Security 20)",
+          "author": "Blazytko Tim",
+          "year": "2020",
+          "unstructured": "Tim Blazytko, Moritz Schlögel, Cornelius Aschermann, Ali Abbasi, Joel Frank, Simon Wörner, and Thorsten Holz. 2020. AURORA: Statistical Crash Analysis for Automated Root Cause Explanation. In 29th USENIX Security Symposium (USENIX Security 20). USENIX Association, 235--252. https://www.usenix.org/conference/usenixsecurity20/ presentation/blazytko"
+        },
+        {
+          "key": "e_1_2_1_9_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/3368089.3409729"
+        },
+        {
+          "key": "e_1_2_1_10_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/2976749.2978428"
+        },
+        {
+          "key": "e_1_2_1_11_1",
+          "unstructured": "Brian Caswell. [n.d.]. Cyber Grand Challenge Corpus. http://www.lungetech.com/cgc-corpus/."
+        },
+        {
+          "key": "e_1_2_1_12_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1109/SP.2018.00046"
+        },
+        {
+          "key": "e_1_2_1_13_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1109/ICST.2019.00015"
+        },
+        {
+          "key": "e_1_2_1_14_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1109/SP.2016.15"
+        },
+        {
+          "key": "e_1_2_1_15_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1109/TETC.2017.2785299"
+        },
+        {
+          "key": "e_1_2_1_16_1",
+          "volume-title": "14th USENIX Workshop on Offensive Technologies (WOOT 20)",
+          "author": "Fioraldi Andrea",
+          "year": "2020",
+          "unstructured": "Andrea Fioraldi, Dominik Maier, Heiko Eißfeldt, and Marc Heuse. 2020. AFL++ : Combining Incremental Steps of Fuzzing Research. In 14th USENIX Workshop on Offensive Technologies (WOOT 20). USENIX Association. https: //www.usenix.org/conference/woot20/presentation/fioraldi Accessed: 2020--10--19."
+        },
+        {
+          "key": "e_1_2_1_17_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1109/ICSE.2009.5070546"
+        },
+        {
+          "key": "e_1_2_1_18_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/1375581.1375607"
+        },
+        {
+          "key": "e_1_2_1_19_1",
+          "unstructured": "Google. [n.d.]. FuzzBench. https://google.github.io/fuzzbench/. Accessed: 2020-05-02."
+        },
+        {
+          "key": "e_1_2_1_20_1",
+          "unstructured": "Google. [n.d.]. Fuzzer Test Suite. https://github.com/google/fuzzer-test-suite. Accessed: 2019-09-06."
+        },
+        {
+          "key": "e_1_2_1_21_1",
+          "unstructured": "Google. [n.d.]. honggfuzz. http://honggfuzz.com/. Accessed: 2019--10--19."
+        },
+        {
+          "key": "e_1_2_1_22_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/2976002.2976017"
+        },
+        {
+          "key": "e_1_2_1_23_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/1836089.1836091"
+        },
+        {
+          "key": "e_1_2_1_24_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1109/2.869367"
+        },
+        {
+          "key": "e_1_2_1_25_1",
+          "unstructured": "Intel. [n.d.]. Intel Pin API Reference. https://software.intel.com/sites/landingpage/pintool/docs/71313/Pin/html/index. html."
+        },
+        {
+          "key": "e_1_2_1_26_1",
+          "volume-title": "Proceedings of the USENIX Conference on Security Symposium.",
+          "author": "Ispoglou Kyriakos K.",
+          "year": "2020",
+          "unstructured": "Kyriakos K. Ispoglou. 2020. FuzzGen: Automatic Fuzzer Generation. In Proceedings of the USENIX Conference on Security Symposium."
+        },
+        {
+          "key": "e_1_2_1_27_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1109/TC.2006.85"
+        },
+        {
+          "key": "e_1_2_1_28_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1080/01621459.1958.10501452"
+        },
+        {
+          "key": "e_1_2_1_29_1",
+          "volume-title": "Automated Customized Bug-Benchmark Generation. In 2019 19th International Working Conference on Source Code Analysis and Manipulation (SCAM). 103--114",
+          "author": "Kashyap V.",
+          "unstructured": "V. Kashyap, J. Ruchti, L. Kot, E. Turetsky, R. Swords, S. A. Pan, J. Henry, D. Melski, and E. Schulte. 2019. Automated Customized Bug-Benchmark Generation. In 2019 19th International Working Conference on Source Code Analysis and Manipulation (SCAM). 103--114."
+        },
+        {
+          "key": "e_1_2_1_30_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/3243734.3243804"
+        },
+        {
+          "key": "e_1_2_1_31_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/3238147.3238176"
+        },
+        {
+          "key": "e_1_2_1_32_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/3106237.3106295"
+        },
+        {
+          "key": "e_1_2_1_33_1",
+          "volume-title": "UNIFUZZ: A Holistic and Pragmatic Metrics-Driven Platform for Evaluating Fuzzers. In 30th USENIX Security Symposium (USENIX Security 21)",
+          "author": "Li Yuwei",
+          "year": "2021",
+          "unstructured": "Yuwei Li, Shouling Ji, Yuan Chen, Sizhuang Liang,Wei-Han Lee, Yueyao Chen, Chenyang Lyu, ChunmingWu, Raheem Beyah, Peng Cheng, Kangjie Lu, and Ting Wang. 2021. UNIFUZZ: A Holistic and Pragmatic Metrics-Driven Platform for Evaluating Fuzzers. In 30th USENIX Security Symposium (USENIX Security 21). USENIX Association."
+        },
+        {
+          "key": "e_1_2_1_34_1",
+          "unstructured": "LLVM Foundation. [n.d.]. libFuzzer. https://llvm.org/docs/LibFuzzer.html. Accessed: 2019-09-06."
+        },
+        {
+          "key": "e_1_2_1_35_1",
+          "volume-title": "In Workshop on the Evaluation of Software Defect Detection Tools.",
+          "author": "Lu Shan",
+          "year": "2005",
+          "unstructured": "Shan Lu, Zhenmin Li, Feng Qin, Lin Tan, Pin Zhou, and Yuanyuan Zhou. 2005. Bugbench: Benchmarks for evaluating bug detection tools. In In Workshop on the Evaluation of Software Defect Detection Tools."
+        },
+        {
+          "key": "e_1_2_1_36_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/1065010.1065034"
+        },
+        {
+          "key": "e_1_2_1_37_1",
+          "volume-title": "MOPT: Optimized Mutation Scheduling for Fuzzers. In 28th USENIX Security Symposium, USENIX Security 2019",
+          "author": "Lyu Chenyang",
+          "year": "2019",
+          "unstructured": "Chenyang Lyu, Shouling Ji, Chao Zhang, Yuwei Li,Wei-Han Lee, Yu Song, and Raheem Beyah. 2019. MOPT: Optimized Mutation Scheduling for Fuzzers. In 28th USENIX Security Symposium, USENIX Security 2019, Santa Clara, CA, USA, August 14--16, 2019., Nadia Heninger and Patrick Traynor (Eds.). USENIX Association, 1949--1966. https://www.usenix. org/conference/usenixsecurity19/presentation/lyu"
+        },
+        {
+          "key": "e_1_2_1_38_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1109/TSE.2019.2946563"
+        },
+        {
+          "key": "e_1_2_1_39_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/3377811"
+        },
+        {
+          "key": "e_1_2_1_40_1",
+          "unstructured": "MITRE. 2007. Common Weakness Enumeration (CWE). https://cwe.mitre.org/."
+        },
+        {
+          "key": "e_1_2_1_41_1",
+          "volume-title": "The Industrial Age of Hacking. In 29th USENIX Security Symposium (USENIX Security 20)",
+          "author": "Nosco Timothy",
+          "unstructured": "Timothy Nosco, Jared Ziegler, Zechariah Clark, Davy Marrero, Todd Finkler, Andrew Barbarello, and W. Michael Petullo. 2020. The Industrial Age of Hacking. In 29th USENIX Security Symposium (USENIX Security 20). USENIX Association, 1129--1146. https://www.usenix.org/conference/usenixsecurity20/presentation/nosco"
+        },
+        {
+          "key": "e_1_2_1_42_1",
+          "unstructured": "Peach Tech. [n.d.]. Peach Fuzzer Platform. https://www.peach.tech/products/peach-fuzzer/peach-platform/. Accessed: 2019-09-09."
+        },
+        {
+          "key": "e_1_2_1_43_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1080/14786440109462720"
+        },
+        {
+          "key": "e_1_2_1_44_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1109/SP.2018.00056"
+        },
+        {
+          "key": "e_1_2_1_45_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1109/SP.2017.27"
+        },
+        {
+          "key": "e_1_2_1_46_1",
+          "volume-title": "Proceedings of the 2017 ACM SIGSAC Conference on Computer and Communications Security",
+          "author": "Petsios Theofilos",
+          "year": "2017",
+          "unstructured": "Theofilos Petsios, Jason Zhao, Angelos D. Keromytis, and Suman Jana. 2017. SlowFuzz: Automated Domain-Independent Detection of Algorithmic Complexity Vulnerabilities. In Proceedings of the 2017 ACM SIGSAC Conference on Computer and Communications Security (Dallas, Texas, USA) (CCS '17). ACM, New York, NY, USA, 2155--2168. https://doi.org/10. 1145/3133956.3134073"
+        },
+        {
+          "key": "e_1_2_1_47_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/2970276"
+        },
+        {
+          "key": "e_1_2_1_48_1",
+          "volume-title": "Measuring Program Similarity: Experiments with SPEC CPU Benchmark Suites. In IEEE International Symposium on Performance Analysis of Systems and Software, 2005. ISPASS 2005. 10--20",
+          "author": "Phansalkar A.",
+          "unstructured": "A. Phansalkar, A. Joshi, L. Eeckhout, and L. K. John. 2005. Measuring Program Similarity: Experiments with SPEC CPU Benchmark Suites. In IEEE International Symposium on Performance Analysis of Systems and Software, 2005. ISPASS 2005. 10--20."
+        },
+        {
+          "key": "e_1_2_1_49_1",
+          "volume-title": "29th USENIX Security Symposium (USENIX Security 20)",
+          "author": "Poeplau Sebastian",
+          "year": "2020",
+          "unstructured": "Sebastian Poeplau and Aurélien Francillon. 2020. Symbolic execution with SymCC: Don't interpret, compile!. In 29th USENIX Security Symposium (USENIX Security 20). USENIX Association, 181--198. https://www.usenix.org/conference/ usenixsecurity20/presentation/poeplau"
+        },
+        {
+          "key": "e_1_2_1_50_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/3314221.3314637"
+        },
+        {
+          "key": "e_1_2_1_51_1",
+          "unstructured": "Tim Rains. 2012. Security Development Lifecycle: A Living Process. https://www.microsoft.com/security/blog/2012/ 02/01/security-development-lifecycle-a-living-process/. Accessed: 2019-09-09."
+        },
+        {
+          "key": "e_1_2_1_52_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/3236024.3236084"
+        },
+        {
+          "key": "e_1_2_1_53_1",
+          "volume-title": "AddressSanitizer: A Fast Address Sanity Checker. In 2012 USENIX Annual Technical Conference",
+          "author": "Serebryany Konstantin",
+          "year": "2012",
+          "unstructured": "Konstantin Serebryany, Derek Bruening, Alexander Potapenko, and Dmitriy Vyukov. 2012. AddressSanitizer: A Fast Address Sanity Checker. In 2012 USENIX Annual Technical Conference, Boston, MA, USA, June 13--15, 2012, Gernot Heiser and Wilson C. Hsieh (Eds.). USENIX Association, 309--318. https://www.usenix.org/conference/atc12/ technical-sessions/presentation/serebryany"
+        },
+        {
+          "key": "e_1_2_1_54_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1109/SP.2016.17"
+        },
+        {
+          "key": "e_1_2_1_55_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1109/SP.2019.00010"
+        },
+        {
+          "key": "e_1_2_1_56_1",
+          "unstructured": "Daan Sprenkels. [n.d.]. LLVM provides no side-channel resistance. https://dsprenkels.com/cmov-conversion.html. Accessed: 2020-02--13."
+        },
+        {
+          "key": "e_1_2_1_57_1",
+          "unstructured": "Standard Performance Evaluation Corporation. [n.d.]. SPEC Benchmark Suite. https://www.spec.org/. Accessed: 2020-02--12."
+        },
+        {
+          "key": "e_1_2_1_58_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.14722/ndss.2016.23368"
+        },
+        {
+          "key": "e_1_2_1_59_1",
+          "unstructured": "Trail of Bits. [n.d.]. DARPA Challenge Binaries on Linux OS X and Windows. https://github.com/trailofbits/cb-multios/. Accessed: 2020--10-04."
+        },
+        {
+          "key": "e_1_2_1_60_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/2668930.2688819"
+        },
+        {
+          "key": "e_1_2_1_61_1",
+          "doi-asserted-by": "publisher",
+          "unstructured": "Jonas Benedict Wagner. 2017. Elastic Program Transformations Automatically Optimizing the Reliability/Performance Trade-off in Systems Software. (2017) 149. https://doi.org/10.5075/epfl-thesis-7745",
+          "DOI": "10.5075/epfl-thesis-7745"
+        },
+        {
+          "key": "e_1_2_1_62_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1109/SP.2017.23"
+        },
+        {
+          "key": "e_1_2_1_63_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1109/ICSE.2019.00081"
+        },
+        {
+          "key": "e_1_2_1_64_1",
+          "doi-asserted-by": "publisher",
+          "DOI": "10.1145/2508859.2516736"
+        },
+        {
+          "key": "e_1_2_1_65_1",
+          "volume-title": "Proceedings of the 27th USENIX Conference on Security Symposium",
+          "author": "Yun Insu",
+          "year": "2018",
+          "unstructured": "Insu Yun, Sangho Lee, Meng Xu, Yeongjin Jang, and Taesoo Kim. 2018. QSYM: A Practical Concolic Execution Engine Tailored for Hybrid Fuzzing. In Proceedings of the 27th USENIX Conference on Security Symposium (Baltimore, MD, USA) (SEC'18). USENIX Association, Berkeley, CA, USA, 745--761. http://dl.acm.org/citation.cfm?id=3277203.3277260"
+        },
+        {
+          "key": "e_1_2_1_66_1",
+          "volume-title": "American Fuzzy Lop (AFL) Technical Whitepaper",
+          "author": "Zalewski Michal",
+          "unstructured": "Michal Zalewski. [n.d.]. American Fuzzy Lop (AFL) Technical Whitepaper. http://lcamtuf.coredump.cx/afl/technical_ details.txt. Accessed: 2019-09-06."
+        }
+      ],
+      "container-title": [
+        "Proceedings of the ACM on Measurement and Analysis of Computing Systems"
+      ],
+      "original-title": [],
+      "language": "en",
+      "link": [
+        {
+          "URL": "https://dl.acm.org/doi/10.1145/3428334",
+          "content-type": "unspecified",
+          "content-version": "vor",
+          "intended-application": "text-mining"
+        },
+        {
+          "URL": "https://dl.acm.org/doi/pdf/10.1145/3428334",
+          "content-type": "unspecified",
+          "content-version": "vor",
+          "intended-application": "similarity-checking"
+        }
+      ],
+      "deposited": {
+        "date-parts": [
+          [
+            2025,
+            6,
+            17
+          ]
+        ],
+        "date-time": "2025-06-17T18:02:58Z",
+        "timestamp": 1750183378000
+      },
+      "score": 1,
+      "resource": {
+        "primary": {
+          "URL": "https://dl.acm.org/doi/10.1145/3428334"
+        }
+      },
+      "subtitle": [
+        "A Ground-Truth Fuzzing Benchmark"
+      ],
+      "short-title": [],
+      "issued": {
+        "date-parts": [
+          [
+            2020,
+            11,
+            30
+          ]
+        ]
+      },
+      "references-count": 66,
+      "journal-issue": {
+        "issue": "3",
+        "published-print": {
+          "date-parts": [
+            [
+              2020,
+              11,
+              30
+            ]
+          ]
+        }
+      },
+      "alternative-id": [
+        "10.1145/3428334"
+      ],
+      "URL": "https://doi.org/10.1145/3428334",
+      "relation": {},
+      "ISSN": [
+        "2476-1249"
+      ],
+      "issn-type": [
+        {
+          "value": "2476-1249",
+          "type": "electronic"
+        }
+      ],
+      "subject": [],
+      "published": {
+        "date-parts": [
+          [
+            2020,
+            11,
+            30
+          ]
+        ]
+      },
+      "assertion": [
+        {
+          "value": "2020-11-30",
+          "order": 2,
+          "name": "published",
+          "label": "Published",
+          "group": {
+            "name": "publication_history",
+            "label": "Publication History"
+          }
+        }
+      ]
+    }
+  }
+}
